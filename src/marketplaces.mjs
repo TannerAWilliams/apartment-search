@@ -78,3 +78,42 @@ export function marketplaceLinks(market, filters) {
 
   return links.map(([id, url, detail]) => ({ id, url, detail, name: MARKETPLACE_NAMES[id] }));
 }
+
+export const MARKETPLACE_DOMAINS = {
+  streeteasy: 'streeteasy.com', zillow: 'zillow.com', apartments: 'apartments.com',
+  realtor: 'realtor.com', redfin: 'redfin.com', trulia: 'trulia.com', hotpads: 'hotpads.com',
+  zumper: 'zumper.com', apartmentlist: 'apartmentlist.com', rent: 'rent.com',
+  apartmentguide: 'apartmentguide.com', renthop: 'renthop.com', craigslist: 'craigslist.org',
+  facebook: 'facebook.com',
+};
+
+export function safeListingUrl(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && !url.username && !url.password && url.href.length <= 2000 ?
+      url.href : null;
+  } catch {
+    return null;
+  }
+}
+
+export function marketplaceIdForUrl(value) {
+  const url = safeListingUrl(value);
+  if (!url) return null;
+  const hostname = new URL(url).hostname;
+  return Object.entries(MARKETPLACE_DOMAINS).find(([, domain]) =>
+    hostname === domain || hostname.endsWith('.' + domain))?.[0] ?? null;
+}
+
+export function marketplaceAddressSearches(listing, sources = listing.sources) {
+  const linked = new Set(sources.filter(({ url }) => url).map(({ id }) => id));
+  const address = listing.address.replace(/"/g, '');
+  const unit = listing.unit.replace(/"/g, '').replace(/^(?:unit|apt\.?|suite|#)\s*/i, '');
+  const location = listing.zip || [listing.city, listing.state].filter(Boolean).join(' ');
+  if (!address) return [];
+
+  return Object.entries(MARKETPLACE_DOMAINS).filter(([id]) => !linked.has(id)).map(([id, domain]) => {
+    const query = [`site:${domain}`, `"${address}"`, unit && `"${unit}"`, location, 'for rent'].filter(Boolean).join(' ');
+    return { id, name: MARKETPLACE_NAMES[id], url: `https://www.google.com/search?${new URLSearchParams({ q: query })}` };
+  });
+}

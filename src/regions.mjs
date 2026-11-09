@@ -63,7 +63,10 @@ const COUNTIES = {
     'south central connecticut', 'naugatuck valley'] },
 };
 
-export function regionOf({ city = '', state, county = '', zip = '' }) {
+const REGION_STATES = { nyc: 'NY', nj: 'NJ', li: 'NY', metroNorth: 'NY', ct: 'CT' };
+
+export function regionOf({ city = '', state, county = '', zip = '', region }) {
+  if (region && REGION_STATES[region] === state) return region;
   const normalizedCounty = county.toLowerCase().trim().replace(/ (county|planning region)$/, '');
   const stateRegions = COUNTIES[state] ?? {};
   for (const [region, counties] of Object.entries(stateRegions)) {

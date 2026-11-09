@@ -1,4 +1,3 @@
-import { DEMO_LISTINGS } from './demo.mjs';
 import { REGIONS, WORKPLACES, regionOf } from './regions.mjs';
 
 export const DEFAULT_FILTERS = {
@@ -6,14 +5,11 @@ export const DEFAULT_FILTERS = {
   bedrooms: 1,
   maxRent: 2800,
   maxMiles: null,
-  maxMinutes: null,
   workplace: 'rockefeller',
   customWorkplace: '',
   zip: '',
-  arrival: '08:30',
 };
 
-export const ARRIVAL_TIMES = ['08:00', '08:30', '09:00', '09:30', '10:00'];
 export const bedroomLabel = (count) => count === null ? 'Any beds' :
   count === 0 ? 'Studio' : `${count} bedroom${count === 1 ? '' : 's'}`;
 export const formatRent = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 2 }).format;
@@ -49,19 +45,18 @@ export function parseFilters(input = {}) {
   }
   const zip = typeof input.zip === 'string' ? input.zip.trim() : '';
   if (zip && !/^\d{5}$/.test(zip)) throw new SearchInputError('Enter a five-digit ZIP code.');
-  const arrival = input.arrival ?? DEFAULT_FILTERS.arrival;
-  if (!ARRIVAL_TIMES.includes(arrival)) throw new SearchInputError('Choose an arrival time.');
+  if (input.maxMinutes !== null && input.maxMinutes !== undefined && input.maxMinutes !== '') {
+    throw new SearchInputError('Use the transit directions link on a listing to check travel time.');
+  }
 
   return {
     region,
     workplace,
     customWorkplace: workplace === 'custom' ? customWorkplace : '',
     zip,
-    arrival,
     bedrooms: optionalNumber(input.bedrooms, 'bedroom count', 0, 4),
     maxRent: optionalNumber(input.maxRent, 'maximum rent', 1, 100000),
     maxMiles: optionalNumber(input.maxMiles, 'maximum distance', 0.1, 250, false),
-    maxMinutes: optionalNumber(input.maxMinutes, 'maximum transit time', 1, 240),
   };
 }
 
@@ -90,7 +85,7 @@ export function distanceMiles(from, to) {
 }
 
 export function compareResults(a, b, sort = 'rent') {
-  const metric = sort === 'distance' ? 'miles' : sort === 'transit' ? 'transitSeconds' : 'rent';
+  const metric = sort === 'distance' ? 'miles' : 'rent';
   return (a[metric] ?? Infinity) - (b[metric] ?? Infinity) ||
     a.rent - b.rent || a.id.localeCompare(b.id);
 }
@@ -106,15 +101,8 @@ export function matchListings(listings, filters, workplace) {
     const miles = distanceMiles(listing, workplace);
     if (filters.maxMiles !== null && (miles === null || miles > filters.maxMiles)) return [];
 
-    return [{ ...listing, region, miles, transitSeconds: null, transitMiles: null }];
+    return [{ ...listing, region, miles }];
   }).sort(compareResults);
-}
-
-export function previewSearch(filters, workplace = localWorkplace(filters)) {
-  if (!workplace) throw new SearchInputError('Use a preset or enter latitude, longitude in the offline preview.');
-  if (filters.maxMinutes !== null) throw new SearchInputError('Connect a transit provider to search by commute time.');
-  const matches = matchListings(DEMO_LISTINGS, filters, workplace);
-  return { mode: 'demo', workplace, matches, total: matches.length, sources: [], notices: [], transitArrival: null };
 }
 
 export function directionsLink(listing, workplace) {

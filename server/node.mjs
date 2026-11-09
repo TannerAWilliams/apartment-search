@@ -15,7 +15,7 @@ const host = values.host || process.env.HOST || '127.0.0.1';
 const port = Number(values.port || process.env.PORT || 3000);
 const root = fileURLToPath(new URL('../web-build', import.meta.url));
 const token = process.env.APP_ACCESS_TOKEN;
-const hasLiveFeeds = process.env.RENTCAST_API_KEY || process.env.PARTNER_FEEDS_JSON;
+const hasLiveFeeds = process.env.FREE_PARTNER_FEEDS_JSON;
 if (hasLiveFeeds && !['127.0.0.1', '::1', 'localhost'].includes(host) && (!token || token.length < 24)) {
   throw new Error('Set APP_ACCESS_TOKEN to at least 24 characters before exposing a live feed server on the network.');
 }

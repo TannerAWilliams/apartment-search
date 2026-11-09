@@ -1,0 +1,51 @@
+import React, { useState } from 'react';
+import { Text, View } from 'react-native';
+import { sourceLink } from './listings.mjs';
+import { marketplaceAddressSearches } from './marketplaces.mjs';
+import { styles } from './styles.js';
+import { Button, Field, Link } from './ui.jsx';
+
+export function ListingSources({ listing, onSaveLink, onError }) {
+  const [expanded, setExpanded] = useState(false);
+  const [url, setUrl] = useState('');
+  const [error, setError] = useState('');
+  const direct = listing.sources.filter((source) => source.url);
+  const count = new Set(direct.map(({ id }) => id)).size;
+
+  function save() {
+    const link = sourceLink(url.trim(), 'saved');
+    if (!link) {
+      setError('Paste a full HTTPS listing link.');
+      return;
+    }
+    onSaveLink(listing, link);
+    setUrl('');
+    setError('');
+  }
+
+  return <View style={styles.listingWebsites}>
+    <Button secondary onPress={() => setExpanded(!expanded)}>
+      {`Listing websites (${count}) ${expanded ? '↑' : '↓'}`}
+    </Button>
+    {expanded && <>
+      {direct.length > 0 && <View style={styles.sourceGroup}>
+        <Text style={styles.fieldLabel}>Direct links for this listing</Text>
+        <View style={styles.actionLinks}>
+          {direct.map((link) => <Link key={link.url} label={`${link.name} · ${link.kind === 'saved' ? 'Saved' : 'Original'}`}
+            url={link.url} onError={onError} />)}
+        </View>
+      </View>}
+      <View style={styles.sourceGroup}>
+        <Text style={styles.fieldLabel}>Find this address on other sites</Text>
+        <Text style={styles.smallMuted}>Each link searches for the address on that site. Check the unit before saving a match.</Text>
+        <View style={styles.addressLinks}>
+          {marketplaceAddressSearches(listing).map((link) =>
+            <Link key={link.id} label={link.name} url={link.url} onError={onError} />)}
+        </View>
+      </View>
+      <Field label="Add a link for this unit" placeholder="Paste a listing URL" value={url} onChangeText={setUrl} maxLength={2000} />
+      {error !== '' && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
+      <Button secondary onPress={save} disabled={!url.trim()}>Save link</Button>
+    </>}
+  </View>;
+}
