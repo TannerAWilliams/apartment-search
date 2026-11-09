@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "name": "Apartment Search",
+    "slug": "apartment-search",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "ios": { "bundleIdentifier": "com.apartmentsearch.metro" },
+    "android": { "package": "com.apartmentsearch.metro" },
+    "web": { "bundler": "metro", "output": "single" }
+  }
+}
