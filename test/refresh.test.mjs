@@ -5,6 +5,7 @@ import { parseFirstMoverCsv } from '../server/firstmover.mjs';
 import { housingDate } from '../server/housing.mjs';
 import { refreshSources, refreshStatus, sourceRecent, storedDirectRentals, storedFeed, storedHousing, storedMarket } from '../server/refresh.mjs';
 import { handleApi, search } from '../server/api.mjs';
+import { APARTMENTS_LIVE } from '../server/apartments-com.mjs';
 import { parseStreetEasyPage, STREETEASY_LIVE } from '../server/streeteasy.mjs';
 import { ZUMPER_LIVE } from '../server/zumper.mjs';
 import { rentSeries } from '../src/rent-history.mjs';
@@ -344,7 +345,7 @@ test('opening or reloading the app fetches new source data even within the same 
   assert.deepEqual([...new Set(zumper.map((url) => new URL(url).pathname))].sort(),
     ['/apartments-for-rent/brooklyn-ny', '/apartments-for-rent/brooklyn-ny/cheap',
       '/apartments-for-rent/manhattan-ny', '/apartments-for-rent/manhattan-ny/cheap']);
-  assert.ok(!requests.some((url) => /(^|\.)(streeteasy|zillow|compass|renthop|realtor)\.com$/.test(new URL(url).hostname)));
+  assert.ok(!requests.some((url) => /(^|\.)(zillow|compass|renthop|realtor)\.com$/.test(new URL(url).hostname)));
 });
 
 test('a rate-limited feed retains cached data and waits until its Retry-After time', async () => {
@@ -450,7 +451,7 @@ test('StreetEasy parses public apartment metadata and skips other sizes, houses,
   assert.throws(() => parseStreetEasyPage('<h1>Sign in</h1>', 'NY', 1, at.toISOString()), /recognized rental page/);
 });
 
-test('a previously saved direct StreetEasy result remains searchable without counting as live', async () => {
+test('a failed StreetEasy refresh retains its previous listing as cached', async () => {
   const env = { BUCKET: new TestBucket() };
   const now = new Date();
   const newer = new Date(now.getTime() + 60 * 60_000);
@@ -461,21 +462,73 @@ test('a previously saved direct StreetEasy result remains searchable without cou
   const saved = await refreshSources(env, { now, imports: {
     firstmover, housingconnect, [STREETEASY_LIVE.id]: { listings: [listing], pages: 10 },
   } });
-  assert.ok(!sourceRecent(saved, STREETEASY_LIVE.id, now));
+  assert.ok(sourceRecent(saved, STREETEASY_LIVE.id, now));
+  assert.equal((await search({ bedrooms: 1, zip: '11215', liveOnly: true }, env)).total, 1);
+  const failed = await refreshSources(env, { now: newer, imports: {
+    firstmover: { ...firstmover, changed: false }, housingconnect, [STREETEASY_LIVE.id]: null,
+  } });
   const matches = (await search({ bedrooms: 1, zip: '11215' }, env)).matches;
   assert.equal(matches.length, 1);
   assert.equal(matches[0].rent, 2500);
   assert.equal(matches[0].sources[0].kind, 'cached');
   assert.equal((await search({ bedrooms: 1, zip: '11215', liveOnly: true }, env)).total, 0);
 
-  const failed = await refreshSources(env, { now: newer, imports: {
-    firstmover: { ...firstmover, changed: false }, housingconnect, [STREETEASY_LIVE.id]: null,
-  } });
   const status = failed.sources.find(({ id }) => id === STREETEASY_LIVE.id);
-  assert.equal(status.status, 'feed_required');
+  assert.equal(status.status, 'failed');
   assert.equal(status.updatedAt, now.toISOString());
   assert.equal((await storedDirectRentals(env.BUCKET, STREETEASY_LIVE)).listings[0].rent, 2500);
   assert.ok(!sourceRecent(failed, STREETEASY_LIVE.id, new Date(now.getTime() + 3 * 60 * 60_000)));
+});
+
+test('refresh ingests public StreetEasy and Apartments.com rentals for both boroughs and both bedroom sizes', async () => {
+  const env = { BUCKET: new TestBucket() };
+  const requested = [];
+  const fetcher = (url, options) => {
+    const parsed = new URL(url);
+    if (!['streeteasy.com', 'www.apartments.com'].includes(parsed.hostname)) {
+      if (url === csvUrl || ['www.firstmovernyc.com', 'data.cityofnewyork.us'].includes(parsed.hostname)) {
+        return publishedCatalog(url, options);
+      }
+      return new Response(null, { status: 404 });
+    }
+    requested.push(url);
+    const bedrooms = url.includes('1-bedroom') ? 1 : 2;
+    const brooklyn = url.includes('brooklyn');
+    const zip = brooklyn ? '11215' : '10001';
+    const page = parsed.searchParams.get('page') === '2' || url.endsWith('/2/') ? 2 : 1;
+    const unit = (brooklyn ? 10 : 20) + bedrooms * 2 + page;
+    const street = '28 Example Street';
+    const address = { streetAddress: street, addressRegion: 'NY', postalCode: zip };
+    const headers = { 'Content-Type': 'text/html' };
+    if (parsed.hostname === 'streeteasy.com') {
+      const row = { ...publicRental, address, url: 'https://streeteasy.com/rental/' + unit,
+        numberOfBedrooms: bedrooms, name: street + ' #' + unit };
+      return new Response(streetEasyHtml([row, { ...row, url: row.url + '9',
+        name: row.name + '9', offers: { availability: 'Rented' } }]), { headers });
+    }
+    const id = 'rentl' + unit;
+    const item = { url: 'https://www.apartments.com/example-unit-' + (unit + 100) + '/' + id + '/',
+      name: street + ' Unit ' + (unit + 100), mainEntity: { address, geo: publicRental.geo },
+      potentialAction: { '@type': 'RentAction' },
+      offers: { '@type': 'Offer', price: 6300, priceCurrency: 'USD', availability: 'https://schema.org/InStock' } };
+    const collection = { '@graph': [{ '@type': 'CollectionPage', mainEntity: {
+      itemListElement: [{ item }, { item: { ...item, name: street, offers: { ...item.offers, '@type': 'AggregateOffer' } } }],
+    } }] };
+    const lines = JSON.stringify([item.url, '', street, '', '', bedrooms + ' bd']);
+    return new Response('<script type="application/ld+json">' + JSON.stringify(collection) +
+      '</script><button data-listing-key="' + id + '" data-listing-share-lines=\'' + lines + '\'></button>', { headers });
+  };
+  const result = await refreshSources(env, { onDemand: true, fetcher });
+  for (const source of [STREETEASY_LIVE, APARTMENTS_LIVE]) {
+    const status = result.sources.find(({ id }) => id === source.id);
+    assert.equal(status.status, 'updated', source.name);
+    assert.equal(status.pages, 8);
+    assert.equal(status.listingCount, 8);
+  }
+  assert.equal(new Set(requested).size, 16);
+  const filters = { region: 'brooklyn', bedrooms: 2, maxRent: null, liveOnly: true, source: 'apartments' };
+  assert.equal((await search(filters, env)).total, 2);
+  assert.equal((await search({ ...filters, maxRent: 5000 }, env)).total, 0);
 });
 
 test('a previous live sample remains searchable under All results after it ages out', async () => {

@@ -8,13 +8,14 @@ Compare rentals by asking rent and weekday-morning transit or driving time to yo
 
 | Source | What the app imports |
 | --- | --- |
-| StreetEasy | The [FirstMover Open Data](https://www.firstmovernyc.com/open-data) monthly snapshot supplies initial asking rents and original listing URLs. Direct live updates require an authorized feed. |
+| StreetEasy | Available units from the first two public search pages for one- and two-bedroom rentals in each borough. The separate [FirstMover Open Data](https://www.firstmovernyc.com/open-data) monthly snapshot supplies the rent charts and dated listings. |
+| Apartments.com | Individually identified, available units with exact asking rents from the first two public search pages for one- and two-bedroom rentals in each borough. Building-wide price ranges are excluded. |
 | Openigloo | A bounded live sample from its published NYC search interface. The app requests up to ten results per borough and bedroom count (one and two bedrooms), without a rent cap. |
 | Zillow, Compass, RentHop, and Realtor.com | Last saved samples and browse links. Automatic updates require an authorized feed. |
 | Trulia | The first two pages of each Manhattan and Brooklyn one- and two-bedroom search, without a rent cap. |
 | Zumper | Individual apartments with exact prices from the first two public search pages and the first low-price sort page in each borough. |
 | AffordableHousing.com | Apartments marked available now from the first two pages in Manhattan and Brooklyn. The importer uses the free U.S. Census batch geocoder when coordinates are available by exact address. |
-| Apartments.com, Redfin, HotPads, Apartment List, Rent.com, Apartment Guide, Craigslist, and Facebook Marketplace | Browse links. Add a listing manually or import a CSV of collected listings to Saved. |
+| Redfin, HotPads, Apartment List, Rent.com, Apartment Guide, Craigslist, and Facebook Marketplace | Browse links. Add a listing manually or import a CSV of collected listings to Saved. |
 | NYC Housing Connect | [NYC Open Data](https://data.cityofnewyork.us/d/vy5i-a666) advertised rental lotteries. The Affordable tab shows application dates, building addresses, and bedroom counts. |
 | Authorized no-cost partner feed | Optional. Configure a feed only when you have permission to use and display it at no API cost. The bundled public sources require no feed credentials. |
 

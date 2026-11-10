@@ -1,18 +1,18 @@
 import { normalizeListing } from '../src/listings.mjs';
+import { searchBorough } from '../src/regions.mjs';
 import { NJ_ZIPS, nycBorough } from './firstmover.mjs';
-import { deduplicatePublicRentals, fetchPublicHtml, jsonLd, publicListingUrl } from './public-rentals.mjs';
+import { jsonLd, loadPublicPages, publicListingUrl } from './public-rentals.mjs';
 
 const SOURCE = { id: 'streeteasy', name: 'StreetEasy', kind: 'feed' };
 const ORIGIN = 'https://streeteasy.com';
-const AREAS = [
-  { state: 'NY', path: 'nyc', filter: 'area:100,200,300,400,500|' }, // The five NYC boroughs.
-  { state: 'NJ', path: 'new-jersey', filter: '' },
-];
-const BEDROOM_COUNTS = [0, 1, 2, 3, 4];
-export const STREETEASY_MIN_PAGES = AREAS.length * BEDROOM_COUNTS.length;
+const PAGES = ['manhattan', 'brooklyn'].flatMap((borough) => [1, 2].flatMap((bedrooms) =>
+  ['', '?page=2'].map((suffix) => ({ borough, bedrooms,
+    url: ORIGIN + '/' + bedrooms + '-bedroom-apartments-for-rent/' + borough + suffix }))));
 export const STREETEASY_LIVE = {
-  ...SOURCE, id: 'streeteasy-live', marketplace: SOURCE.id, coverage: 'NYC and New Jersey',
-  regions: ['nyc', 'nj'], minPages: STREETEASY_MIN_PAGES, maxPages: STREETEASY_MIN_PAGES * 2,
+  ...SOURCE, id: 'streeteasy-live', marketplace: SOURCE.id,
+  coverage: 'the first two one- and two-bedroom search pages per borough',
+  // Preserve support for previously imported NYC and NJ batches.
+  regions: ['nyc', 'nj'], minPages: PAGES.length, maxPages: 20,
   rowsPerPage: 20, listingUrl: streetEasyListingUrl, load: loadStreetEasy,
 };
 const MULTIFAMILY = new Set(['TWOFAMILY', 'THREEFAMILY', 'MULTIFAMILY']);
@@ -29,8 +29,10 @@ function normalizeRental(row, state, bedrooms, checkedAt) {
   const property = (name) => properties.find((entry) => entry?.name === name)?.value;
   const buildingType = property('Building Type');
   const isApartment = row['@type'] === 'Apartment' || (unit && MULTIFAMILY.has(buildingType));
+  const availability = row.offers?.availability ?? property('Status');
   if (!isApartment || !url || typeof streetAddress !== 'string' ||
-      addressRegion !== state || !/^\d{5}$/.test(postalCode) || row.numberOfBedrooms !== bedrooms) return null;
+      addressRegion !== state || !/^\d{5}$/.test(postalCode) || row.numberOfBedrooms !== bedrooms ||
+      (availability && !/^(?:active|available|(?:https?:\/\/schema\.org\/)?instock)$/i.test(availability))) return null;
 
   const rentText = property('Monthly Rent');
   const rent = typeof rentText === 'string' ? rentText.match(/^\$([\d,]+(?:\.\d{2})?)\/mo$/)?.[1] : null;
@@ -57,32 +59,7 @@ export function parseStreetEasyPage(html, state, bedrooms, checkedAt) {
   return rentals.map((row) => normalizeRental(row, state, bedrooms, checkedAt)).filter(Boolean);
 }
 
-async function loadPage({ path, filter, state, bedrooms }, page, checkedAt, fetcher) {
-  const url = ORIGIN + '/for-rent/' + path + '/' + encodeURIComponent(filter + 'beds:' + bedrooms) +
-    '?sort_by=price_asc' + (page === 1 ? '' : '&page=2');
-  const html = await fetchPublicHtml(fetcher, url, SOURCE.name);
-  return { listings: parseStreetEasyPage(html, state, bedrooms, checkedAt),
-    more: /href="[^"]*[?&](?:amp;)?page=2(?:&|")/.test(html) };
-}
-
-export async function loadStreetEasy(fetcher = fetch, now = new Date()) {
-  const checkedAt = now.toISOString();
-  const queries = BEDROOM_COUNTS.flatMap((bedrooms) => AREAS.map((area) => ({ ...area, bedrooms })));
-  const rows = [];
-  let pages = 0;
-  for (let index = 0; index < queries.length; index += 3) {
-    const batch = await Promise.all(queries.slice(index, index + 3).map(async (query) => {
-      const first = await loadPage(query, 1, checkedAt, fetcher);
-      if (first.listings.length >= 5 || !first.more) return { listings: first.listings, pages: 1 };
-      const second = await loadPage(query, 2, checkedAt, fetcher);
-      return { listings: [...first.listings, ...second.listings], pages: 2 };
-    }));
-    for (const result of batch) {
-      pages += result.pages;
-      rows.push(...result.listings);
-    }
-  }
-  const listings = deduplicatePublicRentals(rows);
-  if (listings.length === 0) throw new Error('StreetEasy returned no supported apartment listings.');
-  return { listings, pages };
+export function loadStreetEasy(fetcher = fetch, now = new Date()) {
+  return loadPublicPages(SOURCE, PAGES, (html, { borough, bedrooms }, checkedAt) =>
+    parseStreetEasyPage(html, 'NY', bedrooms, checkedAt).filter((listing) => searchBorough(listing) === borough), fetcher, now);
 }

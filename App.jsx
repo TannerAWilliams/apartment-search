@@ -241,7 +241,8 @@ function RentalSyncStatus({ refresh, refreshing, configuredSources, onRefresh })
     const source = statusBySite.get(id);
     const synced = source?.status === 'updated' || source?.status === 'current';
     const pending = (!source || source.status === 'feed_required') &&
-      (configuredSources.some((item) => item.id === id) || !source && ['openigloo', 'trulia', 'zumper', 'affordablehousing'].includes(id));
+      (configuredSources.some((item) => item.id === id) ||
+        !source && ['openigloo', 'trulia', 'zumper', 'affordablehousing', 'streeteasy', 'apartments'].includes(id));
     return { id, name, source, synced, state: synced ? 'Synced' : source?.status === 'failed' ?
       'Did not sync' : pending ? 'Awaiting first check' : 'Not connected' };
   }).sort((a, b) => Number(b.synced) - Number(a.synced) || a.state.localeCompare(b.state) || a.name.localeCompare(b.name));
