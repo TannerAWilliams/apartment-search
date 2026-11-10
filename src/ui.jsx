@@ -18,11 +18,16 @@ export function Button({ children, onPress, secondary = false, disabled = false 
   </Pressable>;
 }
 
-export function ExternalLink({ url, onError, children, ...props }) {
-  const navigation = Platform.OS === 'web' ? { href: url, hrefAttrs: { target: '_blank', rel: 'noopener noreferrer' } } : {
-    onPress: () => Linking.openURL(url).catch(() => onError?.('This link could not be opened on your device.')),
-  };
-  return <Pressable accessibilityRole="link" {...props} {...navigation}>{children}</Pressable>;
+export function ExternalLink({ url, onError, children, style, ...props }) {
+  if (Platform.OS === 'web') {
+    // Embedded browsers may ignore new tabs. Let the anchor navigate this tab.
+    return <View accessibilityRole="link" {...props} href={url}
+      style={typeof style === 'function' ? style({ pressed: false }) : style}>{children}</View>;
+  }
+  return <Pressable accessibilityRole="link" {...props} style={style}
+    onPress={() => Linking.openURL(url).catch(() => onError?.('This link could not be opened on your device.'))}>
+    {children}
+  </Pressable>;
 }
 
 export function Link({ label, url, onError }) {
