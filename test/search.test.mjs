@@ -32,12 +32,15 @@ test('tri-state coverage includes Long Island ZIPs and Connecticut planning regi
   assert.equal(regionOf({ state: 'NY', zip: '11004' }), 'nyc');
   assert.equal(regionOf({ state: 'CT', county: 'Greater Bridgeport Planning Region' }), 'ct');
   assert.equal(regionOf({ state: 'NJ', county: 'Atlantic County' }), null);
+  assert.equal(regionOf({ state: 'PA', county: 'Northampton County' }), 'pa');
 });
 
 test('marketplace browse links carry exact studio, ZIP and rent where supported', () => {
   const jerseyCity = MARKETS.find(({ city }) => city === 'Jersey City');
   const links = marketplaceLinks(jerseyCity, parseFilters({ bedrooms: 0, maxRent: 1900, zip: '07306' }));
-  assert.equal(links.length, 14);
+  assert.equal(links.length, 16);
+  assert.ok(links.some(({ id }) => id === 'openigloo'));
+  assert.ok(links.some(({ id }) => id === 'affordablehousing'));
   assert.equal(links.find(({ id }) => id === 'apartments').url, 'https://www.apartments.com/07306/studios-under-1900/');
   const craigslist = new URL(links.find(({ id }) => id === 'craigslist').url);
   assert.equal(craigslist.searchParams.get('min_bedrooms'), '0');
@@ -65,7 +68,7 @@ test('links from different sites are merged only for the same confirmed unit', (
 test('address searches are distinct from direct links and use the unit and ZIP', () => {
   const listing = normalize({ ...sample, listingUrl: 'https://www.zillow.com/homedetails/example/' });
   const searches = marketplaceAddressSearches(listing);
-  assert.equal(searches.length, 13);
+  assert.equal(searches.length, 14);
   assert.equal(searches.some(({ id }) => id === 'zillow'), false);
   const link = new URL(searches.find(({ id }) => id === 'streeteasy').url);
   assert.match(link.searchParams.get('q'), /site:streeteasy\.com "12 Grove Street" "2" 07302/);

@@ -7,7 +7,7 @@ import { isPoint } from './search.mjs';
 import { styles } from './styles.js';
 import { Button, Chip, Field } from './ui.jsx';
 
-const STATES = { nyc: 'NY', nj: 'NJ', li: 'NY', metroNorth: 'NY', ct: 'CT' };
+const STATES = { nyc: 'NY', nj: 'NJ', li: 'NY', metroNorth: 'NY', ct: 'CT', pa: 'PA' };
 const BEDROOMS = ['Studio', '1 BR', '2 BR', '3 BR', '4 BR'];
 
 export function AddListing({ initialRegion, onSave, onCancel, geocode }) {

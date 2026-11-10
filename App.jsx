@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Linking, Platform, Pressable, ScrollView, StatusBar, Text, View, useWindowDimensions,
 } from 'react-native';
@@ -10,9 +10,10 @@ import {
   DEFAULT_FILTERS, bedroomLabel, compareResults, directionsLink, formatRent, parseFilters,
 } from './src/search.mjs';
 import { colors, styles } from './src/styles.js';
-import { localSearch, snapshotSearch, SNAPSHOT_LABEL, SNAPSHOT_SOURCE } from './src/market.mjs';
+import { formatSnapshotMonth, localSearch, snapshotSearch, SNAPSHOT_MONTH, SNAPSHOT_SOURCE } from './src/market.mjs';
 import { listingKey, mergeListings, mergeSourceLinks } from './src/listings.mjs';
 import { Button, Chip, Field, Link, SectionTitle } from './src/ui.jsx';
+import { AffordableHousing } from './src/AffordableHousing.jsx';
 import { AddListing } from './src/AddListing.jsx';
 import { ListingSources } from './src/ListingSources.jsx';
 import { RentChart } from './src/RentChart.jsx';
@@ -23,6 +24,10 @@ const BEDROOMS = [null, 0, 1, 2, 3, 4];
 const PAGE_SIZE = 12;
 const SAVED_KEY = 'apartment-search:saved-listings:v1';
 const SAVED_FILTERS = { ...DEFAULT_FILTERS, bedrooms: null, maxRent: null };
+const CHECK_TIME = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'America/New_York', month: 'short', day: 'numeric',
+  hour: 'numeric', minute: '2-digit', timeZoneName: 'short',
+});
 
 const formDefaults = () => ({
   ...DEFAULT_FILTERS,
@@ -150,6 +155,7 @@ function Listing({ listing, number, workplace, onSave, onSaveLink, onRemove, onE
       <Text style={styles.smallMuted}>{observation}</Text>
       <View style={styles.actionLinks}>
         <Link label="Transit directions" url={directionsLink(listing, workplace)} onError={onError} />
+        <Link label="Driving from workplace" url={directionsLink(listing, workplace, 'driving')} onError={onError} />
         {onRemove ? <Pressable accessibilityRole="button" onPress={() => onRemove(listing)} style={styles.link}>
           <Text style={styles.linkText}>Remove saved</Text>
         </Pressable> : <Pressable accessibilityRole="button" accessibilityState={{ disabled: saved }}
@@ -162,7 +168,7 @@ function Listing({ listing, number, workplace, onSave, onSaveLink, onRemove, onE
   </View>;
 }
 
-function Marketplaces({ filters, sources, configuredSources, onError }) {
+function Marketplaces({ filters, sources, configuredSources, refresh, refreshing, onRefresh, onError }) {
   const markets = MARKETS.filter((market) => filters.region === 'all' || market.region === filters.region);
   const [marketLabel, setMarketLabel] = useState('');
   const market = markets.find((item) => item.label === marketLabel) ??
@@ -173,10 +179,21 @@ function Marketplaces({ filters, sources, configuredSources, onError }) {
 
   return <View style={styles.marketplacePanel}>
     <Text accessibilityRole="header" style={styles.panelTitle}>Browse rental platforms</Text>
-    <Text style={styles.bodyText}>StreetEasy listings are available through FirstMover’s {SNAPSHOT_LABEL} export. Marketplace search links work without API fees and carry filters where supported.</Text>
+    <Text style={styles.bodyText}>StreetEasy listings are available through FirstMover’s {formatSnapshotMonth(refresh?.sources.find(({ id }) => id === 'firstmover')?.month)} export. Marketplace search links work without API fees and carry filters where supported.</Text>
     <View style={styles.chartSource}>
       <Text style={styles.fieldLabel}>{configured.size === 0 ? 'Live marketplace imports: none' : `Authorized free feeds: ${configuredSources.map(({ name }) => name).join(', ')}`}</Text>
       <Link label="FirstMover Open Data" url={SNAPSHOT_SOURCE} onError={onError} />
+      <Text style={styles.smallMuted}>Settled.nyc · source access unverified.</Text>
+      {refresh && <Button secondary onPress={onRefresh} disabled={refreshing}>
+        {refreshing ? 'Checking sources…' : 'Check sources now'}
+      </Button>}
+      {refresh?.lastCheckedAt && <>
+        <Text style={styles.fieldLabel}>Last source check · {CHECK_TIME.format(new Date(refresh.lastCheckedAt))}</Text>
+        {refresh.sources.map(({ id, name, status, updatedAt }) => <Text key={id} style={styles.smallMuted}>
+          {name} · {status === 'updated' ? 'New data imported' : status === 'current' ? 'Latest release already loaded' :
+            updatedAt ? 'Refresh failed · using last successful import' : 'Refresh failed'}
+        </Text>)}
+      </>}
     </View>
     <Text style={styles.fieldLabel}>Marketplace area</Text>
     <ScrollView horizontal showsHorizontalScrollIndicator keyboardShouldPersistTaps="handled"
@@ -218,7 +235,7 @@ function Results({ result, applied, savedByKey, showMarkets, onSave, onSaveLink,
     {result.mode === 'snapshot' && <View style={styles.demoNotice}>
       <View style={styles.demoMark}><Text style={styles.demoMarkText}>i</Text></View>
       <View style={styles.noticeCopy}>
-        <Text style={styles.noticeTitle}>{SNAPSHOT_LABEL} listing snapshot</Text>
+        <Text style={styles.noticeTitle}>{formatSnapshotMonth(result.snapshotMonth)} listing snapshot</Text>
         <Text style={styles.bodyText}>Initial asking prices from FirstMover’s StreetEasy data. Check the linked marketplace for current prices and availability.</Text>
         <Pressable accessibilityRole="button" onPress={showMarkets}><Text style={styles.linkText}>Browse rental platforms →</Text></Pressable>
       </View>
@@ -263,6 +280,10 @@ function ApartmentSearch() {
   const [storageReady, setStorageReady] = useState(false);
   const [serverState, setServerState] = useState(API_ORIGIN === null ? 'offline' : 'checking');
   const [configuredSources, setConfiguredSources] = useState([]);
+  const [refresh, setRefresh] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const submitted = useRef(false);
+  const searchVersion = useRef(0);
   const [token, setToken] = useState('');
   const [activeToken, setActiveToken] = useState('');
   const [tab, setTab] = useState('results');
@@ -298,6 +319,13 @@ function ApartmentSearch() {
     api('config', { token: activeToken, signal: controller.signal }).then((config) => {
       setServerState('ready');
       setConfiguredSources(config.sources);
+      setRefresh(config.refresh ?? null);
+      if (!submitted.current && (config.snapshotMonth !== SNAPSHOT_MONTH || config.mode === 'live' ||
+          config.refresh?.sources.some(({ id, updatedAt }) => id === 'firstmover' && updatedAt))) {
+        api('search', { body: DEFAULT_FILTERS, token: activeToken, signal: controller.signal })
+          .then((fresh) => { if (!submitted.current && !controller.signal.aborted) setResult(fresh); })
+          .catch(() => {});
+      }
     }).catch((failure) => {
       if (controller.signal.aborted) return;
       setServerState(failure.status === 401 ? 'locked' : 'offline');
@@ -306,8 +334,48 @@ function ApartmentSearch() {
     return () => controller.abort();
   }, [activeToken]);
 
+  useEffect(() => {
+    if (tab !== 'marketplaces' || serverState !== 'ready') return;
+    const controller = new AbortController();
+    api('config', { token: activeToken, signal: controller.signal }).then((config) => {
+      setConfiguredSources(config.sources);
+      setRefresh(config.refresh ?? null);
+    }).catch(() => {});
+    return () => controller.abort();
+  }, [tab, serverState, activeToken]);
+
+  const loadMarket = useCallback((region, grouping, signal) =>
+    api('market?' + new URLSearchParams({ region, grouping }), { token: activeToken, signal }),
+  [activeToken]);
+
+  const loadHousing = useCallback((signal) => api('housing', { token: activeToken, signal }), [activeToken]);
+
+  async function checkSources() {
+    if (refreshing || busy) return;
+    const version = searchVersion.current;
+    setRefreshing(true);
+    setError('');
+    try {
+      await api('refresh', { body: {}, token: activeToken });
+      const fresh = await api('search', { body: applied, token: activeToken });
+      if (searchVersion.current === version) setResult(fresh);
+    } catch (failure) {
+      setError(failure.message || 'The source check failed.');
+    } finally {
+      try {
+        const config = await api('config', { token: activeToken });
+        setRefresh(config.refresh ?? null);
+      } catch {
+        // The previous check remains visible when the server cannot be reached.
+      }
+      setRefreshing(false);
+    }
+  }
+
   async function submit() {
     if (busy) return;
+    submitted.current = true;
+    searchVersion.current += 1;
     setError('');
     setBusy(true);
     try {
@@ -328,7 +396,7 @@ function ApartmentSearch() {
   }
 
   function saveListing(listing) {
-    setSaved((current) => mergeListings([...current, listing]));
+    setSaved((current) => mergeListings([...current, { ...listing, buildingLinks: undefined }]));
   }
 
   function saveLink(listing, link) {
@@ -361,7 +429,7 @@ function ApartmentSearch() {
           </View>
           <View style={styles.results}>
             <View style={styles.tabs}>
-              {[['results', 'Results'], ['chart', 'Rent chart'], ['marketplaces', 'Platforms']].map(([key, label]) =>
+              {[['results', 'Results'], ['chart', 'Rent chart'], ['marketplaces', 'Platforms'], ['affordable', 'Affordable']].map(([key, label]) =>
                 <Pressable key={key} accessibilityRole="tab" accessibilityState={{ selected: tab === key }}
                   style={[styles.tab, tab === key && styles.tabActive]} onPress={() => setTab(key)}>
                   <Text style={[styles.tabLabel, tab === key && styles.tabLabelActive]}>{label}</Text>
@@ -385,14 +453,16 @@ function ApartmentSearch() {
                 onRemove={(listing) => setSaved((current) => current.filter((item) => listingKey(item) !== listingKey(listing)))}
                 onError={setError} />
             </>}
-            {tab === 'chart' && <RentChart initialRegion={applied.region} saved={saved} showSaved={showSaved} onError={setError} />}
+            {tab === 'chart' && <RentChart initialRegion={applied.region} saved={saved} showSaved={showSaved} onError={setError}
+              loadMarket={serverState === 'ready' ? loadMarket : undefined} />}
             {tab === 'marketplaces' && <Marketplaces filters={applied} sources={result.sources}
-              configuredSources={configuredSources} onError={setError} />}
+              configuredSources={configuredSources} refresh={refresh} refreshing={refreshing} onRefresh={checkSources} onError={setError} />}
+            {tab === 'affordable' && <AffordableHousing loadHousing={serverState === 'ready' ? loadHousing : undefined} onError={setError} />}
           </View>
         </View>
         <View style={styles.footer}>
-          <Text style={styles.smallMuted}>Apartment Search · New York, New Jersey and Connecticut</Text>
-          <Text style={styles.smallMuted}>Distances are straight-line miles. Transit directions open in Maps.</Text>
+          <Text style={styles.smallMuted}>Apartment Search · New York, New Jersey, Connecticut and eastern Pennsylvania</Text>
+          <Text style={styles.smallMuted}>Distances are straight-line miles. Open driving directions to check travel time.</Text>
         </View>
       </View>
     </ScrollView>

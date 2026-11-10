@@ -12,12 +12,18 @@ const streetTypes = {
 };
 const textKey = (value) => value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
-export function unitKey(listing) {
+export function buildingKey(listing) {
   const street = textKey(listing.address.replace(unitSuffix, ''))
+    .replace(/\b(north|south|east|west)(?=\s+\d)/g, (direction) => direction[0])
     .replace(/\b(street|avenue|road|boulevard|place|drive|lane|court|terrace)$/, (word) => streetTypes[word]);
+  return street && listing.zip ? `${listing.state}|${listing.zip}|${street}` : null;
+}
+
+export function unitKey(listing) {
+  const address = buildingKey(listing);
   const unit = textKey(listing.unit || listing.address.match(unitSuffix)?.[1] || '')
     .replace(/^(unit|apt|apartment|suite) /, '');
-  return unit && street && listing.zip ? `${listing.state}|${listing.zip}|${street}|${unit}` : null;
+  return address && unit ? `${address}|${unit}` : null;
 }
 
 export const listingKey = (listing) => unitKey(listing) ?? listing.id;
@@ -43,7 +49,7 @@ export function normalizeListing(row, source) {
   const address = providedAddress.replace(unitSuffix, '');
   const rent = numeric(row.price ?? row.rent);
   const bedrooms = numeric(row.bedrooms);
-  if (!address || !city || !/^\d{5}$/.test(zip) || !['NY', 'NJ', 'CT'].includes(state) ||
+  if (!address || !city || !/^\d{5}$/.test(zip) || !['NY', 'NJ', 'CT', 'PA'].includes(state) ||
       !Number.isFinite(rent) || rent <= 0 || rent > 100000 || !Number.isInteger(bedrooms) || bedrooms < 0 || bedrooms > 4) {
     return null;
   }

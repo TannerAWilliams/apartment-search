@@ -12,6 +12,7 @@ export const REGIONS = {
   li: { label: 'Long Island', center: [40.87, -72.90, 65], color: '#2c6196' },
   metroNorth: { label: 'Metro-North NY', center: [41.30, -73.91, 56], color: '#68519a' },
   ct: { label: 'Connecticut', center: [41.23, -73.27, 51], color: '#815e16' },
+  pa: { label: 'Eastern Pennsylvania', center: [40.62, -75.33, 52], color: '#7a415e' },
 };
 
 export const MARKETS = [
@@ -47,6 +48,12 @@ export const MARKETS = [
   ['Norwalk', 'Norwalk', 'CT', '06854', 'ct'],
   ['Bridgeport', 'Bridgeport', 'CT', '06604', 'ct'],
   ['New Haven', 'New Haven', 'CT', '06510', 'ct'],
+  ['Easton', 'Easton', 'PA', '18042', 'pa'],
+  ['Bethlehem', 'Bethlehem', 'PA', '18018', 'pa'],
+  ['Allentown', 'Allentown', 'PA', '18101', 'pa'],
+  ['Stroudsburg', 'Stroudsburg', 'PA', '18360', 'pa'],
+  ['Doylestown', 'Doylestown', 'PA', '18901', 'pa'],
+  ['Philadelphia', 'Philadelphia', 'PA', '19103', 'pa'],
 ].map(([label, city, state, zip, region]) => ({ label, city, state, zip, region }));
 
 const COUNTIES = {
@@ -61,9 +68,10 @@ const COUNTIES = {
   },
   CT: { ct: ['fairfield', 'new haven', 'western connecticut', 'greater bridgeport',
     'south central connecticut', 'naugatuck valley'] },
+  PA: { pa: ['bucks', 'carbon', 'lehigh', 'monroe', 'montgomery', 'northampton', 'philadelphia', 'pike'] },
 };
 
-const REGION_STATES = { nyc: 'NY', nj: 'NJ', li: 'NY', metroNorth: 'NY', ct: 'CT' };
+const REGION_STATES = { nyc: 'NY', nj: 'NJ', li: 'NY', metroNorth: 'NY', ct: 'CT', pa: 'PA' };
 
 export function regionOf({ city = '', state, county = '', zip = '', region }) {
   if (region && REGION_STATES[region] === state) return region;

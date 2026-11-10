@@ -35,6 +35,11 @@ export function ListingSources({ listing, onSaveLink, onError }) {
             url={link.url} onError={onError} />)}
         </View>
       </View>}
+      {listing.buildingLinks?.length > 0 && <View style={styles.sourceGroup}>
+        <Text style={styles.fieldLabel}>Housing lotteries at this building</Text>
+        {listing.buildingLinks.map(({ name, url }) =>
+          <Link key={url} label={name} url={url} onError={onError} />)}
+      </View>}
       <View style={styles.sourceGroup}>
         <Text style={styles.fieldLabel}>Find this address on other sites</Text>
         <Text style={styles.smallMuted}>Each link searches for the address on that site. Check the unit before saving a match.</Text>

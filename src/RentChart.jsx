@@ -1,6 +1,6 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
-import { marketSnapshot, rentAreas, SNAPSHOT_LABEL, SNAPSHOT_SOURCE } from './market.mjs';
+import { formatSnapshotMonth, marketSnapshot, rentAreas, SNAPSHOT_SOURCE } from './market.mjs';
 import { REGIONS } from './regions.mjs';
 import { bedroomLabel, formatRent } from './search.mjs';
 import { styles } from './styles.js';
@@ -55,16 +55,27 @@ function RentTable({ areas, selection, choose }) {
   </ScrollView>;
 }
 
-export function RentChart({ initialRegion, saved, onError, showSaved }) {
+export function RentChart({ initialRegion, saved, onError, showSaved, loadMarket }) {
   const [dataset, setDataset] = useState('market');
   const [region, setRegion] = useState(initialRegion);
   const [grouping, setGrouping] = useState('neighborhood');
   const [selection, setSelection] = useState('overall');
   const [query, setQuery] = useState('');
   const [visible, setVisible] = useState(PAGE_SIZE);
+  const [remote, setRemote] = useState(null);
 
-  const areas = useMemo(() => rentAreas(dataset === 'market' ? marketSnapshot() : saved, { region, grouping }),
-    [dataset, saved, region, grouping]);
+  useEffect(() => {
+    if (dataset !== 'market' || !loadMarket) return;
+    const controller = new AbortController();
+    loadMarket(region, grouping, controller.signal)
+      .then((data) => { if (!controller.signal.aborted) setRemote({ ...data, region, grouping }); })
+      .catch(() => {});
+    return () => controller.abort();
+  }, [dataset, region, grouping, loadMarket]);
+
+  const published = dataset === 'market' && remote?.region === region && remote.grouping === grouping ? remote : null;
+  const areas = useMemo(() => published?.areas ?? rentAreas(dataset === 'market' ? marketSnapshot() : saved, { region, grouping }),
+    [published, dataset, saved, region, grouping]);
   const search = query.trim().toLowerCase();
   const areaChoices = search ? areas.filter(({ id, label, detail }) =>
     id !== 'overall' && `${label} ${detail}`.toLowerCase().includes(search)) : areas;
@@ -88,7 +99,7 @@ export function RentChart({ initialRegion, saved, onError, showSaved }) {
     </View>
     <View style={styles.chartSource}>
       {dataset === 'market' ? <>
-        <Text style={styles.fieldLabel}>{SNAPSHOT_LABEL} · FirstMover Open Data</Text>
+        <Text style={styles.fieldLabel}>{formatSnapshotMonth(published?.month)} · FirstMover Open Data</Text>
         <Text style={styles.smallMuted}>Initial asking prices for new listings in NYC and parts of North Jersey.</Text>
         <Link label="View source data" url={SNAPSHOT_SOURCE} onError={onError} />
       </> : <Text style={styles.smallMuted}>Asking rents and dates from the listings you saved on this device.</Text>}

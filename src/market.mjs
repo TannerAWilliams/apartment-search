@@ -7,27 +7,30 @@ import { localWorkplace, matchListings, SearchInputError } from './search.mjs';
 
 export { SNAPSHOT_MONTH };
 export const SNAPSHOT_SOURCE = 'https://www.firstmovernyc.com/open-data';
-export const SNAPSHOT_LABEL = new Intl.DateTimeFormat('en-US', {
+const MONTH_FORMAT = new Intl.DateTimeFormat('en-US', {
   month: 'long', year: 'numeric', timeZone: 'UTC',
-}).format(new Date(SNAPSHOT_MONTH + '-01T00:00:00Z'));
+});
+export const formatSnapshotMonth = (month = SNAPSHOT_MONTH) => MONTH_FORMAT.format(new Date(month + '-01T00:00:00Z'));
+export const SNAPSHOT_LABEL = formatSnapshotMonth();
 
 let snapshot;
 
+export function decodeMarketRows(rows) {
+  const listings = rows.map(([
+    id, address, unit, city, county, state, zip, neighborhood,
+    latitude, longitude, bedrooms, rent, path, seenAt,
+  ]) => ({
+    id: 'streeteasy:' + id, address, unit, city, county, state, zip, neighborhood,
+    latitude, longitude, bedrooms, rent, seenAt,
+    region: state === 'NJ' ? 'nj' : 'nyc',
+    kind: 'snapshot',
+    sources: [{ id: 'streeteasy', name: 'StreetEasy', url: 'https://streeteasy.com' + path, kind: 'snapshot' }],
+  }));
+  return mergeListings(listings, { preferFirst: true });
+}
+
 export function marketSnapshot() {
-  if (!snapshot) {
-    const rows = JSON.parse(strFromU8(gunzipSync(base64.toByteArray(SNAPSHOT_GZIP))));
-    const listings = rows.map(([
-      id, address, unit, city, county, state, zip, neighborhood,
-      latitude, longitude, bedrooms, rent, path, seenAt,
-    ]) => ({
-      id: 'streeteasy:' + id, address, unit, city, county, state, zip, neighborhood,
-      latitude, longitude, bedrooms, rent, seenAt,
-      region: state === 'NJ' ? 'nj' : 'nyc',
-      kind: 'snapshot',
-      sources: [{ id: 'streeteasy', name: 'StreetEasy', url: 'https://streeteasy.com' + path, kind: 'snapshot' }],
-    }));
-    snapshot = mergeListings(listings, { preferFirst: true });
-  }
+  if (!snapshot) snapshot = decodeMarketRows(JSON.parse(strFromU8(gunzipSync(base64.toByteArray(SNAPSHOT_GZIP)))));
   return snapshot;
 }
 
@@ -38,10 +41,11 @@ export function localSearch(listings, filters, workplace, mode, sources = [], no
   return { mode, workplace, matches: matches.slice(0, 100), total: matches.length, sources, notices };
 }
 
-export function snapshotSearch(filters, workplace = localWorkplace(filters)) {
-  return localSearch(marketSnapshot(), filters, workplace, 'snapshot', [
+export function snapshotSearch(filters, workplace = localWorkplace(filters), market = { month: SNAPSHOT_MONTH, listings: marketSnapshot() }) {
+  const result = localSearch(market.listings, filters, workplace, 'snapshot', [
     { id: 'streeteasy', name: 'StreetEasy', status: 'snapshot' },
   ]);
+  return { ...result, snapshotMonth: market.month };
 }
 
 export function median(values) {

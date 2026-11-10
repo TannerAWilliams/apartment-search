@@ -105,10 +105,13 @@ export function matchListings(listings, filters, workplace) {
   }).sort(compareResults);
 }
 
-export function directionsLink(listing, workplace) {
-  const origin = isPoint(listing) ? `${listing.latitude},${listing.longitude}` :
+export function directionsLink(listing, workplace, mode = 'transit') {
+  const home = isPoint(listing) ? `${listing.latitude},${listing.longitude}` :
     [listing.address, listing.city, listing.state, listing.zip].filter(Boolean).join(', ');
+  const work = `${workplace.latitude},${workplace.longitude}`;
+  const driving = mode === 'driving';
   return `https://www.google.com/maps/dir/?${new URLSearchParams({
-    api: '1', origin, destination: `${workplace.latitude},${workplace.longitude}`, travelmode: 'transit',
+    api: '1', origin: driving ? work : home, destination: driving ? home : work,
+    travelmode: driving ? 'driving' : 'transit',
   })}`;
 }

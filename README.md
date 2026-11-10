@@ -6,13 +6,20 @@ Compare rentals by asking rent and straight-line distance to your workplace. The
 
 | Source | What the app imports |
 | --- | --- |
-| StreetEasy | The October 2026 [FirstMover Open Data](https://www.firstmovernyc.com/open-data) snapshot includes original StreetEasy listing URLs and initial asking rents across NYC and parts of North Jersey. |
-| Zillow, Apartments.com, Realtor.com, Redfin, Trulia, HotPads, Zumper, Apartment List, Rent.com, Apartment Guide, RentHop, Craigslist, and Facebook Marketplace | Search links. The app can retain direct links you save for the same unit. |
+| StreetEasy | The latest [FirstMover Open Data](https://www.firstmovernyc.com/open-data) monthly snapshot includes original StreetEasy listing URLs and initial asking rents across NYC and parts of North Jersey. |
+| Zillow, Apartments.com, Realtor.com, Redfin, Trulia, HotPads, Zumper, Apartment List, Rent.com, Apartment Guide, RentHop, Craigslist, Facebook Marketplace, Openigloo, and AffordableHousing.com | Search links. The app can retain direct links you save for the same unit. |
+| NYC Housing Connect | [NYC Open Data](https://data.cityofnewyork.us/d/vy5i-a666) advertised rental lotteries. The Affordable tab shows application dates, building addresses, and bedroom counts. |
 | Authorized no-cost partner feed | Optional. Configure a feed only when you have permission to use and display it at no API cost. There are no live feeds configured in the default build. |
 
-**Listing websites** shows direct source and saved links for a unit, followed by separate address searches. An address search can surface multiple units in a building. Matching known units uses the normalized street, ZIP, state, and unit number. A shared building address alone does not merge apartments. Save or add rentals across all supported regions, including Long Island, Metro-North communities, and southwest Connecticut. The saved list stays on the current device.
+**Listing websites** shows direct source and saved links for a unit, followed by separate address searches. An address search can surface multiple units in a building. Matching known units uses the normalized street, ZIP, state, and unit number. A shared building address alone does not merge apartments. Save or add rentals across all supported regions, including Long Island, Metro-North communities, southwest Connecticut, and eastern Pennsylvania. The saved list stays on the current device.
 
-Snapshot prices are from when the rentals first appeared in the month. Check the original website for current availability or price. Use the Platforms tab to browse current inventory in all supported regions. Transit directions open through a Google Maps link. The app measures straight-line miles to Rockefeller Center by default. Edit the workplace to use a different preset, coordinates, or a full street address.
+Snapshot prices are from when the rentals first appeared in the month. Check the original website for current availability or price. Use the Platforms tab to browse current inventory in all supported regions. Transit and driving directions open in Google Maps. The geographic selectors are browse areas. Check driving time for each address in Maps. The app measures straight-line miles to Rockefeller Center by default. Edit the workplace to use a different preset, coordinates, or a full street address.
+
+## Refresh sources
+
+The private hosted app refreshes the FirstMover release catalog, the city’s Housing Connect export, and any explicitly configured free feeds. FirstMover publishes monthly. A catalog revision triggers a new CSV download. Housing Connect listings reflect the city’s published export and application dates. The Affordable tab also links to official Mitchell-Lama and Section 8 resources. Openigloo and AffordableHousing.com provide browse and address links. Settled.nyc feed access is unverified.
+
+Use **Platforms → Check sources now** to check on demand. The app stores the last successful data and reports each source’s latest check. A concurrent or repeated check in the same hour reuses the recorded result. The writer is `POST /api/refresh` with an empty JSON object. Access it through the existing owner-only site boundary. A scheduled task can obtain the site's current service-access credential, invoke the writer, and read the result through `GET /api/config`. Keep that credential out of code and logs. Routine data refreshes use hosted storage and require no deployment.
 
 ## Rent chart
 
@@ -20,7 +27,7 @@ Compare the median initial monthly asking rent for studios and one through four 
 
 The market chart uses the dated public snapshot. It excludes entire houses, townhouses, and commercial or land records where the source identifies them. Duplicate source links and confirmed units are consolidated. The source coverage is NYC and parts of North Jersey. Switch to **Saved listings** to chart rentals you collected in other areas. That chart summarizes the saved list, whose prices can come from different dates.
 
-### Refresh the public snapshot
+### Rebuild the offline snapshot
 
 Download a monthly CSV from [FirstMover Open Data](https://www.firstmovernyc.com/open-data). Use Python 3 to regenerate the compressed offline dataset, then rebuild the app.
 

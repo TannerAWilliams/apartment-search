@@ -13,9 +13,11 @@ export const MARKETPLACE_NAMES = {
   renthop: 'RentHop',
   craigslist: 'Craigslist',
   facebook: 'Facebook Marketplace',
+  openigloo: 'Openigloo',
+  affordablehousing: 'AffordableHousing.com',
 };
 
-const STATES = { NY: 'New-York', NJ: 'New-Jersey', CT: 'Connecticut' };
+const STATES = { NY: 'New-York', NJ: 'New-Jersey', CT: 'Connecticut', PA: 'Pennsylvania' };
 const STREETEASY_AREAS = {
   'New York': 'nyc', Manhattan: 'manhattan', Brooklyn: 'brooklyn',
   Queens: 'queens', Bronx: 'bronx', 'Staten Island': 'staten-island',
@@ -39,7 +41,9 @@ export function marketplaceLinks(market, filters) {
   const realtorBeds = beds > 0 ? `/beds-${beds}-${beds}` : '';
   const hotpadsPath = max === null ? 'apartments-for-rent' : `apartments-under-${max}`;
   const redfinArea = { 'New York': '30749/NY/New-York', 'Jersey City': '9168/NJ/Jersey-City' }[city];
-  const craigslistZone = region === 'li' ? 'longisland' : region === 'ct' ?
+  const craigslistZone = region === 'pa' ? (
+    ['Philadelphia', 'Doylestown'].includes(city) ? 'philadelphia' : city === 'Stroudsburg' ? 'poconos' : 'allentown'
+  ) : region === 'li' ? 'longisland' : region === 'ct' ?
     city === 'New Haven' ? 'newhaven' : 'newyork' : region === 'nj' ?
       ['New Brunswick', 'Trenton'].includes(city) ? 'cnj' : 'newjersey' : 'newyork';
   const craigslist = new URLSearchParams({ postal: zip, search_distance: '12', sort: 'priceasc' });
@@ -64,6 +68,8 @@ export function marketplaceLinks(market, filters) {
     ['renthop', `https://www.renthop.com/${city === 'New York' ? 'new-york-ny/apartments-for-rent' : 'apartments-for-rent/' + slug}`, 'City search'],
     ['craigslist', `https://${craigslistZone}.craigslist.org/search/apa?${craigslist}`, 'ZIP radius + filters where selected'],
     ['facebook', 'https://www.facebook.com/marketplace/category/propertyrentals/', 'Set your area in Marketplace'],
+    ['affordablehousing', `https://www.affordablehousing.com/${slug}/`, 'Browse rentals and voucher listings'],
+    ['openigloo', 'https://www.openigloo.com/apartments', 'NYC rentals and building reviews'],
   ];
   const streetEasyArea = STREETEASY_AREAS[city];
   if (streetEasyArea) {
@@ -85,6 +91,7 @@ export const MARKETPLACE_DOMAINS = {
   zumper: 'zumper.com', apartmentlist: 'apartmentlist.com', rent: 'rent.com',
   apartmentguide: 'apartmentguide.com', renthop: 'renthop.com', craigslist: 'craigslist.org',
   facebook: 'facebook.com',
+  openigloo: 'openigloo.com', affordablehousing: 'affordablehousing.com',
 };
 
 export function safeListingUrl(value) {
@@ -112,7 +119,7 @@ export function marketplaceAddressSearches(listing, sources = listing.sources) {
   const location = listing.zip || [listing.city, listing.state].filter(Boolean).join(' ');
   if (!address) return [];
 
-  return Object.entries(MARKETPLACE_DOMAINS).filter(([id]) => !linked.has(id)).map(([id, domain]) => {
+  return Object.entries(MARKETPLACE_DOMAINS).filter(([id]) => !linked.has(id) && (id !== 'openigloo' || listing.region === 'nyc')).map(([id, domain]) => {
     const query = [`site:${domain}`, `"${address}"`, unit && `"${unit}"`, location, 'for rent'].filter(Boolean).join(' ');
     return { id, name: MARKETPLACE_NAMES[id], url: `https://www.google.com/search?${new URLSearchParams({ q: query })}` };
   });
