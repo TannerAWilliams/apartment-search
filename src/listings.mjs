@@ -62,6 +62,7 @@ export function normalizeListing(row, source) {
     address, unit, city, state, zip, county, rent, bedrooms, ...point,
     region: row.region,
     neighborhood: clean(row.neighborhood, 80),
+    company: clean(row.company ?? row.brokerage),
     seenAt: Number.isFinite(Date.parse(row.lastSeenDate ?? row.updatedAt)) ? row.lastSeenDate ?? row.updatedAt : null,
     sources: [link],
     kind: source.kind,
@@ -102,6 +103,7 @@ export function mergeListings(listings, { preferFirst = false } = {}) {
       latitude: hasLocation ? preferred.latitude : alternate.latitude,
       longitude: hasLocation ? preferred.longitude : alternate.longitude,
       neighborhood: preferred.neighborhood || alternate.neighborhood,
+      company: preferred.company || alternate.company,
       sources: mergeSourceLinks(preferred.sources, alternate.sources),
     });
   }

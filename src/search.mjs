@@ -1,3 +1,4 @@
+import { companyMatches } from './companies.mjs';
 import { REGIONS, WORKPLACES, regionOf } from './regions.mjs';
 
 export const DEFAULT_FILTERS = {
@@ -5,6 +6,8 @@ export const DEFAULT_FILTERS = {
   bedrooms: 1,
   maxRent: 2800,
   maxMiles: null,
+  liveOnly: false,
+  company: '',
   workplace: 'rockefeller',
   customWorkplace: '',
   zip: '',
@@ -54,6 +57,8 @@ export function parseFilters(input = {}) {
     workplace,
     customWorkplace: workplace === 'custom' ? customWorkplace : '',
     zip,
+    liveOnly: input.liveOnly === true,
+    company: typeof input.company === 'string' ? input.company.trim().slice(0, 80) : '',
     bedrooms: optionalNumber(input.bedrooms, 'bedroom count', 0, 4),
     maxRent: optionalNumber(input.maxRent, 'maximum rent', 1, 100000),
     maxMiles: optionalNumber(input.maxMiles, 'maximum distance', 0.1, 250, false),
@@ -93,7 +98,7 @@ export function compareResults(a, b, sort = 'rent') {
 export function matchListings(listings, filters, workplace) {
   return listings.flatMap((listing) => {
     const region = regionOf(listing);
-    if (!region || (filters.region !== 'all' && region !== filters.region) ||
+    if (!region || !companyMatches(listing.company, filters.company) || (filters.liveOnly && listing.kind !== 'feed') || (filters.region !== 'all' && region !== filters.region) ||
         (filters.zip && listing.zip !== filters.zip) ||
         (filters.bedrooms !== null && listing.bedrooms !== filters.bedrooms) ||
         (filters.maxRent !== null && listing.rent > filters.maxRent)) return [];

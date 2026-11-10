@@ -1,11 +1,13 @@
+import { companyCounts } from '../src/companies.mjs';
 import { parseFilters, SearchInputError } from '../src/search.mjs';
 import { localSearch, rentAreas, snapshotSearch, SNAPSHOT_MONTH } from '../src/market.mjs';
 import { REGIONS } from '../src/regions.mjs';
 import { buildingKey, mergeListings } from '../src/listings.mjs';
 import { configuredFeeds, loadFeed } from './listings.mjs';
 import { geocodeAddress, resolveWorkplace } from './commute.mjs';
+import { OPENIGLOO } from './openigloo.mjs';
 import { decodeSourceImport } from '../src/pull-sources.mjs';
-import { refreshPlan, refreshSources, refreshStatus, storedFeed, storedHousing, storedMarket } from './refresh.mjs';
+import { openiglooRecent, refreshPlan, refreshSources, refreshStatus, storedFeed, storedHousing, storedMarket, storedOpenigloo } from './refresh.mjs';
 
 const REQUEST_LIMIT = 4096;
 const IMPORT_LIMIT = 2 * 1024 * 1024;
@@ -47,15 +49,16 @@ export async function search(rawFilters, env, fetcher = fetch) {
   const feeds = configuredFeeds(env);
   const workplace = await resolveWorkplace(filters, fetcher);
   const bucket = env.BUCKET;
-  if (!feeds.length) {
-    return withHousingLinks(snapshotSearch(filters, workplace, await storedMarket(bucket)), bucket);
+  const status = bucket ? await refreshStatus(bucket) : null;
+  const openigloo = openiglooRecent(status) ? await storedOpenigloo(bucket).catch(() => null) : null;
+  const results = await Promise.allSettled(feeds.map((feed) => bucket ? storedFeed(bucket, feed) : loadFeed(feed, fetcher)));
+  const listings = openigloo?.listings.slice() ?? [];
+  const sources = openigloo ? [{ id: OPENIGLOO.id, name: OPENIGLOO.name, status: 'searched' }] : [];
+  const notices = openigloo ? [`Openigloo returned ${openigloo.listings.length} of ${openigloo.total.toLocaleString('en-US')} matching NYC listings in its hourly sample, with an asking rent cap of $${openigloo.rentLimit.toLocaleString('en-US')}.`] : [];
+  if (openigloo && status.sources.some(({ id, status: state }) => id === OPENIGLOO.id && state === 'failed')) {
+    notices.push('Openigloo’s latest check failed. These results came from the previous check.');
   }
 
-  const status = bucket ? await refreshStatus(bucket) : null;
-  const results = await Promise.allSettled(feeds.map((feed) => bucket ? storedFeed(bucket, feed) : loadFeed(feed, fetcher)));
-  const listings = [];
-  const sources = [];
-  const notices = [];
   for (const [index, result] of results.entries()) {
     const { id, name } = feeds[index];
     if (result.status === 'rejected') {
@@ -71,10 +74,21 @@ export async function search(rawFilters, env, fetcher = fetch) {
     }
   }
 
-  if (sources.every(({ status }) => status === 'unavailable')) {
+  const hasLive = sources.some(({ status: state }) => state === 'searched');
+  if (!hasLive && !filters.liveOnly) {
     const fallback = snapshotSearch(filters, workplace, await storedMarket(bucket));
     return withHousingLinks({ ...fallback, sources: [...fallback.sources, ...sources],
       notices: [...notices, ...fallback.notices] }, bucket);
+  }
+  if (!hasLive) {
+    return localSearch([], filters, workplace, 'live', sources, [...notices, 'No recent live sample is available.']);
+  }
+  if (openigloo) {
+    const market = await storedMarket(bucket);
+    const result = localSearch(mergeListings([...market.listings, ...listings]), filters, workplace,
+      filters.liveOnly ? 'live' : 'mixed', filters.liveOnly ? sources :
+        [{ id: 'streeteasy', name: 'StreetEasy', status: 'snapshot' }, ...sources], notices);
+    return withHousingLinks({ ...result, snapshotMonth: market.month }, bucket);
   }
   return withHousingLinks(localSearch(mergeListings(listings), filters, workplace, 'live', sources, notices), bucket);
 }
@@ -95,7 +109,11 @@ export async function handleApi(request, env, { requireToken = false } = {}) {
       const config = appConfig(env);
       if (!env.BUCKET) return json(config);
       const refresh = await refreshStatus(env.BUCKET);
-      return json({ ...config, refresh,
+      const openigloo = openiglooRecent(refresh);
+      const companies = companyCounts((await storedMarket(env.BUCKET)).listings);
+      return json({ ...config, refresh, companies,
+        mode: openigloo ? 'live' : config.mode,
+        sources: openigloo ? [{ id: OPENIGLOO.id, name: OPENIGLOO.name }, ...config.sources] : config.sources,
         snapshotMonth: refresh.sources.find(({ id }) => id === 'firstmover')?.month ?? SNAPSHOT_MONTH,
       });
     } catch {

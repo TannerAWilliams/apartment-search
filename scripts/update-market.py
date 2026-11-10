@@ -84,7 +84,7 @@ def record(row):
 
     return [row["id"], street, row["unit"].strip(), city, county, state, zip_code,
             neighborhood, lat, lon, bedrooms, int(rent) if rent.is_integer() else rent,
-            source_url.path, row["created_at_utc"][:10]]
+            source_url.path, row["created_at_utc"][:10], row.get("source_group", "").strip()[:160]]
 
 
 def main():

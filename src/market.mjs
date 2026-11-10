@@ -18,10 +18,10 @@ let snapshot;
 export function decodeMarketRows(rows) {
   const listings = rows.map(([
     id, address, unit, city, county, state, zip, neighborhood,
-    latitude, longitude, bedrooms, rent, path, seenAt,
+    latitude, longitude, bedrooms, rent, path, seenAt, company = '',
   ]) => ({
     id: 'streeteasy:' + id, address, unit, city, county, state, zip, neighborhood,
-    latitude, longitude, bedrooms, rent, seenAt,
+    latitude, longitude, bedrooms, rent, seenAt, company,
     region: state === 'NJ' ? 'nj' : 'nyc',
     kind: 'snapshot',
     sources: [{ id: 'streeteasy', name: 'StreetEasy', url: 'https://streeteasy.com' + path, kind: 'snapshot' }],

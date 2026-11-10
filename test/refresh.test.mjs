@@ -147,3 +147,26 @@ test('the private writer imports a completed public check without publisher acce
   assert.equal((await storedHousing(env.BUCKET, at)).opportunities.length, 1);
   assert.equal((await storedMarket(env.BUCKET)).listings.length, 2);
 });
+
+test('the Openigloo connector uses its published limit and preserves only exact source links', async () => {
+  const { loadOpenigloo } = await import('../server/openigloo.mjs');
+  const checked = await loadOpenigloo(async (url, options) => {
+    if (url.includes('addressbatch')) return new Response('"openigloo:sample",address,Match,Exact,normalized,"-73.99,40.67"\n');
+    const message = JSON.parse(options.body);
+    if (message.method === 'notifications/initialized') return new Response(null, { status: 202 });
+    if (message.method === 'initialize') return Response.json({ id: message.id, result: { protocolVersion: '2025-11-25' } });
+    assert.equal(message.params.arguments.limit, 10);
+    assert.equal(message.params.arguments.max_rent, 2800);
+    return Response.json({ id: message.id, result: { structuredContent: { total_matches: 30, apartments: [
+      { id: 'sample', address: '28 Example Street #2, Brooklyn, NY 11215', borough: 'Brooklyn',
+        status: 'for_rent', bedrooms: 1, rent_per_month: 2100,
+        url: 'https://www.openigloo.com/unit/nyc/sample' },
+      { id: 'bad', address: '28 Example Street #3, Brooklyn, NY 11215', borough: 'Brooklyn',
+        status: 'for_rent', bedrooms: 1, rent_per_month: 2000, url: 'https://unrelated.test/ads' },
+    ] } } });
+  }, at);
+  assert.equal(checked.listings.length, 1);
+  assert.equal(checked.listings[0].unit, '2');
+  assert.equal(checked.listings[0].latitude, 40.67);
+  assert.equal(checked.listings[0].sources[0].id, 'openigloo');
+});

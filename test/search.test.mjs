@@ -134,3 +134,14 @@ test('the API identifies snapshot mode and protects a private backend', async ()
   }), {});
   assert.equal(result.status, 422);
 });
+
+test('company filters match the advertiser field and company URLs can be saved as direct links', async () => {
+  const { companyCounts } = await import('../src/companies.mjs');
+  const { localSearch } = await import('../src/market.mjs');
+  const source = normalize({ ...sample, company: 'Compass New Jersey, LLC' });
+  const filters = parseFilters({ ...DEFAULT_FILTERS, company: 'compass' });
+  assert.equal(localSearch([source], filters, localWorkplace(filters), 'live').total, 1);
+  assert.equal(localSearch([source], { ...filters, company: 'SERHANT.' }, localWorkplace(filters), 'live').total, 0);
+  assert.deepEqual(companyCounts([source]), { compass: 1 });
+  assert.equal(marketplaceIdForUrl('https://serhant.com/properties/example'), 'serhant');
+});

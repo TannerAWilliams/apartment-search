@@ -1,4 +1,7 @@
+import { matchCompany, NYC_COMPANIES } from './companies.mjs';
+
 export const MARKETPLACE_NAMES = {
+  ...Object.fromEntries(NYC_COMPANIES.map(({ id, name }) => [id, name])),
   streeteasy: 'StreetEasy',
   zillow: 'Zillow',
   apartments: 'Apartments.com',
@@ -108,8 +111,9 @@ export function marketplaceIdForUrl(value) {
   const url = safeListingUrl(value);
   if (!url) return null;
   const hostname = new URL(url).hostname;
-  return Object.entries(MARKETPLACE_DOMAINS).find(([, domain]) =>
-    hostname === domain || hostname.endsWith('.' + domain))?.[0] ?? null;
+  const matches = (domain) => hostname === domain || hostname.endsWith('.' + domain);
+  return Object.entries(MARKETPLACE_DOMAINS).find(([, domain]) => matches(domain))?.[0] ??
+    NYC_COMPANIES.find(({ domain }) => matches(domain))?.id ?? null;
 }
 
 export function marketplaceAddressSearches(listing, sources = listing.sources) {
@@ -119,7 +123,10 @@ export function marketplaceAddressSearches(listing, sources = listing.sources) {
   const location = listing.zip || [listing.city, listing.state].filter(Boolean).join(' ');
   if (!address) return [];
 
-  return Object.entries(MARKETPLACE_DOMAINS).filter(([id]) => !linked.has(id) && (id !== 'openigloo' || listing.region === 'nyc')).map(([id, domain]) => {
+  const company = matchCompany(listing.company);
+  const sites = Object.entries(MARKETPLACE_DOMAINS);
+  if (company) sites.unshift([company.id, company.domain]);
+  return sites.filter(([id]) => !linked.has(id) && (id !== 'openigloo' || listing.region === 'nyc')).map(([id, domain]) => {
     const query = [`site:${domain}`, `"${address}"`, unit && `"${unit}"`, location, 'for rent'].filter(Boolean).join(' ');
     return { id, name: MARKETPLACE_NAMES[id], url: `https://www.google.com/search?${new URLSearchParams({ q: query })}` };
   });

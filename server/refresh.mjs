@@ -6,9 +6,13 @@ import { housingDate, loadHousingConnect } from './housing.mjs';
 
 const STATE_KEY = 'rentals/refresh.json';
 const MARKET_KEY = 'rentals/firstmover.json.gz';
+const MARKET_SCHEMA = 'companies-1';
+const OPENIGLOO_KEY = 'rentals/openigloo.json.gz';
+const PUBLIC_IDS = ['firstmover', 'housingconnect'];
 const HOUSING_KEY = 'rentals/housing-connect.json';
 const FEED_PREFIX = 'rentals/feeds/';
 const LOCK_TIMEOUT = 5 * 60_000;
+const LIVE_MAX_AGE = 2 * 60 * 60_000;
 let cachedMarket;
 
 const compressed = (value) => gzipSync(strToU8(JSON.stringify(value)));
@@ -27,13 +31,30 @@ export async function refreshStatus(bucket) {
   return publicStatus((await readState(bucket)).value);
 }
 
+function checkedDuring(sources, ids, hour) {
+  return ids.every((id) => sources?.some((source) =>
+    source.id === id && source.status !== 'failed' && source.checkedAt?.slice(0, 13) === hour));
+}
+
+export function openiglooRecent(status, now = new Date()) {
+  const source = status?.sources.find(({ id }) => id === 'openigloo');
+  return now.getTime() - Date.parse(source?.updatedAt) <= LIVE_MAX_AGE;
+}
+
+export async function storedOpenigloo(bucket) {
+  const object = await bucket?.get(OPENIGLOO_KEY);
+  return object ? unpack(object) : null;
+}
+
 export async function refreshPlan(bucket, now = new Date()) {
   const [{ value }, object] = await Promise.all([readState(bucket), bucket?.head(MARKET_KEY)]);
-  const market = object ? { ...object.customMetadata, catalogEtag: value.market?.revision === object.customMetadata.revision ?
+  const market = object?.customMetadata?.schema === MARKET_SCHEMA ? { ...object.customMetadata, catalogEtag: value.market?.revision === object.customMetadata.revision ?
     value.market.catalogEtag : '' } : null;
+  const hour = now.toISOString().slice(0, 13);
+  const privateFeeds = value.sources?.map(({ id }) => id).filter((id) => !PUBLIC_IDS.includes(id) && id !== 'openigloo') ?? [];
   return { ready: Boolean(bucket), market,
-    alreadyChecked: !value.running && value.hour === now.toISOString().slice(0, 13) &&
-      value.sources?.every(({ status }) => status !== 'failed'),
+    alreadyChecked: Boolean(market) && !value.running && checkedDuring(value.sources, [...PUBLIC_IDS, 'openigloo', ...privateFeeds], hour),
+    publicAlreadyChecked: Boolean(market) && !value.running && checkedDuring(value.sources, PUBLIC_IDS, hour),
     ...publicStatus(value) };
 }
 
@@ -57,7 +78,7 @@ export async function storedFeed(bucket, feed) {
 
 async function refreshMarket(bucket, previous, checkedAt, fetcher, imported, isImport) {
   const stored = await bucket.head(MARKET_KEY);
-  const baseline = stored ? { ...stored.customMetadata,
+  const baseline = stored?.customMetadata?.schema === MARKET_SCHEMA ? { ...stored.customMetadata,
     catalogEtag: previous?.revision === stored.customMetadata.revision ? previous.catalogEtag : '',
   } : null;
   const result = isImport ? imported : await checkFirstMover(baseline, fetcher);
@@ -65,14 +86,14 @@ async function refreshMarket(bucket, previous, checkedAt, fetcher, imported, isI
       (baseline && result.month < baseline.month)) throw new Error('The FirstMover import failed.');
   if (!result.changed && result.revision !== baseline?.revision) throw new Error('The FirstMover release has changed.');
   if (result.changed && (!Array.isArray(result.rows) || result.rows.length === 0 || result.rows.length > 60000 ||
-      result.rows.some((row) => !Array.isArray(row) || row.length !== 14 ||
+      result.rows.some((row) => !Array.isArray(row) || row.length !== 15 ||
         typeof row[12] !== 'string' || !/^\/(rental|building)\//.test(row[12])))) {
     throw new Error('The FirstMover import had invalid listings.');
   }
   const updatedAt = result.changed ? checkedAt : baseline.updatedAt;
   if (result.changed) {
     await bucket.put(MARKET_KEY, compressed(result.rows), {
-      customMetadata: { month: result.month, revision: result.revision, updatedAt },
+      customMetadata: { month: result.month, revision: result.revision, updatedAt, schema: MARKET_SCHEMA },
     });
   }
   return { status: result.changed ? 'updated' : 'current', month: result.month,
@@ -104,6 +125,18 @@ async function refreshHousing(bucket, checkedAt, fetcher, now, imported, isImpor
   return { status: 'updated', updatedAt: checkedAt };
 }
 
+async function refreshOpenigloo(bucket, result, at) {
+  if (!Array.isArray(result?.listings) || result.listings.length > 10 ||
+      result.listings.some((listing) => listing.kind !== 'feed' || listing.region !== 'nyc' ||
+        !Array.isArray(listing.sources) || listing.sources[0]?.id !== 'openigloo' ||
+        !/^https:\/\/www\.openigloo\.com\/unit\/nyc\//.test(listing.sources[0]?.url ?? ''))) {
+    throw new Error('Openigloo did not return a valid live sample.');
+  }
+  await bucket.put(OPENIGLOO_KEY, compressed(result), { customMetadata: { updatedAt: at } });
+  return { status: 'updated', updatedAt: at, listingCount: result.listings.length,
+    total: result.total, rentLimit: result.rentLimit, sampleLimit: result.sampleLimit };
+}
+
 export async function refreshSources(env, { fetcher = fetch, now = new Date(), imports } = {}) {
   const bucket = env.BUCKET;
   if (!bucket) throw new Error('Hourly source storage is unavailable.');
@@ -115,7 +148,9 @@ export async function refreshSources(env, { fetcher = fetch, now = new Date(), i
   if (previous.running && now.getTime() - Date.parse(previous.startedAt) < LOCK_TIMEOUT) {
     return { state: 'running', ...publicStatus(previous) };
   }
-  if (!previous.running && previous.hour === hour && previous.sources?.every(({ status }) => status !== 'failed')) {
+  const includeOpenigloo = imports && Object.hasOwn(imports, 'openigloo');
+  const ids = [...PUBLIC_IDS, ...(includeOpenigloo ? ['openigloo'] : []), ...feeds.map(({ id }) => id)];
+  if (!previous.running && !imports?.firstmover?.changed && checkedDuring(previous.sources, ids, hour)) {
     return { state: 'already_checked', ...publicStatus(previous) };
   }
 
@@ -130,6 +165,8 @@ export async function refreshSources(env, { fetcher = fetch, now = new Date(), i
       refreshMarket(bucket, previous.market, at, fetcher, imports?.firstmover, Boolean(imports)) },
     { id: 'housingconnect', name: 'NYC Housing Connect', work: () =>
       refreshHousing(bucket, at, fetcher, now, imports?.housingconnect, Boolean(imports)) },
+    ...(includeOpenigloo ? [{ id: 'openigloo', name: 'Openigloo', work: () =>
+      refreshOpenigloo(bucket, imports.openigloo, at) }] : []),
     ...feeds.map((feed) => ({ id: feed.id, name: feed.name, work: async () => {
       const result = await loadFeed(feed, fetcher);
       await bucket.put(FEED_PREFIX + feed.id + '.json.gz', compressed(result));
@@ -137,7 +174,7 @@ export async function refreshSources(env, { fetcher = fetch, now = new Date(), i
     } })),
   ];
   const results = await Promise.allSettled(checks.map(({ work }) => work()));
-  const sources = checks.map(({ id, name }, index) => {
+  const attempted = checks.map(({ id, name }, index) => {
     const result = results[index];
     const older = previousById.get(id);
     const next = result.status === 'fulfilled' ? result.value : null;
@@ -147,17 +184,27 @@ export async function refreshSources(env, { fetcher = fetch, now = new Date(), i
       item.month = next?.month ?? older?.month ?? SNAPSHOT_MONTH;
       if (!next) item.error = result.reason instanceof Error &&
         /^FirstMover |^The (latest )?FirstMover /.test(result.reason.message) ? result.reason.message : 'The FirstMover import failed.';
+    } else if (id === 'openigloo') {
+      const counts = next ?? older;
+      if (counts?.updatedAt) {
+        item.listingCount = counts.listingCount;
+        item.total = counts.total;
+        item.rentLimit = counts.rentLimit;
+        item.sampleLimit = counts.sampleLimit;
+      }
+      if (!next) item.error = 'The Openigloo live sample could not be refreshed.';
     } else if (!next) {
       item.error = id === 'housingconnect' ? 'NYC Open Data could not be refreshed.' : 'The configured feed could not be refreshed.';
     }
     return item;
   });
 
+  const sources = [...attempted, ...(previousById.has('openigloo') && !includeOpenigloo ? [previousById.get('openigloo')] : [])];
   const market = results[0].status === 'fulfilled' ? results[0].value : previous.market;
   const state = { running: false, hour, lastCheckedAt: at, market: market ? {
     revision: market.revision, catalogEtag: market.catalogEtag,
   } : null, sources };
   const saved = await bucket.put(STATE_KEY, JSON.stringify(state), { onlyIf: { etagMatches: lease.etag } });
   if (!saved) return { state: 'superseded', ...publicStatus((await readState(bucket)).value) };
-  return { state: sources.some(({ status }) => status === 'failed') ? 'partial' : 'complete', ...publicStatus(state) };
+  return { state: attempted.some(({ status }) => status === 'failed') ? 'partial' : 'complete', ...publicStatus(state) };
 }

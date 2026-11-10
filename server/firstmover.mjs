@@ -58,7 +58,7 @@ function packedRow(row) {
   }
   if (!city) return null;
   return [row.id, address, row.unit.trim(), city, county, state, zip, neighborhood, latitude,
-    longitude, bedrooms, rent, path, row.created_at_utc.slice(0, 10)];
+    longitude, bedrooms, rent, path, row.created_at_utc.slice(0, 10), row.source_group?.trim().slice(0, 160) ?? ''];
 }
 
 export function parseFirstMoverCsv(csv, month) {
@@ -68,7 +68,7 @@ export function parseFirstMoverCsv(csv, month) {
     max_record_size: 65536,
     columns: (headers) => {
       if (!COLUMNS.every((column) => headers.includes(column))) throw new Error('The FirstMover CSV columns changed.');
-      return headers.map((header) => COLUMNS.includes(header) ? header : false);
+      return headers.map((header) => COLUMNS.includes(header) || header === 'source_group' ? header : false);
     },
   });
   const paths = new Set();

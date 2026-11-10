@@ -1,4 +1,5 @@
 import { createInterface } from 'node:readline';
+import { loadOpenigloo } from '../server/openigloo.mjs';
 import { encodeSourceImport, pullPublicSources } from '../src/pull-sources.mjs';
 
 const origin = 'https://apartment-search-metro-nyc.adepthen22.chatgpt.site';
@@ -21,7 +22,11 @@ async function request(path, body) {
 
 const plan = await request('/api/refresh');
 if (!plan.ready) throw new Error('Hosted refresh storage is unavailable.');
-const outcome = plan.alreadyChecked ? plan : await request('/api/refresh', encodeSourceImport(await pullPublicSources(plan)));
+let outcome = plan;
+if (!plan.alreadyChecked) {
+  const [sources, openigloo] = await Promise.all([pullPublicSources(plan), loadOpenigloo().catch(() => null)]);
+  outcome = await request('/api/refresh', encodeSourceImport({ ...sources, openigloo }));
+}
 const config = await request('/api/config');
 const status = config.refresh;
 if (!status?.lastCheckedAt || status.lastCheckedAt !== outcome.lastCheckedAt) {

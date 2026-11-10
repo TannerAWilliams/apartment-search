@@ -4,6 +4,7 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
+import { NYC_COMPANIES } from './src/companies.mjs';
 import { MARKETS, REGIONS, WORKPLACES } from './src/regions.mjs';
 import { marketplaceLinks } from './src/marketplaces.mjs';
 import {
@@ -96,6 +97,9 @@ function Filters({ draft, setDraft, submit, busy, serverState, token, setToken, 
     <Field label="Max rent per month ($)" placeholder="Any rent" value={draft.maxRent}
       onChangeText={set('maxRent')} keyboardType="number-pad" maxLength={6} />
 
+    <Field label="Listing company (optional)" placeholder="Compass, SERHANT., Corcoran…" value={draft.company}
+      onChangeText={set('company')} maxLength={80} />
+
     <View style={styles.divider} />
     <SectionTitle index="02">Work commute</SectionTitle>
     <Text style={styles.fieldLabel}>Workplace</Text>
@@ -130,7 +134,7 @@ function Listing({ listing, number, workplace, onSave, onSaveLink, onRemove, onE
   const title = unit ? `${address}, ${unit.startsWith('#') ? unit : 'Unit ' + unit}` : address;
   const subtitle = [neighborhood === city ? '' : neighborhood, `${city}, ${state} ${zip}`].filter(Boolean).join(' · ');
   const observation = listing.kind === 'snapshot' ? `First listed ${listing.seenAt}` :
-    listing.kind === 'saved' ? 'Saved listing' : 'Authorized feed';
+    listing.kind === 'saved' ? 'Saved listing' : listing.sources.find(({ kind }) => kind === 'feed')?.name + ' · Checked live';
 
   return <View style={styles.listing}>
     <View style={styles.listingTop}>
@@ -142,6 +146,8 @@ function Listing({ listing, number, workplace, onSave, onSaveLink, onRemove, onE
         </View>
         <Text accessibilityRole="header" style={styles.listingTitle}>{title}</Text>
         <Text style={styles.smallMuted}>{subtitle}</Text>
+        {listing.company ? <Text style={styles.smallMuted}>{listing.kind === 'feed' && listing.sources.some(({ kind }) => kind === 'snapshot') ?
+          'Snapshot advertiser' : 'Listed by'} {listing.company}</Text> : null}
       </View>
       <View style={styles.priceBlock}>
         <Text style={styles.price}>{formatRent(rent)}</Text>
@@ -169,7 +175,7 @@ function Listing({ listing, number, workplace, onSave, onSaveLink, onRemove, onE
   </View>;
 }
 
-function Marketplaces({ filters, sources, configuredSources, refresh, refreshing, onRefresh, onError }) {
+function Marketplaces({ filters, sources, configuredSources, companies, onCompany, refresh, refreshing, onRefresh, onError }) {
   const markets = MARKETS.filter((market) => filters.region === 'all' || market.region === filters.region);
   const [marketLabel, setMarketLabel] = useState('');
   const market = markets.find((item) => item.label === marketLabel) ??
@@ -186,8 +192,9 @@ function Marketplaces({ filters, sources, configuredSources, refresh, refreshing
       <Link label="FirstMover Open Data" url={SNAPSHOT_SOURCE} onError={onError} />
       <Text style={styles.smallMuted}>Settled.nyc · source access unverified.</Text>
       {refresh && <Button secondary onPress={onRefresh} disabled={refreshing}>
-        {refreshing ? 'Checking sources…' : 'Check sources now'}
+        {refreshing ? 'Checking sources…' : 'Check public exports now'}
       </Button>}
+      <Text style={styles.smallMuted}>The hourly job also checks the Openigloo live sample.</Text>
       {refresh?.lastCheckedAt && <>
         <Text style={styles.fieldLabel}>Last source check · {CHECK_TIME.format(new Date(refresh.lastCheckedAt))}</Text>
         {refresh.sources.map(({ id, name, status, updatedAt }) => <Text key={id} style={styles.smallMuted}>
@@ -213,9 +220,19 @@ function Marketplaces({ filters, sources, configuredSources, refresh, refreshing
             <Text style={styles.smallMuted}>{detail}</Text>
           </View>
           <Text style={styles.marketArrow}>↗</Text>
-          <Text style={styles.marketType}>{searchFeeds.has(id) ? 'FREE LIVE FEED' : unavailable.has(id) ? 'FEED UNAVAILABLE' :
+          <Text style={styles.marketType}>{searchFeeds.has(id) ? (id === 'openigloo' ? 'LIMITED LIVE SAMPLE' : 'FREE LIVE FEED') : unavailable.has(id) ? 'FEED UNAVAILABLE' :
             configured.has(id) ? 'FREE FEED CONFIGURED' : id === 'streeteasy' ? 'MONTHLY SNAPSHOT' : 'BROWSE ONLY'}</Text>
         </Pressable>)}
+    </View>
+    <Text accessibilityRole="header" style={styles.panelTitle}>NYC brokerages and apartment companies</Text>
+    <Text style={styles.bodyText}>The counts show listings attributed to each company in the dated StreetEasy export. Select a company to search those apartments here.</Text>
+    <View style={styles.marketGrid}>
+      {NYC_COMPANIES.map(({ id, name, url, type }) => <View key={id} style={[styles.chartCard, { flexGrow: 1, flexBasis: '46%', minWidth: 150 }]}>
+        <Text style={styles.marketName}>{name}</Text>
+        <Text style={styles.smallMuted}>{type} · {companies[id] ? companies[id].toLocaleString('en-US') + ' in the snapshot' : 'Website link'}</Text>
+        {companies[id] > 0 && <Button secondary onPress={() => onCompany(name)}>Search in Apartment Search</Button>}
+        <Link label="Company website" url={url} onError={onError} />
+      </View>)}
     </View>
   </View>;
 }
@@ -227,16 +244,16 @@ function Results({ result, applied, savedByKey, showMarkets, onSave, onSaveLink,
   const matches = [...result.matches].sort((first, second) => compareResults(first, second, sort));
   const savedView = result.mode === 'saved';
   const summary = savedView ? 'Saved on this device · All apartment sizes' : [
-    REGIONS[applied.region].label, bedroomLabel(applied.bedrooms), applied.zip,
+    REGIONS[applied.region].label, bedroomLabel(applied.bedrooms), applied.zip, applied.company,
     applied.maxRent === null ? null : `Up to ${formatRent(applied.maxRent)}`,
     applied.maxMiles === null ? null : `Within ${applied.maxMiles} mi`,
   ].filter(Boolean).join(' · ');
 
   return <>
-    {result.mode === 'snapshot' && <View style={styles.demoNotice}>
+    {(result.mode === 'snapshot' || result.mode === 'mixed') && <View style={styles.demoNotice}>
       <View style={styles.demoMark}><Text style={styles.demoMarkText}>i</Text></View>
       <View style={styles.noticeCopy}>
-        <Text style={styles.noticeTitle}>{formatSnapshotMonth(result.snapshotMonth)} listing snapshot</Text>
+        <Text style={styles.noticeTitle}>{result.mode === 'mixed' ? 'Live sample and ' : ''}{formatSnapshotMonth(result.snapshotMonth)} listing snapshot</Text>
         <Text style={styles.bodyText}>Initial asking prices from FirstMover’s StreetEasy data. Check the linked marketplace for current prices and availability.</Text>
         <Pressable accessibilityRole="button" onPress={showMarkets}><Text style={styles.linkText}>Browse rental platforms →</Text></Pressable>
       </View>
@@ -281,6 +298,7 @@ function ApartmentSearch() {
   const [storageReady, setStorageReady] = useState(false);
   const [serverState, setServerState] = useState(API_ORIGIN === null ? 'offline' : 'checking');
   const [configuredSources, setConfiguredSources] = useState([]);
+  const [companies, setCompanies] = useState({});
   const [refresh, setRefresh] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
   const submitted = useRef(false);
@@ -320,6 +338,7 @@ function ApartmentSearch() {
     api('config', { token: activeToken, signal: controller.signal }).then((config) => {
       setServerState('ready');
       setConfiguredSources(config.sources);
+      setCompanies(config.companies ?? {});
       setRefresh(config.refresh ?? null);
       if (!submitted.current && (config.snapshotMonth !== SNAPSHOT_MONTH || config.mode === 'live' ||
           config.refresh?.sources.some(({ id, updatedAt }) => id === 'firstmover' && updatedAt))) {
@@ -340,6 +359,7 @@ function ApartmentSearch() {
     const controller = new AbortController();
     api('config', { token: activeToken, signal: controller.signal }).then((config) => {
       setConfiguredSources(config.sources);
+      setCompanies(config.companies ?? {});
       setRefresh(config.refresh ?? null);
     }).catch(() => {});
     return () => controller.abort();
@@ -359,7 +379,7 @@ function ApartmentSearch() {
     try {
       const plan = await api('refresh', { token: activeToken });
       if (!plan.ready) throw new Error('Hosted refresh storage is unavailable.');
-      if (!plan.alreadyChecked) {
+      if (!plan.publicAlreadyChecked) {
         const imports = await pullPublicSources(plan);
         await api('refresh', { body: encodeSourceImport(imports), token: activeToken });
       }
@@ -378,14 +398,14 @@ function ApartmentSearch() {
     }
   }
 
-  async function submit() {
+  async function submit(nextDraft = draft) {
     if (busy) return;
     submitted.current = true;
     searchVersion.current += 1;
     setError('');
     setBusy(true);
     try {
-      const filters = parseFilters(draft);
+      const filters = parseFilters(nextDraft);
       const searchResult = serverState === 'ready' ?
         await api('search', { body: filters, token: activeToken }) : snapshotSearch(filters);
       setApplied(filters);
@@ -399,6 +419,21 @@ function ApartmentSearch() {
     } finally {
       setBusy(false);
     }
+  }
+
+  function searchCompany(company) {
+    const nextDraft = { ...formDefaults(), company, bedrooms: null, maxRent: '' };
+    setDraft(nextDraft);
+    submit(nextDraft);
+  }
+
+  function selectInventory(liveOnly) {
+    setScope('market');
+    setAdding(false);
+    if (applied.liveOnly === liveOnly) return;
+    const nextDraft = { ...draft, liveOnly };
+    setDraft(nextDraft);
+    submit(nextDraft);
   }
 
   function saveListing(listing) {
@@ -429,7 +464,7 @@ function ApartmentSearch() {
             {!wide && <Button secondary onPress={() => setExpanded(!expanded)}>
               {expanded ? 'Hide filters ↑' : 'Edit search filters ↓'}
             </Button>}
-            {(wide || expanded) && <Filters draft={draft} setDraft={setDraft} submit={submit}
+            {(wide || expanded) && <Filters draft={draft} setDraft={setDraft} submit={() => submit()}
               busy={busy} serverState={serverState} token={token} setToken={setToken}
               connect={() => setActiveToken(token.trim())} />}
           </View>
@@ -445,7 +480,8 @@ function ApartmentSearch() {
             {tab === 'results' && <>
               <View style={styles.scopeRow}>
                 <View style={styles.chipRow}>
-                  <Chip selected={scope === 'market'} onPress={() => { setScope('market'); setAdding(false); }}>Search results</Chip>
+                  <Chip selected={scope === 'market' && !applied.liveOnly} onPress={() => selectInventory(false)}>All results</Chip>
+                  <Chip selected={scope === 'market' && applied.liveOnly} onPress={() => selectInventory(true)}>Live only</Chip>
                   <Chip selected={scope === 'saved'} onPress={showSaved}>Saved ({saved.length})</Chip>
                 </View>
                 {!adding && <Button secondary onPress={() => { setAdding(true); showSaved(); }}>+ Add listing</Button>}
@@ -462,7 +498,7 @@ function ApartmentSearch() {
             {tab === 'chart' && <RentChart initialRegion={applied.region} saved={saved} showSaved={showSaved} onError={setError}
               loadMarket={serverState === 'ready' ? loadMarket : undefined} />}
             {tab === 'marketplaces' && <Marketplaces filters={applied} sources={result.sources}
-              configuredSources={configuredSources} refresh={refresh} refreshing={refreshing} onRefresh={checkSources} onError={setError} />}
+              configuredSources={configuredSources} companies={companies} onCompany={searchCompany} refresh={refresh} refreshing={refreshing} onRefresh={checkSources} onError={setError} />}
             {tab === 'affordable' && <AffordableHousing loadHousing={serverState === 'ready' ? loadHousing : undefined} onError={setError} />}
           </View>
         </View>

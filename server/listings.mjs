@@ -18,7 +18,7 @@ export function configuredFeeds(env) {
     const id = feed?.id;
     const name = Object.hasOwn(MARKETPLACE_NAMES, id) ? MARKETPLACE_NAMES[id] : feed?.name?.trim();
     const url = safeListingUrl(feed?.url);
-    if (typeof id !== 'string' || !/^[a-z][a-z0-9_-]{0,47}$/.test(id) || ['firstmover', 'housingconnect'].includes(id) || ids.has(id) || !name || !url) {
+    if (typeof id !== 'string' || !/^[a-z][a-z0-9_-]{0,47}$/.test(id) || ['firstmover', 'housingconnect', 'openigloo'].includes(id) || ids.has(id) || !name || !url) {
       throw new Error('A free feed is missing a unique ID, name, or HTTPS URL.');
     }
     ids.add(id);
