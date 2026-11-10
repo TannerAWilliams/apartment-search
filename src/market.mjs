@@ -1,8 +1,8 @@
 import base64 from 'base64-js';
 import { gunzipSync, strFromU8 } from 'fflate';
 import { SNAPSHOT_GZIP, SNAPSHOT_MONTH } from './data/snapshot.mjs';
-import { mergeListings } from './listings.mjs';
-import { regionOf } from './regions.mjs';
+import { listingWithVerifiedLinks, mergeListings, orderedListingLinks } from './listings.mjs';
+import { matchesRegion } from './regions.mjs';
 import { compareResults, isPoint, localWorkplace, matchListings, SearchInputError } from './search.mjs';
 
 export { SNAPSHOT_MONTH };
@@ -43,7 +43,8 @@ export function localSearch(listings, filters, workplace, mode, sources = [], no
 export function formatSearch(listings, filters, workplace, mode, sources, notices) {
   const eligible = listings.filter(({ transitSeconds, drivingSeconds }) =>
     (filters.maxTransitMinutes == null || (transitSeconds ?? Infinity) <= filters.maxTransitMinutes * 60) &&
-    (filters.maxDrivingMinutes == null || (drivingSeconds ?? Infinity) <= filters.maxDrivingMinutes * 60));
+    (filters.maxDrivingMinutes == null || (drivingSeconds ?? Infinity) <= filters.maxDrivingMinutes * 60))
+    .map(listingWithVerifiedLinks);
   const bySource = new Map();
   for (const listing of eligible) {
     const links = listing.sources.filter(({ url }) => url);
@@ -58,10 +59,11 @@ export function formatSearch(listings, filters, workplace, mode, sources, notice
   const matches = filters.source ? eligible.filter((listing) => listing.sources.some(({ id, url }) => id === filters.source && url)) : eligible;
   matches.sort((first, second) => compareResults(first, second, filters.sort));
   const mapPoints = filters.includeMap ? matches.filter(isPoint).map((listing) => {
-    const original = listing.sources.find(({ id, url }) => id === filters.source && url) ?? listing.sources.find(({ url }) => url);
+    const [original, ...additionalLinks] = orderedListingLinks(listing.sources, filters.source);
     return { latitude: listing.latitude, longitude: listing.longitude, rent: listing.rent, bedrooms: listing.bedrooms,
       title: [listing.address, listing.unit && '#' + listing.unit.replace(/^#/, '')].filter(Boolean).join(' '),
-      name: original?.name, url: original?.url, kind: listing.kind,
+      name: original?.name, url: original?.url, kind: listing.kind, linkKind: original?.kind,
+      ...(additionalLinks.length ? { additionalLinks } : {}),
       transitSeconds: listing.transitSeconds, drivingSeconds: listing.drivingSeconds };
   }) : undefined;
   if (matches.length > 100) notices = [...notices, 'Showing the first 100 matches for the selected sort order. Narrow the area or ZIP to see more of a specific location.'];
@@ -106,7 +108,7 @@ export function rentAreas(listings, { region = 'all', zip = '', grouping = 'neig
   const areas = new Map();
   const overall = { id: 'overall', label: 'All covered areas', detail: '', values: sizeGroups() };
   for (const listing of listings) {
-    if ((region !== 'all' && regionOf(listing) !== region) || (zip && listing.zip !== zip) ||
+    if (!matchesRegion(listing, region) || (zip && listing.zip !== zip) ||
         !Number.isInteger(listing.bedrooms) || listing.bedrooms < 0 || listing.bedrooms > 4 ||
         !Number.isFinite(listing.rent) || listing.rent <= 0) continue;
     const area = areaOf(listing, grouping);

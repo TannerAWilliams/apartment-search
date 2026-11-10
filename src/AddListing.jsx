@@ -2,18 +2,18 @@ import React, { useState } from 'react';
 import { Text, View } from 'react-native';
 import { normalizeListing } from './listings.mjs';
 import { safeListingUrl } from './marketplaces.mjs';
-import { REGIONS } from './regions.mjs';
+import { NYC_SEARCH_AREAS, NYC_SEARCH_DEFAULT, searchBorough } from './regions.mjs';
 import { isPoint } from './search.mjs';
 import { styles } from './styles.js';
 import { Button, Chip, Field } from './ui.jsx';
 
-const STATES = { nyc: 'NY', nj: 'NJ', li: 'NY', metroNorth: 'NY', ct: 'CT', pa: 'PA' };
+const BOROUGHS = ['manhattan', 'brooklyn'];
 const BEDROOMS = ['Studio', '1 BR', '2 BR', '3 BR', '4 BR'];
 
 export function AddListing({ initialRegion, onSave, onCancel, geocode }) {
-  const [region, setRegion] = useState(initialRegion === 'all' ? 'nyc' : initialRegion);
+  const [region, setRegion] = useState(initialRegion === NYC_SEARCH_DEFAULT ? 'manhattan' : initialRegion);
   const [bedrooms, setBedrooms] = useState(1);
-  const [fields, setFields] = useState({ url: '', address: '', unit: '', city: '', zip: '', neighborhood: '', rent: '', coordinates: '' });
+  const [fields, setFields] = useState({ url: '', address: '', unit: '', zip: '', neighborhood: '', rent: '', coordinates: '' });
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const set = (key) => (value) => setFields((previous) => ({ ...previous, [key]: value }));
@@ -23,6 +23,10 @@ export function AddListing({ initialRegion, onSave, onCancel, geocode }) {
     const url = safeListingUrl(fields.url.trim());
     if (!url || !/^\d{5}$/.test(fields.zip.trim()) || !/^\d+(\.\d{1,2})?$/.test(fields.rent.trim())) {
       setError('Enter a listing URL, a five-digit ZIP code, and a monthly asking rent.');
+      return;
+    }
+    if (searchBorough({ state: 'NY', zip: fields.zip.trim() }) !== region) {
+      setError('Enter a ZIP code in the selected borough.');
       return;
     }
     let point = {};
@@ -35,10 +39,10 @@ export function AddListing({ initialRegion, onSave, onCancel, geocode }) {
       }
     }
 
-    const listing = normalizeListing({ ...fields, url, bedrooms, state: STATES[region], region,
+    const listing = normalizeListing({ ...fields, url, bedrooms, city: NYC_SEARCH_AREAS[region].label, state: 'NY', region: 'nyc',
       updatedAt: new Date().toISOString(), ...point }, { id: 'saved', name: 'Saved listing', kind: 'saved' });
     if (!listing) {
-      setError('Enter the street, city or town, and a positive monthly asking rent.');
+      setError('Enter the street address and a positive monthly asking rent.');
       return;
     }
 
@@ -61,12 +65,11 @@ export function AddListing({ initialRegion, onSave, onCancel, geocode }) {
     <Field label="Listing URL" placeholder="https://…" value={fields.url} onChangeText={set('url')} maxLength={2000} />
     <Field label="Street address" value={fields.address} onChangeText={set('address')} maxLength={140} />
     <Field label="Unit (if listed)" value={fields.unit} onChangeText={set('unit')} maxLength={45} />
-    <Field label="City or borough" value={fields.city} onChangeText={set('city')} maxLength={80} />
     <Field label="ZIP code" value={fields.zip} onChangeText={set('zip')} maxLength={5} keyboardType="number-pad" />
     <Field label="Neighborhood (optional)" value={fields.neighborhood} onChangeText={set('neighborhood')} maxLength={80} />
-    <Text style={styles.fieldLabel}>Region</Text>
-    <View style={styles.chipRow}>{Object.keys(STATES).map((id) =>
-      <Chip key={id} selected={region === id} onPress={() => setRegion(id)}>{REGIONS[id].label}</Chip>)}</View>
+    <Text style={styles.fieldLabel}>Borough</Text>
+    <View style={styles.chipRow}>{BOROUGHS.map((id) =>
+      <Chip key={id} selected={region === id} onPress={() => setRegion(id)}>{NYC_SEARCH_AREAS[id].label}</Chip>)}</View>
     <Text style={styles.fieldLabel}>Bedrooms</Text>
     <View style={styles.chipRow}>{BEDROOMS.map((label, count) =>
       <Chip key={label} selected={bedrooms === count} onPress={() => setBedrooms(count)}>{label}</Chip>)}</View>

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet.markercluster';
 import 'leaflet/dist/leaflet.css';
+import { listingLinkLabel } from './listings.mjs';
 import { safeListingUrl } from './marketplaces.mjs';
 import { bedroomLabel, formatRent } from './search.mjs';
 
@@ -19,23 +20,39 @@ function pinIcon(count) {
   return L.divIcon({ className: '', html: badge, iconSize: [size + 4, size + 4] });
 }
 
+function popupLink(url, label) {
+  const href = safeListingUrl(url);
+  if (!href) return null;
+  const link = document.createElement('a');
+  link.href = href;
+  link.target = '_blank';
+  link.rel = 'noopener noreferrer';
+  link.textContent = label;
+  return link;
+}
+
 function popupContent(listings) {
   const content = document.createElement('div');
   Object.assign(content.style, { maxHeight: '260px', overflowY: 'auto', minWidth: '160px' });
-  for (const { title, rent, bedrooms, kind, url, name, transitSeconds, drivingSeconds } of listings) {
+  for (const { title, rent, bedrooms, kind, url, name, linkKind, additionalLinks = [], transitSeconds, drivingSeconds } of listings) {
     const row = document.createElement('div');
     row.style.padding = '7px 2px';
-    const href = safeListingUrl(url);
-    const heading = document.createElement(href ? 'a' : 'strong');
-    heading.textContent = title;
-    if (href) heading.href = href;
-    heading.style.fontWeight = '700';
+    const heading = document.createElement('strong');
+    const primary = popupLink(url, title);
+    if (primary) heading.append(primary);
+    else heading.textContent = title;
     const detail = document.createElement('div');
     const status = { snapshot: 'Dated listing', cached: 'Last saved result', saved: 'Saved listing' }[kind];
-    detail.textContent = [formatRent(rent), bedroomLabel(bedrooms), name, status,
+    detail.textContent = [formatRent(rent), bedroomLabel(bedrooms), status,
       transitSeconds == null ? null : `${Math.ceil(transitSeconds / 60)} min transit`,
       drivingSeconds == null ? null : `${Math.ceil(drivingSeconds / 60)} min drive`].filter(Boolean).join(' · ');
     row.append(heading, detail);
+    for (const source of [{ url, name, kind: linkKind }, ...additionalLinks]) {
+      const link = popupLink(source.url, listingLinkLabel(source) + ' ↗');
+      if (!link) continue;
+      link.style.display = 'block';
+      row.append(link);
+    }
     content.append(row);
   }
   return content;

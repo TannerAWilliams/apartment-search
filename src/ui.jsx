@@ -19,7 +19,7 @@ export function Button({ children, onPress, secondary = false, disabled = false 
 }
 
 export function ExternalLink({ url, onError, children, ...props }) {
-  const navigation = Platform.OS === 'web' ? { href: url } : {
+  const navigation = Platform.OS === 'web' ? { href: url, hrefAttrs: { target: '_blank', rel: 'noopener noreferrer' } } : {
     onPress: () => Linking.openURL(url).catch(() => onError?.('This link could not be opened on your device.')),
   };
   return <Pressable accessibilityRole="link" {...props} {...navigation}>{children}</Pressable>;

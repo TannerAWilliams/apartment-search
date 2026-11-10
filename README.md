@@ -1,5 +1,7 @@
 # Apartment Search
 
+The app's search, map, rent charts, and affordable housing results focus on Manhattan and Brooklyn. The search defaults to both boroughs and a $5,000 rent cap.
+
 Compare rentals by asking rent and weekday-morning transit or driving time to your workplace. The same Expo app runs on mobile web, iPhone, and Android. The built-in search, listing links, and rent chart require no paid API or API key.
 
 ## Listings and platforms
@@ -18,7 +20,7 @@ Compare rentals by asking rent and weekday-morning transit or driving time to yo
 
 **Listing websites** shows direct source and saved links for a unit, followed by separate address searches. An address search can surface multiple units in a building. Matching known units uses the normalized street, ZIP, state, and unit number. A shared building address alone does not merge apartments. **Live only** narrows results to recently checked inventory. The **Listing company** filter and company coverage cards use the advertiser field from the dated snapshot, including Compass, SERHANT., Corcoran, Douglas Elliman, Brown Harris Stevens, and other NYC brokerages and managers. Company-site links are separate from the original ad URL supplied by each source. Save or add rentals across all supported regions, including Long Island, Metro-North communities, southwest Connecticut, and eastern Pennsylvania. The saved list stays on the current device.
 
-Snapshot prices are from when the rentals first appeared in the month. Check the original website for current availability or price. Use the Platforms tab to browse current inventory in all supported regions. Transit and driving directions open in Google Maps. The geographic selectors are browse areas. Edit the workplace to use a different preset, coordinates, or a full street address. The default workplace is Rockefeller Center.
+Snapshot prices are from when the rentals first appeared in the month. Check the original website or another exact-unit link for current availability or price. Map popups list the known exact-unit links. Separate address searches open Google results for the named site. Use the Platforms tab to browse Manhattan and Brooklyn. Transit and driving directions open in Google Maps. Edit the workplace to use a different preset, coordinates, or a full street address. The default workplace is Rockefeller Center.
 
 Results default to **Recently checked**, with recently checked listings first, ordered by asking rent. **Lowest rent**, **Fastest transit**, and **Fastest drive** sort all matching rentals before limiting the displayed list. Use **Import CSV** to add up to 500 collected listings per file to this device’s Saved list. The header is `url,address,unit,city,state,zip,bedrooms,rent` with optional `county,neighborhood,latitude,longitude` columns. Use studio = 0, five-digit ZIPs, and plain numeric rents. Coordinates are optional and support map placement when provided.
 

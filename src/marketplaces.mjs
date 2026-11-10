@@ -14,6 +14,7 @@ export const MARKETPLACE_NAMES = {
   rent: 'Rent.',
   apartmentguide: 'Apartment Guide',
   renthop: 'RentHop',
+  linecity: 'Linecity',
   craigslist: 'Craigslist',
   facebook: 'Facebook Marketplace',
   openigloo: 'Openigloo',
@@ -92,7 +93,7 @@ export const MARKETPLACE_DOMAINS = {
   streeteasy: 'streeteasy.com', zillow: 'zillow.com', apartments: 'apartments.com',
   realtor: 'realtor.com', redfin: 'redfin.com', trulia: 'trulia.com', hotpads: 'hotpads.com',
   zumper: 'zumper.com', apartmentlist: 'apartmentlist.com', rent: 'rent.com',
-  apartmentguide: 'apartmentguide.com', renthop: 'renthop.com', craigslist: 'craigslist.org',
+  apartmentguide: 'apartmentguide.com', renthop: 'renthop.com', linecity: 'linecity.com', craigslist: 'craigslist.org',
   facebook: 'facebook.com',
   openigloo: 'openigloo.com', affordablehousing: 'affordablehousing.com',
 };

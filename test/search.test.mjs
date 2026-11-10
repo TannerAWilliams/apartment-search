@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parseFilters, DEFAULT_FILTERS, localWorkplace } from '../src/search.mjs';
-import { MARKETS, regionOf } from '../src/regions.mjs';
+import { MARKETS, NYC_SEARCH_DEFAULT, regionOf, searchBorough } from '../src/regions.mjs';
 import { marketplaceAddressSearches, marketplaceIdForUrl, marketplaceLinks } from '../src/marketplaces.mjs';
 import { listingKey, mergeListings, normalizeListing, sourceLink } from '../src/listings.mjs';
 import { localSearch, marketSnapshot, median, rentAreas, snapshotSearch, SNAPSHOT_MONTH } from '../src/market.mjs';
@@ -176,10 +176,34 @@ test('links from different sites are merged only for the same confirmed unit', (
 test('address searches are distinct from direct links and use the unit and ZIP', () => {
   const listing = normalize({ ...sample, listingUrl: 'https://www.zillow.com/homedetails/example/' });
   const searches = marketplaceAddressSearches(listing);
-  assert.equal(searches.length, 14);
+  assert.equal(searches.length, 15);
   assert.equal(searches.some(({ id }) => id === 'zillow'), false);
   const link = new URL(searches.find(({ id }) => id === 'streeteasy').url);
   assert.match(link.searchParams.get('q'), /site:streeteasy\.com "12 Grove Street" "2" 07302/);
+});
+
+test('scoped search and rent medians include Manhattan and Brooklyn only', () => {
+  for (const region of [NYC_SEARCH_DEFAULT, 'manhattan', 'brooklyn']) {
+    const filters = parseFilters({ ...DEFAULT_FILTERS, region, includeMap: true });
+    const result = snapshotSearch(filters);
+    assert.ok(result.total > 0);
+    assert.equal(result.mapPoints.length, result.total);
+    const boroughs = region === NYC_SEARCH_DEFAULT ? ['manhattan', 'brooklyn'] : [region];
+    assert.ok(result.matches.every((listing) => boroughs.includes(searchBorough(listing))));
+    const areas = rentAreas(marketSnapshot(), { region, grouping: 'city' });
+    assert.deepEqual(areas.slice(1).map(({ label }) => label), ['Brooklyn, NY', 'Manhattan, NY'].filter((label) =>
+      boroughs.includes(label.split(',')[0].toLowerCase())));
+  }
+});
+
+test('the exact S21D owner and marketplace links appear on the card and map', () => {
+  const unit = marketSnapshot().find(({ id }) => id === 'streeteasy:5177042');
+  const result = localSearch([unit], parseFilters({ ...DEFAULT_FILTERS, region: 'manhattan', includeMap: true }),
+    localWorkplace(DEFAULT_FILTERS), 'snapshot');
+  assert.equal(result.matches[0].kind, 'snapshot');
+  assert.equal(result.mapPoints[0].name, 'Brodsky');
+  assert.match(result.mapPoints[0].url, /one-columbus-place-apartment-s-21d$/);
+  assert.deepEqual(result.mapPoints[0].additionalLinks.map(({ id }) => id), ['linecity', 'streeteasy']);
 });
 
 test('medians handle even and odd sample counts and missing bedroom sizes', () => {

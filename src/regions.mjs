@@ -5,7 +5,15 @@ export const WORKPLACES = {
   worldTrade: { label: 'World Trade Center', latitude: 40.71274, longitude: -74.01338 },
 };
 
+export const NYC_SEARCH_AREAS = {
+  'manhattan-brooklyn': { label: 'Manhattan & Brooklyn', color: '#27725a' },
+  manhattan: { label: 'Manhattan', color: '#27725a' },
+  brooklyn: { label: 'Brooklyn', color: '#2c6196' },
+};
+export const NYC_SEARCH_DEFAULT = 'manhattan-brooklyn';
+
 export const REGIONS = {
+  ...NYC_SEARCH_AREAS,
   all: { label: 'All regions', center: [40.81, -73.53, 99], color: '#27604f' },
   nyc: { label: 'New York City', center: [40.70, -73.96, 24], color: '#27725a' },
   nj: { label: 'New Jersey', center: [40.70, -74.44, 58], color: '#a4482b' },
@@ -55,6 +63,30 @@ export const MARKETS = [
   ['Doylestown', 'Doylestown', 'PA', '18901', 'pa'],
   ['Philadelphia', 'Philadelphia', 'PA', '19103', 'pa'],
 ].map(([label, city, state, zip, region]) => ({ label, city, state, zip, region }));
+
+export const NYC_SEARCH_MARKETS = MARKETS.filter(({ label }) => label === 'Manhattan' || label === 'Brooklyn');
+
+export function searchBorough({ state, county = '', zip = '', city = '' }) {
+  if (state !== 'NY') return null;
+  const normalizedCounty = county.toLowerCase().trim().replace(/ county$/, '');
+  if (normalizedCounty) return normalizedCounty === 'new york' ? 'manhattan' : normalizedCounty === 'kings' ? 'brooklyn' : null;
+  if (/^(100|101|102)\d{2}$/.test(zip)) return 'manhattan';
+  if (/^112\d{2}$/.test(zip)) return 'brooklyn';
+  const borough = city.trim().toLowerCase();
+  return !/^\d{5}$/.test(zip) && (borough === 'manhattan' || borough === 'brooklyn') ? borough : null;
+}
+
+export function matchesRegion(listing, region, broader) {
+  if (region === 'all') return true;
+  if (!Object.hasOwn(NYC_SEARCH_AREAS, region)) return region === (broader ?? regionOf(listing));
+  const borough = searchBorough(listing);
+  return borough !== null && (region === NYC_SEARCH_DEFAULT || region === borough);
+}
+
+export function marketsForSearch(filters) {
+  const borough = filters.region === NYC_SEARCH_DEFAULT ? searchBorough({ state: 'NY', zip: filters.zip }) : filters.region;
+  return borough ? NYC_SEARCH_MARKETS.filter(({ label }) => label.toLowerCase() === borough) : NYC_SEARCH_MARKETS;
+}
 
 const COUNTIES = {
   NY: {

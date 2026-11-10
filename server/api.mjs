@@ -1,7 +1,7 @@
 import { companyCounts } from '../src/companies.mjs';
 import { matchListings, needsCommute, parseFilters, SearchInputError } from '../src/search.mjs';
 import { formatSearch, RENT_GROUPINGS, rentAreas, SNAPSHOT_MONTH } from '../src/market.mjs';
-import { REGIONS } from '../src/regions.mjs';
+import { NYC_SEARCH_AREAS, REGIONS } from '../src/regions.mjs';
 import { buildingKey, mergeListings } from '../src/listings.mjs';
 import { configuredFeeds, loadFeed } from './listings.mjs';
 import { CommuteError, geocodeAddress, resolveWorkplace, routeCommutes, routingCredentials } from './commute.mjs';
@@ -82,7 +82,8 @@ export async function search(rawFilters, env, fetcher = fetch) {
     return withHousingLinks({ ...result, ...(snapshotMonth ? { snapshotMonth } : {}), ...commute }, bucket);
   }
   const status = bucket ? await refreshStatus(bucket) : null;
-  const directSources = DIRECT_RENTAL_SOURCES.filter(({ regions }) => filters.region === 'all' || regions.includes(filters.region));
+  const sourceRegion = Object.hasOwn(NYC_SEARCH_AREAS, filters.region) ? 'nyc' : filters.region;
+  const directSources = DIRECT_RENTAL_SOURCES.filter(({ regions }) => sourceRegion === 'all' || regions.includes(sourceRegion));
   const [openigloo, direct, results] = await Promise.all([
     storedSample(status, OPENIGLOO.id, filters.liveOnly, () => storedOpenigloo(bucket)),
     Promise.all(directSources.map(async (source) => ({
@@ -198,8 +199,12 @@ export async function handleApi(request, env, { requireToken = false, fetcher = 
     }
     try {
       const market = await storedMarket(env.BUCKET);
-      const history = await storedRentHistory(env.BUCKET, market.month, region, grouping);
-      return json({ month: market.month, areas: rentAreas(market.listings, { region, grouping }), history });
+      const areas = rentAreas(market.listings, { region, grouping });
+      const scoped = Object.hasOwn(NYC_SEARCH_AREAS, region);
+      const history = await storedRentHistory(env.BUCKET, market.month, scoped ? 'nyc' : region, grouping);
+      const areaIds = new Set(areas.filter(({ id }) => id !== 'overall').map(({ id }) => id));
+      return json({ month: market.month, areas, history: scoped ?
+        history.map(([month, rows]) => [month, rows.filter(([id]) => areaIds.has(id))]) : history });
     } catch {
       return json({ error: 'The refreshed rent data could not be read.' }, 503);
     }

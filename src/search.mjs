@@ -1,5 +1,5 @@
 import { companyMatches } from './companies.mjs';
-import { REGIONS, WORKPLACES, regionOf } from './regions.mjs';
+import { REGIONS, WORKPLACES, matchesRegion, regionOf } from './regions.mjs';
 
 export const DEFAULT_FILTERS = {
   region: 'all',
@@ -118,7 +118,7 @@ export function compareResults(a, b, sort = 'rent') {
 export function matchListings(listings, filters, workplace) {
   return listings.flatMap((listing) => {
     const region = regionOf(listing);
-    if (!region || !companyMatches(listing.company, filters.company) || (filters.liveOnly && listing.kind !== 'feed') || (filters.region !== 'all' && region !== filters.region) ||
+    if (!region || !companyMatches(listing.company, filters.company) || (filters.liveOnly && listing.kind !== 'feed') || !matchesRegion(listing, filters.region, region) ||
         (filters.zip && listing.zip !== filters.zip) ||
         (filters.bedrooms !== null && listing.bedrooms !== filters.bedrooms) ||
         (filters.maxRent !== null && listing.rent > filters.maxRent)) return [];

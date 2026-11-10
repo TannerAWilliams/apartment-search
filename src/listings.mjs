@@ -28,6 +28,30 @@ export function unitKey(listing) {
 
 export const listingKey = (listing) => unitKey(listing) ?? listing.id;
 
+// Individually checked unit URLs, keyed by the original listing rather than by building.
+const VERIFIED_UNIT_LINKS = new Map([
+  ['https://streeteasy.com/building/one-columbus-place/s21d', [
+    { id: 'brodsky', name: 'Brodsky', url: 'https://www.brodsky.com/rentals/lincoln-square/one-columbus-place/one-columbus-place-apartment-s-21d', kind: 'verified' },
+    { id: 'linecity', name: 'Linecity', url: 'https://www.linecity.com/listing/3916886/One-Columbus-Place-1-Columbus-Place-Lincoln-Square-Manhattan-NY-Rent', kind: 'verified' },
+  ]],
+]);
+
+export function listingWithVerifiedLinks(listing) {
+  const additional = listing.sources.flatMap(({ url }) => VERIFIED_UNIT_LINKS.get(url) ?? []);
+  return additional.length ? { ...listing, sources: mergeSourceLinks(listing.sources, additional) } : listing;
+}
+
+export function orderedListingLinks(sources, selectedSource) {
+  const priority = ({ id, kind }) => id === selectedSource ? 0 :
+    kind === 'feed' ? 1 : kind === 'verified' ? 2 : kind === 'saved' ? 3 : 4;
+  return sources.filter(({ url }) => url).sort((first, second) => priority(first) - priority(second));
+}
+
+export function listingLinkLabel({ name, kind }) {
+  if (kind === 'snapshot' || kind === 'cached') return 'View original on ' + name;
+  return 'Open on ' + name;
+}
+
 export function sourceLink(url, kind, fallback = null) {
   const href = safeListingUrl(url);
   if (!href) return fallback ? { ...fallback, url: null, kind } : null;

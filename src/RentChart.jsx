@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { formatSnapshotMonth, marketSnapshot, RENT_GROUPINGS, rentAreas, SNAPSHOT_MONTH, SNAPSHOT_SOURCE } from './market.mjs';
 import { bundledRentHistory } from './rent-history.mjs';
-import { REGIONS } from './regions.mjs';
+import { NYC_SEARCH_AREAS } from './regions.mjs';
 import { bedroomLabel, formatRent } from './search.mjs';
 import { styles } from './styles.js';
 import { Button, Chip, Field, Link } from './ui.jsx';
@@ -82,7 +82,8 @@ export function RentChart({ initialRegion, saved, onError, showSaved, loadMarket
   const month = published?.month ?? SNAPSHOT_MONTH;
   const areas = useMemo(() => published?.areas ?? rentAreas(dataset === 'market' ? marketSnapshot() : saved, { region, grouping }),
     [published, dataset, saved, region, grouping]);
-  const history = useMemo(() => published?.history ?? bundledRentHistory(month, region, grouping), [published, month, region, grouping]);
+  const history = useMemo(() => published?.history ?? bundledRentHistory(month, 'nyc', grouping)
+    .map(([period, rows]) => [period, rows.filter(([id]) => id !== 'overall')]), [published, month, grouping]);
   const search = query.trim().toLowerCase();
   const areaChoices = search ? areas.filter(({ id, label, detail }) =>
     id !== 'overall' && `${label} ${detail}`.toLowerCase().includes(search)) : areas;
@@ -111,7 +112,7 @@ export function RentChart({ initialRegion, saved, onError, showSaved, loadMarket
     <View style={styles.chartControls}>
       <Text style={styles.fieldLabel}>Region</Text>
       <View style={styles.chipRow}>
-        {Object.entries(REGIONS).map(([id, area]) =>
+        {Object.entries(NYC_SEARCH_AREAS).map(([id, area]) =>
           <Chip key={id} selected={region === id} onPress={() => resetAreas(setRegion, id)}>{area.label}</Chip>)}
       </View>
       <Text style={styles.fieldLabel}>Group areas by</Text>
@@ -156,14 +157,14 @@ export function RentChart({ initialRegion, saved, onError, showSaved, loadMarket
     </> : <View style={styles.empty}>
       <Text accessibilityRole="header" style={styles.panelTitle}>{search ? 'No matching area' : 'No rent observations here'}</Text>
       <Text style={styles.bodyText}>{search ? 'Try another name or grouping.' :
-        dataset === 'market' ? 'The public snapshot covers NYC and parts of North Jersey. You can chart your saved listings for other areas.' :
+        dataset === 'market' ? 'The public snapshot has no observations for this selection.' :
           'Add or save listings in this area to compare their asking rents.'}</Text>
       {!search && <Button secondary onPress={showSaved}>Open saved listings</Button>}
     </View>}
     <View style={styles.chartSource}>
       {dataset === 'market' ? <>
         <Text style={styles.fieldLabel}>About this data</Text>
-        <Text style={styles.smallMuted}>FirstMover Open Data tracks the initial asking rent of new listings in NYC and parts of North Jersey. Your apartment search filters and the live sample are separate from these medians.</Text>
+        <Text style={styles.smallMuted}>These medians use initial asking rents in Manhattan and Brooklyn. The combined median is available for the latest month. Select a neighborhood, borough, or ZIP to see earlier observations.</Text>
         <Link label="View source data" url={SNAPSHOT_SOURCE} onError={onError} />
       </> : <Text style={styles.smallMuted}>Asking rents and dates from the listings you saved on this device.</Text>}
     </View>

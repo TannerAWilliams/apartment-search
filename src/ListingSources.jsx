@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Text, View } from 'react-native';
-import { sourceLink } from './listings.mjs';
+import { listingLinkLabel, orderedListingLinks, sourceLink } from './listings.mjs';
 import { marketplaceAddressSearches } from './marketplaces.mjs';
 import { styles } from './styles.js';
 import { Button, Field, Link } from './ui.jsx';
@@ -9,7 +9,7 @@ export function ListingSources({ listing, onSaveLink, onError }) {
   const [expanded, setExpanded] = useState(false);
   const [url, setUrl] = useState('');
   const [error, setError] = useState('');
-  const direct = listing.sources.filter((source) => source.url);
+  const direct = orderedListingLinks(listing.sources);
   const count = new Set(direct.map(({ id }) => id)).size;
 
   function save() {
@@ -31,7 +31,7 @@ export function ListingSources({ listing, onSaveLink, onError }) {
       {direct.length > 0 && <View style={styles.sourceGroup}>
         <Text style={styles.fieldLabel}>Direct links for this listing</Text>
         <View style={styles.actionLinks}>
-          {direct.map((link) => <Link key={link.url} label={`${link.name} · ${link.kind === 'saved' ? 'Saved' : 'Original'}`}
+          {direct.map((link) => <Link key={link.url} label={listingLinkLabel(link)}
             url={link.url} onError={onError} />)}
         </View>
       </View>}
@@ -41,11 +41,11 @@ export function ListingSources({ listing, onSaveLink, onError }) {
           <Link key={url} label={name} url={url} onError={onError} />)}
       </View>}
       <View style={styles.sourceGroup}>
-        <Text style={styles.fieldLabel}>Search for this address</Text>
-        <Text style={styles.smallMuted}>Each link searches for the address on that site. Check the unit before saving a match.</Text>
+        <Text style={styles.fieldLabel}>Search for this address on other sites</Text>
+        <Text style={styles.smallMuted}>These links open Google results. Look for the matching apartment number.</Text>
         <View style={styles.addressLinks}>
-          {marketplaceAddressSearches(listing, ['snapshot', 'cached'].includes(listing.kind) ? [] : direct).map((link) =>
-            <Link key={link.id} label={link.name} url={link.url} onError={onError} />)}
+          {marketplaceAddressSearches(listing, direct.filter(({ kind }) => kind !== 'snapshot' && kind !== 'cached')).map((link) =>
+            <Link key={link.id} label={`Search ${link.name}`} url={link.url} onError={onError} />)}
         </View>
       </View>
       <Field label="Add a link for this unit" placeholder="Paste a listing URL" value={url} onChangeText={setUrl} maxLength={2000} />

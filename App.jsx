@@ -5,14 +5,14 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { NYC_COMPANIES } from './src/companies.mjs';
-import { MARKETS, REGIONS, WORKPLACES } from './src/regions.mjs';
+import { NYC_SEARCH_AREAS, NYC_SEARCH_DEFAULT, NYC_SEARCH_MARKETS, REGIONS, WORKPLACES, marketsForSearch, matchesRegion, searchBorough } from './src/regions.mjs';
 import { MARKETPLACE_NAMES, marketplaceLinks } from './src/marketplaces.mjs';
 import {
   DEFAULT_FILTERS, RESULT_SORTS, bedroomLabel, directionsLink, formatRent, needsCommute, parseFilters,
 } from './src/search.mjs';
 import { colors, styles } from './src/styles.js';
 import { formatSnapshotMonth, localSearch, snapshotSearch, SNAPSHOT_MONTH, SNAPSHOT_SOURCE } from './src/market.mjs';
-import { listingKey, mergeListings, mergeSourceLinks } from './src/listings.mjs';
+import { listingKey, listingLinkLabel, mergeListings, mergeSourceLinks, orderedListingLinks } from './src/listings.mjs';
 import { Button, Chip, ExternalLink, Field, Link, SectionTitle } from './src/ui.jsx';
 import { encodeSourceImport, pullPublicSources, retryablePublicSources } from './src/pull-sources.mjs';
 import { AffordableHousing } from './src/AffordableHousing.jsx';
@@ -25,7 +25,7 @@ import { RentChart } from './src/RentChart.jsx';
 const API_ORIGIN = Platform.OS === 'web' ? '' :
   (process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, '') || null);
 const WEB_MAP = Platform.OS === 'web';
-const SEARCH_DEFAULTS = { ...DEFAULT_FILTERS, includeMap: WEB_MAP, sort: 'recent' };
+const SEARCH_DEFAULTS = { ...DEFAULT_FILTERS, region: NYC_SEARCH_DEFAULT, includeMap: WEB_MAP, sort: 'recent' };
 const BEDROOMS = [null, 0, 1, 2, 3, 4];
 const PAGE_SIZE = 12;
 const EMPTY_POINTS = [];
@@ -85,7 +85,7 @@ function Filters({ draft, setDraft, submit, busy, serverState, token, setToken, 
     {(panel === 'more' || panel === 'area') && <>
     <Text style={styles.fieldLabel}>Area</Text>
     <View style={styles.chipRow}>
-      {Object.entries(REGIONS).filter(([key]) => key !== 'pa').map(([key, region]) => <Chip key={key} selected={draft.region === key}
+      {Object.entries(NYC_SEARCH_AREAS).map(([key, region]) => <Chip key={key} selected={draft.region === key}
         onPress={() => set('region')(key)}>{region.label}</Chip>)}
     </View>
     <Field label="ZIP code (optional)" placeholder="Any ZIP in this area" value={draft.zip}
@@ -135,26 +135,25 @@ function Filters({ draft, setDraft, submit, busy, serverState, token, setToken, 
 
 function Listing({ listing, selectedSource, workplace, commute, onSave, onSaveLink, onRemove, onError, saved }) {
   const { region, address, unit, city, state, zip, rent, bedrooms, transitSeconds, drivingSeconds, neighborhood } = listing;
-  const regionInfo = REGIONS[region];
+  const regionInfo = REGIONS[searchBorough(listing) ?? region];
   const title = unit ? `${address}, ${unit.startsWith('#') ? unit : 'Unit ' + unit}` : address;
   const subtitle = [neighborhood === city ? '' : neighborhood, `${city}, ${state} ${zip}`].filter(Boolean).join(' · ');
   const feed = listing.sources.find(({ kind }) => kind === 'feed');
-  const original = listing.sources.find(({ id, url }) => id === selectedSource && url) ??
-    listing.sources.find(({ kind, url }) => kind === 'feed' && url) ??
-    listing.sources.find(({ url }) => url);
+  const [original] = orderedListingLinks(listing.sources, selectedSource);
+  const historical = ['snapshot', 'cached'].includes(original?.kind);
   const checkedAt = listing.checkedAt ?? listing.seenAt;
   const checked = Number.isFinite(Date.parse(checkedAt)) ?
     'Checked ' + CHECK_TIME.format(new Date(checkedAt)) : 'Previous check';
   const observation = listing.kind === 'snapshot' ? `First listed ${listing.seenAt}` :
     listing.kind === 'saved' ? 'Saved listing' :
-    listing.kind === 'cached' ? (original?.name ?? 'Rental source') + ' · ' + checked + ' · Last saved result' :
+    listing.kind === 'cached' ? checked + ' · Last saved result' :
       (feed?.name ?? 'Live source') + ' · ' + checked;
 
   return <View style={styles.rentalCard}>
     {original && <ExternalLink url={original.url} onError={onError} style={styles.listingMedia}
       accessibilityLabel={'Open photos and details for ' + title + ' on ' + original.name}>
       <Text style={styles.mediaSource}>{original.name}</Text>
-      <Text style={styles.mediaLabel}>Photos and details ↗</Text>
+      <Text style={styles.mediaLabel}>{historical ? 'View original ad ↗' : 'Photos and details ↗'}</Text>
     </ExternalLink>}
     <View style={styles.rentalCardBody}>
     <View style={styles.listingTop}>
@@ -173,7 +172,8 @@ function Listing({ listing, selectedSource, workplace, commute, onSave, onSaveLi
       </View>
       <View style={styles.priceBlock}>
         <Text style={styles.price}>{formatRent(rent)}</Text>
-        <Text style={styles.smallMuted}>{listing.priceIncludesFees ? 'total price / mo' : 'asking rent / mo'}</Text>
+        <Text style={styles.smallMuted}>{listing.kind === 'snapshot' ? 'recorded rent / mo' :
+          listing.priceIncludesFees ? 'total price / mo' : 'asking rent / mo'}</Text>
       </View>
     </View>
     <View style={styles.cardStats}>
@@ -188,7 +188,7 @@ function Listing({ listing, selectedSource, workplace, commute, onSave, onSaveLi
     <View style={styles.cardActions}>
       <Text style={styles.smallMuted}>{observation}</Text>
       <View style={styles.cardLinks}>
-        {original && <Link label={(['snapshot', 'cached'].includes(original.kind) ? 'View original on ' : 'Open on ') + original.name}
+        {original && <Link label={listingLinkLabel(original)}
           url={original.url} onError={onError} />}
         <Link label="Transit directions" url={directionsLink(listing, workplace)} onError={onError} />
         <Link label="Driving directions" url={directionsLink(listing, workplace, 'driving')} onError={onError} />
@@ -216,7 +216,7 @@ function sourceCheckText({ status, updatedAt, listingCount, retryAt, error }) {
 }
 
 function Marketplaces({ filters, sources, configuredSources, companies, onCompany, refresh, refreshing, onRefresh, onError }) {
-  const markets = MARKETS.filter((market) => filters.region === 'all' || market.region === filters.region);
+  const markets = NYC_SEARCH_MARKETS.filter(({ label }) => filters.region === NYC_SEARCH_DEFAULT || label.toLowerCase() === filters.region);
   const [marketLabel, setMarketLabel] = useState('');
   const market = markets.find((item) => item.label === marketLabel) ??
     markets.find((item) => item.zip === filters.zip) ?? markets[0];
@@ -228,6 +228,11 @@ function Marketplaces({ filters, sources, configuredSources, companies, onCompan
 
   return <View style={styles.marketplacePanel}>
     <Text accessibilityRole="header" style={styles.panelTitle}>Browse rental platforms</Text>
+    <View style={styles.chartSource}>
+      <Text style={styles.fieldLabel}>Search several NYC sites at once</Text>
+      <Link label="RentReboot" url="https://rentreboot.com/" onError={onError} />
+      <Link label="Lessia’s List" url="https://lessiaslist.com/" onError={onError} />
+    </View>
     <Text style={styles.bodyText}>Live results come from recent marketplace checks. FirstMover’s {formatSnapshotMonth(refresh?.sources.find(({ id }) => id === 'firstmover')?.month)} snapshot supplies the rent charts.</Text>
     <View style={styles.chartSource}>
       <Text style={styles.fieldLabel}>{sampleNames.length ? sampleNames.length + ' live listing sources' : 'Recent live samples unavailable'}</Text>
@@ -336,9 +341,7 @@ function Results({ result, applied, sort, onSort, openCommute, commuteConfigured
 function WebsiteFilter({ result, applied, onSelect, onError }) {
   const counts = result.sourceCounts ?? [];
   const streetEasy = counts.find(({ id }) => id === 'streeteasy');
-  const area = MARKETS.find(({ zip }) => applied.zip && zip === applied.zip) ??
-    MARKETS.find(({ region }) => region === applied.region) ?? MARKETS[0];
-  const browse = marketplaceLinks(area, applied).find(({ id }) => id === 'streeteasy');
+  const areas = marketsForSearch(applied);
 
   return <View style={styles.websiteFilter}>
     <Text style={styles.fieldLabel}>Listing website</Text>
@@ -352,7 +355,8 @@ function WebsiteFilter({ result, applied, onSelect, onError }) {
     </ScrollView>
     {applied.source === 'streeteasy' && <View style={styles.actionLinks}>
       <Text style={styles.smallMuted}>Includes dated StreetEasy listings when All results is selected.</Text>
-      <Link label="Open current StreetEasy search" url={browse.url} onError={onError} />
+      {areas.map((area) => <Link key={area.label} label={`Browse ${area.label} on StreetEasy`}
+        url={marketplaceLinks(area, applied).find(({ id }) => id === 'streeteasy').url} onError={onError} />)}
     </View>}
   </View>;
 }
@@ -567,7 +571,7 @@ function ApartmentSearch() {
   const points = displayed.mapPoints ?? EMPTY_POINTS;
   const split = WEB_MAP && wide && mapView;
   const listVisible = !WEB_MAP || !mapView || wide;
-  const marketArea = applied.region === 'all' ? 'NY, NJ and CT' : REGIONS[applied.region].label;
+  const marketArea = REGIONS[applied.region].label;
   const commuteLabel = [
     applied.maxTransitMinutes != null && `Transit ≤ ${applied.maxTransitMinutes} min`,
     applied.maxDrivingMinutes != null && `Drive ≤ ${applied.maxDrivingMinutes} min`,
@@ -616,7 +620,7 @@ function ApartmentSearch() {
                 <View style={styles.chipRow}>
                   <Chip selected={scope === 'market' && !applied.liveOnly} onPress={() => selectInventory(false)}>All results</Chip>
                   <Chip selected={scope === 'market' && applied.liveOnly} onPress={() => selectInventory(true)}>Live only</Chip>
-                  <Chip selected={scope === 'saved'} onPress={showSaved}>Saved ({saved.length})</Chip>
+                  <Chip selected={scope === 'saved'} onPress={showSaved}>Saved ({savedResults.total})</Chip>
                 </View>
                 {!adding && <View style={styles.chipRow}>
                   <Button secondary onPress={() => { setAdding('single'); showSaved(); }}>+ Add listing</Button>
@@ -631,6 +635,9 @@ function ApartmentSearch() {
                 geocode={serverState === 'ready' ? (address) => api('geocode', { body: { address }, token: activeToken }) : null} />}
               {adding === 'import' && <ImportListings
                 onImport={(listings) => {
+                  if (listings.some((listing) => !matchesRegion(listing, NYC_SEARCH_DEFAULT))) {
+                    throw new Error('Import listings with Manhattan or Brooklyn ZIP codes.');
+                  }
                   setSaved((current) => mergeListings([...listings, ...current]));
                   setAdding(false);
                 }}
@@ -655,10 +662,11 @@ function ApartmentSearch() {
             {tab === 'marketplaces' && <Marketplaces filters={applied} sources={result.sources}
               configuredSources={configuredSources} companies={companies} onCompany={searchCompany} refresh={refresh} refreshing={refreshing}
               onRefresh={() => checkSources()} onError={setError} />}
-            {tab === 'affordable' && <AffordableHousing loadHousing={serverState === 'ready' ? loadHousing : undefined} onError={setError} />}
+            {tab === 'affordable' && <AffordableHousing region={applied.region}
+              loadHousing={serverState === 'ready' ? loadHousing : undefined} onError={setError} />}
         </View>
         <View style={styles.footer}>
-          <Text style={styles.smallMuted}>Apartment Search · New York, New Jersey and Connecticut</Text>
+          <Text style={styles.smallMuted}>Apartment Search · Manhattan and Brooklyn</Text>
         </View>
       </View>
     </ScrollView>
