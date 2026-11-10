@@ -4,9 +4,13 @@ import { REGIONS, WORKPLACES, regionOf } from './regions.mjs';
 export const DEFAULT_FILTERS = {
   region: 'all',
   bedrooms: 1,
-  maxRent: 2800,
+  maxRent: 5000,
   maxMiles: null,
+  maxTransitMinutes: null,
+  maxDrivingMinutes: null,
   liveOnly: false,
+  sort: 'rent',
+  source: '',
   company: '',
   workplace: 'rockefeller',
   customWorkplace: '',
@@ -16,6 +20,11 @@ export const DEFAULT_FILTERS = {
 export const bedroomLabel = (count) => count === null ? 'Any beds' :
   count === 0 ? 'Studio' : `${count} bedroom${count === 1 ? '' : 's'}`;
 export const formatRent = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 2 }).format;
+export const RESULT_SORTS = { recent: 'Recently checked', rent: 'Lowest rent', transit: 'Fastest transit', driving: 'Fastest drive' };
+const SORT_METRICS = { distance: 'miles', transit: 'transitSeconds', driving: 'drivingSeconds' };
+
+export const needsCommute = (filters) => filters.maxTransitMinutes != null || filters.maxDrivingMinutes != null ||
+  filters.sort === 'transit' || filters.sort === 'driving';
 
 export class SearchInputError extends Error {}
 
@@ -47,6 +56,10 @@ export function parseFilters(input = {}) {
     throw new SearchInputError('Enter a full workplace address or latitude, longitude.');
   }
   const zip = typeof input.zip === 'string' ? input.zip.trim() : '';
+  const source = typeof input.source === 'string' ? input.source.trim() : '';
+  const sort = input.sort ?? DEFAULT_FILTERS.sort;
+  if (typeof sort !== 'string' || (sort !== 'distance' && !Object.hasOwn(RESULT_SORTS, sort))) throw new SearchInputError('Choose a sort order.');
+  if (source && !/^[a-z0-9][a-z0-9_.-]{0,127}$/.test(source)) throw new SearchInputError('Choose a listing website.');
   if (zip && !/^\d{5}$/.test(zip)) throw new SearchInputError('Enter a five-digit ZIP code.');
   if (input.maxMinutes !== null && input.maxMinutes !== undefined && input.maxMinutes !== '') {
     throw new SearchInputError('Use the transit directions link on a listing to check travel time.');
@@ -58,10 +71,16 @@ export function parseFilters(input = {}) {
     customWorkplace: workplace === 'custom' ? customWorkplace : '',
     zip,
     liveOnly: input.liveOnly === true,
+    includeMap: input.includeMap === true,
+    source,
+    sort,
+    includeCommute: input.includeCommute === true,
     company: typeof input.company === 'string' ? input.company.trim().slice(0, 80) : '',
     bedrooms: optionalNumber(input.bedrooms, 'bedroom count', 0, 4),
     maxRent: optionalNumber(input.maxRent, 'maximum rent', 1, 100000),
     maxMiles: optionalNumber(input.maxMiles, 'maximum distance', 0.1, 250, false),
+    maxTransitMinutes: optionalNumber(input.maxTransitMinutes, 'maximum transit time in minutes', 1, 180),
+    maxDrivingMinutes: optionalNumber(input.maxDrivingMinutes, 'maximum driving time in minutes', 1, 180),
   };
 }
 
@@ -90,7 +109,8 @@ export function distanceMiles(from, to) {
 }
 
 export function compareResults(a, b, sort = 'rent') {
-  const metric = sort === 'distance' ? 'miles' : 'rent';
+  if (sort === 'recent' && (a.kind === 'feed') !== (b.kind === 'feed')) return a.kind === 'feed' ? -1 : 1;
+  const metric = SORT_METRICS[sort] ?? 'rent';
   return (a[metric] ?? Infinity) - (b[metric] ?? Infinity) ||
     a.rent - b.rent || a.id.localeCompare(b.id);
 }
@@ -104,10 +124,10 @@ export function matchListings(listings, filters, workplace) {
         (filters.maxRent !== null && listing.rent > filters.maxRent)) return [];
 
     const miles = distanceMiles(listing, workplace);
-    if (filters.maxMiles !== null && (miles === null || miles > filters.maxMiles)) return [];
+    if (filters.maxMiles != null && (miles === null || miles > filters.maxMiles)) return [];
 
     return [{ ...listing, region, miles }];
-  }).sort(compareResults);
+  });
 }
 
 export function directionsLink(listing, workplace, mode = 'transit') {
@@ -116,7 +136,7 @@ export function directionsLink(listing, workplace, mode = 'transit') {
   const work = `${workplace.latitude},${workplace.longitude}`;
   const driving = mode === 'driving';
   return `https://www.google.com/maps/dir/?${new URLSearchParams({
-    api: '1', origin: driving ? work : home, destination: driving ? home : work,
+    api: '1', origin: home, destination: work,
     travelmode: driving ? 'driving' : 'transit',
   })}`;
 }

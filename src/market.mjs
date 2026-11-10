@@ -3,10 +3,11 @@ import { gunzipSync, strFromU8 } from 'fflate';
 import { SNAPSHOT_GZIP, SNAPSHOT_MONTH } from './data/snapshot.mjs';
 import { mergeListings } from './listings.mjs';
 import { regionOf } from './regions.mjs';
-import { localWorkplace, matchListings, SearchInputError } from './search.mjs';
+import { compareResults, isPoint, localWorkplace, matchListings, SearchInputError } from './search.mjs';
 
 export { SNAPSHOT_MONTH };
 export const SNAPSHOT_SOURCE = 'https://www.firstmovernyc.com/open-data';
+export const RENT_GROUPINGS = { neighborhood: 'Neighborhood', city: 'Borough / city', zip: 'ZIP code' };
 const MONTH_FORMAT = new Intl.DateTimeFormat('en-US', {
   month: 'long', year: 'numeric', timeZone: 'UTC',
 });
@@ -36,9 +37,37 @@ export function marketSnapshot() {
 
 export function localSearch(listings, filters, workplace, mode, sources = [], notices = []) {
   if (!workplace) throw new SearchInputError('Use a workplace preset or enter latitude, longitude when offline.');
-  const matches = matchListings(listings, filters, workplace);
-  if (matches.length > 100) notices = [...notices, 'Showing the 100 lowest-rent matches for these filters. Narrow the area or ZIP to see more of a specific location.'];
-  return { mode, workplace, matches: matches.slice(0, 100), total: matches.length, sources, notices };
+  return formatSearch(matchListings(listings, filters, workplace), filters, workplace, mode, sources, notices);
+}
+
+export function formatSearch(listings, filters, workplace, mode, sources, notices) {
+  const eligible = listings.filter(({ transitSeconds, drivingSeconds }) =>
+    (filters.maxTransitMinutes == null || (transitSeconds ?? Infinity) <= filters.maxTransitMinutes * 60) &&
+    (filters.maxDrivingMinutes == null || (drivingSeconds ?? Infinity) <= filters.maxDrivingMinutes * 60));
+  const bySource = new Map();
+  for (const listing of eligible) {
+    const links = listing.sources.filter(({ url }) => url);
+    const checked = new Set(links.filter(({ kind }) => kind === 'feed').map(({ id }) => id));
+    for (const [id, source] of new Map(links.map((source) => [source.id, source]))) {
+      const entry = bySource.get(id) ?? { id, name: source.name, count: 0, checkedCount: 0 };
+      entry.count += 1;
+      if (checked.has(id)) entry.checkedCount += 1;
+      bySource.set(id, entry);
+    }
+  }
+  const matches = filters.source ? eligible.filter((listing) => listing.sources.some(({ id, url }) => id === filters.source && url)) : eligible;
+  matches.sort((first, second) => compareResults(first, second, filters.sort));
+  const mapPoints = filters.includeMap ? matches.filter(isPoint).map((listing) => {
+    const original = listing.sources.find(({ id, url }) => id === filters.source && url) ?? listing.sources.find(({ url }) => url);
+    return { latitude: listing.latitude, longitude: listing.longitude, rent: listing.rent, bedrooms: listing.bedrooms,
+      title: [listing.address, listing.unit && '#' + listing.unit.replace(/^#/, '')].filter(Boolean).join(' '),
+      name: original?.name, url: original?.url, kind: listing.kind,
+      transitSeconds: listing.transitSeconds, drivingSeconds: listing.drivingSeconds };
+  }) : undefined;
+  if (matches.length > 100) notices = [...notices, 'Showing the first 100 matches for the selected sort order. Narrow the area or ZIP to see more of a specific location.'];
+  return { mode, workplace, matches: matches.slice(0, 100), total: matches.length, eligibleTotal: eligible.length,
+    sourceCounts: [...bySource.values()].sort((a, b) => b.checkedCount - a.checkedCount || b.count - a.count),
+    sources, notices, ...(mapPoints ? { mapPoints } : {}) };
 }
 
 export function snapshotSearch(filters, workplace = localWorkplace(filters), market = { month: SNAPSHOT_MONTH, listings: marketSnapshot() }) {
@@ -89,4 +118,15 @@ export function rentAreas(listings, { region = 'all', zip = '', grouping = 'neig
   const sorted = [...areas.values()].map(summarize).sort((first, second) =>
     first.label.localeCompare(second.label, 'en', { numeric: true }) || first.detail.localeCompare(second.detail));
   return [summarize(overall), ...sorted];
+}
+
+export function packRentMonth(listings) {
+  return Object.fromEntries(['all', 'nyc', 'nj'].map((region) => [
+    region,
+    Object.fromEntries(Object.keys(RENT_GROUPINGS).map((grouping) => [
+      grouping, rentAreas(listings, { region, grouping }).map(({ id, sizes }) => [
+        id, ...sizes.flatMap(({ median, count }) => [median, count]),
+      ]),
+    ])),
+  ]));
 }

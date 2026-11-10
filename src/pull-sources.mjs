@@ -4,16 +4,19 @@ import { checkFirstMover } from '../server/firstmover.mjs';
 import { loadHousingConnect } from '../server/housing.mjs';
 
 const MAX_UNCOMPRESSED = 12 * 1024 * 1024;
+const PUBLIC_READERS = {
+  firstmover: (plan, fetcher) => checkFirstMover(plan.market, fetcher),
+  housingconnect: (_plan, fetcher, now) => loadHousingConnect(fetcher, now),
+};
 
-export async function pullPublicSources(plan, fetcher = fetch, now = new Date()) {
-  const results = await Promise.allSettled([
-    checkFirstMover(plan.market, fetcher),
-    loadHousingConnect(fetcher, now),
-  ]);
-  return Object.fromEntries(results.map((result, i) => [
-    i === 0 ? 'firstmover' : 'housingconnect',
-    result.status === 'fulfilled' ? result.value : null,
-  ]));
+export function retryablePublicSources(check, now = new Date()) {
+  return (check.sources ?? []).filter(({ id, status, retryAt }) => Object.hasOwn(PUBLIC_READERS, id) &&
+    status === 'failed' && !(Date.parse(retryAt) > now.getTime())).map(({ id }) => id);
+}
+
+export async function pullPublicSources(plan, fetcher = fetch, now = new Date(), ids = Object.keys(PUBLIC_READERS)) {
+  const results = await Promise.allSettled(ids.map((id) => PUBLIC_READERS[id](plan, fetcher, now)));
+  return Object.fromEntries(results.map((result, index) => [ids[index], result.status === 'fulfilled' ? result.value : null]));
 }
 
 export function encodeSourceImport(sources) {

@@ -39,7 +39,7 @@ export function marketplaceLinks(market, filters) {
   const apartmentBeds = beds === null ? '' : beds === 0 ? 'studios' : `${beds}-bedrooms`;
   const apartmentFilters = [apartmentBeds, max === null ? '' : `under-${max}`].filter(Boolean).join('-');
   const apartmentArea = filters.zip || slug;
-  const location = encodeURIComponent(city.replaceAll(' ', '_') + ',' + state);
+  const location = encodeURIComponent(city.replaceAll(' ', '_')) + ',' + state;
   const realtorArea = filters.zip || titleSlug + '_' + state;
   const realtorBeds = beds > 0 ? `/beds-${beds}-${beds}` : '';
   const hotpadsPath = max === null ? 'apartments-for-rent' : `apartments-under-${max}`;
@@ -62,7 +62,7 @@ export function marketplaceLinks(market, filters) {
     ['zillow', `https://www.zillow.com/${filters.zip || slug}/rentals/`, 'Area search'],
     ['realtor', `https://www.realtor.com/apartments/${filters.zip || city.replaceAll(' ', '-') + '_' + state}`, 'Area search'],
     ['redfin', 'https://www.redfin.com/rentals', 'Choose your city on Redfin'],
-    ['trulia', `https://www.trulia.com/for_rent/${filters.zip || location + ',' + state}/`, 'Area search'],
+    ['trulia', `https://www.trulia.com/for_rent/${filters.zip || location}/`, 'Area search'],
     ['hotpads', `https://hotpads.com/${slug}/apartments-for-rent`, 'City search'],
     ['zumper', `https://www.zumper.com/apartments-for-rent/${slug}`, 'City search'],
     ['apartmentlist', `https://www.apartmentlist.com/${stateSlug}/${citySlug}`, 'City search'],
@@ -76,11 +76,11 @@ export function marketplaceLinks(market, filters) {
   ];
   const streetEasyArea = STREETEASY_AREAS[city];
   if (streetEasyArea) {
-    const path = beds === 0 ? 'studios-for-rent' : beds === null ? 'for-rent' : `${beds}-bedroom-apartments-for-rent`;
-    const price = max === null ? '' : '/' + encodeURIComponent(`price:-${max}`);
+    const constraints = [beds === null ? '' : 'beds:' + beds, max === null ? '' : 'price:-' + max].filter(Boolean);
+    const path = constraints.length ? '/' + encodeURIComponent(constraints.join('|')) : '';
     const detail = beds !== null && max !== null ? 'Area + bedrooms + rent limit' :
       beds !== null ? 'Area + bedroom count' : max !== null ? 'Area + rent limit' : 'Area search';
-    links.unshift(['streeteasy', `https://streeteasy.com/${path}/${streetEasyArea}${price}`, detail]);
+    links.unshift(['streeteasy', `https://streeteasy.com/for-rent/${streetEasyArea}${path}?sort_by=price_asc`, detail]);
   } else {
     links.push(['streeteasy', 'https://streeteasy.com/for-rent/nyc', 'Browse NYC and NJ listings']);
   }

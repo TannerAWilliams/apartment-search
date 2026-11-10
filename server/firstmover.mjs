@@ -3,11 +3,13 @@ import { parse } from 'csv-parse/browser/esm/sync';
 const REPOSITORY_PATH = 'benfwalla/firstmover-open-data-project';
 const CATALOG_URL = `https://api.github.com/repos/${REPOSITORY_PATH}/contents/public/data`;
 const CSV_ROOT = `https://raw.githubusercontent.com/${REPOSITORY_PATH}/main/public/data/`;
+const PUBLISHED_CATALOG = 'https://www.firstmovernyc.com/open-data';
+const MONTHLY_FILE = /^20\d{2}-(0[1-9]|1[0-2])\.csv$/;
 const MAX_CSV_BYTES = 32 * 1024 * 1024;
 const NYC_COUNTIES = {
   Manhattan: 'New York', Brooklyn: 'Kings', Queens: 'Queens', Bronx: 'Bronx', 'Staten Island': 'Richmond',
 };
-const NJ_ZIPS = {
+export const NJ_ZIPS = {
   '07002': ['Bayonne', 'Hudson'], '07010': ['Cliffside Park', 'Bergen'],
   '07020': ['Edgewater', 'Bergen'], '07024': ['Fort Lee', 'Bergen'],
   '07029': ['Harrison', 'Hudson'], '07030': ['Hoboken', 'Hudson'],
@@ -23,7 +25,7 @@ const EXCLUDED = new Set(['HOUSE', 'TOWNHOUSE', 'COMMERCIAL', 'LAND']);
 const COLUMNS = ['id', 'street', 'unit', 'state', 'zip_code', 'neighborhood',
   'latitude', 'longitude', 'bedrooms', 'price', 'url', 'created_at_utc', 'building_type'];
 
-function nycBorough(zip) {
+export function nycBorough(zip) {
   const prefix = zip.slice(0, 3);
   if (['100', '101', '102'].includes(prefix)) return 'Manhattan';
   if (prefix === '103') return 'Staten Island';
@@ -92,7 +94,7 @@ export async function checkFirstMover(previous, fetcher = fetch) {
   if (!response.ok) throw new Error(`FirstMover catalog returned HTTP ${response.status}.`);
   const entries = await response.json();
   if (!Array.isArray(entries)) throw new Error('The FirstMover catalog was invalid.');
-  const entry = entries.filter((file) => file?.type === 'file' && /^20\d{2}-(0[1-9]|1[0-2])\.csv$/.test(file.name))
+  const entry = entries.filter((file) => file?.type === 'file' && MONTHLY_FILE.test(file.name))
     .sort((a, b) => b.name.localeCompare(a.name))[0];
   if (!entry || !/^[a-f0-9]{40}$/.test(entry.sha) || !(entry.size > 0 && entry.size <= MAX_CSV_BYTES)) {
     throw new Error('The latest FirstMover CSV is unavailable or too large.');
@@ -104,9 +106,46 @@ export async function checkFirstMover(previous, fetcher = fetch) {
   if (previous?.revision === entry.sha) return { changed: false, ...previous, catalogEtag };
 
   const download = await fetcher(CSV_ROOT + entry.name, { redirect: 'error', signal: AbortSignal.timeout(20000) });
-  if (!download.ok) throw new Error(`FirstMover download returned HTTP ${download.status}.`);
-  const raw = await download.arrayBuffer();
-  if (raw.byteLength > MAX_CSV_BYTES) throw new Error('The FirstMover CSV is too large.');
+  const raw = await readCsv(download);
   const rows = parseFirstMoverCsv(new TextDecoder().decode(raw), month);
-  return { changed: true, month, revision: entry.sha, catalogEtag, rows };
+  return { changed: true, month, revision: entry.sha, catalogEtag, csvEtag: download.headers.get('ETag') ?? '', rows };
+}
+
+async function readCsv(response) {
+  if (!response.ok) throw new Error(`FirstMover download returned HTTP ${response.status}.`);
+  if (Number(response.headers.get('Content-Length')) > MAX_CSV_BYTES) throw new Error('The FirstMover CSV is too large.');
+  const raw = await response.arrayBuffer();
+  if (raw.byteLength > MAX_CSV_BYTES) throw new Error('The FirstMover CSV is too large.');
+  return raw;
+}
+
+async function gitRevision(raw) {
+  const header = new TextEncoder().encode('blob ' + raw.byteLength + '\0');
+  const blob = new Uint8Array(header.length + raw.byteLength);
+  blob.set(header);
+  blob.set(new Uint8Array(raw), header.length);
+  const hash = await crypto.subtle.digest('SHA-1', blob);
+  return Array.from(new Uint8Array(hash), (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+export async function checkPublishedFirstMover(previous, fetcher) {
+  const page = await fetcher(PUBLISHED_CATALOG, { redirect: 'error', signal: AbortSignal.timeout(9000) });
+  if (!page.ok) throw new Error(`FirstMover catalog returned HTTP ${page.status}.`);
+  const html = await page.text();
+  const file = [...html.matchAll(/\bhref=["']([^"']+)["']/gi)]
+    .map(([, href]) => href.startsWith(CSV_ROOT) ? href.slice(CSV_ROOT.length) : '')
+    .filter((name) => MONTHLY_FILE.test(name)).sort().at(-1);
+  if (!file) throw new Error('The latest FirstMover CSV is unavailable.');
+
+  const month = file.slice(0, 7);
+  if (previous?.month > month) throw new Error('The FirstMover catalog returned an older snapshot.');
+  const headers = previous?.month === month && previous.csvEtag ? { 'If-None-Match': previous.csvEtag } : {};
+  const download = await fetcher(CSV_ROOT + file, { headers, redirect: 'error', signal: AbortSignal.timeout(20000) });
+  if (download.status === 304 && headers['If-None-Match']) return { changed: false, ...previous };
+
+  const raw = await readCsv(download);
+  const csvEtag = download.headers.get('ETag') ?? '';
+  const revision = await gitRevision(raw);
+  if (previous?.revision === revision) return { changed: false, ...previous, csvEtag };
+  return { changed: true, month, revision, csvEtag, rows: parseFirstMoverCsv(new TextDecoder().decode(raw), month) };
 }

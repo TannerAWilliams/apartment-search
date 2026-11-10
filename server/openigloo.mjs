@@ -1,7 +1,7 @@
-import { parse } from 'csv-parse/browser/esm/sync';
 import { normalizeListing } from '../src/listings.mjs';
 import { marketplaceIdForUrl } from '../src/marketplaces.mjs';
 import { DEFAULT_FILTERS } from '../src/search.mjs';
+import { geocodeRentalAddresses } from './geocode-rentals.mjs';
 
 export const OPENIGLOO = { id: 'openigloo', name: 'Openigloo', kind: 'feed' };
 const ENDPOINT = 'https://mcp.openigloo.com/mcp';
@@ -42,30 +42,6 @@ async function searchMcp(fetcher) {
   return result.structuredContent;
 }
 
-const csvField = (value) => '"' + String(value).replaceAll('"', '""') + '"';
-
-async function geocodeListings(listings, fetcher) {
-  if (!listings.length) return listings;
-  const data = listings.map(({ id, address, city, zip }) =>
-    [id, address, city === 'Manhattan' ? 'New York' : city, 'NY', zip].map(csvField).join(',')).join('\n');
-  const form = new FormData();
-  form.set('addressFile', new Blob([data], { type: 'text/csv' }), 'apartments.csv');
-  form.set('benchmark', 'Public_AR_Current');
-  const response = await fetcher('https://geocoding.geo.census.gov/geocoder/locations/addressbatch', {
-    method: 'POST', body: form, redirect: 'error', signal: AbortSignal.timeout(14000),
-  });
-  if (!response.ok) return listings;
-  const points = new Map();
-  for (const row of parse(await response.text(), { skip_empty_lines: true, relax_column_count: true })) {
-    if (row[2] !== 'Match' || row[3] !== 'Exact') continue;
-    const [longitude, latitude] = (row[5] ?? '').split(',').map(Number);
-    if (latitude >= 40 && latitude <= 42 && longitude >= -75 && longitude <= -72) {
-      points.set(row[0], { latitude, longitude });
-    }
-  }
-  return listings.map((listing) => ({ ...listing, ...points.get(listing.id) }));
-}
-
 export async function loadOpenigloo(fetcher = fetch, now = new Date()) {
   const result = await searchMcp(fetcher);
   const listings = result.apartments.slice(0, SAMPLE_LIMIT).flatMap((row) => {
@@ -80,6 +56,6 @@ export async function loadOpenigloo(fetcher = fetch, now = new Date()) {
     }, OPENIGLOO);
     return listing ? [listing] : [];
   });
-  return { listings: await geocodeListings(listings, fetcher).catch(() => listings),
+  return { listings: await geocodeRentalAddresses(listings, fetcher).catch(() => listings),
     total: Math.max(listings.length, Number(result.total_matches) || 0), sampleLimit: SAMPLE_LIMIT, rentLimit: MAX_RENT };
 }

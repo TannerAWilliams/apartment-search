@@ -4,7 +4,8 @@ import { parseFilters, DEFAULT_FILTERS, localWorkplace } from '../src/search.mjs
 import { MARKETS, regionOf } from '../src/regions.mjs';
 import { marketplaceAddressSearches, marketplaceIdForUrl, marketplaceLinks } from '../src/marketplaces.mjs';
 import { listingKey, mergeListings, normalizeListing, sourceLink } from '../src/listings.mjs';
-import { marketSnapshot, median, rentAreas, snapshotSearch, SNAPSHOT_MONTH } from '../src/market.mjs';
+import { localSearch, marketSnapshot, median, rentAreas, snapshotSearch, SNAPSHOT_MONTH } from '../src/market.mjs';
+import { IMPORT_COLUMNS, parseListingImport } from '../src/import-listings.mjs';
 import { appConfig, handleApi, search } from '../server/api.mjs';
 
 const sample = {
@@ -13,6 +14,108 @@ const sample = {
   latitude: 40.72, longitude: -74.04, bedrooms: 1, price: 1800, status: 'Active',
 };
 const normalize = (row, id = 'zillow') => normalizeListing(row, { id, name: id, kind: 'feed' });
+
+test('the StreetEasy filter searches the whole snapshot before the result limit', () => {
+  const result = snapshotSearch(parseFilters({ ...DEFAULT_FILTERS, source: 'streeteasy' }));
+  assert.ok(result.total > result.matches.length);
+  assert.ok(result.matches.every(({ sources }) => sources.some(({ id, url }) => id === 'streeteasy' && url)));
+  assert.equal(result.sourceCounts.find(({ id }) => id === 'streeteasy').count, result.total);
+  assert.equal(snapshotSearch(parseFilters({ ...DEFAULT_FILTERS, source: 'zillow' })).total, 0);
+});
+
+test('the map covers matching listings beyond the list cap and respects the source filter', () => {
+  const filters = parseFilters({ ...DEFAULT_FILTERS, source: 'streeteasy', includeMap: true });
+  const result = snapshotSearch(filters);
+  assert.equal(result.mapPoints.length, result.total);
+  assert.ok(result.mapPoints.length > result.matches.length);
+  assert.ok(result.mapPoints.every(({ name, url, latitude, longitude }) => name === 'StreetEasy' &&
+    url.startsWith('https://streeteasy.com/') && Number.isFinite(latitude) && Number.isFinite(longitude)));
+  assert.deepEqual(snapshotSearch({ ...filters, source: 'zillow' }).mapPoints, []);
+  assert.equal(snapshotSearch({ ...filters, includeMap: false }).mapPoints, undefined);
+});
+
+test('recent, rent and distance sorting apply before the search caps the listing cards', () => {
+  const filters = parseFilters({ ...DEFAULT_FILTERS, includeMap: true });
+  const work = localWorkplace(filters);
+  const historic = Array.from({ length: 100 }, (_, index) => ({
+    ...normalize({ ...sample, id: String(index) }),
+    kind: 'snapshot',
+  }));
+  const near = normalize({ ...sample, id: 'near', price: 2600, ...work });
+  const listings = [...historic, near];
+  assert.ok(localSearch(listings, filters, work, 'mixed').matches.every(({ kind }) => kind === 'snapshot'));
+  for (const sort of ['recent', 'distance']) {
+    const result = localSearch(listings, parseFilters({ ...filters, sort }), work, 'mixed');
+    assert.equal(result.matches[0].id, near.id);
+    assert.equal(result.total, 101);
+    assert.equal(result.mapPoints.length, 101);
+  }
+});
+
+test('commute routing checks all matching origins before filtering, sorting, and mapping', async () => {
+  const env = { FREE_PARTNER_FEEDS_JSON: JSON.stringify([{ id: 'zillow', url: 'https://feed.example.test/zillow' }]),
+    TRAVELTIME_APP_ID: 'demo-id', TRAVELTIME_API_KEY: 'demo-key' };
+  const rows = Array.from({ length: 105 }, (_, index) => ({
+    ...sample, id: String(index), addressLine1: `${12 + index} Grove Street`,
+    latitude: 40.72 + index / 100000, price: 1800 + index,
+  }));
+  rows.push({ ...sample, id: 'missing', addressLine1: '99 Main Street', latitude: null });
+  const result = await search({ ...DEFAULT_FILTERS, maxTransitMinutes: 30, maxDrivingMinutes: 45, sort: 'transit', includeMap: true }, env,
+    async (url, options) => {
+      if (url === 'https://feed.example.test/zillow') return Response.json(rows);
+      assert.equal(url, 'https://api.traveltimeapp.com/v4/time-filter/fast');
+      assert.equal(options.redirect, 'error');
+      assert.equal(options.headers['X-Application-Id'], 'demo-id');
+      assert.equal(options.headers['X-Api-Key'], 'demo-key');
+      const body = JSON.parse(options.body);
+      assert.equal(body.locations.length, 106);
+      assert.deepEqual(body.locations.at(-1), { id: 'workplace', coords: { lat: 40.75874, lng: -73.97867 } });
+      const routes = body.arrival_searches.many_to_one;
+      assert.deepEqual(routes.map(({ transportation }) => transportation.type), ['public_transport', 'driving+ferry']);
+      assert.ok(routes.every((route) => route.arrival_location_id === 'workplace' && route.arrival_time_period === 'weekday_morning'));
+      const times = { transit: [1800, 1801, 1600, 1200], driving: [2700, 2300, 2701, 2000] };
+      return Response.json({ results: routes.map(({ id }) => ({
+        search_id: id, locations: ['0', '1', '2', '104'].map((locationId, index) =>
+          ({ id: locationId, properties: { travel_time: times[id][index] } })),
+      })) });
+    });
+  assert.equal(result.commute, true);
+  assert.deepEqual(result.matches.map(({ id }) => id), ['zillow:104', 'zillow:0']);
+  assert.deepEqual(result.mapPoints.map(({ transitSeconds, drivingSeconds }) => [transitSeconds, drivingSeconds]),
+    [[1200, 2000], [1800, 2700]]);
+});
+
+test('a commute filter requires server credentials and reports an unavailable routing service', async () => {
+  const response = await handleApi(new Request('https://search.example.test/api/search', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ maxDrivingMinutes: 45, routingCredentials: { appId: 'client-id', apiKey: 'client-key' } }),
+  }), {}, { fetcher: () => assert.fail('No routing request is sent without credentials') });
+  assert.equal(response.status, 503);
+  assert.equal((await response.json()).commuteError, true);
+});
+
+test('a routing outage preserves ordinary results but fails an explicitly filtered search', async () => {
+  const env = { TRAVELTIME_APP_ID: 'demo-id', TRAVELTIME_API_KEY: 'demo-key' };
+  const fetcher = async () => new Response(null, { status: 503 });
+  const result = await search({ ...DEFAULT_FILTERS, includeCommute: true }, env, fetcher);
+  assert.ok(result.total > 0);
+  assert.match(result.commuteNotice, /couldn’t calculate routes/);
+  await assert.rejects(search({ ...DEFAULT_FILTERS, maxTransitMinutes: 45 }, env, fetcher), /couldn’t calculate routes/);
+});
+
+test('a CSV keeps direct marketplace links on the same unit without marking them live', () => {
+  const csv = IMPORT_COLUMNS + ',latitude,longitude\n' +
+    'https://www.apartments.com/example/abc/,12 Grove Street,2,Jersey City,NJ,07302,1,2600,40.72,-74.04\n' +
+    'https://www.zillow.com/homedetails/example/,12 Grove St,Apt 2,Jersey City,NJ,07302,1,2600,,';
+  const listings = mergeListings(parseListingImport(csv));
+  assert.equal(listings.length, 1);
+  assert.equal(listings[0].zip, '07302');
+  assert.equal(listings[0].kind, 'saved');
+  assert.equal(listings[0].longitude, -74.04);
+  assert.deepEqual(listings[0].sources.map(({ id }) => id), ['apartments', 'zillow']);
+  assert.throws(() => parseListingImport(csv.replace('07302', '7302')), /line 2/);
+  assert.throws(() => parseListingImport(csv.replace('40.72,-74.04', '40.72,')), /coordinates on line 2/);
+});
 
 test('studio, geography, budget, and distance are applied together to real observations', () => {
   const filters = parseFilters({ ...DEFAULT_FILTERS, region: 'nj', bedrooms: '0', maxRent: '2500', maxMiles: '12' });
@@ -46,6 +149,11 @@ test('marketplace browse links carry exact studio, ZIP and rent where supported'
   assert.equal(craigslist.searchParams.get('min_bedrooms'), '0');
   assert.equal(craigslist.searchParams.get('max_bedrooms'), '0');
   assert.equal(craigslist.searchParams.get('sort'), 'priceasc');
+  const newYork = MARKETS.find(({ city }) => city === 'New York');
+  const fourBedrooms = marketplaceLinks(newYork, parseFilters({ bedrooms: 4, maxRent: 4500 }));
+  const streetEasy = new URL(fourBedrooms.find(({ id }) => id === 'streeteasy').url);
+  assert.equal(decodeURIComponent(streetEasy.pathname), '/for-rent/nyc/beds:4|price:-4500');
+  assert.equal(fourBedrooms.find(({ id }) => id === 'trulia').url, 'https://www.trulia.com/for_rent/New_York,NY/');
 });
 
 test('links from different sites are merged only for the same confirmed unit', () => {
@@ -137,7 +245,6 @@ test('the API identifies snapshot mode and protects a private backend', async ()
 
 test('company filters match the advertiser field and company URLs can be saved as direct links', async () => {
   const { companyCounts } = await import('../src/companies.mjs');
-  const { localSearch } = await import('../src/market.mjs');
   const source = normalize({ ...sample, company: 'Compass New Jersey, LLC' });
   const filters = parseFilters({ ...DEFAULT_FILTERS, company: 'compass' });
   assert.equal(localSearch([source], filters, localWorkplace(filters), 'live').total, 1);

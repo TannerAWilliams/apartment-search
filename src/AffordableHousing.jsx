@@ -6,6 +6,7 @@ import { Button, Link } from './ui.jsx';
 const SIZE_LABELS = ['Studio', '1 BR', '2 BR', '3 BR', '4+ BR'];
 const HOUSING_PORTAL = 'https://housingconnect.nyc.gov/PublicWeb/';
 const HOUSING_DATA = 'https://data.cityofnewyork.us/d/vy5i-a666';
+const HDC_PAGE = 'https://www.nychdc.com/find-re-rentals';
 const DATE = new Intl.DateTimeFormat('en-US', {
   timeZone: 'UTC', month: 'short', day: 'numeric', year: 'numeric',
 });
@@ -14,6 +15,7 @@ const showDate = (date) => DATE.format(new Date(date));
 export function AffordableHousing({ loadHousing, onError }) {
   const [data, setData] = useState(null);
   const [visible, setVisible] = useState(10);
+  const [showRerentals, setShowRerentals] = useState(false);
 
   useEffect(() => {
     if (!loadHousing) return;
@@ -27,6 +29,20 @@ export function AffordableHousing({ loadHousing, onError }) {
   return <View style={styles.marketplacePanel}>
     <Text accessibilityRole="header" style={styles.panelTitle}>Affordable housing</Text>
     <Text style={styles.bodyText}>Check lotteries, waitlists, and voucher listings separately from market-rate apartments.</Text>
+    <View style={styles.chartCard}>
+      <Text accessibilityRole="header" style={styles.listingTitle}>NYC HDC re-rentals and waitlists</Text>
+      {data?.rerentals && <>
+        <Text style={styles.smallMuted}>{data.rerentals.results.length} notices checked {showDate(data.rerentals.checkedAt)}{data.rerentals.limited ? ' · Partial coverage' : ''}</Text>
+        <Button secondary onPress={() => setShowRerentals(!showRerentals)}>{showRerentals ? 'Hide HDC notices' : 'Show HDC notices'}</Button>
+        {showRerentals && data.rerentals.results.map((notice) => <View key={notice.id} style={styles.listing}>
+          <Text accessibilityRole="header" style={styles.listingTitle}>{notice.name}</Text>
+          <Text style={styles.smallMuted}>{[notice.address, notice.borough].filter(Boolean).join(' · ')}</Text>
+          <Text style={styles.bodyText}>{[notice.bedrooms, notice.rent, notice.age, notice.accessibility].filter(Boolean).join(' · ')}</Text>
+          <Link label="View official advertisement" url={notice.url} onError={onError} />
+        </View>)}
+      </>}
+      <Link label="Browse NYC HDC re-rentals" url={HDC_PAGE} onError={onError} />
+    </View>
     <View style={styles.chartSource}>
       <Text accessibilityRole="header" style={styles.fieldLabel}>NYC Housing Connect</Text>
       <Text style={styles.smallMuted}>{data?.publishedAt ?

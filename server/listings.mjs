@@ -1,5 +1,9 @@
 import { MARKETPLACE_NAMES, safeListingUrl } from '../src/marketplaces.mjs';
 import { normalizeListing } from '../src/listings.mjs';
+import { DIRECT_RENTAL_SOURCES } from './direct-rentals.mjs';
+import { HDC_RERENTALS } from './hdc-rerentals.mjs';
+
+const RESERVED_FEEDS = new Set(['firstmover', 'housingconnect', 'openigloo', HDC_RERENTALS.id, ...DIRECT_RENTAL_SOURCES.map(({ id }) => id)]);
 
 export function configuredFeeds(env) {
   if (!env.FREE_PARTNER_FEEDS_JSON) return [];
@@ -18,7 +22,7 @@ export function configuredFeeds(env) {
     const id = feed?.id;
     const name = Object.hasOwn(MARKETPLACE_NAMES, id) ? MARKETPLACE_NAMES[id] : feed?.name?.trim();
     const url = safeListingUrl(feed?.url);
-    if (typeof id !== 'string' || !/^[a-z][a-z0-9_-]{0,47}$/.test(id) || ['firstmover', 'housingconnect', 'openigloo'].includes(id) || ids.has(id) || !name || !url) {
+    if (typeof id !== 'string' || !/^[a-z][a-z0-9_-]{0,47}$/.test(id) || RESERVED_FEEDS.has(id) || ids.has(id) || !name || !url) {
       throw new Error('A free feed is missing a unique ID, name, or HTTPS URL.');
     }
     ids.add(id);

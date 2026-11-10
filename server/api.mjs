@@ -1,13 +1,15 @@
 import { companyCounts } from '../src/companies.mjs';
-import { parseFilters, SearchInputError } from '../src/search.mjs';
-import { localSearch, rentAreas, snapshotSearch, SNAPSHOT_MONTH } from '../src/market.mjs';
+import { matchListings, needsCommute, parseFilters, SearchInputError } from '../src/search.mjs';
+import { formatSearch, RENT_GROUPINGS, rentAreas, SNAPSHOT_MONTH } from '../src/market.mjs';
 import { REGIONS } from '../src/regions.mjs';
 import { buildingKey, mergeListings } from '../src/listings.mjs';
 import { configuredFeeds, loadFeed } from './listings.mjs';
-import { geocodeAddress, resolveWorkplace } from './commute.mjs';
+import { CommuteError, geocodeAddress, resolveWorkplace, routeCommutes, routingCredentials } from './commute.mjs';
 import { OPENIGLOO } from './openigloo.mjs';
+import { DIRECT_RENTAL_SOURCES } from './direct-rentals.mjs';
 import { decodeSourceImport } from '../src/pull-sources.mjs';
-import { openiglooRecent, refreshPlan, refreshSources, refreshStatus, storedFeed, storedHousing, storedMarket, storedOpenigloo } from './refresh.mjs';
+import { refreshPlan, refreshSources, refreshStatus, sourceRecent, storedDirectRentals, storedFeed, storedHdcRerentals, storedHousing, storedMarket,
+  storedOpenigloo, storedRentHistory } from './refresh.mjs';
 
 const REQUEST_LIMIT = 4096;
 const IMPORT_LIMIT = 2 * 1024 * 1024;
@@ -19,6 +21,7 @@ export function appConfig(env) {
     mode: feeds.length > 0 ? 'live' : 'snapshot',
     snapshotMonth: SNAPSHOT_MONTH,
     sources: feeds.map(({ id, name }) => ({ id, name })),
+    ...(routingCredentials(env) ? { commuteConfigured: true } : {}),
   };
 }
 
@@ -44,60 +47,113 @@ async function withHousingLinks(result, bucket) {
   }) };
 }
 
+async function storedSample(status, id, liveOnly, load) {
+  const sourceStatus = status?.sources.find((source) => source.id === id);
+  const recent = sourceRecent(status, id);
+  const data = recent || (!liveOnly && sourceStatus?.updatedAt) ? await load().catch(() => null) : null;
+  const listings = data?.listings.map((listing) => recent ? listing : {
+    ...listing, kind: 'cached', sources: listing.sources.map((source) => ({ ...source, kind: 'cached' })),
+  }) ?? [];
+  return { sourceStatus, recent, data, listings };
+}
+
 export async function search(rawFilters, env, fetcher = fetch) {
   const filters = parseFilters(rawFilters);
+  const requireCommute = needsCommute(filters);
+  const credentials = routingCredentials(env);
+  if (requireCommute && !credentials) throw new CommuteError('Automatic commute estimates are unavailable because the routing service is disconnected.');
   const feeds = configuredFeeds(env);
   const workplace = await resolveWorkplace(filters, fetcher);
   const bucket = env.BUCKET;
+  async function finish(listings, mode, sources, notices, snapshotMonth) {
+    const matched = matchListings(listings, filters, workplace);
+    let routed = matched;
+    const commute = {};
+    if (credentials && (requireCommute || filters.includeCommute)) {
+      try {
+        routed = await routeCommutes(matched, workplace, credentials, fetcher);
+        commute.commute = true;
+      } catch (error) {
+        if (requireCommute || !(error instanceof CommuteError)) throw error;
+        commute.commuteNotice = error.message;
+      }
+    }
+    const result = formatSearch(routed, filters, workplace, mode, sources, notices);
+    return withHousingLinks({ ...result, ...(snapshotMonth ? { snapshotMonth } : {}), ...commute }, bucket);
+  }
   const status = bucket ? await refreshStatus(bucket) : null;
-  const openigloo = openiglooRecent(status) ? await storedOpenigloo(bucket).catch(() => null) : null;
-  const results = await Promise.allSettled(feeds.map((feed) => bucket ? storedFeed(bucket, feed) : loadFeed(feed, fetcher)));
-  const listings = openigloo?.listings.slice() ?? [];
-  const sources = openigloo ? [{ id: OPENIGLOO.id, name: OPENIGLOO.name, status: 'searched' }] : [];
-  const notices = openigloo ? [`Openigloo returned ${openigloo.listings.length} of ${openigloo.total.toLocaleString('en-US')} matching NYC listings in its hourly sample, with an asking rent cap of $${openigloo.rentLimit.toLocaleString('en-US')}.`] : [];
-  if (openigloo && status.sources.some(({ id, status: state }) => id === OPENIGLOO.id && state === 'failed')) {
-    notices.push('Openigloo’s latest check failed. These results came from the previous check.');
+  const directSources = DIRECT_RENTAL_SOURCES.filter(({ regions }) => filters.region === 'all' || regions.includes(filters.region));
+  const [openigloo, direct, results] = await Promise.all([
+    storedSample(status, OPENIGLOO.id, filters.liveOnly, () => storedOpenigloo(bucket)),
+    Promise.all(directSources.map(async (source) => ({
+      source,
+      ...await storedSample(status, source.id, filters.liveOnly, () => storedDirectRentals(bucket, source)),
+    }))),
+    Promise.allSettled(feeds.map(async (feed) => {
+      if (bucket) return storedSample(status, feed.id, filters.liveOnly, () => storedFeed(bucket, feed));
+      const data = await loadFeed(feed, fetcher);
+      return { data, listings: data.listings, recent: true };
+    })),
+  ]);
+  const listings = [...openigloo.listings];
+  const sources = openigloo.data ? [{ id: OPENIGLOO.id, name: OPENIGLOO.name, status: openigloo.recent ? 'searched' : 'cached' }] : [];
+  const notices = openigloo.data ? [
+    'Openigloo · ' + openigloo.listings.length + ' apartments from ' + (openigloo.recent ? 'its recent check.' : 'its last saved check.'),
+  ] : [];
+  for (const { source, sourceStatus, recent, data, listings: rows } of direct) {
+    if (data) {
+      listings.push(...rows);
+      sources.push({ id: source.marketplace, name: source.name, status: recent ? 'searched' : 'cached', sample: true });
+      notices.push(source.name + ' · ' + rows.length + (recent ? ' apartments checked in ' : ' saved apartments in ') + source.coverage + '.');
+    }
+    if (sourceStatus?.status === 'failed') {
+      if (!data) sources.push({ id: source.marketplace, name: source.name, status: 'unavailable', sample: true });
+    }
   }
 
   for (const [index, result] of results.entries()) {
     const { id, name } = feeds[index];
-    if (result.status === 'rejected') {
+    const value = result.status === 'fulfilled' ? result.value : null;
+    if (!value?.data) {
       sources.push({ id, name, status: 'unavailable' });
-      notices.push(`${name} has no available listings from its last successful refresh.`);
+      notices.push(`${name} has no listings for this view.`);
     } else {
-      sources.push({ id, name, status: 'searched' });
-      listings.push(...result.value.listings);
-      if (result.value.limited) notices.push(`${name} returned partial inventory.`);
-      if (status?.sources.some((source) => source.id === id && source.status === 'failed')) {
-        notices.push(`${name} could not be refreshed. Showing its last successful data.`);
-      }
+      sources.push({ id, name, status: value.recent ? 'searched' : 'cached' });
+      listings.push(...value.listings);
+      if (value.data.limited) notices.push(`${name} returned partial inventory.`);
+      if (!value.recent) notices.push(`${name} · showing its last saved listings.`);
     }
   }
 
   const hasLive = sources.some(({ status: state }) => state === 'searched');
-  if (!hasLive && !filters.liveOnly) {
-    const fallback = snapshotSearch(filters, workplace, await storedMarket(bucket));
-    return withHousingLinks({ ...fallback, sources: [...fallback.sources, ...sources],
-      notices: [...notices, ...fallback.notices] }, bucket);
-  }
-  if (!hasLive) {
-    return localSearch([], filters, workplace, 'live', sources, [...notices, 'No recent live sample is available.']);
-  }
-  if (openigloo) {
+  const hasSavedSamples = openigloo.data || direct.some(({ data }) => data) || sources.some(({ status }) => status === 'cached');
+  if (!hasLive && !filters.liveOnly && !hasSavedSamples) {
     const market = await storedMarket(bucket);
-    const result = localSearch(mergeListings([...market.listings, ...listings]), filters, workplace,
-      filters.liveOnly ? 'live' : 'mixed', filters.liveOnly ? sources :
-        [{ id: 'streeteasy', name: 'StreetEasy', status: 'snapshot' }, ...sources], notices);
-    return withHousingLinks({ ...result, snapshotMonth: market.month }, bucket);
+    return finish(market.listings, 'snapshot', [{ id: 'streeteasy', name: 'StreetEasy', status: 'snapshot' }, ...sources], notices, market.month);
   }
-  return withHousingLinks(localSearch(mergeListings(listings), filters, workplace, 'live', sources, notices), bucket);
+  if (!hasLive && filters.liveOnly) {
+    return finish([], 'live', sources, [...notices, 'Switch to All results to see previously checked listings.']);
+  }
+  if (!filters.liveOnly && (bucket || hasSavedSamples)) {
+    const market = await storedMarket(bucket);
+    const historical = new Map(market.listings.map((listing) => [listing.sources[0].url, listing]));
+    const live = mergeListings(listings.filter(({ kind }) => kind === 'feed'));
+    const cached = mergeListings(listings.filter(({ kind }) => kind === 'cached'));
+    const current = mergeListings([...live, ...cached], { preferFirst: true }).map((listing) => {
+      const prior = historical.get(listing.sources.find(({ id }) => id === 'streeteasy')?.url);
+      return prior ? { ...listing, id: prior.id, companyFromSnapshot: !listing.company && Boolean(prior.company) } : listing;
+    });
+    return finish(mergeListings([...current, ...market.listings], { preferFirst: true }), 'mixed',
+      [{ id: 'firstmover', name: 'FirstMover (StreetEasy)', status: 'snapshot' }, ...sources], notices, market.month);
+  }
+  return finish(mergeListings(listings), 'live', sources, notices);
 }
 
 function json(value, status = 200) {
   return Response.json(value, { status, headers: { 'Cache-Control': 'no-store' } });
 }
 
-export async function handleApi(request, env, { requireToken = false } = {}) {
+export async function handleApi(request, env, { requireToken = false, fetcher = (url, options) => globalThis.fetch(url, options), waitUntil } = {}) {
   const { pathname: path, searchParams } = new URL(request.url);
   if (!API_PATHS.has(path)) return json({ error: 'Endpoint not found.' }, 404);
   if (requireToken && request.headers.get('Authorization') !== `Bearer ${env.APP_ACCESS_TOKEN}`) {
@@ -109,11 +165,15 @@ export async function handleApi(request, env, { requireToken = false } = {}) {
       const config = appConfig(env);
       if (!env.BUCKET) return json(config);
       const refresh = await refreshStatus(env.BUCKET);
-      const openigloo = openiglooRecent(refresh);
+      const liveSources = [
+        ...DIRECT_RENTAL_SOURCES.filter(({ id }) => sourceRecent(refresh, id))
+          .map(({ marketplace: id, name, coverage }) => ({ id, name, sample: true, coverage })),
+        ...(sourceRecent(refresh, OPENIGLOO.id) ? [{ id: OPENIGLOO.id, name: OPENIGLOO.name, sample: true, coverage: 'NYC' }] : []),
+      ];
       const companies = companyCounts((await storedMarket(env.BUCKET)).listings);
       return json({ ...config, refresh, companies,
-        mode: openigloo ? 'live' : config.mode,
-        sources: openigloo ? [{ id: OPENIGLOO.id, name: OPENIGLOO.name }, ...config.sources] : config.sources,
+        mode: liveSources.length ? 'live' : config.mode,
+        sources: [...liveSources, ...config.sources.filter(({ id }) => !liveSources.some((item) => item.id === id))],
         snapshotMonth: refresh.sources.find(({ id }) => id === 'firstmover')?.month ?? SNAPSHOT_MONTH,
       });
     } catch {
@@ -123,7 +183,8 @@ export async function handleApi(request, env, { requireToken = false } = {}) {
   if (path === '/api/housing') {
     if (request.method !== 'GET') return json({ error: 'Use GET for affordable housing.' }, 405);
     try {
-      return json(await storedHousing(env.BUCKET));
+      const [housing, rerentals] = await Promise.all([storedHousing(env.BUCKET), storedHdcRerentals(env.BUCKET).catch(() => null)]);
+      return json({ ...housing, rerentals });
     } catch {
       return json({ error: 'The Housing Connect data could not be read.' }, 503);
     }
@@ -132,12 +193,13 @@ export async function handleApi(request, env, { requireToken = false } = {}) {
     if (request.method !== 'GET') return json({ error: 'Use GET for rent data.' }, 405);
     const region = searchParams.get('region') ?? 'all';
     const grouping = searchParams.get('grouping') ?? 'neighborhood';
-    if (!Object.hasOwn(REGIONS, region) || !['neighborhood', 'city', 'zip'].includes(grouping)) {
+    if (!Object.hasOwn(REGIONS, region) || !Object.hasOwn(RENT_GROUPINGS, grouping)) {
       return json({ error: 'Choose a valid region and grouping.' }, 422);
     }
     try {
       const market = await storedMarket(env.BUCKET);
-      return json({ month: market.month, areas: rentAreas(market.listings, { region, grouping }) });
+      const history = await storedRentHistory(env.BUCKET, market.month, region, grouping);
+      return json({ month: market.month, areas: rentAreas(market.listings, { region, grouping }), history });
     } catch {
       return json({ error: 'The refreshed rent data could not be read.' }, 503);
     }
@@ -163,16 +225,28 @@ export async function handleApi(request, env, { requireToken = false } = {}) {
   }
   try {
     if (path === '/api/refresh') {
+      if (body?.check === 'now') {
+        const work = refreshSources(env, { fetcher, onDemand: true });
+        waitUntil?.(work.catch(() => {}));
+        return json(await work);
+      }
       let imports;
       try { imports = decodeSourceImport(body); }
       catch { return json({ error: 'Send a valid compressed source import.' }, 422); }
-      const result = await refreshSources(env, { imports });
-      const unavailable = result.state === 'partial' && result.sources.every(({ status }) => status === 'failed');
+      const result = await refreshSources(env, { fetcher, imports, fallback: body.fallback === true });
+      const unavailable = result.state === 'partial' && result.sources.every(({ status }) =>
+        status === 'failed' || status === 'feed_required');
       return json(result, unavailable ? 502 : 200);
     }
-    return json(path === '/api/geocode' ? await geocodeAddress(body?.address) : await search(body, env));
+    if (path === '/api/geocode') return json(await geocodeAddress(body?.address, fetcher));
+    if ((body?.includeCommute || needsCommute(body ?? {})) && !request.headers.get('Content-Type')?.startsWith('application/json')) {
+      return json({ error: 'Send commute searches as JSON.' }, 400);
+    }
+    return json(await search(body, env, fetcher));
   } catch (error) {
+    if (error instanceof CommuteError) return json({ error: error.message, commuteError: true }, error.status);
     if (error instanceof SearchInputError) return json({ error: error.message }, 422);
+    if (path === '/api/refresh') return json({ error: 'The listing sources could not be checked. Try reloading the page.' }, 502);
     return json({ error: 'The address or listing feed could not be reached. Try again or use a workplace preset.' }, 502);
   }
 }

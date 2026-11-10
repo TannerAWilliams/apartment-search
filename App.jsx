@@ -1,40 +1,46 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Linking, Platform, Pressable, ScrollView, StatusBar, Text, View, useWindowDimensions,
+  Platform, Pressable, ScrollView, StatusBar, Text, View, useWindowDimensions,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { NYC_COMPANIES } from './src/companies.mjs';
 import { MARKETS, REGIONS, WORKPLACES } from './src/regions.mjs';
-import { marketplaceLinks } from './src/marketplaces.mjs';
+import { MARKETPLACE_NAMES, marketplaceLinks } from './src/marketplaces.mjs';
 import {
-  DEFAULT_FILTERS, bedroomLabel, compareResults, directionsLink, formatRent, parseFilters,
+  DEFAULT_FILTERS, RESULT_SORTS, bedroomLabel, directionsLink, formatRent, needsCommute, parseFilters,
 } from './src/search.mjs';
 import { colors, styles } from './src/styles.js';
 import { formatSnapshotMonth, localSearch, snapshotSearch, SNAPSHOT_MONTH, SNAPSHOT_SOURCE } from './src/market.mjs';
 import { listingKey, mergeListings, mergeSourceLinks } from './src/listings.mjs';
-import { Button, Chip, Field, Link, SectionTitle } from './src/ui.jsx';
-import { encodeSourceImport, pullPublicSources } from './src/pull-sources.mjs';
+import { Button, Chip, ExternalLink, Field, Link, SectionTitle } from './src/ui.jsx';
+import { encodeSourceImport, pullPublicSources, retryablePublicSources } from './src/pull-sources.mjs';
 import { AffordableHousing } from './src/AffordableHousing.jsx';
 import { AddListing } from './src/AddListing.jsx';
+import { ImportListings } from './src/ImportListings.jsx';
+import { ListingMap } from './src/ListingMap';
 import { ListingSources } from './src/ListingSources.jsx';
 import { RentChart } from './src/RentChart.jsx';
 
 const API_ORIGIN = Platform.OS === 'web' ? '' :
   (process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, '') || null);
+const WEB_MAP = Platform.OS === 'web';
+const SEARCH_DEFAULTS = { ...DEFAULT_FILTERS, includeMap: WEB_MAP, sort: 'recent' };
 const BEDROOMS = [null, 0, 1, 2, 3, 4];
 const PAGE_SIZE = 12;
+const EMPTY_POINTS = [];
 const SAVED_KEY = 'apartment-search:saved-listings:v1';
-const SAVED_FILTERS = { ...DEFAULT_FILTERS, bedrooms: null, maxRent: null };
+const SAVED_FILTERS = { ...SEARCH_DEFAULTS, bedrooms: null, maxRent: null, sort: 'rent' };
 const CHECK_TIME = new Intl.DateTimeFormat('en-US', {
   timeZone: 'America/New_York', month: 'short', day: 'numeric',
   hour: 'numeric', minute: '2-digit', timeZoneName: 'short',
 });
 
 const formDefaults = () => ({
-  ...DEFAULT_FILTERS,
+  ...SEARCH_DEFAULTS,
   maxRent: String(DEFAULT_FILTERS.maxRent),
-  maxMiles: '',
+  maxTransitMinutes: '',
+  maxDrivingMinutes: '',
 });
 
 async function api(path, { body, token, signal } = {}) {
@@ -49,58 +55,52 @@ async function api(path, { body, token, signal } = {}) {
   if (!response.ok) {
     const error = new Error(data.error || 'Could not reach the apartment search server.');
     error.status = response.status;
+    error.commuteError = data.commuteError === true;
     throw error;
   }
   return data;
 }
 
-function Hero({ wide }) {
-  return <View style={[styles.hero, wide && styles.heroWide]}>
-    <View style={styles.heroCopy}>
-      <View style={styles.heroEyebrow}><View style={styles.liveDot} /><Text style={styles.heroEyebrowText}>NEW YORK METRO AREA</Text></View>
-      <Text accessibilityRole="header" style={[styles.heroTitle, wide && styles.heroTitleWide]}>Find a rent{wide ? '\n' : ' '}that fits.</Text>
-      <Text style={styles.heroDescription}>Compare apartment prices and the trip to work, from the five boroughs to the commuter rail lines.</Text>
-    </View>
-    {wide && <View style={styles.network} aria-hidden accessibilityElementsHidden>
-      {[
-        ['NYC SUBWAY', '#c6f36c', '44%'],
-        ['PATH · NJ TRANSIT', '#ff9c71', '21%'],
-        ['LONG ISLAND RAIL ROAD', '#8bc7fa', '70%'],
-        ['METRO-NORTH', '#d9b8ff', '34%'],
-      ].map(([label, color, stop]) => <View key={label} style={styles.networkRow}>
-        <Text style={[styles.networkLabel, { color }]}>{label}</Text>
-        <View style={[styles.networkLine, { backgroundColor: color }]}>
-          <View style={[styles.networkStop, { left: stop, borderColor: color }]} />
-        </View>
-      </View>)}
-    </View>}
-  </View>;
+async function finishSourceCheck(check, token, signal) {
+  for (let attempt = 0; check.checking && attempt < 25; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+    if (signal?.aborted) return check;
+    check = await api('refresh', { token, signal });
+  }
+  if (check.checking) throw new Error('The source check is still running.');
+  return check;
 }
 
-function Filters({ draft, setDraft, submit, busy, serverState, token, setToken, connect }) {
+function Filters({ draft, setDraft, submit, busy, serverState, token, setToken, connect, panel, commuteConfigured }) {
   const set = (field) => (value) => setDraft((previous) => ({ ...previous, [field]: value }));
 
   return <View style={styles.filters}>
-    <SectionTitle index="01">Apartment</SectionTitle>
+    {(panel === 'more' || panel === 'beds') && <>
     <Text style={styles.fieldLabel}>Bedrooms</Text>
     <View style={styles.chipRow}>
       {BEDROOMS.map((beds) => <Chip key={String(beds)} selected={draft.bedrooms === beds}
         onPress={() => set('bedrooms')(beds)}>{beds === null ? 'Any' : beds === 0 ? 'Studio' : `${beds} BR`}</Chip>)}
     </View>
+    </>}
+    {(panel === 'more' || panel === 'area') && <>
     <Text style={styles.fieldLabel}>Area</Text>
     <View style={styles.chipRow}>
-      {Object.entries(REGIONS).map(([key, region]) => <Chip key={key} selected={draft.region === key}
+      {Object.entries(REGIONS).filter(([key]) => key !== 'pa').map(([key, region]) => <Chip key={key} selected={draft.region === key}
         onPress={() => set('region')(key)}>{region.label}</Chip>)}
     </View>
     <Field label="ZIP code (optional)" placeholder="Any ZIP in this area" value={draft.zip}
       onChangeText={set('zip')} keyboardType="number-pad" maxLength={5} />
-    <Field label="Max rent per month ($)" placeholder="Any rent" value={draft.maxRent}
-      onChangeText={set('maxRent')} keyboardType="number-pad" maxLength={6} />
+    </>}
+    {(panel === 'more' || panel === 'price') && <Field label="Max rent per month ($)" placeholder="Any rent" value={draft.maxRent}
+      onChangeText={set('maxRent')} keyboardType="number-pad" maxLength={6} />}
+    {panel === 'more' && <>
 
     <Field label="Listing company (optional)" placeholder="Compass, SERHANT., Corcoran…" value={draft.company}
       onChangeText={set('company')} maxLength={80} />
 
     <View style={styles.divider} />
+    </>}
+    {(panel === 'more' || panel === 'commute') && <>
     <SectionTitle index="02">Work commute</SectionTitle>
     <Text style={styles.fieldLabel}>Workplace</Text>
     <View style={styles.chipRow}>
@@ -111,9 +111,14 @@ function Filters({ draft, setDraft, submit, busy, serverState, token, setToken, 
     {draft.workplace === 'custom' && <Field label="Workplace street address or coordinates"
       placeholder={serverState === 'ready' ? 'Street, city, state, ZIP' : '40.75874, -73.97867'}
       value={draft.customWorkplace} onChangeText={set('customWorkplace')} maxLength={160} />}
-    <Field label="Max straight-line distance (mi)" placeholder="Any distance" value={draft.maxMiles}
-      onChangeText={set('maxMiles')} keyboardType="decimal-pad" maxLength={6} />
-    <Text style={styles.smallMuted}>Open transit directions from any listing to check travel time.</Text>
+    {commuteConfigured ? <>
+    <Field label="Max transit time (minutes)" placeholder="Any transit time" value={draft.maxTransitMinutes ?? ''}
+      onChangeText={set('maxTransitMinutes')} keyboardType="number-pad" maxLength={3} />
+    <Field label="Max driving time (minutes)" placeholder="Any driving time" value={draft.maxDrivingMinutes ?? ''}
+      onChangeText={set('maxDrivingMinutes')} keyboardType="number-pad" maxLength={3} />
+    <Text style={styles.smallMuted}>Estimates are for arriving at your workplace on a weekday morning. Set both limits to require both.</Text>
+    </> : <Text style={styles.smallMuted}>Automatic transit and driving estimates are currently unavailable.</Text>}
+    </>}
     {serverState === 'locked' && <View style={styles.tokenForm}>
       <Field label="Server access token" placeholder="Enter your server token" value={token}
         onChangeText={setToken} secureTextEntry maxLength={256} />
@@ -128,41 +133,65 @@ function Filters({ draft, setDraft, submit, busy, serverState, token, setToken, 
   </View>;
 }
 
-function Listing({ listing, number, workplace, onSave, onSaveLink, onRemove, onError, saved }) {
-  const { region, address, unit, city, state, zip, rent, bedrooms, miles, neighborhood } = listing;
+function Listing({ listing, selectedSource, workplace, commute, onSave, onSaveLink, onRemove, onError, saved }) {
+  const { region, address, unit, city, state, zip, rent, bedrooms, transitSeconds, drivingSeconds, neighborhood } = listing;
   const regionInfo = REGIONS[region];
   const title = unit ? `${address}, ${unit.startsWith('#') ? unit : 'Unit ' + unit}` : address;
   const subtitle = [neighborhood === city ? '' : neighborhood, `${city}, ${state} ${zip}`].filter(Boolean).join(' · ');
+  const feed = listing.sources.find(({ kind }) => kind === 'feed');
+  const original = listing.sources.find(({ id, url }) => id === selectedSource && url) ??
+    listing.sources.find(({ kind, url }) => kind === 'feed' && url) ??
+    listing.sources.find(({ url }) => url);
+  const checkedAt = listing.checkedAt ?? listing.seenAt;
+  const checked = Number.isFinite(Date.parse(checkedAt)) ?
+    'Checked ' + CHECK_TIME.format(new Date(checkedAt)) : 'Previous check';
   const observation = listing.kind === 'snapshot' ? `First listed ${listing.seenAt}` :
-    listing.kind === 'saved' ? 'Saved listing' : listing.sources.find(({ kind }) => kind === 'feed')?.name + ' · Checked live';
+    listing.kind === 'saved' ? 'Saved listing' :
+    listing.kind === 'cached' ? (original?.name ?? 'Rental source') + ' · ' + checked + ' · Last saved result' :
+      (feed?.name ?? 'Live source') + ' · ' + checked;
 
-  return <View style={styles.listing}>
+  return <View style={styles.rentalCard}>
+    {original && <ExternalLink url={original.url} onError={onError} style={styles.listingMedia}
+      accessibilityLabel={'Open photos and details for ' + title + ' on ' + original.name}>
+      <Text style={styles.mediaSource}>{original.name}</Text>
+      <Text style={styles.mediaLabel}>Photos and details ↗</Text>
+    </ExternalLink>}
+    <View style={styles.rentalCardBody}>
     <View style={styles.listingTop}>
       <View style={styles.listingContent}>
         <View style={styles.listingKicker}>
-          <Text style={styles.rank}>{String(number).padStart(2, '0')}</Text>
           <View style={[styles.regionDot, { backgroundColor: regionInfo.color }]} />
           <Text style={[styles.regionLabel, { color: regionInfo.color }]}>{regionInfo.label}</Text>
         </View>
-        <Text accessibilityRole="header" style={styles.listingTitle}>{title}</Text>
+        {original ? <ExternalLink url={original.url} onError={onError} accessibilityLabel={title + ' on ' + original.name}>
+          <Text style={styles.listingAddress}>{title}</Text>
+        </ExternalLink> : <Text accessibilityRole="header" style={styles.listingTitle}>{title}</Text>}
         <Text style={styles.smallMuted}>{subtitle}</Text>
-        {listing.company ? <Text style={styles.smallMuted}>{listing.kind === 'feed' && listing.sources.some(({ kind }) => kind === 'snapshot') ?
+        {listing.company ? <Text style={styles.smallMuted}>{listing.kind === 'feed' &&
+          (listing.companyFromSnapshot || listing.sources.some(({ kind }) => kind === 'snapshot')) ?
           'Snapshot advertiser' : 'Listed by'} {listing.company}</Text> : null}
       </View>
       <View style={styles.priceBlock}>
         <Text style={styles.price}>{formatRent(rent)}</Text>
-        <Text style={styles.smallMuted}>asking rent / mo</Text>
+        <Text style={styles.smallMuted}>{listing.priceIncludesFees ? 'total price / mo' : 'asking rent / mo'}</Text>
       </View>
     </View>
     <View style={styles.cardStats}>
       <Text style={styles.cardStat}>{bedroomLabel(bedrooms)}</Text>
-      <Text style={styles.cardStat}>{miles === null ? 'Distance unavailable' : `${miles.toFixed(1)} mi straight-line`}</Text>
+      {[...new Set(listing.sources.filter(({ url }) => url).map(({ name }) => name))].slice(0, 4).map((name) =>
+        <Text key={name} style={styles.sourceBadge}>{name}</Text>)}
+      {commute && <>
+        <Text style={styles.cardStat}>{transitSeconds == null ? 'Transit unavailable' : `${Math.ceil(transitSeconds / 60)} min transit`}</Text>
+        <Text style={styles.cardStat}>{drivingSeconds == null ? 'Driving unavailable' : `${Math.ceil(drivingSeconds / 60)} min drive`}</Text>
+      </>}
     </View>
     <View style={styles.cardActions}>
       <Text style={styles.smallMuted}>{observation}</Text>
-      <View style={styles.actionLinks}>
+      <View style={styles.cardLinks}>
+        {original && <Link label={(['snapshot', 'cached'].includes(original.kind) ? 'View original on ' : 'Open on ') + original.name}
+          url={original.url} onError={onError} />}
         <Link label="Transit directions" url={directionsLink(listing, workplace)} onError={onError} />
-        <Link label="Driving from workplace" url={directionsLink(listing, workplace, 'driving')} onError={onError} />
+        <Link label="Driving directions" url={directionsLink(listing, workplace, 'driving')} onError={onError} />
         {onRemove ? <Pressable accessibilityRole="button" onPress={() => onRemove(listing)} style={styles.link}>
           <Text style={styles.linkText}>Remove saved</Text>
         </Pressable> : <Pressable accessibilityRole="button" accessibilityState={{ disabled: saved }}
@@ -172,7 +201,18 @@ function Listing({ listing, number, workplace, onSave, onSaveLink, onRemove, onE
       </View>
     </View>
     <ListingSources listing={listing} onSaveLink={onSaveLink} onError={onError} />
+    </View>
   </View>;
+}
+
+function sourceCheckText({ status, updatedAt, listingCount, retryAt, error }) {
+  const saved = updatedAt ? ' · Saved data from ' + CHECK_TIME.format(new Date(updatedAt)) : '';
+  if (status === 'feed_required') return 'Authorized feed required' + saved;
+  if (status === 'current') return 'Current';
+  if (status === 'updated') return listingCount === undefined ? 'New data imported' :
+    listingCount.toLocaleString('en-US') + ' listings checked';
+  const next = Date.parse(retryAt) > Date.now() ? ' · Next check after ' + CHECK_TIME.format(new Date(retryAt)) : '';
+  return (error ?? 'Refresh unavailable') + next + saved;
 }
 
 function Marketplaces({ filters, sources, configuredSources, companies, onCompany, refresh, refreshing, onRefresh, onError }) {
@@ -182,26 +222,25 @@ function Marketplaces({ filters, sources, configuredSources, companies, onCompan
     markets.find((item) => item.zip === filters.zip) ?? markets[0];
   const searchFeeds = new Set(sources.filter(({ status }) => status === 'searched').map(({ id }) => id));
   const configured = new Set(configuredSources.map(({ id }) => id));
+  const sampleNames = configuredSources.filter(({ sample }) => sample).map(({ name }) => name);
   const unavailable = new Set(sources.filter(({ status }) => status === 'unavailable').map(({ id }) => id));
+  const feedRequired = new Set(refresh?.sources.filter(({ status }) => status === 'feed_required').map(({ marketplace }) => marketplace));
 
   return <View style={styles.marketplacePanel}>
     <Text accessibilityRole="header" style={styles.panelTitle}>Browse rental platforms</Text>
-    <Text style={styles.bodyText}>StreetEasy listings are available through FirstMover’s {formatSnapshotMonth(refresh?.sources.find(({ id }) => id === 'firstmover')?.month)} export. Marketplace search links work without API fees and carry filters where supported.</Text>
+    <Text style={styles.bodyText}>Live results come from recent marketplace checks. FirstMover’s {formatSnapshotMonth(refresh?.sources.find(({ id }) => id === 'firstmover')?.month)} snapshot supplies the rent charts.</Text>
     <View style={styles.chartSource}>
-      <Text style={styles.fieldLabel}>{configured.size === 0 ? 'Live marketplace imports: none' : `Authorized free feeds: ${configuredSources.map(({ name }) => name).join(', ')}`}</Text>
+      <Text style={styles.fieldLabel}>{sampleNames.length ? sampleNames.length + ' live listing sources' : 'Recent live samples unavailable'}</Text>
+      {sampleNames.length > 0 && <Text style={styles.smallMuted}>{sampleNames.join(' · ')}</Text>}
       <Link label="FirstMover Open Data" url={SNAPSHOT_SOURCE} onError={onError} />
       <Text style={styles.smallMuted}>Settled.nyc · source access unverified.</Text>
       {refresh && <Button secondary onPress={onRefresh} disabled={refreshing}>
-        {refreshing ? 'Checking sources…' : 'Check public exports now'}
+        {refreshing ? 'Checking sources…' : 'Refresh listings now'}
       </Button>}
-      <Text style={styles.smallMuted}>The hourly job also checks the Openigloo live sample.</Text>
-      {refresh?.lastCheckedAt && <>
-        <Text style={styles.fieldLabel}>Last source check · {CHECK_TIME.format(new Date(refresh.lastCheckedAt))}</Text>
-        {refresh.sources.map(({ id, name, status, updatedAt }) => <Text key={id} style={styles.smallMuted}>
-          {name} · {status === 'updated' ? 'New data imported' : status === 'current' ? 'Latest release already loaded' :
-            updatedAt ? 'Refresh failed · using last successful import' : 'Refresh failed'}
-        </Text>)}
-      </>}
+      <Text style={styles.smallMuted}>Reloading checks the available feeds. If a provider limits requests, its next check waits until the retry time.</Text>
+      {refresh?.lastCheckedAt && <Text style={styles.fieldLabel}>Last source check · {CHECK_TIME.format(new Date(refresh.lastCheckedAt))}</Text>}
+      {refresh?.sources.filter(({ status, marketplace }) => status !== 'feed_required' || !configured.has(marketplace))
+        .map((source) => <Text key={source.id} style={styles.smallMuted}>{source.name} · {sourceCheckText(source)}</Text>)}
     </View>
     <Text style={styles.fieldLabel}>Marketplace area</Text>
     <ScrollView horizontal showsHorizontalScrollIndicator keyboardShouldPersistTaps="handled"
@@ -212,24 +251,26 @@ function Marketplaces({ filters, sources, configuredSources, companies, onCompan
     {filters.zip !== '' && <Text style={styles.smallMuted}>ZIP {filters.zip} is used on platforms with ZIP searches.</Text>}
     <View style={styles.marketGrid}>
       {marketplaceLinks(market, filters).map(({ id, name, url, detail }) =>
-        <Pressable key={id} accessibilityRole="link" accessibilityLabel={`Open ${name}, ${detail}`}
-          onPress={() => Linking.openURL(url).catch(() => onError(`Could not open ${name}.`))}
+        <ExternalLink key={id} url={url} onError={onError} accessibilityLabel={`Open ${name}, ${detail}`}
           style={({ pressed }) => [styles.marketCard, pressed && styles.pressed]}>
           <View style={styles.marketInfo}>
             <Text style={styles.marketName}>{name}</Text>
             <Text style={styles.smallMuted}>{detail}</Text>
           </View>
           <Text style={styles.marketArrow}>↗</Text>
-          <Text style={styles.marketType}>{searchFeeds.has(id) ? (id === 'openigloo' ? 'LIMITED LIVE SAMPLE' : 'FREE LIVE FEED') : unavailable.has(id) ? 'FEED UNAVAILABLE' :
-            configured.has(id) ? 'FREE FEED CONFIGURED' : id === 'streeteasy' ? 'MONTHLY SNAPSHOT' : 'BROWSE ONLY'}</Text>
-        </Pressable>)}
+          <Text style={styles.marketType}>{configuredSources.some((source) => source.id === id && source.sample) ?
+            'LIMITED LIVE SAMPLE' : searchFeeds.has(id) ? 'FREE LIVE FEED' : unavailable.has(id) ? 'FEED UNAVAILABLE' :
+            configured.has(id) ? 'FREE FEED CONFIGURED' : feedRequired.has(id) ? 'AUTHORIZED FEED REQUIRED' : 'BROWSE ONLY'}</Text>
+        </ExternalLink>)}
     </View>
     <Text accessibilityRole="header" style={styles.panelTitle}>NYC brokerages and apartment companies</Text>
     <Text style={styles.bodyText}>The counts show listings attributed to each company in the dated StreetEasy export. Select a company to search those apartments here.</Text>
     <View style={styles.marketGrid}>
       {NYC_COMPANIES.map(({ id, name, url, type }) => <View key={id} style={[styles.chartCard, { flexGrow: 1, flexBasis: '46%', minWidth: 150 }]}>
         <Text style={styles.marketName}>{name}</Text>
-        <Text style={styles.smallMuted}>{type} · {companies[id] ? companies[id].toLocaleString('en-US') + ' in the snapshot' : 'Website link'}</Text>
+        <Text style={styles.smallMuted}>{type} · {configured.has(id) ? 'Feed configured' :
+          companies[id] ? companies[id].toLocaleString('en-US') + ' in the snapshot' : 'Website link'}
+          {feedRequired.has(id) && !configured.has(id) ? ' · Authorized feed required' : ''}</Text>
         {companies[id] > 0 && <Button secondary onPress={() => onCompany(name)}>Search in Apartment Search</Button>}
         <Link label="Company website" url={url} onError={onError} />
       </View>)}
@@ -237,27 +278,19 @@ function Marketplaces({ filters, sources, configuredSources, companies, onCompan
   </View>;
 }
 
-function Results({ result, applied, savedByKey, showMarkets, onSave, onSaveLink, onRemove, onError }) {
-  const [sort, setSort] = useState('rent');
+function Results({ result, applied, sort, onSort, openCommute, commuteConfigured, columns, savedByKey, showMarkets, onSave, onSaveLink, onRemove, onError }) {
   const [visible, setVisible] = useState(PAGE_SIZE);
-  useEffect(() => { setVisible(PAGE_SIZE); setSort('rent'); }, [result]);
-  const matches = [...result.matches].sort((first, second) => compareResults(first, second, sort));
+  useEffect(() => { setVisible(PAGE_SIZE); }, [result]);
+  const { matches } = result;
   const savedView = result.mode === 'saved';
   const summary = savedView ? 'Saved on this device · All apartment sizes' : [
-    REGIONS[applied.region].label, bedroomLabel(applied.bedrooms), applied.zip, applied.company,
+    REGIONS[applied.region].label, bedroomLabel(applied.bedrooms), applied.zip, applied.company, MARKETPLACE_NAMES[applied.source],
     applied.maxRent === null ? null : `Up to ${formatRent(applied.maxRent)}`,
-    applied.maxMiles === null ? null : `Within ${applied.maxMiles} mi`,
+    applied.maxTransitMinutes == null ? null : `Transit ≤ ${applied.maxTransitMinutes} min`,
+    applied.maxDrivingMinutes == null ? null : `Drive ≤ ${applied.maxDrivingMinutes} min`,
   ].filter(Boolean).join(' · ');
 
   return <>
-    {(result.mode === 'snapshot' || result.mode === 'mixed') && <View style={styles.demoNotice}>
-      <View style={styles.demoMark}><Text style={styles.demoMarkText}>i</Text></View>
-      <View style={styles.noticeCopy}>
-        <Text style={styles.noticeTitle}>{result.mode === 'mixed' ? 'Live sample and ' : ''}{formatSnapshotMonth(result.snapshotMonth)} listing snapshot</Text>
-        <Text style={styles.bodyText}>Initial asking prices from FirstMover’s StreetEasy data. Check the linked marketplace for current prices and availability.</Text>
-        <Pressable accessibilityRole="button" onPress={showMarkets}><Text style={styles.linkText}>Browse rental platforms →</Text></Pressable>
-      </View>
-    </View>}
     <View style={styles.resultHeading}>
       <View style={styles.headingCopy}>
         <Text accessibilityRole="header" style={styles.panelTitle}>{result.total.toLocaleString('en-US')} {savedView ? 'saved' : 'matching'} {result.total === 1 ? 'apartment' : 'apartments'}</Text>
@@ -265,35 +298,71 @@ function Results({ result, applied, savedByKey, showMarkets, onSave, onSaveLink,
         <Text style={styles.smallMuted}>To {result.workplace.label}</Text>
       </View>
       <View style={styles.chipRow}>
-        <Chip selected={sort === 'rent'} onPress={() => setSort('rent')}>Lowest rent</Chip>
-        <Chip selected={sort === 'distance'} onPress={() => setSort('distance')}>Closest</Chip>
+        {Object.entries(RESULT_SORTS).filter(([id]) => id === 'rent' ||
+          (!savedView && (id === 'recent' || commuteConfigured))).map(([id, label]) =>
+          <Chip key={id} selected={sort === id} onPress={() => onSort(id)}>{label}</Chip>)}
       </View>
     </View>
-    {result.notices.map((notice) => <Text key={notice} style={styles.noticeLine}>{notice}</Text>)}
+    {(result.mode === 'snapshot' || result.mode === 'mixed') && <Text style={styles.smallMuted}>
+      Includes {formatSnapshotMonth(result.snapshotMonth)} listing records. Check the original listing for availability.
+    </Text>}
+    {sort === 'recent' && <Text style={styles.smallMuted}>Recently checked listings appear first, sorted by asking rent.</Text>}
+    {result.commute && <Text style={styles.smallMuted}>Weekday-morning estimates from TravelTime.</Text>}
+    {result.commuteNotice && <Text style={styles.smallMuted}>{result.commuteNotice}</Text>}
+    {result.total > matches.length && <Text style={styles.smallMuted}>List shows the first {matches.length} matches in this sort order.</Text>}
     {matches.length === 0 && <View style={styles.empty}>
       <Text accessibilityRole="header" style={styles.panelTitle}>{savedView ? 'Your saved list is empty' : 'No matches'}</Text>
       <Text style={styles.bodyText}>{savedView ? 'Save a result or add an apartment you found on a rental platform.' :
-        'Try another area or budget. Open a rental platform to check current listings in places the snapshot does not cover.'}</Text>
+        applied.liveOnly && applied.source ? 'This website has no recently checked matches. Choose All results to include dated and saved listings.' :
+          needsCommute(applied) ? 'Try a longer commute limit, or change the area or budget.' :
+            'Try another area, website, bedroom count, or budget.'}</Text>
+      {!savedView && needsCommute(applied) && <Button secondary onPress={openCommute}>Edit commute filters</Button>}
       <Button secondary onPress={showMarkets}>Browse rental platforms</Button>
     </View>}
-    {matches.slice(0, visible).map((listing, index) => {
+    <View style={styles.listingGrid}>
+    {matches.slice(0, visible).map((listing) => {
       const saved = savedByKey.get(listingKey(listing));
       const withLinks = saved ? { ...listing, sources: mergeSourceLinks(listing.sources, saved.sources) } : listing;
-      return <Listing key={listing.id} listing={withLinks} number={index + 1} workplace={result.workplace}
-        onSave={onSave} onSaveLink={onSaveLink} onError={onError} onRemove={savedView ? onRemove : null} saved={Boolean(saved)} />;
+      return <View key={listing.id} style={columns ? styles.gridCard : styles.fullCard}><Listing listing={withLinks} selectedSource={savedView ? '' : applied.source} workplace={result.workplace} commute={result.commute}
+        onSave={onSave} onSaveLink={onSaveLink} onError={onError} onRemove={savedView ? onRemove : null} saved={Boolean(saved)} /></View>;
     })}
+    </View>
     {visible < matches.length && <Button secondary onPress={() => setVisible(visible + PAGE_SIZE)}>
       Show more ({Math.min(visible, matches.length)} of {matches.length})
     </Button>}
   </>;
 }
 
+function WebsiteFilter({ result, applied, onSelect, onError }) {
+  const counts = result.sourceCounts ?? [];
+  const streetEasy = counts.find(({ id }) => id === 'streeteasy');
+  const area = MARKETS.find(({ zip }) => applied.zip && zip === applied.zip) ??
+    MARKETS.find(({ region }) => region === applied.region) ?? MARKETS[0];
+  const browse = marketplaceLinks(area, applied).find(({ id }) => id === 'streeteasy');
+
+  return <View style={styles.websiteFilter}>
+    <Text style={styles.fieldLabel}>Listing website</Text>
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.marketChips}>
+      <Chip selected={!applied.source} onPress={() => onSelect('')}>All websites</Chip>
+      <Chip selected={applied.source === 'streeteasy'} onPress={() => onSelect('streeteasy')}>
+        {'StreetEasy' + (streetEasy ? ' (' + streetEasy.count.toLocaleString('en-US') + ')' : '')}
+      </Chip>
+      {counts.filter(({ id }) => id !== 'streeteasy').map(({ id, name, count }) =>
+        <Chip key={id} selected={applied.source === id} onPress={() => onSelect(id)}>{name + ' (' + count.toLocaleString('en-US') + ')'}</Chip>)}
+    </ScrollView>
+    {applied.source === 'streeteasy' && <View style={styles.actionLinks}>
+      <Text style={styles.smallMuted}>Includes dated StreetEasy listings when All results is selected.</Text>
+      <Link label="Open current StreetEasy search" url={browse.url} onError={onError} />
+    </View>}
+  </View>;
+}
+
 function ApartmentSearch() {
   const { width } = useWindowDimensions();
   const wide = width >= 980;
   const [draft, setDraft] = useState(formDefaults);
-  const [applied, setApplied] = useState(DEFAULT_FILTERS);
-  const [result, setResult] = useState(() => snapshotSearch(DEFAULT_FILTERS));
+  const [applied, setApplied] = useState(SEARCH_DEFAULTS);
+  const [result, setResult] = useState(() => snapshotSearch(SEARCH_DEFAULTS));
   const [saved, setSaved] = useState([]);
   const [storageReady, setStorageReady] = useState(false);
   const [serverState, setServerState] = useState(API_ORIGIN === null ? 'offline' : 'checking');
@@ -301,16 +370,22 @@ function ApartmentSearch() {
   const [companies, setCompanies] = useState({});
   const [refresh, setRefresh] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState('');
+  const checking = useRef(false);
   const submitted = useRef(false);
   const searchVersion = useRef(0);
+  const appliedFilters = useRef(SEARCH_DEFAULTS);
   const [token, setToken] = useState('');
   const [activeToken, setActiveToken] = useState('');
+  const [commuteConfigured, setCommuteConfigured] = useState(false);
   const [tab, setTab] = useState('results');
   const [scope, setScope] = useState('market');
   const [adding, setAdding] = useState(false);
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState('');
+  const [mapView, setMapView] = useState(wide);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const failedSources = refresh?.sources.filter(({ status }) => status === 'failed') ?? [];
   const savedByKey = useMemo(() => new Map(saved.map((listing) => [listingKey(listing), listing])), [saved]);
   const savedResults = useMemo(() => localSearch(saved, SAVED_FILTERS, result.workplace, 'saved'), [saved, result.workplace]);
 
@@ -332,71 +407,85 @@ function ApartmentSearch() {
       .catch(() => setError('This device could not store the saved listings.'));
   }, [saved, storageReady]);
 
+  const updateConfig = useCallback((config) => {
+    setConfiguredSources(config.sources);
+    setCommuteConfigured(config.commuteConfigured === true);
+    setCompanies(config.companies ?? {});
+    setRefresh(config.refresh ?? null);
+  }, []);
+
+  const checkSources = useCallback(async (signal) => {
+    if (checking.current || signal?.aborted) return;
+    checking.current = true;
+    setRefreshing(true);
+    setRefreshError('');
+    try {
+      const request = await api('refresh', { body: { check: 'now' }, token: activeToken, signal });
+      const check = await finishSourceCheck(request, activeToken, signal);
+      if (signal?.aborted) return;
+      const failedExports = retryablePublicSources(check);
+      if (failedExports.length) {
+        const plan = await api('refresh', { token: activeToken, signal });
+        const exports = await pullPublicSources(plan, fetch, new Date(), retryablePublicSources(plan));
+        if (signal?.aborted) return;
+        const recovered = Object.fromEntries(Object.entries(exports).filter(([, data]) => data));
+        if (Object.keys(recovered).length) {
+          const outcome = await api('refresh', { body: { ...encodeSourceImport(recovered), fallback: true }, token: activeToken, signal });
+          await finishSourceCheck(outcome, activeToken, signal);
+        }
+      }
+
+      const config = await api('config', { token: activeToken, signal });
+      if (signal?.aborted) return;
+      updateConfig(config);
+      const filters = appliedFilters.current;
+      const version = searchVersion.current;
+      const fresh = await api('search', {
+        body: { ...filters, includeCommute: config.commuteConfigured === true }, token: activeToken, signal,
+      });
+      if (!signal?.aborted && searchVersion.current === version && appliedFilters.current === filters) {
+        searchVersion.current += 1;
+        setResult(fresh);
+      }
+    } catch (failure) {
+      if (!signal?.aborted) setRefreshError(failure.message || 'The listing sources could not be checked.');
+    } finally {
+      checking.current = false;
+      if (!signal?.aborted) setRefreshing(false);
+    }
+  }, [activeToken, updateConfig]);
+
   useEffect(() => {
     if (API_ORIGIN === null) return;
     const controller = new AbortController();
     api('config', { token: activeToken, signal: controller.signal }).then((config) => {
+      if (controller.signal.aborted) return;
       setServerState('ready');
-      setConfiguredSources(config.sources);
-      setCompanies(config.companies ?? {});
-      setRefresh(config.refresh ?? null);
-      if (!submitted.current && (config.snapshotMonth !== SNAPSHOT_MONTH || config.mode === 'live' ||
-          config.refresh?.sources.some(({ id, updatedAt }) => id === 'firstmover' && updatedAt))) {
-        api('search', { body: DEFAULT_FILTERS, token: activeToken, signal: controller.signal })
-          .then((fresh) => { if (!submitted.current && !controller.signal.aborted) setResult(fresh); })
+      updateConfig(config);
+      const version = searchVersion.current;
+      if (!submitted.current && (config.commuteConfigured || config.snapshotMonth !== SNAPSHOT_MONTH || config.mode === 'live' ||
+          config.refresh?.sources.some(({ updatedAt }) => updatedAt))) {
+        api('search', { body: { ...SEARCH_DEFAULTS, includeCommute: config.commuteConfigured === true }, token: activeToken, signal: controller.signal })
+          .then((fresh) => {
+            if (!submitted.current && !controller.signal.aborted && searchVersion.current === version) setResult(fresh);
+          })
           .catch(() => {});
       }
+      if (config.refresh && Platform.OS === 'web') void checkSources(controller.signal);
     }).catch((failure) => {
       if (controller.signal.aborted) return;
       setServerState(failure.status === 401 ? 'locked' : 'offline');
-      if (failure.status === 401) setExpanded(true);
+      if (failure.status === 401) setExpanded('more');
     });
     return () => controller.abort();
-  }, [activeToken]);
+  }, [activeToken, checkSources, updateConfig]);
 
-  useEffect(() => {
-    if (tab !== 'marketplaces' || serverState !== 'ready') return;
-    const controller = new AbortController();
-    api('config', { token: activeToken, signal: controller.signal }).then((config) => {
-      setConfiguredSources(config.sources);
-      setCompanies(config.companies ?? {});
-      setRefresh(config.refresh ?? null);
-    }).catch(() => {});
-    return () => controller.abort();
-  }, [tab, serverState, activeToken]);
-
+  const lastCheckedAt = refresh?.lastCheckedAt;
   const loadMarket = useCallback((region, grouping, signal) =>
     api('market?' + new URLSearchParams({ region, grouping }), { token: activeToken, signal }),
-  [activeToken]);
+  [activeToken, lastCheckedAt]);
 
-  const loadHousing = useCallback((signal) => api('housing', { token: activeToken, signal }), [activeToken]);
-
-  async function checkSources() {
-    if (refreshing || busy) return;
-    const version = searchVersion.current;
-    setRefreshing(true);
-    setError('');
-    try {
-      const plan = await api('refresh', { token: activeToken });
-      if (!plan.ready) throw new Error('Hosted refresh storage is unavailable.');
-      if (!plan.publicAlreadyChecked) {
-        const imports = await pullPublicSources(plan);
-        await api('refresh', { body: encodeSourceImport(imports), token: activeToken });
-      }
-      const fresh = await api('search', { body: applied, token: activeToken });
-      if (searchVersion.current === version) setResult(fresh);
-    } catch (failure) {
-      setError(failure.message || 'The source check failed.');
-    } finally {
-      try {
-        const config = await api('config', { token: activeToken });
-        setRefresh(config.refresh ?? null);
-      } catch {
-        // The previous check remains visible when the server cannot be reached.
-      }
-      setRefreshing(false);
-    }
-  }
+  const loadHousing = useCallback((signal) => api('housing', { token: activeToken, signal }), [activeToken, lastCheckedAt]);
 
   async function submit(nextDraft = draft) {
     if (busy) return;
@@ -405,16 +494,26 @@ function ApartmentSearch() {
     setError('');
     setBusy(true);
     try {
-      const filters = parseFilters(nextDraft);
+      const filters = parseFilters({ ...nextDraft, includeCommute: commuteConfigured });
+      if (needsCommute(filters) && serverState !== 'ready') {
+        setExpanded('commute');
+        throw new Error('Commute estimates need the online search server. Try again when it is available.');
+      }
+      if (needsCommute(filters) && !commuteConfigured) {
+        setExpanded('commute');
+        throw new Error('Automatic commute estimates are currently unavailable.');
+      }
       const searchResult = serverState === 'ready' ?
         await api('search', { body: filters, token: activeToken }) : snapshotSearch(filters);
+      appliedFilters.current = filters;
       setApplied(filters);
       setResult(searchResult);
       setScope('market');
       setAdding(false);
       setTab('results');
-      if (!wide) setExpanded(false);
+      setExpanded('');
     } catch (failure) {
+      if (failure.commuteError) setExpanded('commute');
       setError(failure.message || 'Search could not be completed.');
     } finally {
       setBusy(false);
@@ -436,6 +535,20 @@ function ApartmentSearch() {
     submit(nextDraft);
   }
 
+  function selectSource(source) {
+    if (busy) return;
+    const liveOnly = applied.liveOnly && (source !== 'streeteasy' || result.sourceCounts?.some(({ id }) => id === source));
+    const next = { ...applied, source, liveOnly: Boolean(liveOnly) };
+    setDraft((current) => ({ ...current, source, liveOnly: next.liveOnly }));
+    submit(next);
+  }
+
+  function selectSort(sort) {
+    if (busy || sort === applied.sort) return;
+    setDraft((current) => ({ ...current, sort }));
+    submit({ ...applied, sort });
+  }
+
   function saveListing(listing) {
     setSaved((current) => mergeListings([...current, { ...listing, buildingLinks: undefined }]));
   }
@@ -449,62 +562,103 @@ function ApartmentSearch() {
     setTab('results');
   }
 
+  const toggleFilter = (panel) => setExpanded((current) => current === panel ? '' : panel);
+  const displayed = scope === 'saved' ? savedResults : result;
+  const points = displayed.mapPoints ?? EMPTY_POINTS;
+  const split = WEB_MAP && wide && mapView;
+  const listVisible = !WEB_MAP || !mapView || wide;
+  const marketArea = applied.region === 'all' ? 'NY, NJ and CT' : REGIONS[applied.region].label;
+  const commuteLabel = [
+    applied.maxTransitMinutes != null && `Transit ≤ ${applied.maxTransitMinutes} min`,
+    applied.maxDrivingMinutes != null && `Drive ≤ ${applied.maxDrivingMinutes} min`,
+  ].filter(Boolean).join(' · ') || 'Commute';
+
   return <SafeAreaView style={styles.safe}>
-    <StatusBar barStyle="dark-content" backgroundColor={colors.background} />
+    <StatusBar barStyle="light-content" backgroundColor={colors.navy} />
+    <View style={styles.topBar}>
+      <View style={styles.brand}><View style={styles.brandMark}><Text style={styles.brandLetter}>A</Text></View>
+        <Text style={styles.brandText}>Apartment Search</Text></View>
+      <Text style={styles.topLabel}>NYC METRO</Text>
+    </View>
+    <View style={styles.tabs}>
+      {[['results', 'Rent'], ['chart', 'Rent chart'], ['marketplaces', 'Platforms'], ['affordable', 'Affordable']].map(([key, label]) =>
+        <Pressable key={key} accessibilityRole="tab" accessibilityState={{ selected: tab === key }}
+          style={[styles.tab, tab === key && styles.tabActive]} onPress={() => setTab(key)}>
+          <Text style={[styles.tabLabel, tab === key && styles.tabLabelActive]}>{label}</Text>
+        </Pressable>)}
+    </View>
+    {tab === 'results' && <View style={styles.filterBar}>
+      <View style={styles.chipRow}>
+        <Chip onPress={() => toggleFilter('area')} selected={expanded === 'area'}>{'⌖  ' + marketArea + '  ▾'}</Chip>
+        <Chip onPress={() => toggleFilter('price')} selected={expanded === 'price'}>{applied.maxRent === null ? 'Price ▾' : 'Up to ' + formatRent(applied.maxRent) + ' ▾'}</Chip>
+        <Chip onPress={() => toggleFilter('beds')} selected={expanded === 'beds'}>{bedroomLabel(applied.bedrooms) + ' ▾'}</Chip>
+        <Chip onPress={() => toggleFilter('commute')} selected={expanded === 'commute'}>{commuteLabel + ' ▾'}</Chip>
+        <Button secondary onPress={() => toggleFilter('more')}>{expanded === 'more' ? 'Hide filters' : 'More filters'}</Button>
+        {WEB_MAP && <Button secondary onPress={() => setMapView(!mapView)}>{mapView ? 'List only' : 'Show map'}</Button>}
+      </View>
+    </View>}
     <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scroll}>
       <View style={styles.shell}>
-        <View style={styles.topBar}>
-          <View style={styles.brand}><View style={styles.brandMark}><Text style={styles.brandLetter}>A</Text></View>
-            <Text style={styles.brandText}>Apartment Search</Text></View>
-          <Text style={styles.topLabel}>NYC METRO</Text>
-        </View>
-        <Hero wide={wide} />
-        <View style={[styles.workspace, wide && styles.workspaceWide]}>
-          <View style={[styles.sidebar, wide && styles.sidebarWide]}>
-            {!wide && <Button secondary onPress={() => setExpanded(!expanded)}>
-              {expanded ? 'Hide filters ↑' : 'Edit search filters ↓'}
-            </Button>}
-            {(wide || expanded) && <Filters draft={draft} setDraft={setDraft} submit={() => submit()}
-              busy={busy} serverState={serverState} token={token} setToken={setToken}
-              connect={() => setActiveToken(token.trim())} />}
-          </View>
-          <View style={styles.results}>
-            <View style={styles.tabs}>
-              {[['results', 'Results'], ['chart', 'Rent chart'], ['marketplaces', 'Platforms'], ['affordable', 'Affordable']].map(([key, label]) =>
-                <Pressable key={key} accessibilityRole="tab" accessibilityState={{ selected: tab === key }}
-                  style={[styles.tab, tab === key && styles.tabActive]} onPress={() => setTab(key)}>
-                  <Text style={[styles.tabLabel, tab === key && styles.tabLabelActive]}>{label}</Text>
-                </Pressable>)}
-            </View>
+        {tab === 'results' && expanded && <Filters panel={expanded} draft={draft} setDraft={setDraft} submit={() => submit()}
+          busy={busy} serverState={serverState} token={token} setToken={setToken}
+          commuteConfigured={commuteConfigured}
+          connect={() => setActiveToken(token.trim())} />}
+        <View style={styles.results}>
             {error !== '' && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
+            {refreshing && <Text accessibilityLiveRegion="polite" style={styles.smallMuted}>Checking rental sources…</Text>}
+            {!refreshing && failedSources.length > 0 && <Text style={styles.noticeLine}>
+              {failedSources.length} {failedSources.length === 1 ? 'source is' : 'sources are'} temporarily unavailable. See Platforms for details.
+            </Text>}
+            {refreshError !== '' && <Text accessibilityRole="alert" style={styles.noticeLine}>{refreshError}</Text>}
             {tab === 'results' && <>
+              <View style={styles.resultControls}>
               <View style={styles.scopeRow}>
                 <View style={styles.chipRow}>
                   <Chip selected={scope === 'market' && !applied.liveOnly} onPress={() => selectInventory(false)}>All results</Chip>
                   <Chip selected={scope === 'market' && applied.liveOnly} onPress={() => selectInventory(true)}>Live only</Chip>
                   <Chip selected={scope === 'saved'} onPress={showSaved}>Saved ({saved.length})</Chip>
                 </View>
-                {!adding && <Button secondary onPress={() => { setAdding(true); showSaved(); }}>+ Add listing</Button>}
+                {!adding && <View style={styles.chipRow}>
+                  <Button secondary onPress={() => { setAdding('single'); showSaved(); }}>+ Add listing</Button>
+                  <Button secondary onPress={() => { setAdding('import'); showSaved(); }}>Import CSV</Button>
+                </View>}
               </View>
-              {adding && <AddListing initialRegion={applied.region}
+              {scope === 'market' && <WebsiteFilter result={result} applied={applied} onSelect={selectSource} onError={setError} />}
+              </View>
+              {adding === 'single' && <AddListing initialRegion={applied.region}
                 onSave={(listing) => { saveListing(listing); setAdding(false); }}
                 onCancel={() => setAdding(false)}
                 geocode={serverState === 'ready' ? (address) => api('geocode', { body: { address }, token: activeToken }) : null} />}
-              <Results result={scope === 'saved' ? savedResults : result} applied={applied} savedByKey={savedByKey}
-                showMarkets={() => setTab('marketplaces')} onSave={saveListing} onSaveLink={saveLink}
-                onRemove={(listing) => setSaved((current) => current.filter((item) => listingKey(item) !== listingKey(listing)))}
-                onError={setError} />
+              {adding === 'import' && <ImportListings
+                onImport={(listings) => {
+                  setSaved((current) => mergeListings([...listings, ...current]));
+                  setAdding(false);
+                }}
+                onCancel={() => setAdding(false)} />}
+              <View style={[styles.resultLayout, split && styles.resultLayoutWide]}>
+                {listVisible && <View style={styles.results}>
+                  <Results result={displayed} applied={applied} sort={scope === 'saved' ? SAVED_FILTERS.sort : applied.sort} onSort={selectSort}
+                    openCommute={() => setExpanded('commute')}
+                    commuteConfigured={commuteConfigured}
+                    columns={wide} savedByKey={savedByKey}
+                    showMarkets={() => setTab('marketplaces')} onSave={saveListing} onSaveLink={saveLink}
+                    onRemove={(listing) => setSaved((current) => current.filter((item) => listingKey(item) !== listingKey(listing)))}
+                    onError={setError} />
+                </View>}
+                {WEB_MAP && mapView && <View style={[styles.mapPanel, split && styles.mapPanelWide]}>
+                  <ListingMap points={points} total={displayed.total} visible />
+                </View>}
+              </View>
             </>}
             {tab === 'chart' && <RentChart initialRegion={applied.region} saved={saved} showSaved={showSaved} onError={setError}
               loadMarket={serverState === 'ready' ? loadMarket : undefined} />}
             {tab === 'marketplaces' && <Marketplaces filters={applied} sources={result.sources}
-              configuredSources={configuredSources} companies={companies} onCompany={searchCompany} refresh={refresh} refreshing={refreshing} onRefresh={checkSources} onError={setError} />}
+              configuredSources={configuredSources} companies={companies} onCompany={searchCompany} refresh={refresh} refreshing={refreshing}
+              onRefresh={() => checkSources()} onError={setError} />}
             {tab === 'affordable' && <AffordableHousing loadHousing={serverState === 'ready' ? loadHousing : undefined} onError={setError} />}
-          </View>
         </View>
         <View style={styles.footer}>
-          <Text style={styles.smallMuted}>Apartment Search · New York, New Jersey, Connecticut and eastern Pennsylvania</Text>
-          <Text style={styles.smallMuted}>Distances are straight-line miles. Open driving directions to check travel time.</Text>
+          <Text style={styles.smallMuted}>Apartment Search · New York, New Jersey and Connecticut</Text>
         </View>
       </View>
     </ScrollView>

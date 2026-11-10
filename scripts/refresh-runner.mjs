@@ -1,6 +1,6 @@
 import { createInterface } from 'node:readline';
-import { loadOpenigloo } from '../server/openigloo.mjs';
-import { encodeSourceImport, pullPublicSources } from '../src/pull-sources.mjs';
+import { setTimeout } from 'node:timers/promises';
+import { encodeSourceImport, pullPublicSources, retryablePublicSources } from '../src/pull-sources.mjs';
 
 const origin = 'https://apartment-search-metro-nyc.adepthen22.chatgpt.site';
 const input = createInterface({ input: process.stdin });
@@ -20,16 +20,29 @@ async function request(path, body) {
   return result;
 }
 
+async function waitForCheck(result) {
+  for (let attempt = 0; result.checking && attempt < 25; attempt += 1) {
+    await setTimeout(1200);
+    result = await request('/api/refresh');
+  }
+  if (result.checking) throw new Error('The source check is still running.');
+  return result;
+}
+
 const plan = await request('/api/refresh');
 if (!plan.ready) throw new Error('Hosted refresh storage is unavailable.');
-let outcome = plan;
-if (!plan.alreadyChecked) {
-  const [sources, openigloo] = await Promise.all([pullPublicSources(plan), loadOpenigloo().catch(() => null)]);
-  outcome = await request('/api/refresh', encodeSourceImport({ ...sources, openigloo }));
+let outcome = await waitForCheck(await request('/api/refresh', { check: 'now' }));
+if (retryablePublicSources(outcome).length) {
+  const latest = await request('/api/refresh');
+  const exports = await pullPublicSources(latest, fetch, new Date(), retryablePublicSources(latest));
+  const recovered = Object.fromEntries(Object.entries(exports).filter(([, data]) => data));
+  if (Object.keys(recovered).length) {
+    outcome = await waitForCheck(await request('/api/refresh', { ...encodeSourceImport(recovered), fallback: true }));
+  }
 }
 const config = await request('/api/config');
 const status = config.refresh;
-if (!status?.lastCheckedAt || status.lastCheckedAt !== outcome.lastCheckedAt) {
+if (!(Date.parse(status?.lastCheckedAt) >= Date.parse(outcome.lastCheckedAt))) {
   throw new Error('The refresh status could not be verified after the update.');
 }
 const failed = status.sources.filter(({ status: state }) => state === 'failed').map(({ name }) => name);

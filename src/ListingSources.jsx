@@ -41,10 +41,10 @@ export function ListingSources({ listing, onSaveLink, onError }) {
           <Link key={url} label={name} url={url} onError={onError} />)}
       </View>}
       <View style={styles.sourceGroup}>
-        <Text style={styles.fieldLabel}>Find this address on other sites</Text>
+        <Text style={styles.fieldLabel}>Search for this address</Text>
         <Text style={styles.smallMuted}>Each link searches for the address on that site. Check the unit before saving a match.</Text>
         <View style={styles.addressLinks}>
-          {marketplaceAddressSearches(listing).map((link) =>
+          {marketplaceAddressSearches(listing, ['snapshot', 'cached'].includes(listing.kind) ? [] : direct).map((link) =>
             <Link key={link.id} label={link.name} url={link.url} onError={onError} />)}
         </View>
       </View>

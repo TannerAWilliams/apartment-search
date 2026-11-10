@@ -1,5 +1,5 @@
 import React from 'react';
-import { Linking, Pressable, Text, TextInput, View } from 'react-native';
+import { Linking, Platform, Pressable, Text, TextInput, View } from 'react-native';
 import { colors, styles } from './styles.js';
 
 export function Chip({ children, selected = false, onPress }) {
@@ -18,12 +18,17 @@ export function Button({ children, onPress, secondary = false, disabled = false 
   </Pressable>;
 }
 
+export function ExternalLink({ url, onError, children, ...props }) {
+  const navigation = Platform.OS === 'web' ? { href: url } : {
+    onPress: () => Linking.openURL(url).catch(() => onError?.('This link could not be opened on your device.')),
+  };
+  return <Pressable accessibilityRole="link" {...props} {...navigation}>{children}</Pressable>;
+}
+
 export function Link({ label, url, onError }) {
-  return <Pressable accessibilityRole="link" onPress={() => {
-    Linking.openURL(url).catch(() => onError('This link could not be opened on your device.'));
-  }} style={({ pressed }) => [styles.link, pressed && styles.pressed]}>
+  return <ExternalLink url={url} onError={onError} style={({ pressed }) => [styles.link, pressed && styles.pressed]}>
     <Text style={styles.linkText}>{label} ↗</Text>
-  </Pressable>;
+  </ExternalLink>;
 }
 
 export function SectionTitle({ index, children }) {
