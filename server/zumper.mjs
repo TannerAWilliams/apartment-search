@@ -4,7 +4,7 @@ import { loadPublicPages, publicListingUrl } from './public-rentals.mjs';
 
 const SOURCE = { id: 'zumper', name: 'Zumper', kind: 'feed' };
 const ORIGIN = 'https://www.zumper.com';
-const PAGES = ['manhattan', 'brooklyn'].flatMap((borough) => ['', '/cheap'].map((suffix) => ({
+const PAGES = ['manhattan', 'brooklyn'].flatMap((borough) => ['', '/cheap', '?page=2'].map((suffix) => ({
   url: ORIGIN + '/apartments-for-rent/' + borough + '-ny' + suffix, state: 'NY', region: 'nyc', borough,
 })));
 const listingUrl = (url) => publicListingUrl(url, ORIGIN, /^\/listings\/\d+p?\/[^/]+\/?$/);

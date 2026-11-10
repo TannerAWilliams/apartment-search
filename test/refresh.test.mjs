@@ -241,22 +241,51 @@ test('the Openigloo connector uses its published limit and preserves only exact 
     if (message.method === 'notifications/initialized') return new Response(null, { status: 202 });
     if (message.method === 'initialize') return Response.json({ id: message.id, result: { protocolVersion: '2025-11-25' } });
     assert.equal(message.params.arguments.limit, 10);
-    assert.equal(message.params.arguments.max_rent, 5000);
-    areas.push(message.params.arguments.area);
+    assert.equal(Object.hasOwn(message.params.arguments, 'max_rent'), false);
+    areas.push(message.params.arguments.area + ':' + message.params.arguments.bedrooms.join(','));
     return Response.json({ id: message.id, result: { structuredContent: { total_matches: 30, apartments: [
       { id: 'sample', address: '28 Example Street #2, Brooklyn, NY 11215', borough: 'Brooklyn',
-        status: 'for_rent', bedrooms: 1, rent_per_month: 2100,
+        status: 'for_rent', bedrooms: 1, rent_per_month: 6100,
         url: 'https://www.openigloo.com/unit/nyc/sample' },
       { id: 'bad', address: '28 Example Street #3, Brooklyn, NY 11215', borough: 'Brooklyn',
         status: 'for_rent', bedrooms: 1, rent_per_month: 2000, url: 'https://unrelated.test/ads' },
     ] } } });
   }, at);
   assert.equal(checked.listings.length, 1);
-  assert.deepEqual(areas.sort(), ['Brooklyn', 'Manhattan']);
-  assert.equal(checked.sampleLimit, 20);
+  assert.deepEqual(areas.sort(), ['Brooklyn:1', 'Brooklyn:2', 'Manhattan:1', 'Manhattan:2']);
+  assert.equal(checked.sampleLimit, 40);
+  assert.equal(checked.listings[0].rent, 6100);
   assert.equal(checked.listings[0].unit, '2');
   assert.equal(checked.listings[0].latitude, 40.67);
   assert.equal(checked.listings[0].sources[0].id, 'openigloo');
+});
+
+test('Trulia collects unpriced one- and two-bedroom searches across both boroughs and pages', async () => {
+  const { TRULIA_LIVE } = await import('../server/trulia.mjs');
+  const urls = [];
+  const result = await TRULIA_LIVE.load(async (url) => {
+    urls.push(url);
+    const [city, beds] = new URL(url).pathname.match(/(Manhattan|Brooklyn),NY\/(\d)_beds\//).slice(1);
+    const id = urls.length;
+    const zipCode = city === 'Manhattan' ? '10019' : '11215';
+    const row = {
+      url: `/home/example-unit-${id}`,
+      metadata: { unifiedListingType: 'RENTAL_SINGLE_UNIT' },
+      activeListing: { __typename: 'HOME_ForRentListing' },
+      location: { city: 'New York', stateCode: 'NY', zipCode, streetAddress: `${id} Example St #2`,
+        coordinates: { latitude: 40.7, longitude: -73.99 } },
+      bedrooms: { value: Number(beds) }, price: { price: 7250 },
+    };
+    return new Response('<script id="__NEXT_DATA__">' + JSON.stringify({ props: { searchData: { homes: [row] } } }) + '</script>',
+      { headers: { 'Content-Type': 'text/html' } });
+  }, at);
+  assert.equal(urls.length, 8);
+  assert.equal(urls.filter((url) => url.endsWith('/2_p/')).length, 4);
+  assert.ok(urls.every((url) => !url.includes('_price')));
+  assert.equal(result.listings.length, 8);
+  assert.ok(result.listings.every(({ rent }) => rent === 7250));
+  assert.deepEqual([...new Set(result.listings.map(({ city, bedrooms }) => city + ':' + bedrooms))].sort(),
+    ['Brooklyn:1', 'Brooklyn:2', 'Manhattan:1', 'Manhattan:2']);
 });
 
 const publicRental = {
@@ -278,8 +307,9 @@ function publishedCatalog(url, options) {
 function zumperPage(rent) {
   const rental = { url: 'https://www.zumper.com/listings/222p/28-example-street', listing_id: 222,
     listing_status: 1, listing_type: 1, property_type: 4, state: 'NY', city: 'Brooklyn', zipcode: '11215',
-    address: '28 Example Street', lat: 40.67, lng: -73.99, min_price: rent, max_price: rent, min_bedrooms: 1, max_bedrooms: 1 };
-  const listables = [rental, { ...rental, listing_id: 223, url: '/listings/223p/1-bedroom-example',
+    address: '28 Example Street #2', lat: 40.67, lng: -73.99, min_price: rent, max_price: rent, min_bedrooms: 1, max_bedrooms: 1 };
+  const listables = [rental, { ...rental, listing_id: 224, url: '/listings/224p/28-example-street' },
+    { ...rental, listing_id: 223, url: '/listings/223p/1-bedroom-example',
     title: 'Private bedroom in a shared apartment' }];
   const body = 'window.__PRELOADED_STATE__ = ' + JSON.stringify({ currentSearch: { listables: { listables } } }) + '; window.__GIT_SHA__';
   return new Response(body, { headers: { 'Content-Type': 'text/html' } });
@@ -305,10 +335,12 @@ test('opening or reloading the app fetches new source data even within the same 
     assert.equal(check.sources.find(({ id }) => id === 'firstmover').status, minute === 26 ? 'updated' : 'current');
     const listings = (await storedDirectRentals(env.BUCKET, ZUMPER_LIVE)).listings;
     assert.deepEqual(listings.map(({ rent, city }) => [rent, city]), [[price, 'Brooklyn']]);
+    assert.equal(listings[0].sources.length, 2);
     price -= 100;
   }
   const zumper = requests.filter((url) => new URL(url).hostname === 'www.zumper.com');
-  assert.equal(zumper.length, 8);
+  assert.equal(zumper.length, 12);
+  assert.equal(zumper.filter((url) => new URL(url).searchParams.get('page') === '2').length, 4);
   assert.deepEqual([...new Set(zumper.map((url) => new URL(url).pathname))].sort(),
     ['/apartments-for-rent/brooklyn-ny', '/apartments-for-rent/brooklyn-ny/cheap',
       '/apartments-for-rent/manhattan-ny', '/apartments-for-rent/manhattan-ny/cheap']);

@@ -187,7 +187,7 @@ async function refreshOpenigloo(bucket, result, at) {
   const listings = result.listings.map((listing) => ({ ...listing, checkedAt: at }));
   await bucket.put(OPENIGLOO_KEY, compressed({ ...result, listings }), { customMetadata: { updatedAt: at } });
   return { status: 'updated', updatedAt: at, listingCount: result.listings.length,
-    total: result.total, rentLimit: result.rentLimit, sampleLimit: result.sampleLimit };
+    total: result.total, sampleLimit: result.sampleLimit };
 }
 
 async function refreshDirectRentals(bucket, source, result, at) {
@@ -199,9 +199,9 @@ async function refreshDirectRentals(bucket, source, result, at) {
         typeof listing.city !== 'string' || !listing.city || !/^\d{5}$/.test(listing.zip) ||
         !Number.isFinite(listing.rent) || listing.rent <= 0 || listing.rent > 100000 ||
         !Number.isInteger(listing.bedrooms) || listing.bedrooms < 0 || listing.bedrooms > 4 ||
-        !Array.isArray(listing.sources) || listing.sources.length !== 1 ||
-        listing.sources[0]?.id !== source.marketplace || listing.sources[0].kind !== 'feed' ||
-        !source.listingUrl(listing.sources[0].url) || !Number.isFinite(Date.parse(listing.seenAt)))) {
+        !Array.isArray(listing.sources) || !listing.sources.length ||
+        listing.sources.some((link) => link?.id !== source.marketplace || link.kind !== 'feed' ||
+          !source.listingUrl(link.url)) || !Number.isFinite(Date.parse(listing.seenAt)))) {
     throw new Error(source.name + ' did not return a valid live sample.');
   }
   const listings = result.listings.map((listing) => ({ ...listing, checkedAt: at }));
@@ -279,7 +279,6 @@ export async function refreshSources(env, { fetcher = fetch, now = new Date(), i
       if (counts?.updatedAt) {
         item.listingCount = counts.listingCount;
         item.total = counts.total;
-        item.rentLimit = counts.rentLimit;
         item.sampleLimit = counts.sampleLimit;
       }
       if (!next) item.error = 'The Openigloo live sample could not be refreshed.';
@@ -290,8 +289,10 @@ export async function refreshSources(env, { fetcher = fetch, now = new Date(), i
         item.pages = counts.pages;
       }
       if (!next) item.error = 'The ' + name + ' live sample could not be refreshed.';
-    } else if (!next) {
-      item.error = name + ' could not be refreshed.';
+    } else {
+      const listingCount = next?.listingCount ?? older?.listingCount;
+      if (listingCount !== undefined) item.listingCount = listingCount;
+      if (!next) item.error = name + ' could not be refreshed.';
     }
     if (!next && onDemand) {
       const status = result.reason?.httpStatus;

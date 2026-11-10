@@ -8,7 +8,9 @@ const ORIGIN = 'https://www.affordablehousing.com';
 const PAGES = [
   ['new-york-ny', 'Manhattan'],
   ['brooklyn-ny', 'Brooklyn'],
-].map(([slug, city]) => ({ url: ORIGIN + '/' + slug + '/', city, state: 'NY', region: 'nyc' }));
+].flatMap(([slug, city]) => ['', 'page-2/'].map((page) => ({
+  url: `${ORIGIN}/${slug}/${page}`, city, state: 'NY', region: 'nyc',
+})));
 const listingUrl = (url) => publicListingUrl(url, ORIGIN, /^\/[a-z\d-]+\/[a-z\d-]+-\d+\/?$/i);
 
 export const AFFORDABLE_LIVE = {

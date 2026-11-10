@@ -1,15 +1,14 @@
 import { normalizeListing } from '../src/listings.mjs';
 import { marketplaceIdForUrl } from '../src/marketplaces.mjs';
 import { searchBorough } from '../src/regions.mjs';
-import { DEFAULT_FILTERS } from '../src/search.mjs';
 import { geocodeRentalAddresses } from './geocode-rentals.mjs';
 
 export const OPENIGLOO = { id: 'openigloo', name: 'Openigloo', kind: 'feed' };
 const ENDPOINT = 'https://mcp.openigloo.com/mcp';
 const SAMPLE_LIMIT = 10;
 const BOROUGHS = ['Manhattan', 'Brooklyn'];
-export const OPENIGLOO_SAMPLE_LIMIT = SAMPLE_LIMIT * BOROUGHS.length;
-const MAX_RENT = DEFAULT_FILTERS.maxRent;
+const SEARCHES = BOROUGHS.flatMap((area) => [1, 2].map((bedrooms) => ({ area, bedrooms })));
+export const OPENIGLOO_SAMPLE_LIMIT = SAMPLE_LIMIT * SEARCHES.length;
 const PROTOCOL = '2025-11-25';
 
 async function searchMcp(fetcher) {
@@ -36,25 +35,25 @@ async function searchMcp(fetcher) {
   if (handshake?.protocolVersion !== PROTOCOL) throw new Error('The Openigloo protocol changed.');
   headers['MCP-Protocol-Version'] = PROTOCOL;
   await request({ method: 'notifications/initialized' });
-  return Promise.all(BOROUGHS.map(async (area, index) => {
+  return Promise.all(SEARCHES.map(async ({ area, bedrooms }, index) => {
     const result = await request({ id: index + 2, method: 'tools/call', params: {
-      name: 'search_apartments', arguments: { area, limit: SAMPLE_LIMIT, max_rent: MAX_RENT },
+      name: 'search_apartments', arguments: { area, bedrooms: [bedrooms], limit: SAMPLE_LIMIT },
     } });
     if (result?.isError || !Array.isArray(result?.structuredContent?.apartments)) {
       throw new Error('Openigloo did not return listing results.');
     }
-    return { ...result.structuredContent, area };
+    return { ...result.structuredContent, area, bedrooms };
   }));
 }
 
 export async function loadOpenigloo(fetcher = fetch, now = new Date()) {
   const results = await searchMcp(fetcher);
-  const listings = results.flatMap(({ area, apartments }) => apartments.slice(0, SAMPLE_LIMIT).flatMap((row) => {
+  const listings = results.flatMap(({ area, bedrooms, apartments }) => apartments.slice(0, SAMPLE_LIMIT).flatMap((row) => {
     if (typeof row?.address !== 'string') return [];
     const parts = row.address.match(/^(.+),\s*([^,]+),\s*NY\s+(\d{5})$/i);
     if (!parts || row.status !== 'for_rent' || marketplaceIdForUrl(row.url) !== OPENIGLOO.id ||
         !row.url.includes('/unit/nyc/') || searchBorough({ state: 'NY', zip: parts[3] }) !== area.toLowerCase() ||
-        Number(row.rent_per_month) > MAX_RENT) return [];
+        row.bedrooms !== bedrooms) return [];
     const listing = normalizeListing({
       id: row.id, address: parts[1].trim().replace(/\s+/g, ' '), city: area,
       state: 'NY', zipCode: parts[3], region: 'nyc', neighborhood: row.neighborhood,
@@ -64,5 +63,5 @@ export async function loadOpenigloo(fetcher = fetch, now = new Date()) {
   }));
   const total = results.reduce((sum, { total_matches }) => sum + (Number(total_matches) || 0), 0);
   return { listings: await geocodeRentalAddresses(listings, fetcher).catch(() => listings),
-    total: Math.max(listings.length, total), sampleLimit: OPENIGLOO_SAMPLE_LIMIT, rentLimit: MAX_RENT };
+    total: Math.max(listings.length, total), sampleLimit: OPENIGLOO_SAMPLE_LIMIT };
 }

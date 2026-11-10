@@ -91,8 +91,15 @@ function Filters({ draft, setDraft, submit, busy, serverState, token, setToken, 
     <Field label="ZIP code (optional)" placeholder="Any ZIP in this area" value={draft.zip}
       onChangeText={set('zip')} keyboardType="number-pad" maxLength={5} />
     </>}
-    {(panel === 'more' || panel === 'price') && <Field label="Max rent per month ($)" placeholder="Any rent" value={draft.maxRent}
-      onChangeText={set('maxRent')} keyboardType="number-pad" maxLength={6} />}
+    {(panel === 'more' || panel === 'price') && <>
+      <Field label="Max rent per month ($)" placeholder="Any rent" value={draft.maxRent}
+        onChangeText={set('maxRent')} keyboardType="number-pad" maxLength={6} />
+      <View style={styles.chipRow}>
+        <Chip selected={draft.maxRent === ''} onPress={() => set('maxRent')('')}>Any price</Chip>
+        <Chip selected={draft.maxRent === String(DEFAULT_FILTERS.maxRent)}
+          onPress={() => set('maxRent')(String(DEFAULT_FILTERS.maxRent))}>Up to {formatRent(DEFAULT_FILTERS.maxRent)}</Chip>
+      </View>
+    </>}
     {panel === 'more' && <>
 
     <Field label="Listing company (optional)" placeholder="Compass, SERHANT., Corcoran…" value={draft.company}
@@ -214,6 +221,49 @@ function sourceCheckText({ status, checkedAt, updatedAt, listingCount, retryAt, 
     listingCount.toLocaleString('en-US') + ' listings checked') + checked;
   const next = Date.parse(retryAt) > Date.now() ? ' · Next check after ' + CHECK_TIME.format(new Date(retryAt)) : '';
   return (error ?? 'Refresh unavailable') + next + saved;
+}
+
+function RentalSyncStatus({ refresh, refreshing, configuredSources, onRefresh }) {
+  const [expanded, setExpanded] = useState(false);
+  const sites = new Map(marketplaceLinks(NYC_SEARCH_MARKETS[0], DEFAULT_FILTERS).map(({ id, name }) => [id, name]));
+  for (const { id, name } of [...NYC_COMPANIES, ...configuredSources]) sites.set(id, name);
+  sites.set('settled', 'Settled.nyc');
+  sites.set('linecity', 'Linecity');
+  const statusBySite = new Map();
+  for (const source of refresh?.sources ?? []) {
+    if (['firstmover', 'housingconnect', 'hdc-rerentals'].includes(source.id)) continue;
+    const id = source.marketplace ?? source.id.replace(/-live$/, '');
+    if (source.status === 'feed_required' && statusBySite.has(id)) continue;
+    statusBySite.set(id, source);
+    sites.set(id, source.name);
+  }
+  const rows = [...sites].map(([id, name]) => {
+    const source = statusBySite.get(id);
+    const synced = source?.status === 'updated' || source?.status === 'current';
+    const pending = !source && ['openigloo', 'trulia', 'zumper', 'affordablehousing'].includes(id);
+    return { id, name, source, synced, state: synced ? 'Synced' : source?.status === 'failed' ?
+      'Did not sync' : pending ? 'Awaiting first check' : 'Not connected' };
+  }).sort((a, b) => Number(b.synced) - Number(a.synced) || a.state.localeCompare(b.state) || a.name.localeCompare(b.name));
+  const synced = rows.filter((row) => row.synced).length;
+  const failed = rows.filter(({ state }) => state === 'Did not sync').length;
+  const disconnected = rows.filter(({ state }) => state === 'Not connected').length;
+
+  return <View style={styles.chartSource}>
+    <View style={styles.chipRow}>
+      <Button secondary onPress={onRefresh} disabled={!refresh || refreshing}>
+        {refreshing ? 'Refreshing listings…' : 'Refresh listings'}
+      </Button>
+      <Button secondary onPress={() => setExpanded(!expanded)}>{expanded ? 'Hide sync status' : 'Show sync status'}</Button>
+    </View>
+    <Text accessibilityLiveRegion="polite" style={styles.smallMuted}>{synced} synced · {failed} did not sync · {disconnected} not connected</Text>
+    {refresh?.lastCheckedAt && <Text style={styles.smallMuted}>Sources last checked {CHECK_TIME.format(new Date(refresh.lastCheckedAt))}</Text>}
+    {expanded && <>
+      <Text style={styles.smallMuted}>Connected public searches return limited batches. Counts are before your search filters.</Text>
+      {rows.map(({ id, name, state, source }) => <Text key={id} style={styles.smallMuted}>
+        {name} · {state}{source && ` · ${sourceCheckText(source)}`}
+      </Text>)}
+    </>}
+  </View>;
 }
 
 function Marketplaces({ filters, sources, configuredSources, companies, onCompany, refresh, refreshing, onRefresh, onError }) {
@@ -658,9 +708,8 @@ function ApartmentSearch() {
                 </View>}
               </View>
               {scope === 'market' && <WebsiteFilter result={result} applied={applied} onSelect={selectSource} onError={setError} />}
-              {scope === 'market' && lastCheckedAt && <Text style={styles.smallMuted}>
-                Sources last checked {CHECK_TIME.format(new Date(lastCheckedAt))}
-              </Text>}
+              {scope === 'market' && <RentalSyncStatus refresh={refresh} refreshing={refreshing}
+                configuredSources={configuredSources} onRefresh={checkSources} />}
               </View>
               {adding === 'single' && <AddListing initialRegion={applied.region}
                 onSave={(listing) => { saveListing(listing); setAdding(false); }}

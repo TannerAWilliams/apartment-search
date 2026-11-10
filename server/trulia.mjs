@@ -1,14 +1,14 @@
 import { normalizeListing } from '../src/listings.mjs';
 import { searchBorough } from '../src/regions.mjs';
-import { DEFAULT_FILTERS } from '../src/search.mjs';
 import { loadPublicPages, publicListingUrl } from './public-rentals.mjs';
 
 const SOURCE = { id: 'trulia', name: 'Trulia', kind: 'feed' };
 const ORIGIN = 'https://www.trulia.com';
-const MARKETS = ['Manhattan', 'Brooklyn'].map((city) => ({
-  url: ORIGIN + '/for_rent/' + city + ',NY/0-' + DEFAULT_FILTERS.maxRent + '_price/',
-  city, state: 'NY', region: 'nyc',
-}));
+const MARKETS = ['Manhattan', 'Brooklyn'].flatMap((city) => [1, 2].flatMap((bedrooms) =>
+  ['', '2_p/'].map((page) => ({
+    url: `${ORIGIN}/for_rent/${city},NY/${bedrooms}_beds/${page}`,
+    city, state: 'NY', region: 'nyc', bedrooms,
+  }))));
 const listingUrl = (url) => publicListingUrl(url, ORIGIN, /^\/(?:home|building)\/[^/]+-\d+\/?$/);
 
 export const TRULIA_LIVE = {
@@ -34,7 +34,7 @@ export function parseTruliaPage(html, market, checkedAt) {
 
     const rent = row.price?.price ?? (row.price?.min === row.price?.max ? row.price?.min : null);
     const bedrooms = row.bedrooms?.value ?? (row.bedrooms?.min === row.bedrooms?.max ? row.bedrooms?.min : null);
-    if (rent > DEFAULT_FILTERS.maxRent) return [];
+    if (Number(bedrooms) !== market.bedrooms) return [];
     const listing = normalizeListing({
       id: url.match(/-(\d+)\/?$/)?.[1], url, address: address[1], unit: address[2],
       city: market.city, state: market.state, region: market.region, zipCode: location.zipCode, latitude, longitude,
