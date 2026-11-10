@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseFilters, DEFAULT_FILTERS, localWorkplace } from '../src/search.mjs';
+import { parseFilters, DEFAULT_FILTERS, localWorkplace, directionsLink } from '../src/search.mjs';
 import { MARKETS, NYC_SEARCH_DEFAULT, regionOf, searchBorough } from '../src/regions.mjs';
 import { marketplaceAddressSearches, marketplaceIdForUrl, marketplaceLinks } from '../src/marketplaces.mjs';
 import { listingKey, mergeListings, normalizeListing, sourceLink } from '../src/listings.mjs';
@@ -213,14 +213,29 @@ test('the available rentals view excludes off-market, sold, rented and stale rec
   const active = normalize({ ...sample, addressLine1: '55 Berry Street', city: 'Brooklyn', county: 'Kings',
     state: 'NY', zipCode: '11249', listingUrl: 'https://www.zillow.com/homedetails/example/' });
   const cached = { ...active, id: 'cached', kind: 'cached' };
+  const unlinked = normalize({ ...sample, id: 'unlinked', addressLine1: '56 Berry Street', city: 'Brooklyn', county: 'Kings',
+    state: 'NY', zipCode: '11249' });
   const filters = parseFilters({ ...DEFAULT_FILTERS, region: NYC_SEARCH_DEFAULT, includeMap: true, liveOnly: true });
-  const listings = [...dated, active, cached];
+  const listings = [...dated, active, cached, unlinked];
   const result = localSearch(listings, filters, localWorkplace(filters), 'live');
   assert.deepEqual(result.matches.map(({ id }) => id), [active.id]);
   assert.deepEqual(result.mapPoints.map(({ title }) => title), ['55 Berry Street #Apt 2']);
   const streetEasy = localSearch(listings, { ...filters, source: 'streeteasy' }, localWorkplace(filters), 'live');
   assert.deepEqual(streetEasy.matches, []);
   assert.deepEqual(streetEasy.mapPoints, []);
+});
+
+test('direction links route from the apartment to the workplace in the requested mode', () => {
+  const work = localWorkplace(DEFAULT_FILTERS);
+  for (const mode of ['transit', 'driving']) {
+    const coordinates = new URL(directionsLink({ latitude: 40.68, longitude: -73.99 }, work, mode));
+    assert.equal(coordinates.origin + coordinates.pathname, 'https://www.google.com/maps/dir/');
+    assert.deepEqual(Object.fromEntries(coordinates.searchParams), {
+      api: '1', origin: '40.68,-73.99', destination: `${work.latitude},${work.longitude}`, travelmode: mode,
+    });
+    const address = new URL(directionsLink({ address: '38 Lott Ave', city: 'Brooklyn', state: 'NY', zip: '11212' }, work, mode));
+    assert.equal(address.searchParams.get('origin'), '38 Lott Ave, Brooklyn, NY, 11212');
+  }
 });
 
 test('medians handle even and odd sample counts and missing bedroom sizes', () => {

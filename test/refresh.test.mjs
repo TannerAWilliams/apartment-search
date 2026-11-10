@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { build } from 'esbuild';
 import { parseFirstMoverCsv } from '../server/firstmover.mjs';
 import { housingDate } from '../server/housing.mjs';
 import { refreshSources, refreshStatus, sourceRecent, storedDirectRentals, storedFeed, storedHousing, storedMarket } from '../server/refresh.mjs';
@@ -43,6 +44,85 @@ class TestBucket {
     return meta;
   }
 }
+
+let testWorker;
+function loadWorker() {
+  testWorker ??= build({
+    entryPoints: [new URL('../server/worker.mjs', import.meta.url).pathname],
+    bundle: true, format: 'esm', platform: 'browser', write: false,
+    plugins: [{
+      name: 'test-assets',
+      setup(builder) {
+        builder.onResolve({ filter: /^virtual:web-assets$/ }, () => ({ path: 'web', namespace: 'test' }));
+        builder.onLoad({ filter: /.*/, namespace: 'test' }, () => ({
+          contents: `export default ${JSON.stringify({
+            '/index.html': { type: 'text/html; charset=utf-8', content: '<script src="/_expo/static/test.js"></script>' },
+            '/_expo/static/test.js': { type: 'text/javascript; charset=utf-8', content: 'void 0;' },
+          })}`,
+        }));
+      },
+    }],
+  }).then(async ({ outputFiles }) => (await import('data:text/javascript;base64,' +
+    Buffer.from(outputFiles[0].text).toString('base64'))).default);
+  return testWorker;
+}
+
+test('worker integration serves the page and referenced asset with distinct cache policies', async () => {
+  const worker = await loadWorker();
+  const get = (path, method = 'GET') => worker.fetch(new Request('https://site.test' + path, { method }), {});
+  const home = await get('/');
+  assert.equal(home.status, 200);
+  assert.equal(home.headers.get('cache-control'), 'no-cache');
+  const script = (await home.text()).match(/src="([^"]+)"/)[1];
+  const asset = await get(script);
+  assert.equal(asset.status, 200);
+  assert.match(asset.headers.get('cache-control'), /immutable/);
+  assert.match(asset.headers.get('content-type'), /javascript/);
+  assert.equal(await (await get(script, 'HEAD')).text(), '');
+  assert.equal((await get('/missing')).status, 404);
+  assert.equal((await get('/', 'POST')).status, 405);
+  assert.equal((await get('/api/unknown')).status, 404);
+});
+
+test('worker integration refreshes active rentals, scopes cards and pins, and removes a rented unit', async (t) => {
+  const worker = await loadWorker();
+  const url = 'https://feed.example.test/fixtures';
+  const env = { BUCKET: new TestBucket(), FREE_PARTNER_FEEDS_JSON: JSON.stringify([{ id: 'zillow', url }]) };
+  const apartment = { id: 'brooklyn', address: '50 Example Street', unit: '2A', city: 'Brooklyn', county: 'Kings',
+    state: 'NY', zipCode: '11215', latitude: 40.67, longitude: -73.99, bedrooms: 1, rent: 2500, status: 'Active',
+    listingUrl: 'https://www.zillow.com/homedetails/example/' };
+  let rows = [
+    apartment,
+    { ...apartment, id: 'unlinked', unit: '2B', listingUrl: null },
+    { ...apartment, id: 'queens', city: 'Queens', county: 'Queens', zipCode: '11375' },
+  ];
+  t.mock.method(globalThis, 'fetch', async (input) =>
+    String(input) === url ? Response.json({ listings: rows }) : new Response(null, { status: 404 }));
+  const waits = [];
+  const request = (path, body) => worker.fetch(new Request('https://site.test/api/' + path, body ? {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  } : {}), env, { waitUntil: (promise) => waits.push(promise) });
+  const filters = { region: 'manhattan-brooklyn', bedrooms: 1, maxRent: 5000, liveOnly: true, includeMap: true };
+  const refresh = await request('refresh', { check: 'now' });
+  assert.equal(refresh.status, 200);
+  assert.equal((await refresh.json()).sources.find(({ id }) => id === 'zillow').status, 'updated');
+  const result = await request('search', filters);
+  assert.equal(result.headers.get('cache-control'), 'no-store');
+  const { total, matches, mapPoints } = await result.json();
+  assert.equal(total, 1);
+  assert.equal(matches[0].id, 'zillow:brooklyn');
+  assert.equal(mapPoints[0].url, apartment.listingUrl);
+  const market = await (await request('market?region=manhattan-brooklyn&grouping=city')).json();
+  assert.deepEqual(market.areas.slice(1).map(({ label }) => label), ['Brooklyn, NY', 'Manhattan, NY']);
+  assert.equal((await request('search', { ...filters, maxTransitMinutes: 30 })).status, 503);
+
+  rows = [{ ...apartment, status: 'Rented' }];
+  assert.equal((await request('refresh', { check: 'now' })).status, 200);
+  const after = await (await request('search', filters)).json();
+  assert.deepEqual(after.matches, []);
+  assert.deepEqual(after.mapPoints, []);
+  await Promise.all(waits);
+});
 
 const at = new Date('2026-11-10T00:25:00Z');
 const next = new Date('2026-11-10T01:00:00Z');

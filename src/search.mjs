@@ -118,7 +118,8 @@ export function compareResults(a, b, sort = 'rent') {
 export function matchListings(listings, filters, workplace) {
   return listings.flatMap((listing) => {
     const region = regionOf(listing);
-    if (!region || !companyMatches(listing.company, filters.company) || (filters.liveOnly && listing.kind !== 'feed') || !matchesRegion(listing, filters.region, region) ||
+    const hasActiveLink = listing.kind === 'feed' && listing.sources.some(({ kind, url }) => kind === 'feed' && url);
+    if (!region || !companyMatches(listing.company, filters.company) || (filters.liveOnly && !hasActiveLink) || !matchesRegion(listing, filters.region, region) ||
         (filters.zip && listing.zip !== filters.zip) ||
         (filters.bedrooms !== null && listing.bedrooms !== filters.bedrooms) ||
         (filters.maxRent !== null && listing.rent > filters.maxRent)) return [];
