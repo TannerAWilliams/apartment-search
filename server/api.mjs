@@ -133,7 +133,7 @@ export async function search(rawFilters, env, fetcher = fetch) {
     return finish(market.listings, 'snapshot', [{ id: 'streeteasy', name: 'StreetEasy', status: 'snapshot' }, ...sources], notices, market.month);
   }
   if (!hasLive && filters.liveOnly) {
-    return finish([], 'live', sources, [...notices, 'Switch to All results to see previously checked listings.']);
+    return finish([], 'live', sources, [...notices, 'No sources have recently confirmed active rentals.']);
   }
   if (!filters.liveOnly && (bucket || hasSavedSamples)) {
     const market = await storedMarket(bucket);

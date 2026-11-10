@@ -206,6 +206,23 @@ test('the exact S21D owner and marketplace links appear on the card and map', ()
   assert.deepEqual(result.mapPoints[0].additionalLinks.map(({ id }) => id), ['linecity', 'streeteasy']);
 });
 
+test('the available rentals view excludes off-market, sold, rented and stale records from cards and pins', () => {
+  const datedIds = ['streeteasy:5191227', 'streeteasy:5179916', 'streeteasy:5184733', 'streeteasy:5179017'];
+  const dated = marketSnapshot().filter(({ id }) => datedIds.includes(id));
+  assert.equal(dated.length, datedIds.length);
+  const active = normalize({ ...sample, addressLine1: '55 Berry Street', city: 'Brooklyn', county: 'Kings',
+    state: 'NY', zipCode: '11249', listingUrl: 'https://www.zillow.com/homedetails/example/' });
+  const cached = { ...active, id: 'cached', kind: 'cached' };
+  const filters = parseFilters({ ...DEFAULT_FILTERS, region: NYC_SEARCH_DEFAULT, includeMap: true, liveOnly: true });
+  const listings = [...dated, active, cached];
+  const result = localSearch(listings, filters, localWorkplace(filters), 'live');
+  assert.deepEqual(result.matches.map(({ id }) => id), [active.id]);
+  assert.deepEqual(result.mapPoints.map(({ title }) => title), ['55 Berry Street #Apt 2']);
+  const streetEasy = localSearch(listings, { ...filters, source: 'streeteasy' }, localWorkplace(filters), 'live');
+  assert.deepEqual(streetEasy.matches, []);
+  assert.deepEqual(streetEasy.mapPoints, []);
+});
+
 test('medians handle even and odd sample counts and missing bedroom sizes', () => {
   assert.equal(median([]), null);
   assert.equal(median([1800, 2000, 2200]), 2000);

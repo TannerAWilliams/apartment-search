@@ -8,10 +8,10 @@ import { NYC_COMPANIES } from './src/companies.mjs';
 import { NYC_SEARCH_AREAS, NYC_SEARCH_DEFAULT, NYC_SEARCH_MARKETS, REGIONS, WORKPLACES, marketsForSearch, matchesRegion, searchBorough } from './src/regions.mjs';
 import { MARKETPLACE_NAMES, marketplaceLinks } from './src/marketplaces.mjs';
 import {
-  DEFAULT_FILTERS, RESULT_SORTS, bedroomLabel, directionsLink, formatRent, needsCommute, parseFilters,
+  DEFAULT_FILTERS, RESULT_SORTS, bedroomLabel, directionsLink, formatRent, localWorkplace, needsCommute, parseFilters,
 } from './src/search.mjs';
 import { colors, styles } from './src/styles.js';
-import { formatSnapshotMonth, localSearch, snapshotSearch, SNAPSHOT_MONTH, SNAPSHOT_SOURCE } from './src/market.mjs';
+import { formatSnapshotMonth, localSearch, SNAPSHOT_SOURCE } from './src/market.mjs';
 import { listingKey, listingLinkLabel, mergeListings, mergeSourceLinks, orderedListingLinks } from './src/listings.mjs';
 import { Button, Chip, ExternalLink, Field, Link, SectionTitle } from './src/ui.jsx';
 import { encodeSourceImport, pullPublicSources, retryablePublicSources } from './src/pull-sources.mjs';
@@ -25,12 +25,12 @@ import { RentChart } from './src/RentChart.jsx';
 const API_ORIGIN = Platform.OS === 'web' ? '' :
   (process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, '') || null);
 const WEB_MAP = Platform.OS === 'web';
-const SEARCH_DEFAULTS = { ...DEFAULT_FILTERS, region: NYC_SEARCH_DEFAULT, includeMap: WEB_MAP, sort: 'recent' };
+const SEARCH_DEFAULTS = { ...DEFAULT_FILTERS, region: NYC_SEARCH_DEFAULT, includeMap: WEB_MAP, liveOnly: true };
 const BEDROOMS = [null, 0, 1, 2, 3, 4];
 const PAGE_SIZE = 12;
 const EMPTY_POINTS = [];
 const SAVED_KEY = 'apartment-search:saved-listings:v1';
-const SAVED_FILTERS = { ...SEARCH_DEFAULTS, bedrooms: null, maxRent: null, sort: 'rent' };
+const SAVED_FILTERS = { ...SEARCH_DEFAULTS, bedrooms: null, maxRent: null, liveOnly: false };
 const CHECK_TIME = new Intl.DateTimeFormat('en-US', {
   timeZone: 'America/New_York', month: 'short', day: 'numeric',
   hour: 'numeric', minute: '2-digit', timeZoneName: 'short',
@@ -269,21 +269,21 @@ function Marketplaces({ filters, sources, configuredSources, companies, onCompan
         </ExternalLink>)}
     </View>
     <Text accessibilityRole="header" style={styles.panelTitle}>NYC brokerages and apartment companies</Text>
-    <Text style={styles.bodyText}>The counts show listings attributed to each company in the dated StreetEasy export. Select a company to search those apartments here.</Text>
+    <Text style={styles.bodyText}>Counts come from the dated StreetEasy export. Open a company’s website for its current listings.</Text>
     <View style={styles.marketGrid}>
       {NYC_COMPANIES.map(({ id, name, url, type }) => <View key={id} style={[styles.chartCard, { flexGrow: 1, flexBasis: '46%', minWidth: 150 }]}>
         <Text style={styles.marketName}>{name}</Text>
         <Text style={styles.smallMuted}>{type} · {configured.has(id) ? 'Feed configured' :
           companies[id] ? companies[id].toLocaleString('en-US') + ' in the snapshot' : 'Website link'}
           {feedRequired.has(id) && !configured.has(id) ? ' · Authorized feed required' : ''}</Text>
-        {companies[id] > 0 && <Button secondary onPress={() => onCompany(name)}>Search in Apartment Search</Button>}
+        {configured.has(id) && <Button secondary onPress={() => onCompany(name)}>Search in Apartment Search</Button>}
         <Link label="Company website" url={url} onError={onError} />
       </View>)}
     </View>
   </View>;
 }
 
-function Results({ result, applied, sort, onSort, openCommute, commuteConfigured, columns, savedByKey, showMarkets, onSave, onSaveLink, onRemove, onError }) {
+function Results({ result, applied, sort, onSort, openCommute, commuteConfigured, checkingInventory, columns, savedByKey, showMarkets, onSave, onSaveLink, onRemove, onError }) {
   const [visible, setVisible] = useState(PAGE_SIZE);
   useEffect(() => { setVisible(PAGE_SIZE); }, [result]);
   const { matches } = result;
@@ -298,27 +298,24 @@ function Results({ result, applied, sort, onSort, openCommute, commuteConfigured
   return <>
     <View style={styles.resultHeading}>
       <View style={styles.headingCopy}>
-        <Text accessibilityRole="header" style={styles.panelTitle}>{result.total.toLocaleString('en-US')} {savedView ? 'saved' : 'matching'} {result.total === 1 ? 'apartment' : 'apartments'}</Text>
+        <Text accessibilityRole="header" style={styles.panelTitle}>{!savedView && checkingInventory && result.total === 0 ?
+          'Checking availability…' : `${result.total.toLocaleString('en-US')} ${savedView ? 'saved' : 'matching'} ${result.total === 1 ? 'apartment' : 'apartments'}`}</Text>
         <Text style={styles.smallMuted}>{summary}</Text>
         <Text style={styles.smallMuted}>To {result.workplace.label}</Text>
       </View>
       <View style={styles.chipRow}>
         {Object.entries(RESULT_SORTS).filter(([id]) => id === 'rent' ||
-          (!savedView && (id === 'recent' || commuteConfigured))).map(([id, label]) =>
+          (!savedView && commuteConfigured && id !== 'recent')).map(([id, label]) =>
           <Chip key={id} selected={sort === id} onPress={() => onSort(id)}>{label}</Chip>)}
       </View>
     </View>
-    {(result.mode === 'snapshot' || result.mode === 'mixed') && <Text style={styles.smallMuted}>
-      Includes {formatSnapshotMonth(result.snapshotMonth)} listing records. Check the original listing for availability.
-    </Text>}
-    {sort === 'recent' && <Text style={styles.smallMuted}>Recently checked listings appear first, sorted by asking rent.</Text>}
     {result.commute && <Text style={styles.smallMuted}>Weekday-morning estimates from TravelTime.</Text>}
     {result.commuteNotice && <Text style={styles.smallMuted}>{result.commuteNotice}</Text>}
     {result.total > matches.length && <Text style={styles.smallMuted}>List shows the first {matches.length} matches in this sort order.</Text>}
-    {matches.length === 0 && <View style={styles.empty}>
-      <Text accessibilityRole="header" style={styles.panelTitle}>{savedView ? 'Your saved list is empty' : 'No matches'}</Text>
+    {matches.length === 0 && (savedView || !checkingInventory) && <View style={styles.empty}>
+      <Text accessibilityRole="header" style={styles.panelTitle}>{savedView ? 'Your saved list is empty' : 'No recently checked matches'}</Text>
       <Text style={styles.bodyText}>{savedView ? 'Save a result or add an apartment you found on a rental platform.' :
-        applied.liveOnly && applied.source ? 'This website has no recently checked matches. Choose All results to include dated and saved listings.' :
+        applied.source ? 'This website has no recently checked matches. Check its website for current availability.' :
           needsCommute(applied) ? 'Try a longer commute limit, or change the area or budget.' :
             'Try another area, website, bedroom count, or budget.'}</Text>
       {!savedView && needsCommute(applied) && <Button secondary onPress={openCommute}>Edit commute filters</Button>}
@@ -354,7 +351,7 @@ function WebsiteFilter({ result, applied, onSelect, onError }) {
         <Chip key={id} selected={applied.source === id} onPress={() => onSelect(id)}>{name + ' (' + count.toLocaleString('en-US') + ')'}</Chip>)}
     </ScrollView>
     {applied.source === 'streeteasy' && <View style={styles.actionLinks}>
-      <Text style={styles.smallMuted}>Includes dated StreetEasy listings when All results is selected.</Text>
+      {(!streetEasy || !streetEasy.checkedCount) && <Text style={styles.smallMuted}>StreetEasy’s dated export supplies rent charts. Browse StreetEasy for its current listings.</Text>}
       {areas.map((area) => <Link key={area.label} label={`Browse ${area.label} on StreetEasy`}
         url={marketplaceLinks(area, applied).find(({ id }) => id === 'streeteasy').url} onError={onError} />)}
     </View>}
@@ -366,7 +363,7 @@ function ApartmentSearch() {
   const wide = width >= 980;
   const [draft, setDraft] = useState(formDefaults);
   const [applied, setApplied] = useState(SEARCH_DEFAULTS);
-  const [result, setResult] = useState(() => snapshotSearch(SEARCH_DEFAULTS));
+  const [result, setResult] = useState(() => localSearch([], SEARCH_DEFAULTS, localWorkplace(SEARCH_DEFAULTS), 'live'));
   const [saved, setSaved] = useState([]);
   const [storageReady, setStorageReady] = useState(false);
   const [serverState, setServerState] = useState(API_ORIGIN === null ? 'offline' : 'checking');
@@ -467,8 +464,7 @@ function ApartmentSearch() {
       setServerState('ready');
       updateConfig(config);
       const version = searchVersion.current;
-      if (!submitted.current && (config.commuteConfigured || config.snapshotMonth !== SNAPSHOT_MONTH || config.mode === 'live' ||
-          config.refresh?.sources.some(({ updatedAt }) => updatedAt))) {
+      if (!submitted.current) {
         api('search', { body: { ...SEARCH_DEFAULTS, includeCommute: config.commuteConfigured === true }, token: activeToken, signal: controller.signal })
           .then((fresh) => {
             if (!submitted.current && !controller.signal.aborted && searchVersion.current === version) setResult(fresh);
@@ -498,7 +494,7 @@ function ApartmentSearch() {
     setError('');
     setBusy(true);
     try {
-      const filters = parseFilters({ ...nextDraft, includeCommute: commuteConfigured });
+      const filters = parseFilters({ ...nextDraft, liveOnly: true, includeCommute: commuteConfigured });
       if (needsCommute(filters) && serverState !== 'ready') {
         setExpanded('commute');
         throw new Error('Commute estimates need the online search server. Try again when it is available.');
@@ -508,7 +504,7 @@ function ApartmentSearch() {
         throw new Error('Automatic commute estimates are currently unavailable.');
       }
       const searchResult = serverState === 'ready' ?
-        await api('search', { body: filters, token: activeToken }) : snapshotSearch(filters);
+        await api('search', { body: filters, token: activeToken }) : localSearch([], filters, localWorkplace(filters), 'live');
       appliedFilters.current = filters;
       setApplied(filters);
       setResult(searchResult);
@@ -530,21 +526,15 @@ function ApartmentSearch() {
     submit(nextDraft);
   }
 
-  function selectInventory(liveOnly) {
+  function showMarket() {
     setScope('market');
     setAdding(false);
-    if (applied.liveOnly === liveOnly) return;
-    const nextDraft = { ...draft, liveOnly };
-    setDraft(nextDraft);
-    submit(nextDraft);
   }
 
   function selectSource(source) {
     if (busy) return;
-    const liveOnly = applied.liveOnly && (source !== 'streeteasy' || result.sourceCounts?.some(({ id }) => id === source));
-    const next = { ...applied, source, liveOnly: Boolean(liveOnly) };
-    setDraft((current) => ({ ...current, source, liveOnly: next.liveOnly }));
-    submit(next);
+    setDraft((current) => ({ ...current, source }));
+    submit({ ...applied, source });
   }
 
   function selectSort(sort) {
@@ -618,8 +608,7 @@ function ApartmentSearch() {
               <View style={styles.resultControls}>
               <View style={styles.scopeRow}>
                 <View style={styles.chipRow}>
-                  <Chip selected={scope === 'market' && !applied.liveOnly} onPress={() => selectInventory(false)}>All results</Chip>
-                  <Chip selected={scope === 'market' && applied.liveOnly} onPress={() => selectInventory(true)}>Live only</Chip>
+                  <Chip selected={scope === 'market'} onPress={showMarket}>Available rentals</Chip>
                   <Chip selected={scope === 'saved'} onPress={showSaved}>Saved ({savedResults.total})</Chip>
                 </View>
                 {!adding && <View style={styles.chipRow}>
@@ -647,6 +636,7 @@ function ApartmentSearch() {
                   <Results result={displayed} applied={applied} sort={scope === 'saved' ? SAVED_FILTERS.sort : applied.sort} onSort={selectSort}
                     openCommute={() => setExpanded('commute')}
                     commuteConfigured={commuteConfigured}
+                    checkingInventory={refreshing || serverState === 'checking' || busy}
                     columns={wide} savedByKey={savedByKey}
                     showMarkets={() => setTab('marketplaces')} onSave={saveListing} onSaveLink={saveLink}
                     onRemove={(listing) => setSaved((current) => current.filter((item) => listingKey(item) !== listingKey(listing)))}
