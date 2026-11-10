@@ -259,7 +259,7 @@ export async function refreshSources(env, { fetcher = fetch, now = new Date(), i
       const result = await loadFeed(feed, sourceFetch);
       const listings = result.listings.map((listing) => ({ ...listing, checkedAt: at }));
       await bucket.put(FEED_PREFIX + feed.id + '.json.gz', compressed({ ...result, listings }));
-      return { status: 'updated', updatedAt: at, listingCount: listings.length };
+      return { status: 'updated', updatedAt: at, listingCount: listings.length, pages: result.pages };
     } })),
   ];
   const results = await Promise.allSettled(checks.map(({ work }) => work()));
@@ -292,7 +292,10 @@ export async function refreshSources(env, { fetcher = fetch, now = new Date(), i
     } else {
       const listingCount = next?.listingCount ?? older?.listingCount;
       if (listingCount !== undefined) item.listingCount = listingCount;
-      if (!next) item.error = name + ' could not be refreshed.';
+      const pages = next?.pages ?? older?.pages;
+      if (pages !== undefined) item.pages = pages;
+      if (!next) item.error = result.reason?.code === 'incomplete_feed' ?
+        name + ' returned an incomplete inventory.' : name + ' could not be refreshed.';
     }
     if (!next && onDemand) {
       const status = result.reason?.httpStatus;

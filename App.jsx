@@ -212,13 +212,13 @@ function Listing({ listing, selectedSource, workplace, commute, onSave, onSaveLi
   </View>;
 }
 
-function sourceCheckText({ status, checkedAt, updatedAt, listingCount, retryAt, error }) {
+function sourceCheckText({ status, checkedAt, updatedAt, listingCount, pages, retryAt, error }) {
   const saved = updatedAt ? ' · Saved data from ' + CHECK_TIME.format(new Date(updatedAt)) : '';
   const checked = checkedAt ? ' · ' + CHECK_TIME.format(new Date(checkedAt)) : '';
   if (status === 'feed_required') return 'Authorized feed required' + saved;
   if (status === 'current') return 'Current' + checked;
   if (status === 'updated') return (listingCount === undefined ? 'New data imported' :
-    listingCount.toLocaleString('en-US') + ' listings checked') + checked;
+    listingCount.toLocaleString('en-US') + ' listings checked') + (pages > 1 ? ' across ' + pages + ' pages' : '') + checked;
   const next = Date.parse(retryAt) > Date.now() ? ' · Next check after ' + CHECK_TIME.format(new Date(retryAt)) : '';
   return (error ?? 'Refresh unavailable') + next + saved;
 }
@@ -240,7 +240,8 @@ function RentalSyncStatus({ refresh, refreshing, configuredSources, onRefresh })
   const rows = [...sites].map(([id, name]) => {
     const source = statusBySite.get(id);
     const synced = source?.status === 'updated' || source?.status === 'current';
-    const pending = !source && ['openigloo', 'trulia', 'zumper', 'affordablehousing'].includes(id);
+    const pending = (!source || source.status === 'feed_required') &&
+      (configuredSources.some((item) => item.id === id) || !source && ['openigloo', 'trulia', 'zumper', 'affordablehousing'].includes(id));
     return { id, name, source, synced, state: synced ? 'Synced' : source?.status === 'failed' ?
       'Did not sync' : pending ? 'Awaiting first check' : 'Not connected' };
   }).sort((a, b) => Number(b.synced) - Number(a.synced) || a.state.localeCompare(b.state) || a.name.localeCompare(b.name));
@@ -260,7 +261,7 @@ function RentalSyncStatus({ refresh, refreshing, configuredSources, onRefresh })
     {expanded && <>
       <Text style={styles.smallMuted}>Connected public searches return limited batches. Counts are before your search filters.</Text>
       {rows.map(({ id, name, state, source }) => <Text key={id} style={styles.smallMuted}>
-        {name} · {state}{source && ` · ${sourceCheckText(source)}`}
+        {name} · {state}{source && state !== 'Awaiting first check' && ` · ${sourceCheckText(source)}`}
       </Text>)}
     </>}
   </View>;

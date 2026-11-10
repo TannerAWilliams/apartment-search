@@ -381,6 +381,45 @@ test('a rate-limited feed retains cached data and waits until its Retry-After ti
   assert.equal(feedRequests, 2);
 });
 
+test('an approved marketplace feed syncs every page before replacing its saved inventory', async () => {
+  const partner = { id: 'apartments', url: 'https://feed.example.test/rentals', token: 'fixture-token' };
+  const env = { BUCKET: new TestBucket(), FREE_PARTNER_FEEDS_JSON: JSON.stringify([partner]) };
+  const home = { ...listing, address: '28 Example Street', city: 'Brooklyn', zipCode: '11215',
+    state: 'NY', county: 'Kings', bedrooms: 1, price: 6200,
+    listingUrl: 'https://www.apartments.com/example-brooklyn-ny/fixture/' };
+  const initialRows = Array.from({ length: 5000 }, (_, index) => ({ ...home, id: String(index), unit: String(index) }));
+  let first = { listings: initialRows, next: '?page=2', total: 5002 };
+  const fetcher = async (url, options) => {
+    if (new URL(url).hostname !== 'feed.example.test') return sources()(url, options);
+    assert.equal(new Headers(options.headers).get('Authorization'), 'Bearer fixture-token');
+    assert.equal(options.redirect, 'error');
+    if (url === partner.url) return Response.json(first);
+    assert.equal(url, partner.url + '?page=2');
+    return Response.json({ listings: [
+      { ...home, id: 'late', unit: 'PH', price: 7100 },
+      { ...home, id: 'rented', unit: 'R', status: 'Rented' },
+    ], next: null, total: 5002 });
+  };
+  const now = new Date();
+  const result = await refreshSources(env, { now, fetcher });
+  const status = result.sources.find(({ id }) => id === partner.id);
+  assert.equal(status.status, 'updated');
+  assert.equal(status.pages, 2);
+  assert.equal(status.listingCount, 5001);
+  assert.equal((await search({ bedrooms: 1, region: 'brooklyn', maxRent: null, liveOnly: true }, env)).total, 5001);
+  assert.equal((await search({ bedrooms: 1, region: 'brooklyn', maxRent: 5000, liveOnly: true }, env)).total, 0);
+  const base = { listings: [home], total: 2 };
+  for (const [index, next] of ['https://different.example/rentals', '/rentals', null].entries()) {
+    first = { ...base, next };
+    const fail = await refreshSources(env, { now: new Date(now.getTime() + (index + 1) * 3_600_000), fetcher });
+    const check = fail.sources.find(({ id }) => id === partner.id);
+    assert.equal(check.status, 'failed');
+    assert.match(check.error, /incomplete inventory/);
+    assert.equal(check.updatedAt, now.toISOString());
+    assert.equal((await storedFeed(env.BUCKET, partner)).listings.at(-1).id, 'apartments:late');
+  }
+});
+
 test('a browser export retry updates only the failed public source it recovered', async () => {
   const env = { BUCKET: new TestBucket() };
   const initial = await refreshSources(env, { now: at, imports: {

@@ -12,5 +12,8 @@ export const DIRECT_RENTAL_SOURCES = [
 ];
 
 const FEED_ONLY_MARKETPLACES = new Set(['streeteasy', 'zillow', 'compass', 'renthop', 'realtor']);
-export const FEED_ONLY_SOURCES = DIRECT_RENTAL_SOURCES.filter(({ marketplace }) => FEED_ONLY_MARKETPLACES.has(marketplace));
+export const FEED_ONLY_SOURCES = [
+  ...DIRECT_RENTAL_SOURCES.filter(({ marketplace }) => FEED_ONLY_MARKETPLACES.has(marketplace)),
+  { id: 'apartments-live', name: 'Apartments.com', marketplace: 'apartments' },
+];
 export const AUTO_RENTAL_SOURCES = DIRECT_RENTAL_SOURCES.filter(({ marketplace }) => !FEED_ONLY_MARKETPLACES.has(marketplace));
