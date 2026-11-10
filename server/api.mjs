@@ -4,9 +4,11 @@ import { REGIONS } from '../src/regions.mjs';
 import { buildingKey, mergeListings } from '../src/listings.mjs';
 import { configuredFeeds, loadFeed } from './listings.mjs';
 import { geocodeAddress, resolveWorkplace } from './commute.mjs';
-import { refreshSources, refreshStatus, storedFeed, storedHousing, storedMarket } from './refresh.mjs';
+import { decodeSourceImport } from '../src/pull-sources.mjs';
+import { refreshPlan, refreshSources, refreshStatus, storedFeed, storedHousing, storedMarket } from './refresh.mjs';
 
 const REQUEST_LIMIT = 4096;
+const IMPORT_LIMIT = 2 * 1024 * 1024;
 const API_PATHS = new Set(['/api/config', '/api/search', '/api/geocode', '/api/market', '/api/housing', '/api/refresh']);
 
 export function appConfig(env) {
@@ -122,24 +124,31 @@ export async function handleApi(request, env, { requireToken = false } = {}) {
       return json({ error: 'The refreshed rent data could not be read.' }, 503);
     }
   }
+  if (path === '/api/refresh' && request.method === 'GET') {
+    return json(await refreshPlan(env.BUCKET));
+  }
   if (request.method !== 'POST') return json({ error: 'Use POST for this endpoint.' }, 405);
   if (path === '/api/refresh' && (!env.BUCKET || !request.headers.get('Content-Type')?.startsWith('application/json'))) {
     return json({ error: 'A private hosted site and a JSON request are required to refresh sources.' }, 400);
   }
-  if (Number(request.headers.get('Content-Length')) > REQUEST_LIMIT) {
+  const maxBytes = path === '/api/refresh' ? IMPORT_LIMIT : REQUEST_LIMIT;
+  if (Number(request.headers.get('Content-Length')) > maxBytes) {
     return json({ error: 'The request is too large.' }, 413);
   }
   let body;
   try {
     const text = await request.text();
-    if (text.length > REQUEST_LIMIT) return json({ error: 'The request is too large.' }, 413);
+    if (text.length > maxBytes) return json({ error: 'The request is too large.' }, 413);
     body = JSON.parse(text);
   } catch {
     return json({ error: 'Send a JSON request.' }, 400);
   }
   try {
     if (path === '/api/refresh') {
-      const result = await refreshSources(env);
+      let imports;
+      try { imports = decodeSourceImport(body); }
+      catch { return json({ error: 'Send a valid compressed source import.' }, 422); }
+      const result = await refreshSources(env, { imports });
       const unavailable = result.state === 'partial' && result.sources.every(({ status }) => status === 'failed');
       return json(result, unavailable ? 502 : 200);
     }

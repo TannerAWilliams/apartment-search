@@ -132,3 +132,18 @@ test('only one overlapping refresh can claim the hourly write', async () => {
   assert.deepEqual(results.map(({ state }) => state).sort(), ['complete', 'running']);
   assert.equal(calls, 5);
 });
+
+test('the private writer imports a completed public check without publisher access', async () => {
+  const { encodeSourceImport, pullPublicSources } = await import('../src/pull-sources.mjs');
+  const inputs = await pullPublicSources({ market: null }, sources(), at);
+  const env = { BUCKET: new TestBucket(), APP_ACCESS_TOKEN: 'test-owner' };
+  const request = new Request('https://private.test/api/refresh', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer test-owner' },
+    body: JSON.stringify(encodeSourceImport(inputs)),
+  });
+  const response = await handleApi(request, env, { requireToken: true });
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).state, 'complete');
+  assert.equal((await storedHousing(env.BUCKET, at)).opportunities.length, 1);
+  assert.equal((await storedMarket(env.BUCKET)).listings.length, 2);
+});

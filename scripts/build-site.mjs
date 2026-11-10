@@ -20,6 +20,13 @@ async function loadAssets(directory, prefix = '') {
 }
 
 const assets = await loadAssets('web-build');
+const runner = await build({
+  entryPoints: ['scripts/refresh-runner.mjs'], bundle: true, platform: 'node',
+  format: 'esm', target: 'node22', write: false, minify: true,
+});
+assets['/_refresh-runner.mjs'] = { type: 'text/javascript; charset=utf-8', binary: false,
+  content: runner.outputFiles[0].text };
+
 if (!assets['/index.html']) throw new Error('The Expo web build is missing index.html.');
 await build({
   entryPoints: ['server/worker.mjs'],

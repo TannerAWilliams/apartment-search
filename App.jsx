@@ -13,6 +13,7 @@ import { colors, styles } from './src/styles.js';
 import { formatSnapshotMonth, localSearch, snapshotSearch, SNAPSHOT_MONTH, SNAPSHOT_SOURCE } from './src/market.mjs';
 import { listingKey, mergeListings, mergeSourceLinks } from './src/listings.mjs';
 import { Button, Chip, Field, Link, SectionTitle } from './src/ui.jsx';
+import { encodeSourceImport, pullPublicSources } from './src/pull-sources.mjs';
 import { AffordableHousing } from './src/AffordableHousing.jsx';
 import { AddListing } from './src/AddListing.jsx';
 import { ListingSources } from './src/ListingSources.jsx';
@@ -356,7 +357,12 @@ function ApartmentSearch() {
     setRefreshing(true);
     setError('');
     try {
-      await api('refresh', { body: {}, token: activeToken });
+      const plan = await api('refresh', { token: activeToken });
+      if (!plan.ready) throw new Error('Hosted refresh storage is unavailable.');
+      if (!plan.alreadyChecked) {
+        const imports = await pullPublicSources(plan);
+        await api('refresh', { body: encodeSourceImport(imports), token: activeToken });
+      }
       const fresh = await api('search', { body: applied, token: activeToken });
       if (searchVersion.current === version) setResult(fresh);
     } catch (failure) {

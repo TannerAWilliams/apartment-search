@@ -85,7 +85,7 @@ export function parseFirstMoverCsv(csv, month) {
 }
 
 export async function checkFirstMover(previous, fetcher = fetch) {
-  const headers = { Accept: 'application/vnd.github+json', 'User-Agent': 'Apartment-Search' };
+  const headers = { Accept: 'application/vnd.github+json' };
   if (previous?.catalogEtag) headers['If-None-Match'] = previous.catalogEtag;
   const response = await fetcher(CATALOG_URL, { headers, redirect: 'error', signal: AbortSignal.timeout(12000) });
   if (response.status === 304 && previous?.revision) return { changed: false, ...previous };

@@ -27,6 +27,16 @@ export async function refreshStatus(bucket) {
   return publicStatus((await readState(bucket)).value);
 }
 
+export async function refreshPlan(bucket, now = new Date()) {
+  const [{ value }, object] = await Promise.all([readState(bucket), bucket?.head(MARKET_KEY)]);
+  const market = object ? { ...object.customMetadata, catalogEtag: value.market?.revision === object.customMetadata.revision ?
+    value.market.catalogEtag : '' } : null;
+  return { ready: Boolean(bucket), market,
+    alreadyChecked: !value.running && value.hour === now.toISOString().slice(0, 13) &&
+      value.sources?.every(({ status }) => status !== 'failed'),
+    ...publicStatus(value) };
+}
+
 export async function storedMarket(bucket) {
   const head = await bucket?.head(MARKET_KEY);
   if (!head) return { month: SNAPSHOT_MONTH, listings: marketSnapshot() };
@@ -45,12 +55,20 @@ export async function storedFeed(bucket, feed) {
   return unpack(object);
 }
 
-async function refreshMarket(bucket, previous, checkedAt, fetcher) {
+async function refreshMarket(bucket, previous, checkedAt, fetcher, imported, isImport) {
   const stored = await bucket.head(MARKET_KEY);
   const baseline = stored ? { ...stored.customMetadata,
     catalogEtag: previous?.revision === stored.customMetadata.revision ? previous.catalogEtag : '',
   } : null;
-  const result = await checkFirstMover(baseline, fetcher);
+  const result = isImport ? imported : await checkFirstMover(baseline, fetcher);
+  if (!result || !/^20\d{2}-(0[1-9]|1[0-2])$/.test(result.month) || !/^[a-f0-9]{40}$/.test(result.revision) ||
+      (baseline && result.month < baseline.month)) throw new Error('The FirstMover import failed.');
+  if (!result.changed && result.revision !== baseline?.revision) throw new Error('The FirstMover release has changed.');
+  if (result.changed && (!Array.isArray(result.rows) || result.rows.length === 0 || result.rows.length > 60000 ||
+      result.rows.some((row) => !Array.isArray(row) || row.length !== 14 ||
+        typeof row[12] !== 'string' || !/^\/(rental|building)\//.test(row[12])))) {
+    throw new Error('The FirstMover import had invalid listings.');
+  }
   const updatedAt = result.changed ? checkedAt : baseline.updatedAt;
   if (result.changed) {
     await bucket.put(MARKET_KEY, compressed(result.rows), {
@@ -70,8 +88,14 @@ export async function storedHousing(bucket, now = new Date()) {
     opportunities: data.opportunities.filter(({ closes }) => closes >= today) };
 }
 
-async function refreshHousing(bucket, checkedAt, fetcher, now) {
-  const data = JSON.stringify(await loadHousingConnect(fetcher, now));
+async function refreshHousing(bucket, checkedAt, fetcher, now, imported, isImport) {
+  const result = isImport ? imported : await loadHousingConnect(fetcher, now);
+  if (!Array.isArray(result?.opportunities) || result.opportunities.length > 250 ||
+      result.opportunities.some(({ id, url }) => !/^\d{1,12}$/.test(id) ||
+        url !== 'https://housingconnect.nyc.gov/PublicWeb/details/' + id)) {
+    throw new Error('NYC Open Data could not be imported.');
+  }
+  const data = JSON.stringify(result);
   const previous = await bucket.get(HOUSING_KEY);
   if (previous && await previous.text() === data) {
     return { status: 'current', updatedAt: previous.customMetadata.updatedAt };
@@ -80,7 +104,7 @@ async function refreshHousing(bucket, checkedAt, fetcher, now) {
   return { status: 'updated', updatedAt: checkedAt };
 }
 
-export async function refreshSources(env, { fetcher = fetch, now = new Date() } = {}) {
+export async function refreshSources(env, { fetcher = fetch, now = new Date(), imports } = {}) {
   const bucket = env.BUCKET;
   if (!bucket) throw new Error('Hourly source storage is unavailable.');
   const feeds = configuredFeeds(env);
@@ -103,9 +127,9 @@ export async function refreshSources(env, { fetcher = fetch, now = new Date() } 
   const previousById = new Map((previous.sources ?? []).map((source) => [source.id, source]));
   const checks = [
     { id: 'firstmover', name: 'FirstMover (StreetEasy)', work: () =>
-      refreshMarket(bucket, previous.market, at, fetcher) },
+      refreshMarket(bucket, previous.market, at, fetcher, imports?.firstmover, Boolean(imports)) },
     { id: 'housingconnect', name: 'NYC Housing Connect', work: () =>
-      refreshHousing(bucket, at, fetcher, now) },
+      refreshHousing(bucket, at, fetcher, now, imports?.housingconnect, Boolean(imports)) },
     ...feeds.map((feed) => ({ id: feed.id, name: feed.name, work: async () => {
       const result = await loadFeed(feed, fetcher);
       await bucket.put(FEED_PREFIX + feed.id + '.json.gz', compressed(result));
