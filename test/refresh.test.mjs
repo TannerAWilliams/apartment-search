@@ -234,6 +234,7 @@ test('the private writer imports a completed public check without publisher acce
 
 test('the Openigloo connector uses its published limit and preserves only exact source links', async () => {
   const { loadOpenigloo } = await import('../server/openigloo.mjs');
+  const areas = [];
   const checked = await loadOpenigloo(async (url, options) => {
     if (url.includes('addressbatch')) return new Response('"openigloo:sample",address,Match,Exact,normalized,"-73.99,40.67"\n');
     const message = JSON.parse(options.body);
@@ -241,6 +242,7 @@ test('the Openigloo connector uses its published limit and preserves only exact 
     if (message.method === 'initialize') return Response.json({ id: message.id, result: { protocolVersion: '2025-11-25' } });
     assert.equal(message.params.arguments.limit, 10);
     assert.equal(message.params.arguments.max_rent, 5000);
+    areas.push(message.params.arguments.area);
     return Response.json({ id: message.id, result: { structuredContent: { total_matches: 30, apartments: [
       { id: 'sample', address: '28 Example Street #2, Brooklyn, NY 11215', borough: 'Brooklyn',
         status: 'for_rent', bedrooms: 1, rent_per_month: 2100,
@@ -250,6 +252,8 @@ test('the Openigloo connector uses its published limit and preserves only exact 
     ] } } });
   }, at);
   assert.equal(checked.listings.length, 1);
+  assert.deepEqual(areas.sort(), ['Brooklyn', 'Manhattan']);
+  assert.equal(checked.sampleLimit, 20);
   assert.equal(checked.listings[0].unit, '2');
   assert.equal(checked.listings[0].latitude, 40.67);
   assert.equal(checked.listings[0].sources[0].id, 'openigloo');
@@ -272,9 +276,11 @@ function publishedCatalog(url, options) {
 }
 
 function zumperPage(rent) {
-  const listables = [{ url: 'https://www.zumper.com/listings/222/28-example-street', listing_id: 222,
+  const rental = { url: 'https://www.zumper.com/listings/222p/28-example-street', listing_id: 222,
     listing_status: 1, listing_type: 1, property_type: 4, state: 'NY', city: 'Brooklyn', zipcode: '11215',
-    address: '28 Example Street', lat: 40.67, lng: -73.99, min_price: rent, max_price: rent, min_bedrooms: 1, max_bedrooms: 1 }];
+    address: '28 Example Street', lat: 40.67, lng: -73.99, min_price: rent, max_price: rent, min_bedrooms: 1, max_bedrooms: 1 };
+  const listables = [rental, { ...rental, listing_id: 223, url: '/listings/223p/1-bedroom-example',
+    title: 'Private bedroom in a shared apartment' }];
   const body = 'window.__PRELOADED_STATE__ = ' + JSON.stringify({ currentSearch: { listables: { listables } } }) + '; window.__GIT_SHA__';
   return new Response(body, { headers: { 'Content-Type': 'text/html' } });
 }
@@ -283,10 +289,10 @@ test('opening or reloading the app fetches new source data even within the same 
   const env = { BUCKET: new TestBucket() };
   await refreshSources(env, { fetcher: sources(), now: at });
   let price = 2500;
-  const hosts = [];
+  const requests = [];
   const fetcher = async (url, options) => {
     const host = new URL(url).hostname;
-    hosts.push(host);
+    requests.push(url);
     assert.equal(new Headers(options.headers).get('Cache-Control'), 'no-cache');
     if (host === 'www.zumper.com') return zumperPage(price);
     if (['www.firstmovernyc.com', 'raw.githubusercontent.com', 'data.cityofnewyork.us'].includes(host)) return publishedCatalog(url, options);
@@ -297,11 +303,16 @@ test('opening or reloading the app fetches new source data even within the same 
     const check = await refreshSources(env, { fetcher, now, onDemand: true });
     assert.equal(check.sources.find(({ id }) => id === ZUMPER_LIVE.id).checkedAt, now.toISOString());
     assert.equal(check.sources.find(({ id }) => id === 'firstmover').status, minute === 26 ? 'updated' : 'current');
-    assert.equal((await storedDirectRentals(env.BUCKET, ZUMPER_LIVE)).listings[0].rent, price);
+    const listings = (await storedDirectRentals(env.BUCKET, ZUMPER_LIVE)).listings;
+    assert.deepEqual(listings.map(({ rent, city }) => [rent, city]), [[price, 'Brooklyn']]);
     price -= 100;
   }
-  assert.equal(hosts.filter((host) => host === 'www.zumper.com').length, 10);
-  assert.ok(!hosts.some((host) => /(^|\.)(streeteasy|zillow|compass|renthop|realtor)\.com$/.test(host)));
+  const zumper = requests.filter((url) => new URL(url).hostname === 'www.zumper.com');
+  assert.equal(zumper.length, 8);
+  assert.deepEqual([...new Set(zumper.map((url) => new URL(url).pathname))].sort(),
+    ['/apartments-for-rent/brooklyn-ny', '/apartments-for-rent/brooklyn-ny/cheap',
+      '/apartments-for-rent/manhattan-ny', '/apartments-for-rent/manhattan-ny/cheap']);
+  assert.ok(!requests.some((url) => /(^|\.)(streeteasy|zillow|compass|renthop|realtor)\.com$/.test(new URL(url).hostname)));
 });
 
 test('a rate-limited feed retains cached data and waits until its Retry-After time', async () => {

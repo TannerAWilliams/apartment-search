@@ -6,7 +6,7 @@ import { configuredFeeds, loadFeed } from './listings.mjs';
 import { housingDate, loadHousingConnect } from './housing.mjs';
 import { HDC_RERENTALS, loadHdcRerentals } from './hdc-rerentals.mjs';
 import { AUTO_RENTAL_SOURCES, DIRECT_RENTAL_SOURCES, FEED_ONLY_SOURCES } from './direct-rentals.mjs';
-import { loadOpenigloo } from './openigloo.mjs';
+import { loadOpenigloo, OPENIGLOO_SAMPLE_LIMIT } from './openigloo.mjs';
 import { requestForRefresh, retrySchedule } from './source-requests.mjs';
 
 const STATE_KEY = 'rentals/refresh.json';
@@ -178,7 +178,7 @@ async function refreshHousing(bucket, checkedAt, fetcher, now, imported, isImpor
 }
 
 async function refreshOpenigloo(bucket, result, at) {
-  if (!Array.isArray(result?.listings) || result.listings.length > 10 ||
+  if (!Array.isArray(result?.listings) || result.listings.length > OPENIGLOO_SAMPLE_LIMIT ||
       result.listings.some((listing) => listing.kind !== 'feed' || listing.region !== 'nyc' ||
         !Array.isArray(listing.sources) || listing.sources[0]?.id !== 'openigloo' ||
         !/^https:\/\/www\.openigloo\.com\/unit\/nyc\//.test(listing.sources[0]?.url ?? ''))) {

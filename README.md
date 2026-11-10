@@ -9,11 +9,11 @@ Compare rentals by asking rent and weekday-morning transit or driving time to yo
 | Source | What the app imports |
 | --- | --- |
 | StreetEasy | The [FirstMover Open Data](https://www.firstmovernyc.com/open-data) monthly snapshot supplies initial asking rents and original listing URLs. Direct live updates require an authorized feed. |
-| Openigloo | A bounded live sample from its published NYC search interface. The query uses the app’s $5,000 default budget and returns up to ten results. |
+| Openigloo | A bounded live sample from its published NYC search interface. The app queries Manhattan and Brooklyn separately at its $5,000 default budget, with up to ten results per borough. |
 | Zillow, Compass, RentHop, and Realtor.com | Last saved samples and browse links. Automatic updates require an authorized feed. |
-| Trulia | Apartments at or below $5,000 with exact unit prices in Hicksville, Stamford, White Plains, and Jersey City. |
-| Zumper | Individual apartments with exact prices from public searches in NYC, Jersey City, White Plains, and Stamford. |
-| AffordableHousing.com | Apartments marked available now in Brooklyn, Newark, and Stamford. The importer uses the free U.S. Census batch geocoder when coordinates are available by exact address. |
+| Trulia | Apartments at or below $5,000 with exact unit prices in Manhattan and Brooklyn. |
+| Zumper | Individual apartments with exact prices from public Manhattan and Brooklyn searches. |
+| AffordableHousing.com | Apartments marked available now in Manhattan and Brooklyn. The importer uses the free U.S. Census batch geocoder when coordinates are available by exact address. |
 | Apartments.com, Redfin, HotPads, Apartment List, Rent.com, Apartment Guide, Craigslist, and Facebook Marketplace | Browse links. Add a listing manually or import a CSV of collected listings to Saved. |
 | NYC Housing Connect | [NYC Open Data](https://data.cityofnewyork.us/d/vy5i-a666) advertised rental lotteries. The Affordable tab shows application dates, building addresses, and bedroom counts. |
 | Authorized no-cost partner feed | Optional. Configure a feed only when you have permission to use and display it at no API cost. The bundled public sources require no feed credentials. |
@@ -34,7 +34,7 @@ Set `TRAVELTIME_APP_ID` and `TRAVELTIME_API_KEY` on the server to enable automat
 
 The private hosted app checks FirstMover’s published monthly exports, the city’s Housing Connect export, and the active rental sources above. The FirstMover check uses the publisher’s release links and conditional requests for the CSV. Housing Connect listings reflect the city’s published export and application dates. The Affordable tab also links to official Mitchell-Lama and Section 8 resources. Settled.nyc feed access is unverified.
 
-Open or reload the hosted web app to check sources. **Platforms → Refresh listings now** runs the same check. Overlapping reloads share one check. Sources that rate-limit the app wait until their retry time. The browser can retry failed public exports when the source permits another check. The **Available rentals** view shows only active inventory from successful checks in the last two hours. Dated snapshots are used for rent charts. If a check fails or expires, its older inventory is excluded from the search and map. Openigloo uses the free U.S. Census batch geocoder for its public addresses.
+Opening or reloading the hosted app, returning to Rent, and bringing the app or browser tab back to the foreground each trigger a source check. **Platforms → Refresh listings now** runs the same check. Overlapping reloads share one check. Sources that rate-limit the app wait until their retry time. The browser can retry failed public exports when the source permits another check. The **Available rentals** view shows only active inventory from successful checks in the last two hours. Dated snapshots are used for rent charts. If a check fails or expires, its older inventory is excluded from the search and map. Openigloo uses the free U.S. Census batch geocoder for its public addresses.
 
 The private app also serves a manual Node.js refresh runner at `/_refresh-runner.mjs`. Download it through owner-only service access and pass the service credential on stdin. Keep the credential out of files, command arguments, and logs.
 

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Platform, Pressable, ScrollView, StatusBar, Text, View, useWindowDimensions,
+  AppState, Platform, Pressable, ScrollView, StatusBar, Text, View, useWindowDimensions,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
@@ -205,12 +205,13 @@ function Listing({ listing, selectedSource, workplace, commute, onSave, onSaveLi
   </View>;
 }
 
-function sourceCheckText({ status, updatedAt, listingCount, retryAt, error }) {
+function sourceCheckText({ status, checkedAt, updatedAt, listingCount, retryAt, error }) {
   const saved = updatedAt ? ' · Saved data from ' + CHECK_TIME.format(new Date(updatedAt)) : '';
+  const checked = checkedAt ? ' · ' + CHECK_TIME.format(new Date(checkedAt)) : '';
   if (status === 'feed_required') return 'Authorized feed required' + saved;
-  if (status === 'current') return 'Current';
-  if (status === 'updated') return listingCount === undefined ? 'New data imported' :
-    listingCount.toLocaleString('en-US') + ' listings checked';
+  if (status === 'current') return 'Current' + checked;
+  if (status === 'updated') return (listingCount === undefined ? 'New data imported' :
+    listingCount.toLocaleString('en-US') + ' listings checked') + checked;
   const next = Date.parse(retryAt) > Date.now() ? ' · Next check after ' + CHECK_TIME.format(new Date(retryAt)) : '';
   return (error ?? 'Refresh unavailable') + next + saved;
 }
@@ -372,7 +373,8 @@ function ApartmentSearch() {
   const [refresh, setRefresh] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState('');
-  const checking = useRef(false);
+  const checking = useRef(null);
+  const sourceSession = useRef(null);
   const submitted = useRef(false);
   const searchVersion = useRef(0);
   const appliedFilters = useRef(SEARCH_DEFAULTS);
@@ -380,6 +382,7 @@ function ApartmentSearch() {
   const [activeToken, setActiveToken] = useState('');
   const [commuteConfigured, setCommuteConfigured] = useState(false);
   const [tab, setTab] = useState('results');
+  const previousTab = useRef('results');
   const [scope, setScope] = useState('market');
   const [adding, setAdding] = useState(false);
   const [expanded, setExpanded] = useState('');
@@ -415,9 +418,10 @@ function ApartmentSearch() {
     setRefresh(config.refresh ?? null);
   }, []);
 
-  const checkSources = useCallback(async (signal) => {
-    if (checking.current || signal?.aborted) return;
-    checking.current = true;
+  const checkSources = useCallback(async () => {
+    const signal = sourceSession.current;
+    if (!signal || signal.aborted || checking.current === signal) return;
+    checking.current = signal;
     setRefreshing(true);
     setRefreshError('');
     try {
@@ -451,14 +455,18 @@ function ApartmentSearch() {
     } catch (failure) {
       if (!signal?.aborted) setRefreshError(failure.message || 'The listing sources could not be checked.');
     } finally {
-      checking.current = false;
-      if (!signal?.aborted) setRefreshing(false);
+      if (checking.current === signal) {
+        checking.current = null;
+        if (!signal.aborted) setRefreshing(false);
+      }
     }
   }, [activeToken, updateConfig]);
 
   useEffect(() => {
     if (API_ORIGIN === null) return;
     const controller = new AbortController();
+    sourceSession.current = controller.signal;
+    setRefreshing(false);
     api('config', { token: activeToken, signal: controller.signal }).then((config) => {
       if (controller.signal.aborted) return;
       setServerState('ready');
@@ -471,7 +479,7 @@ function ApartmentSearch() {
           })
           .catch(() => {});
       }
-      if (config.refresh && Platform.OS === 'web') void checkSources(controller.signal);
+      if (config.refresh) void checkSources();
     }).catch((failure) => {
       if (controller.signal.aborted) return;
       setServerState(failure.status === 401 ? 'locked' : 'offline');
@@ -479,6 +487,39 @@ function ApartmentSearch() {
     });
     return () => controller.abort();
   }, [activeToken, checkSources, updateConfig]);
+
+  const refreshAvailable = serverState === 'ready' && refresh !== null;
+  useEffect(() => {
+    if (!refreshAvailable) return;
+    if (Platform.OS === 'web') {
+      const onVisibility = () => {
+        if (document.visibilityState === 'visible') void checkSources();
+      };
+      const onPageShow = (event) => {
+        if (event.persisted) void checkSources();
+      };
+      document.addEventListener('visibilitychange', onVisibility);
+      window.addEventListener('pageshow', onPageShow);
+      window.addEventListener('focus', onVisibility);
+      return () => {
+        document.removeEventListener('visibilitychange', onVisibility);
+        window.removeEventListener('pageshow', onPageShow);
+        window.removeEventListener('focus', onVisibility);
+      };
+    }
+    let prior = AppState.currentState;
+    const listener = AppState.addEventListener('change', (state) => {
+      if (state === 'active' && prior !== 'active') void checkSources();
+      prior = state;
+    });
+    return () => listener.remove();
+  }, [checkSources, refreshAvailable]);
+
+  useEffect(() => {
+    const openedRent = tab === 'results' && previousTab.current !== 'results';
+    previousTab.current = tab;
+    if (openedRent && refreshAvailable) void checkSources();
+  }, [tab, refreshAvailable, checkSources]);
 
   const lastCheckedAt = refresh?.lastCheckedAt;
   const loadMarket = useCallback((region, grouping, signal) =>
@@ -617,6 +658,9 @@ function ApartmentSearch() {
                 </View>}
               </View>
               {scope === 'market' && <WebsiteFilter result={result} applied={applied} onSelect={selectSource} onError={setError} />}
+              {scope === 'market' && lastCheckedAt && <Text style={styles.smallMuted}>
+                Sources last checked {CHECK_TIME.format(new Date(lastCheckedAt))}
+              </Text>}
               </View>
               {adding === 'single' && <AddListing initialRegion={applied.region}
                 onSave={(listing) => { saveListing(listing); setAdding(false); }}

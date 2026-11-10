@@ -1,19 +1,19 @@
 import { normalizeListing } from '../src/listings.mjs';
+import { searchBorough } from '../src/regions.mjs';
 import { geocodeRentalAddresses } from './geocode-rentals.mjs';
 import { loadPublicPages, publicListingUrl } from './public-rentals.mjs';
 
 const SOURCE = { id: 'affordablehousing', name: 'AffordableHousing.com', kind: 'feed' };
 const ORIGIN = 'https://www.affordablehousing.com';
 const PAGES = [
-  ['brooklyn-ny', 'Brooklyn', 'NY', 'nyc'],
-  ['newark-nj', 'Newark', 'NJ', 'nj'],
-  ['stamford-ct', 'Stamford', 'CT', 'ct'],
-].map(([slug, city, state, region]) => ({ url: ORIGIN + '/' + slug + '/', city, state, region }));
+  ['new-york-ny', 'Manhattan'],
+  ['brooklyn-ny', 'Brooklyn'],
+].map(([slug, city]) => ({ url: ORIGIN + '/' + slug + '/', city, state: 'NY', region: 'nyc' }));
 const listingUrl = (url) => publicListingUrl(url, ORIGIN, /^\/[a-z\d-]+\/[a-z\d-]+-\d+\/?$/i);
 
 export const AFFORDABLE_LIVE = {
-  ...SOURCE, id: 'affordablehousing-live', marketplace: SOURCE.id, coverage: 'Brooklyn, Newark and Stamford',
-  regions: ['nyc', 'nj', 'ct'], minPages: PAGES.length, maxPages: PAGES.length, rowsPerPage: 50,
+  ...SOURCE, id: 'affordablehousing-live', marketplace: SOURCE.id, coverage: 'Manhattan and Brooklyn',
+  regions: ['nyc'], minPages: PAGES.length, maxPages: PAGES.length, rowsPerPage: 50,
   listingUrl, load: loadAffordableRentals,
 };
 
@@ -31,7 +31,7 @@ export function parseAffordableRentals(html, market, checkedAt) {
     const price = card.match(/\bclass=["'][^"']*card--price["'][^>]*>\s*\$([\d,]+)\s*</i)?.[1];
     const size = card.match(/card--details["'][^>]*>\s*<span>\s*(?:(\d+)\s*<span\b[^>]*>\s*beds?\s*<\/span>|Studio\s*<\/span>)/i);
     if (!url || !location || !price || !size ||
-        location[2].trim().toLowerCase() !== market.city.toLowerCase() || location[3] !== market.state) return [];
+        location[3] !== market.state || searchBorough({ state: location[3], zip: location[4] }) !== market.city.toLowerCase()) return [];
 
     const [address, unit = ''] = location[1].split(/,\s*/, 2);
     const listing = normalizeListing({
