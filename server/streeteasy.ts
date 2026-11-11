@@ -1,19 +1,37 @@
 import { normalizeListing } from '../src/listings.ts';
 import { searchBorough } from '../src/regions.ts';
 import { NJ_ZIPS, nycBorough } from './firstmover.ts';
-import { jsonLd, loadPublicPages, publicListingUrl } from './public-rentals.ts';
+import { deduplicatePublicRentals, jsonLd, publicListingUrl } from './public-rentals.ts';
 
 const SOURCE = { id: 'streeteasy', name: 'StreetEasy', kind: 'feed' };
 const ORIGIN = 'https://streeteasy.com';
-const PAGES = ['manhattan', 'brooklyn'].flatMap((borough) => [1, 2].flatMap((bedrooms) =>
-  ['', '?page=2'].map((suffix) => ({ borough, bedrooms,
-    url: ORIGIN + '/' + bedrooms + '-bedroom-apartments-for-rent/' + borough + suffix }))));
+const SEARCH_URL = 'https://api-v6.streeteasy.com/';
+const SAMPLE_SIZE = 100;
+const SEARCH_QUERY = `query SearchRentals {
+  searchRentals(input: {
+    sorting: { attribute: LISTED_AT, direction: DESCENDING }
+    adStrategy: NONE
+    filters: { areas: [100, 300], rentalStatus: ACTIVE, bedrooms: { lowerBound: 1, upperBound: 2 } }
+    perPage: ${SAMPLE_SIZE}
+    page: 1
+  }) {
+    totalCount
+    edges {
+      ... on OrganicRentalEdge {
+        node {
+          id street unit zipCode status bedroomCount price urlPath areaName buildingType
+          geoPoint { latitude longitude }
+        }
+      }
+    }
+  }
+}`;
 export const STREETEASY_LIVE = {
   ...SOURCE, id: 'streeteasy-live', marketplace: SOURCE.id,
-  coverage: 'the first two one- and two-bedroom search pages per borough',
+  coverage: 'its newest one- and two-bedroom search results in Manhattan and Brooklyn',
   // Preserve support for previously imported NYC and NJ batches.
-  regions: ['nyc', 'nj'], minPages: PAGES.length, maxPages: 20,
-  rowsPerPage: 20, listingUrl: streetEasyListingUrl, load: loadStreetEasy,
+  regions: ['nyc', 'nj'], minPages: 1, maxPages: 20,
+  rowsPerPage: SAMPLE_SIZE, listingUrl: streetEasyListingUrl, load: loadStreetEasy,
 };
 const MULTIFAMILY = new Set(['TWOFAMILY', 'THREEFAMILY', 'MULTIFAMILY']);
 
@@ -59,7 +77,54 @@ export function parseStreetEasyPage(html, state, bedrooms, checkedAt) {
   return rentals.map((row) => normalizeRental(row, state, bedrooms, checkedAt)).filter(Boolean);
 }
 
-export function loadStreetEasy(fetcher = fetch, now = new Date()) {
-  return loadPublicPages(SOURCE, PAGES, (html, { borough, bedrooms }, checkedAt) =>
-    parseStreetEasyPage(html, 'NY', bedrooms, checkedAt).filter((listing) => searchBorough(listing) === borough), fetcher, now);
+type SearchRental = {
+  id?: string;
+  street?: string;
+  unit?: string;
+  zipCode?: string;
+  status?: string;
+  bedroomCount?: number;
+  price?: number;
+  urlPath?: string;
+  areaName?: string;
+  buildingType?: string;
+  geoPoint?: { latitude?: number; longitude?: number };
+};
+
+export async function loadStreetEasy(fetcher = fetch, now = new Date()) {
+  const response = await fetcher(SEARCH_URL, {
+    method: 'POST',
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query: SEARCH_QUERY }),
+    redirect: 'error',
+    signal: AbortSignal.timeout(9000),
+  });
+  if (!response.ok) throw Object.assign(new Error('StreetEasy returned HTTP ' + response.status + '.'), { httpStatus: response.status });
+  const payload = await response.json() as {
+    errors?: unknown[];
+    data?: { searchRentals?: { totalCount: number; edges: { node?: SearchRental }[] } };
+  };
+  const result = payload?.data?.searchRentals;
+  if (payload?.errors?.length || !Number.isSafeInteger(result?.totalCount) || result.totalCount < 0 ||
+      !Array.isArray(result?.edges) || result.edges.length > SAMPLE_SIZE) {
+    throw new Error('StreetEasy v6 did not return rental results.');
+  }
+  const checkedAt = now.toISOString();
+  const rows = result.edges.flatMap(({ node }) => {
+    if (node?.status !== 'ACTIVE' || ![1, 2].includes(node.bedroomCount) ||
+        /^(?:house|townhouse|land|commercial)$/i.test(node.buildingType ?? '')) return [];
+    const url = streetEasyListingUrl(node.urlPath);
+    const borough = searchBorough({ state: 'NY', zip: node.zipCode });
+    if (!url || !borough) return [];
+    const listing = normalizeListing({
+      id: node.id, url, address: node.street, unit: node.unit, zipCode: node.zipCode,
+      city: borough === 'brooklyn' ? 'Brooklyn' : 'Manhattan', state: 'NY',
+      neighborhood: node.areaName, bedrooms: node.bedroomCount, rent: node.price,
+      latitude: node.geoPoint?.latitude, longitude: node.geoPoint?.longitude,
+      status: 'Active', updatedAt: checkedAt,
+    }, SOURCE);
+    return listing ? [listing] : [];
+  });
+  if (result.totalCount > 0 && !rows.length) throw new Error('StreetEasy v6 returned no supported apartment listings.');
+  return { listings: deduplicatePublicRentals(rows), pages: 1, total: result.totalCount };
 }

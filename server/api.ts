@@ -231,7 +231,7 @@ export async function handleApi(request, env, { requireToken = false, fetcher = 
   try {
     if (path === '/api/refresh') {
       if (body?.check === 'now') {
-        const work = refreshSources(env, { fetcher, onDemand: true });
+        const work = refreshSources(env, { fetcher, onDemand: true, skipStreetEasy: body.sessionStart === false });
         waitUntil?.(work.catch(() => {}));
         return json(await work);
       }

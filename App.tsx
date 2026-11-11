@@ -213,13 +213,14 @@ function Listing({ listing, selectedSource, workplace, commute, onSave, onSaveLi
   </View>;
 }
 
-function sourceCheckText({ status, checkedAt, updatedAt, listingCount, pages, retryAt, error }) {
+function sourceCheckText({ status, checkedAt, updatedAt, listingCount, pages, total, retryAt, error }) {
   const saved = updatedAt ? ' · Saved data from ' + CHECK_TIME.format(new Date(updatedAt)) : '';
   const checked = checkedAt ? ' · ' + CHECK_TIME.format(new Date(checkedAt)) : '';
   if (status === 'feed_required') return 'Authorized feed required' + saved;
   if (status === 'current') return 'Current' + checked;
   if (status === 'updated') return (listingCount === undefined ? 'New data imported' :
-    listingCount.toLocaleString('en-US') + ' listings checked') + (pages > 1 ? ' across ' + pages + ' pages' : '') + checked;
+    listingCount.toLocaleString('en-US') + ' listings checked' +
+      (total > listingCount ? ' out of ' + total.toLocaleString('en-US') + ' reported' : '')) + (pages > 1 ? ' across ' + pages + ' pages' : '') + checked;
   const next = Date.parse(retryAt) > Date.now() ? ' · Next check after ' + CHECK_TIME.format(new Date(retryAt)) : '';
   return (error ?? 'Refresh unavailable') + next + saved;
 }
@@ -470,14 +471,14 @@ function ApartmentSearch() {
     setRefresh(config.refresh ?? null);
   }, []);
 
-  const checkSources = useCallback(async () => {
+  const checkSources = useCallback(async (sessionStart = false) => {
     const signal = sourceSession.current;
     if (!signal || signal.aborted || checking.current === signal) return;
     checking.current = signal;
     setRefreshing(true);
     setRefreshError('');
     try {
-      const request = await api('refresh', { body: { check: 'now' }, token: activeToken, signal });
+      const request = await api('refresh', { body: { check: 'now', sessionStart }, token: activeToken, signal });
       const check = await finishSourceCheck(request, activeToken, signal);
       if (signal?.aborted) return;
       const failedExports = retryablePublicSources(check);
@@ -541,7 +542,7 @@ function ApartmentSearch() {
             // A browser that disables session storage can still sync when the app opens.
           }
         }
-        if (!alreadyChecked) void checkSources();
+        if (!alreadyChecked) void checkSources(true);
       }
     }).catch((failure) => {
       if (controller.signal.aborted) return;
@@ -689,7 +690,7 @@ function ApartmentSearch() {
               </View>
               {scope === 'market' && <WebsiteFilter result={result} applied={applied} onSelect={selectSource} onError={setError} />}
               {scope === 'market' && <RentalSyncStatus refresh={refresh} refreshing={refreshing}
-                configuredSources={configuredSources} onRefresh={checkSources} />}
+                configuredSources={configuredSources} onRefresh={() => checkSources()} />}
               </View>
               {adding === 'single' && <AddListing initialRegion={applied.region}
                 onSave={(listing) => { saveListing(listing); setAdding(false); }}

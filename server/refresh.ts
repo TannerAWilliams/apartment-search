@@ -9,6 +9,8 @@ import { AUTO_RENTAL_SOURCES, DIRECT_RENTAL_SOURCES, FEED_ONLY_SOURCES } from '.
 import { loadOpenigloo, OPENIGLOO_SAMPLE_LIMIT } from './openigloo.ts';
 import { requestForRefresh, retrySchedule } from './source-requests.ts';
 
+import { STREETEASY_LIVE } from './streeteasy.ts';
+
 const STATE_KEY = 'rentals/refresh.json';
 const MARKET_KEY = 'rentals/firstmover.json.gz';
 const MARKET_SCHEMA = 'companies-1';
@@ -62,6 +64,7 @@ type RefreshOptions = {
   now?: Date;
   imports?: Record<string, any>;
   onDemand?: boolean;
+  skipStreetEasy?: boolean;
   fallback?: boolean;
 };
 
@@ -233,7 +236,7 @@ async function refreshOpenigloo(bucket, result, at) {
 
 async function refreshDirectRentals(bucket, source, result, at) {
   if (!Number.isInteger(result?.pages) || result.pages < source.minPages || result.pages > source.maxPages ||
-      !Array.isArray(result.listings) || !result.listings.length || result.listings.length > result.pages * source.rowsPerPage ||
+      !Array.isArray(result.listings) || (!result.listings.length && result.total !== 0) || result.listings.length > result.pages * source.rowsPerPage ||
       result.listings.some((listing) => listing?.kind !== 'feed' || !source.regions.includes(listing.region) ||
         typeof listing.id !== 'string' || !listing.id.startsWith(source.marketplace + ':') ||
         typeof listing.address !== 'string' || !listing.address || typeof listing.unit !== 'string' ||
@@ -247,10 +250,10 @@ async function refreshDirectRentals(bucket, source, result, at) {
   }
   const listings = result.listings.map((listing) => ({ ...listing, checkedAt: at }));
   await bucket.put('rentals/' + source.id + '.json.gz', compressed({ ...result, listings }));
-  return { status: 'updated', updatedAt: at, listingCount: result.listings.length, pages: result.pages };
+  return { status: 'updated', updatedAt: at, listingCount: result.listings.length, pages: result.pages, total: result.total };
 }
 
-export async function refreshSources(env, { fetcher = fetch, now = new Date(), imports, onDemand = false, fallback = false }: RefreshOptions = {}) {
+export async function refreshSources(env, { fetcher = fetch, now = new Date(), imports, onDemand = false, fallback = false, skipStreetEasy = false }: RefreshOptions = {}) {
   const bucket = env.BUCKET;
   if (!bucket) throw new Error('Source storage is unavailable.');
   const current = await readState(bucket);
@@ -266,7 +269,7 @@ export async function refreshSources(env, { fetcher = fetch, now = new Date(), i
   const feedChecks = fallback ? [] : feeds.filter(({ id }) => !onDemand || ready(id));
   const publicChecks = fallback ? PUBLIC_IDS.filter((id) => imports?.[id] && previousById.get(id)?.status === 'failed' && ready(id)) :
     PUBLIC_IDS.filter((id) => !onDemand || ready(id));
-  const liveChecks = fallback ? [] : onDemand ? AUTO_IDS.filter(ready) : LIVE_IDS.filter((id) => imports && Object.hasOwn(imports, id));
+  const liveChecks = fallback ? [] : onDemand ? AUTO_IDS.filter((id) => ready(id) && (!skipStreetEasy || id !== STREETEASY_LIVE.id)) : LIVE_IDS.filter((id) => imports && Object.hasOwn(imports, id));
   const checkHdc = onDemand && !fallback && ready(HDC_RERENTALS.id);
   const ids = [...publicChecks, ...liveChecks, ...feedChecks.map(({ id }) => id), ...(checkHdc ? [HDC_RERENTALS.id] : [])];
   if (ids.length === 0 || (!onDemand && !previous.running && !imports?.firstmover?.changed && checkedDuring(previous.sources, ids, hour))) {
@@ -329,6 +332,7 @@ export async function refreshSources(env, { fetcher = fetch, now = new Date(), i
       if (counts?.updatedAt) {
         item.listingCount = counts.listingCount;
         item.pages = counts.pages;
+        if (counts.total !== undefined) item.total = counts.total;
       }
       if (!next) item.error = 'The ' + name + ' live sample could not be refreshed.';
     } else {

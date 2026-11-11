@@ -8,7 +8,7 @@ Compare rentals by asking rent and weekday-morning transit or driving time to yo
 
 | Source | What the app imports |
 | --- | --- |
-| StreetEasy | Available units from the first two public search pages for one- and two-bedroom rentals in each borough. The separate [FirstMover Open Data](https://www.firstmovernyc.com/open-data) monthly snapshot supplies the rent charts and dated listings. |
+| StreetEasy | One StreetEasy v6 search at session start requests up to 100 recent active one- and two-bedroom rentals across Manhattan and Brooklyn. Sync status shows the number received and the reported inventory. The separate [FirstMover Open Data](https://www.firstmovernyc.com/open-data) monthly snapshot supplies the rent charts and dated listings. |
 | Apartments.com | Individually identified, available units with exact asking rents from the first two public search pages for one- and two-bedroom rentals in each borough. Building-wide price ranges are excluded. |
 | Openigloo | A bounded live sample from its published NYC search interface. The app requests up to ten results per borough and bedroom count (one and two bedrooms), without a rent cap. |
 | Zillow, Compass, RentHop, and Realtor.com | Last saved samples and browse links. Automatic updates require an authorized feed. |
@@ -35,7 +35,7 @@ Set `TRAVELTIME_APP_ID` and `TRAVELTIME_API_KEY` on the server to enable automat
 
 The private hosted app checks FirstMover’s published monthly exports, the city’s Housing Connect export, and the active rental sources above. The FirstMover check uses the publisher’s release links and conditional requests for the CSV. Housing Connect listings reflect the city’s published export and application dates. The Affordable tab also links to official Mitchell-Lama and Section 8 resources. Settled.nyc feed access is unverified.
 
-The first successful connection in a browser tab session or native app launch triggers a source check. **Rent → Refresh listings** runs the same check. **Show sync status** displays counts before your search filters, failures, and unconnected sites. Overlapping reloads share one check. Sources that rate-limit the app wait until their retry time. The browser can retry failed public exports when the source permits another check. The **Available rentals** view shows only active inventory from successful checks in the last two hours. Dated snapshots are used for rent charts. If a check fails or expires, its older inventory is excluded from the search and map. Openigloo uses the free U.S. Census batch geocoder for its public addresses.
+The first successful connection in a browser tab session or native app launch triggers a source check. **Rent → Refresh listings** checks the other sources. **Show sync status** displays counts before your search filters, failures, and unconnected sites. Overlapping reloads share one check. Sources that rate-limit the app wait until their retry time. The browser can retry failed public exports when the source permits another check. The **Available rentals** view shows only active inventory from successful checks in the last two hours. Dated snapshots are used for rent charts. If a check fails or expires, its older inventory is excluded from the search and map. Openigloo uses the free U.S. Census batch geocoder for its public addresses.
 
 The private app also serves a manual Node.js refresh runner at `/_refresh-runner.mjs`. Download it through owner-only service access and pass the service credential on stdin. Keep the credential out of files, command arguments, and logs.
 
