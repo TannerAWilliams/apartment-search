@@ -35,7 +35,7 @@ Set `TRAVELTIME_APP_ID` and `TRAVELTIME_API_KEY` on the server to enable automat
 
 The private hosted app checks FirstMover’s published monthly exports, the city’s Housing Connect export, and the active rental sources above. The FirstMover check uses the publisher’s release links and conditional requests for the CSV. Housing Connect listings reflect the city’s published export and application dates. The Affordable tab also links to official Mitchell-Lama and Section 8 resources. Settled.nyc feed access is unverified.
 
-Opening or reloading the hosted app, returning to Rent, and bringing the app or browser tab back to the foreground each trigger a source check. **Rent → Refresh listings** runs the same check. **Show sync status** displays counts before your search filters, failures, and unconnected sites. Overlapping reloads share one check. Sources that rate-limit the app wait until their retry time. The browser can retry failed public exports when the source permits another check. The **Available rentals** view shows only active inventory from successful checks in the last two hours. Dated snapshots are used for rent charts. If a check fails or expires, its older inventory is excluded from the search and map. Openigloo uses the free U.S. Census batch geocoder for its public addresses.
+The first successful connection in a browser tab session or native app launch triggers a source check. **Rent → Refresh listings** runs the same check. **Show sync status** displays counts before your search filters, failures, and unconnected sites. Overlapping reloads share one check. Sources that rate-limit the app wait until their retry time. The browser can retry failed public exports when the source permits another check. The **Available rentals** view shows only active inventory from successful checks in the last two hours. Dated snapshots are used for rent charts. If a check fails or expires, its older inventory is excluded from the search and map. Openigloo uses the free U.S. Census batch geocoder for its public addresses.
 
 The private app also serves a manual Node.js refresh runner at `/_refresh-runner.mjs`. Download it through owner-only service access and pass the service credential on stdin. Keep the credential out of files, command arguments, and logs.
 
@@ -50,14 +50,14 @@ The market chart uses the dated public snapshot so a small live sample cannot sk
 Download a monthly CSV from [FirstMover Open Data](https://www.firstmovernyc.com/open-data). Use Python 3 to regenerate the compressed offline dataset, then rebuild the app.
 
 ```sh
-python3 scripts/update-market.py /path/to/2026-10.csv 2026-10
+node --experimental-strip-types scripts/update-market.ts /path/to/2026-10.csv 2026-10
 npm test
 npm run build
 ```
 
 The data comes from the [FirstMover Open Data Project](https://github.com/benfwalla/firstmover-open-data-project). Its license is included at `src/data/FIRSTMOVER-LICENSE.txt`. The bundled data contains addresses, unit identifiers, asking rents, neighborhoods, coordinates, posting dates, and source URLs. Photos and listing descriptions are excluded.
 
-Run `node scripts/update-rent-history.mjs /path/to/months/20*.csv` with dated FirstMover CSVs to rebuild the offline trend data. Hosted refreshes retain the previous month’s medians when a new monthly release arrives.
+Run `node --experimental-strip-types scripts/update-rent-history.ts /path/to/months/20*.csv` with dated FirstMover CSVs to rebuild the offline trend data. Hosted refreshes retain the previous month’s medians when a new monthly release arrives.
 
 ## Run locally
 
@@ -75,7 +75,7 @@ A custom address is sent to the [free U.S. Census Geocoder](https://geocoding.ge
 
 ### Optional free partner feed
 
-Set `FREE_PARTNER_FEEDS_JSON` in the server environment to an array of approved no-cost HTTPS endpoints. Each item needs a unique `id`, a `name` for a custom source, a `url`, and an optional bearer `token`. Use IDs from `src/marketplaces.mjs` for a platform badge. The endpoint returns a JSON array or an object with `listings`. A paginated feed returns `{ listings, next, total }` where `next` is an HTTPS URL on the same origin (absolute or relative), or null on the last page. Optional `total` counts all source rows, including those excluded by normalization. A reported partial feed, invalid page chain, count mismatch, or refresh over 40 pages or 25,000 rows fails without replacing the last saved snapshot.
+Set `FREE_PARTNER_FEEDS_JSON` in the server environment to an array of approved no-cost HTTPS endpoints. Each item needs a unique `id`, a `name` for a custom source, a `url`, and an optional bearer `token`. Use IDs from `src/marketplaces.ts` for a platform badge. The endpoint returns a JSON array or an object with `listings`. A paginated feed returns `{ listings, next, total }` where `next` is an HTTPS URL on the same origin (absolute or relative), or null on the last page. Optional `total` counts all source rows, including those excluded by normalization. A reported partial feed, invalid page chain, count mismatch, or refresh over 40 pages or 25,000 rows fails without replacing the last saved snapshot.
 
 Each row supplies an ID, `status: "Active"`, `addressLine1`, a unit if known, `city`, `state`, `county`, `zipCode`, `bedrooms` (studio = 0), and monthly `price`. Include numeric `latitude` and `longitude`, `neighborhood`, `updatedAt`, and an HTTPS `listingUrl` for the original listing. Only source URLs supplied by the feed are presented as direct links. Page counts describe the supplied feed, whose coverage may be smaller than the source website's inventory.
 
@@ -83,6 +83,7 @@ Each row supplies an ID, `status: "Active"`, `addressLine1`, a unit if known, `c
 
 ```sh
 npm test
+npm run typecheck
 npm run build:web
 npx expo export --platform ios --platform android
 ```
