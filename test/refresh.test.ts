@@ -480,7 +480,7 @@ test('a failed StreetEasy refresh retains its previous listing as cached', async
   assert.ok(!sourceRecent(failed, STREETEASY_LIVE.id, new Date(now.getTime() + 3 * 60 * 60_000)));
 });
 
-test('session refresh ingests StreetEasy v6 once and checks Apartments.com in both boroughs', async () => {
+test('session refresh ingests StreetEasy v6 at most daily and checks Apartments.com in both boroughs', async () => {
   const env = { BUCKET: new TestBucket() };
   const requested = [];
   const fetcher = (url, options) => {
@@ -490,14 +490,19 @@ test('session refresh ingests StreetEasy v6 once and checks Apartments.com in bo
       assert.equal(options.method, 'POST');
       const { query } = JSON.parse(String(options.body));
       assert.match(query, /areas: \[100, 300\], rentalStatus: ACTIVE/);
-      assert.match(query, /lowerBound: 1, upperBound: 2/);
+      assert.doesNotMatch(query, /lowerBound/);
       const edges = ['10001', '11215'].flatMap((zipCode, borough) => [1, 2].map((bedroomCount) => {
         const id = String(800 + borough * 10 + bedroomCount);
         return { node: { id, street: '28 Example Street', unit: id, zipCode, bedroomCount,
           status: 'ACTIVE', price: 6500, urlPath: '/rental/' + id } };
       }));
-      edges.push({ node: { ...edges[0].node, id: '999', status: 'RENTED' } });
-      return Response.json({ data: { searchRentals: { totalCount: 5594, edges } } });
+      edges.push({ node: { ...edges[0].node, id: '999', unit: 'PENTHOUSE', urlPath: '/rental/999', bedroomCount: 5 } });
+      for (let index = 0; index < 496; index += 1) {
+        const id = String(2000 + index);
+        edges.push({ node: { ...edges[0].node, id, unit: id, urlPath: '/rental/' + id } });
+      }
+      const offset = query.includes('page: 2') ? 500 : 0;
+      return Response.json({ data: { searchRentals: { totalCount: edges.length, edges: edges.slice(offset, offset + 500) } } });
     }
     if (parsed.hostname !== 'www.apartments.com') {
       if (url === csvUrl || ['www.firstmovernyc.com', 'data.cityofnewyork.us'].includes(parsed.hostname)) {
@@ -530,15 +535,15 @@ test('session refresh ingests StreetEasy v6 once and checks Apartments.com in bo
   for (const source of [STREETEASY_LIVE, APARTMENTS_LIVE]) {
     const status = result.sources.find(({ id }) => id === source.id);
     assert.equal(status.status, 'updated', source.name);
-    assert.equal(status.pages, source === STREETEASY_LIVE ? 1 : 8);
-    assert.equal(status.listingCount, source === STREETEASY_LIVE ? 4 : 8);
+    assert.equal(status.pages, source === STREETEASY_LIVE ? 2 : 8);
+    assert.equal(status.listingCount, source === STREETEASY_LIVE ? 501 : 8);
   }
   assert.equal(new Set(requested).size, 9);
-  assert.equal(result.sources.find(({ id }) => id === STREETEASY_LIVE.id).total, 5594);
+  assert.equal(result.sources.find(({ id }) => id === STREETEASY_LIVE.id).total, 501);
   const v6Requests = () => requested.filter((url) => url === 'https://api-v6.streeteasy.com/').length;
-  assert.equal(v6Requests(), 1);
-  await refreshSources(env, { onDemand: true, skipStreetEasy: true, fetcher });
-  assert.equal(v6Requests(), 1);
+  assert.equal(v6Requests(), 2);
+  await refreshSources(env, { onDemand: true, fetcher });
+  assert.equal(v6Requests(), 2);
   const filters = { region: 'brooklyn', bedrooms: 2, maxRent: null, liveOnly: true, source: 'apartments' };
   assert.equal((await search(filters, env)).total, 2);
   assert.equal((await search({ ...filters, maxRent: 5000 }, env)).total, 0);

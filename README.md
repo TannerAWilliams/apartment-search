@@ -8,7 +8,7 @@ Compare rentals by asking rent and weekday-morning transit or driving time to yo
 
 | Source | What the app imports |
 | --- | --- |
-| StreetEasy | One StreetEasy v6 search at session start requests up to 100 recent active one- and two-bedroom rentals across Manhattan and Brooklyn. Sync status shows the number received and the reported inventory. The separate [FirstMover Open Data](https://www.firstmovernyc.com/open-data) monthly snapshot supplies the rent charts and dated listings. |
+| StreetEasy | The StreetEasy v6 sync checks all active Manhattan and Brooklyn rentals in pages of up to 500, at most once per 24 hours. Sync status shows the number received and the reported inventory. The separate [FirstMover Open Data](https://www.firstmovernyc.com/open-data) monthly snapshot supplies the rent charts and dated listings. |
 | Apartments.com | Individually identified, available units with exact asking rents from the first two public search pages for one- and two-bedroom rentals in each borough. Building-wide price ranges are excluded. |
 | Openigloo | A bounded live sample from its published NYC search interface. The app requests up to ten results per borough and bedroom count (one and two bedrooms), without a rent cap. |
 | Zillow, Compass, RentHop, and Realtor.com | Last saved samples and browse links. Automatic updates require an authorized feed. |

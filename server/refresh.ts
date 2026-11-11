@@ -11,7 +11,8 @@ import { requestForRefresh, retrySchedule } from './source-requests.ts';
 
 import { STREETEASY_LIVE } from './streeteasy.ts';
 
-const STREETEASY_TRANSPORT = 'v6';
+const STREETEASY_TRANSPORT = 'v6-daily';
+const STREETEASY_SYNC_INTERVAL = 24 * 60 * 60_000;
 const STATE_KEY = 'rentals/refresh.json';
 const MARKET_KEY = 'rentals/firstmover.json.gz';
 const MARKET_SCHEMA = 'companies-1';
@@ -109,7 +110,7 @@ const coolingDown = (source, now) => Date.parse(source?.retryAt) > now.getTime()
 export function sourceRecent(status, id, now = new Date()) {
   const source = status?.sources.find((item) => item.id === id);
   const age = now.getTime() - Date.parse(source?.updatedAt);
-  return (source?.status === 'updated' || source?.status === 'current') && age >= 0 && age <= LIVE_MAX_AGE;
+  return (source?.status === 'updated' || source?.status === 'current') && age >= 0 && age <= (id === STREETEASY_LIVE.id && source.transport === STREETEASY_TRANSPORT ? STREETEASY_SYNC_INTERVAL : LIVE_MAX_AGE);
 }
 
 export async function storedOpenigloo(bucket) {
@@ -244,7 +245,7 @@ async function refreshDirectRentals(bucket, source, result, at) {
         typeof listing.address !== 'string' || !listing.address || typeof listing.unit !== 'string' ||
         typeof listing.city !== 'string' || !listing.city || !/^\d{5}$/.test(listing.zip) ||
         !Number.isFinite(listing.rent) || listing.rent <= 0 || listing.rent > 100000 ||
-        !Number.isInteger(listing.bedrooms) || listing.bedrooms < 0 || listing.bedrooms > 4 ||
+        !Number.isInteger(listing.bedrooms) || listing.bedrooms < 0 || listing.bedrooms > (source.maxBedrooms ?? 4) ||
         !Array.isArray(listing.sources) || !listing.sources.length ||
         listing.sources.some((link) => link?.id !== source.marketplace || link.kind !== 'feed' ||
           !source.listingUrl(link.url)) || !Number.isFinite(Date.parse(listing.seenAt)))) {
@@ -268,7 +269,9 @@ export async function refreshSources(env, { fetcher = fetch, now = new Date(), i
   const previousById = new Map((previous.sources ?? []).map((source) => [source.id, source]));
   const ready = (id) => {
     const prior = previousById.get(id);
-    return (id === STREETEASY_LIVE.id && prior?.transport !== STREETEASY_TRANSPORT) || !coolingDown(prior, now);
+    if (id !== STREETEASY_LIVE.id) return !coolingDown(prior, now);
+    if (prior?.transport !== STREETEASY_TRANSPORT) return true;
+    return !coolingDown(prior, now) && now.getTime() - Date.parse(prior.checkedAt) >= STREETEASY_SYNC_INTERVAL;
   };
   const feeds = configuredFeeds(env);
   const feedChecks = fallback ? [] : feeds.filter(({ id }) => !onDemand || ready(id));
