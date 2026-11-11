@@ -11,6 +11,7 @@ import { requestForRefresh, retrySchedule } from './source-requests.ts';
 
 import { STREETEASY_LIVE } from './streeteasy.ts';
 
+const STREETEASY_TRANSPORT = 'v6';
 const STATE_KEY = 'rentals/refresh.json';
 const MARKET_KEY = 'rentals/firstmover.json.gz';
 const MARKET_SCHEMA = 'companies-1';
@@ -46,6 +47,7 @@ type SourceStatus = CheckResult & {
   name: string;
   checkedAt: string | null;
   marketplace?: string;
+  transport?: string;
   retryAt?: string;
   retryAttempts?: number;
   error?: string;
@@ -264,7 +266,10 @@ export async function refreshSources(env, { fetcher = fetch, now = new Date(), i
     return { state: 'running', ...publicStatus(previous, now) };
   }
   const previousById = new Map((previous.sources ?? []).map((source) => [source.id, source]));
-  const ready = (id) => !coolingDown(previousById.get(id), now);
+  const ready = (id) => {
+    const prior = previousById.get(id);
+    return (id === STREETEASY_LIVE.id && prior?.transport !== STREETEASY_TRANSPORT) || !coolingDown(prior, now);
+  };
   const feeds = configuredFeeds(env);
   const feedChecks = fallback ? [] : feeds.filter(({ id }) => !onDemand || ready(id));
   const publicChecks = fallback ? PUBLIC_IDS.filter((id) => imports?.[id] && previousById.get(id)?.status === 'failed' && ready(id)) :
@@ -314,6 +319,7 @@ export async function refreshSources(env, { fetcher = fetch, now = new Date(), i
     const failure = result.status === 'rejected' ? result.reason : null;
     const item: SourceStatus = { id, name, checkedAt: at, status: next?.status ?? 'failed',
       updatedAt: next?.updatedAt ?? older?.updatedAt ?? null };
+    if (onDemand && id === STREETEASY_LIVE.id) item.transport = STREETEASY_TRANSPORT;
     if (id === HDC_RERENTALS.id) item.listingCount = next?.listingCount ?? older?.listingCount;
     if (id === 'firstmover') {
       item.month = next?.month ?? older?.month ?? SNAPSHOT_MONTH;
@@ -347,7 +353,7 @@ export async function refreshSources(env, { fetcher = fetch, now = new Date(), i
       const status = failure?.httpStatus;
       if (status) item.error = name + ' returned HTTP ' + status + '.';
       else if (failure?.name === 'TimeoutError') item.error = name + ' did not respond in time.';
-      Object.assign(item, retrySchedule(failure, older, now.getTime()));
+      Object.assign(item, retrySchedule(failure, older?.transport === item.transport ? older : undefined, now.getTime()));
     }
     return item;
   });
