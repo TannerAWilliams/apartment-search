@@ -8,7 +8,7 @@ Compare rentals by asking rent and weekday-morning transit or driving time to yo
 
 | Source | What the app imports |
 | --- | --- |
-| StreetEasy | The StreetEasy v6 sync checks all active Manhattan and Brooklyn rentals in pages of up to 500, at most once per 24 hours. Sync status shows the number received and the reported inventory. The separate [FirstMover Open Data](https://www.firstmovernyc.com/open-data) monthly snapshot supplies the rent charts and dated listings. |
+| StreetEasy | The StreetEasy v6 sync requests active Manhattan and Brooklyn rentals at most once per 24 hours. It partitions searches into bounded price ranges to stay within the observed 1,000-result search window, deduplicates overlapping gross/discounted-rent matches, and requires counts to reconcile before replacing inventory. It stops after 80 requests or 20,000 reported listings. Sync status shows the number received and the reported inventory. The separate [FirstMover Open Data](https://www.firstmovernyc.com/open-data) monthly snapshot supplies the rent charts and dated listings. |
 | Apartments.com | Individually identified, available units with exact asking rents from the first two public search pages for one- and two-bedroom rentals in each borough. Building-wide price ranges are excluded. |
 | Openigloo | A bounded live sample from its published NYC search interface. The app requests up to ten results per borough and bedroom count (one and two bedrooms), without a rent cap. |
 | Zillow, Compass, RentHop, and Realtor.com | Last saved samples and browse links. Automatic updates require an authorized feed. |
@@ -89,3 +89,19 @@ npx expo export --platform ios --platform android
 ```
 
 `npm run build` also packages the web bundle and server into the private hosted Worker.
+
+
+### StreetEasy access and completeness
+
+A successful HTTP response is not proof of a complete sync. The v6 endpoint can
+report thousands of rentals but return empty pages beyond its search window.
+The importer checks each partition and the final unique-ID count, rejects
+conflicting duplicate records, and preserves the last snapshot when a check fails.
+
+Server-side fetching is required: the API did not allow this app's origin in its
+CORS preflight response during the November 12, 2026 check. Browser-like headers
+were not needed for successful command-line requests. The hosted Worker still
+received HTTP 403 in the same check. This loader fix does not establish that
+StreetEasy permits access from every hosting network. A browser or external
+sync worker requires its own verified deployment and unattended access; OCR,
+spoofed headers, or a successful first page do not establish complete coverage.

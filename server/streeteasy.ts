@@ -7,12 +7,16 @@ const SOURCE = { id: 'streeteasy', name: 'StreetEasy', kind: 'feed', maxBedrooms
 const ORIGIN = 'https://streeteasy.com';
 const SEARCH_URL = 'https://api-v6.streeteasy.com/';
 const PAGE_SIZE = 500;
-const MAX_PAGES = 40;
-const searchQuery = (page: number) => `query SearchRentals {
+const MAX_PAGES = 80;
+const RESULT_WINDOW = 1000;
+const MAX_INVENTORY = 20000;
+type PriceRange = { lower: number; upper: number };
+const searchQuery = (page: number, range?: PriceRange) => `query SearchRentals {
   searchRentals(input: {
     sorting: { attribute: LISTED_AT, direction: DESCENDING }
     adStrategy: NONE
-    filters: { areas: [100, 300], rentalStatus: ACTIVE }
+    filters: { areas: [100, 300], rentalStatus: ACTIVE
+      ${range ? `price: { lowerBound: ${range.lower}, upperBound: ${range.upper} }` : ''} }
     perPage: ${PAGE_SIZE}
     page: ${page}
   }) {
@@ -92,13 +96,13 @@ type SearchRental = {
   geoPoint?: { latitude?: number; longitude?: number };
 };
 
-async function fetchPage(fetcher: typeof fetch, page: number) {
+async function fetchPage(fetcher: typeof fetch, page: number, range?: PriceRange, signal?: AbortSignal) {
   const response = await fetcher(SEARCH_URL, {
     method: 'POST',
     headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query: searchQuery(page) }),
+    body: JSON.stringify({ query: searchQuery(page, range) }),
     redirect: 'error',
-    signal: AbortSignal.timeout(9000),
+    signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(9000)]) : AbortSignal.timeout(9000),
   });
   if (!response.ok) throw Object.assign(new Error('StreetEasy returned HTTP ' + response.status + '.'), { httpStatus: response.status });
   const payload = await response.json() as {
@@ -114,20 +118,72 @@ async function fetchPage(fetcher: typeof fetch, page: number) {
 }
 
 export async function loadStreetEasy(fetcher = fetch, now = new Date()) {
-  const first = await fetchPage(fetcher, 1);
-  const pages = Math.max(1, Math.ceil(first.totalCount / PAGE_SIZE));
-  if (pages > MAX_PAGES) throw new Error('StreetEasy inventory exceeds the sync limit.');
-  const edges = [...first.edges];
-  for (let page = 2; page <= pages; page += 3) {
-    const batch = await Promise.all(Array.from({ length: Math.min(3, pages - page + 1) },
-      (_, offset) => fetchPage(fetcher, page + offset)));
-    for (const result of batch) {
-      if (result.totalCount !== first.totalCount) throw new Error('StreetEasy inventory changed during the sync.');
-      edges.push(...result.edges);
+  const controller = new AbortController();
+  let failure: unknown;
+  let pages = 0;
+  let active = 0;
+  const waiting: (() => void)[] = [];
+  async function page(number: number, range?: PriceRange) {
+    if (failure) throw failure;
+    if (++pages > MAX_PAGES) throw new Error('StreetEasy inventory exceeds the sync request limit.');
+    if (active >= 3) await new Promise<void>((resolve) => waiting.push(resolve));
+    else active++;
+    try {
+      if (failure) throw failure;
+      return await fetchPage(fetcher, number, range, controller.signal);
+    } catch (error) {
+      failure ??= error;
+      controller.abort();
+      throw error;
     }
+    finally { const next = waiting.shift(); if (next) next(); else active--; }
   }
-  if (edges.length !== first.totalCount || new Set(edges.map(({ node }) => node?.id)).size !== edges.length) {
-    throw new Error('StreetEasy returned incomplete inventory.');
+  const first = await page(1);
+  if (first.totalCount > MAX_INVENTORY) throw new Error('StreetEasy inventory exceeds the sync limit.');
+  type Result = Awaited<ReturnType<typeof fetchPage>>;
+  function complete(edges: Result['edges'], total: number) {
+    const unique = new Map<string, Result['edges'][number]>();
+    for (const edge of edges) {
+      if (!edge.node?.id) throw new Error('StreetEasy returned a rental without an ID.');
+      const prior = unique.get(edge.node.id);
+      if (prior && JSON.stringify(prior) !== JSON.stringify(edge)) {
+        throw new Error('StreetEasy inventory changed during the sync.');
+      }
+      unique.set(edge.node.id, edge);
+    }
+    if (unique.size !== total) throw new Error('StreetEasy returned incomplete inventory.');
+    return [...unique.values()];
+  }
+  async function collect(range: PriceRange, result: Result): Promise<Result['edges']> {
+    if (result.totalCount <= RESULT_WINDOW) {
+      let edges = result.edges;
+      if (result.totalCount > PAGE_SIZE) {
+        const second = await page(2, result === first ? undefined : range);
+        if (second.totalCount !== result.totalCount) throw new Error('StreetEasy inventory changed during the sync.');
+        edges = [...edges, ...second.edges];
+      }
+      // A leaf must contain distinct rows, not a repeated page.
+      if (edges.length !== result.totalCount) throw new Error('StreetEasy returned incomplete inventory.');
+      return complete(edges, result.totalCount);
+    }
+    if (range.lower === range.upper) throw new Error('StreetEasy has too many rentals at one price to verify a complete sync.');
+    const prices = result.edges.map(({ node }) => node?.price)
+      .filter((price): price is number => Number.isSafeInteger(price) && price! >= range.lower && price! <= range.upper)
+      .sort((a, b) => a - b);
+    const median = prices[Math.floor(prices.length / 2)];
+    const middle = median !== undefined && median < range.upper ? median : Math.floor((range.lower + range.upper) / 2);
+    const ranges = [{ lower: range.lower, upper: middle }, { lower: middle + 1, upper: range.upper }];
+    const children = await Promise.all(ranges.map(async (child) => collect(child, await page(1, child))));
+    // StreetEasy can match both gross and discounted rent, so ranges overlap by
+    // listing ID. Deduplicate the union before comparing it with the parent count.
+    return complete(children.flat(), result.totalCount);
+  }
+  let edges: Result['edges'];
+  try { edges = await collect({ lower: 0, upper: 2147483647 }, first); }
+  catch (error) {
+    failure ??= error;
+    controller.abort();
+    throw error;
   }
   const checkedAt = now.toISOString();
   const rows = edges.flatMap(({ node }) => {
@@ -147,3 +203,4 @@ export async function loadStreetEasy(fetcher = fetch, now = new Date()) {
   if (first.totalCount > 0 && !rows.length) throw new Error('StreetEasy v6 returned no supported apartment listings.');
   return { listings: deduplicatePublicRentals(rows), pages, total: first.totalCount };
 }
+
