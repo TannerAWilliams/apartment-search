@@ -261,32 +261,33 @@ test('the Openigloo connector uses its published limit and preserves only exact 
   assert.equal(checked.listings[0].sources[0].id, 'openigloo');
 });
 
-test('Trulia collects unpriced one- and two-bedroom searches across both boroughs and pages', async () => {
+test('Trulia collects bounded one- and two-bedroom searches across NY, NJ and CT', async () => {
   const { TRULIA_LIVE } = await import('../server/trulia.ts');
   const urls = [];
   const result = await TRULIA_LIVE.load(async (url) => {
     urls.push(url);
-    const [city, beds] = new URL(url).pathname.match(/(Manhattan|Brooklyn),NY\/(\d)_beds\//).slice(1);
+    const [rawCity, state, beds] = new URL(url).pathname.match(/(Manhattan|Brooklyn|Jersey_City|Stamford),(NY|NJ|CT)\/(\d)_beds\//).slice(1);
+    const city = rawCity.replaceAll('_', ' ');
     const id = urls.length;
-    const zipCode = city === 'Manhattan' ? '10019' : '11215';
+    const zipCode = { Manhattan: '10019', Brooklyn: '11215', 'Jersey City': '07302', Stamford: '06901' }[city];
     const row = {
       url: `/home/example-unit-${id}`,
       metadata: { unifiedListingType: 'RENTAL_SINGLE_UNIT' },
       activeListing: { __typename: 'HOME_ForRentListing' },
-      location: { city: 'New York', stateCode: 'NY', zipCode, streetAddress: `${id} Example St #2`,
+      location: { city, stateCode: state, zipCode, streetAddress: `${id} Example St #2`,
         coordinates: { latitude: 40.7, longitude: -73.99 } },
       bedrooms: { value: Number(beds) }, price: { price: 7250 },
     };
     return new Response('<script id="__NEXT_DATA__">' + JSON.stringify({ props: { searchData: { homes: [row] } } }) + '</script>',
       { headers: { 'Content-Type': 'text/html' } });
   }, at);
-  assert.equal(urls.length, 8);
-  assert.equal(urls.filter((url) => url.endsWith('/2_p/')).length, 4);
+  assert.equal(urls.length, 16);
+  assert.equal(urls.filter((url) => url.endsWith('/2_p/')).length, 8);
   assert.ok(urls.every((url) => !url.includes('_price')));
-  assert.equal(result.listings.length, 8);
+  assert.equal(result.listings.length, 16);
   assert.ok(result.listings.every(({ rent }) => rent === 7250));
   assert.deepEqual([...new Set(result.listings.map(({ city, bedrooms }) => city + ':' + bedrooms))].sort(),
-    ['Brooklyn:1', 'Brooklyn:2', 'Manhattan:1', 'Manhattan:2']);
+    ['Brooklyn:1', 'Brooklyn:2', 'Jersey City:1', 'Jersey City:2', 'Manhattan:1', 'Manhattan:2', 'Stamford:1', 'Stamford:2']);
 });
 
 const publicRental = {
@@ -340,11 +341,13 @@ test('opening or reloading the app fetches new source data even within the same 
     price -= 100;
   }
   const zumper = requests.filter((url) => new URL(url).hostname === 'www.zumper.com');
-  assert.equal(zumper.length, 12);
-  assert.equal(zumper.filter((url) => new URL(url).searchParams.get('page') === '2').length, 4);
+  assert.equal(zumper.length, 24);
+  assert.equal(zumper.filter((url) => new URL(url).searchParams.get('page') === '2').length, 8);
   assert.deepEqual([...new Set(zumper.map((url) => new URL(url).pathname))].sort(),
     ['/apartments-for-rent/brooklyn-ny', '/apartments-for-rent/brooklyn-ny/cheap',
-      '/apartments-for-rent/manhattan-ny', '/apartments-for-rent/manhattan-ny/cheap']);
+      '/apartments-for-rent/jersey-city-nj', '/apartments-for-rent/jersey-city-nj/cheap',
+      '/apartments-for-rent/manhattan-ny', '/apartments-for-rent/manhattan-ny/cheap',
+      '/apartments-for-rent/stamford-ct', '/apartments-for-rent/stamford-ct/cheap']);
   assert.ok(!requests.some((url) => /(^|\.)(zillow|compass|renthop|realtor)\.com$/.test(new URL(url).hostname)));
 });
 
@@ -489,7 +492,8 @@ test('session refresh ingests StreetEasy v6 at most daily and checks Apartments.
       requested.push(url);
       assert.equal(options.method, 'POST');
       const { query } = JSON.parse(String(options.body));
-      assert.match(query, /areas: \[100, 300\], rentalStatus: ACTIVE/);
+      assert.match(query, /rentalStatus: ACTIVE/);
+      assert.doesNotMatch(query, /areas:/);
       assert.doesNotMatch(query, /lowerBound/);
       const edges = ['10001', '11215'].flatMap((zipCode, borough) => [1, 2].map((bedroomCount) => {
         const id = String(800 + borough * 10 + bedroomCount);
@@ -618,4 +622,44 @@ test('external daily StreetEasy sync continues without anyone opening the app',a
  const later=new Date(at.getTime()+24*60*60_000+1);
  const second=await refreshSources(env,{now:later,fallback:true,imports:{[STREETEASY_LIVE.id]:receipt(later)}});
  assert.equal(second.sources.find(s=>s.id===STREETEASY_LIVE.id).updatedAt,later.toISOString());
+});
+
+test('manual StreetEasy refresh bypasses daily cache, preserves other sources and respects retry cooldown',async()=>{
+ const env={BUCKET:new TestBucket()};
+ const [listing]=parseStreetEasyPage(streetEasyHtml([publicRental]),'NY',1,at.toISOString());
+ const receipt={listings:[listing],pages:1,total:1,rawCount:1,checkedAt:at.toISOString(),transport:'v6-daily'};
+ const initial=await refreshSources(env,{now:at,imports:{firstmover:null,'streeteasy-live':receipt}});
+ const later=new Date(at.getTime()+1000);
+ const refreshed=await refreshSources(env,{now:later,onlyStreetEasy:true,imports:{'streeteasy-live':{...receipt,checkedAt:later.toISOString()}}});
+ assert.equal(refreshed.sources.find(s=>s.id==='streeteasy-live').updatedAt,later.toISOString());
+ assert.deepEqual(refreshed.sources.find(s=>s.id==='firstmover'),initial.sources.find(s=>s.id==='firstmover'));
+ const failed=await refreshSources(env,{now:new Date(at.getTime()+2000),onDemand:true,onlyStreetEasy:true,fetcher:async(url)=>{
+  assert.equal(url,'https://api-v6.streeteasy.com/'); return new Response(null,{status:403});
+ }});
+ assert.equal(failed.sources.find(s=>s.id==='streeteasy-live').status,'failed');
+ assert.equal((await storedDirectRentals(env.BUCKET,STREETEASY_LIVE)).listings.length,1);
+ const skipped=await refreshSources(env,{now:new Date(at.getTime()+3000),onDemand:true,onlyStreetEasy:true,fetcher:async()=>{throw new Error('must not fetch during cooldown');}});
+ assert.equal(skipped.state,'already_checked');
+ assert.deepEqual(failed.sources.find(s=>s.id==='firstmover'),initial.sources.find(s=>s.id==='firstmover'));
+});
+
+test('targeted provider resync only attempts selected provider and preserves other status', async () => {
+  const bucket = new TestBucket();
+  const prior = { id: 'streeteasy-live', name: 'StreetEasy', status: 'updated', updatedAt: '2026-11-10T00:00:00Z', checkedAt: '2026-11-10T00:00:00Z', listingCount: 8000 };
+  await bucket.put('rentals/refresh.json', JSON.stringify({ sources: [prior] }));
+  const requests: string[] = [];
+  const result = await refreshSources({ BUCKET: bucket }, { onDemand: true, sourceId: 'zumper-live', now: new Date('2026-11-12T00:00:00Z'), fetcher: async (url) => {
+    requests.push(String(url)); return new Response('', { status: 403 });
+  } });
+  assert.ok(requests.length > 0);
+  assert.ok(requests.every((url) => url.includes('zumper')));
+  assert.deepEqual(result.sources.find(({ id }) => id === 'streeteasy-live'), prior);
+  assert.equal(result.sources.find(({ id }) => id === 'zumper-live')?.status, 'failed');
+});
+test('unknown or disconnected targeted provider is rejected before acquiring refresh lease', async () => {
+  const bucket = new TestBucket();
+  for (const sourceId of ['unknown', 'zillow-live']) {
+    await assert.rejects(refreshSources({ BUCKET: bucket }, { sourceId, onDemand: true }), /Unknown or disconnected/);
+  }
+  assert.equal(bucket.records.size, 0);
 });

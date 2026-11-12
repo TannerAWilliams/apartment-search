@@ -19,13 +19,14 @@ import { AffordableHousing } from './src/AffordableHousing.tsx';
 import { AddListing } from './src/AddListing.tsx';
 import { ImportListings } from './src/ImportListings.tsx';
 import { ListingMap } from './src/ListingMap';
+import { SourcesPage } from './src/SourcesPage.tsx';
 import { ListingSources } from './src/ListingSources.tsx';
 import { RentChart } from './src/RentChart.tsx';
 
 const API_ORIGIN = Platform.OS === 'web' ? '' :
   (process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, '') || null);
 const WEB_MAP = Platform.OS === 'web';
-const SEARCH_DEFAULTS = { ...DEFAULT_FILTERS, region: NYC_SEARCH_DEFAULT, includeMap: WEB_MAP, liveOnly: true };
+const SEARCH_DEFAULTS = { ...DEFAULT_FILTERS, region: 'all', bedrooms: null, maxRent: null, source: '', includeMap: WEB_MAP, liveOnly: true };
 const BEDROOMS = [null, 0, 1, 2, 3, 4];
 const PAGE_SIZE = 12;
 const EMPTY_POINTS = [];
@@ -39,7 +40,7 @@ const CHECK_TIME = new Intl.DateTimeFormat('en-US', {
 
 const formDefaults = () => ({
   ...SEARCH_DEFAULTS,
-  maxRent: String(DEFAULT_FILTERS.maxRent),
+  maxRent: SEARCH_DEFAULTS.maxRent == null ? '' : String(SEARCH_DEFAULTS.maxRent),
   maxTransitMinutes: '',
   maxDrivingMinutes: '',
 });
@@ -63,7 +64,7 @@ async function api(path: string, { body, token, signal }: { body?: object; token
 }
 
 async function finishSourceCheck(check, token, signal) {
-  for (let attempt = 0; check.checking && attempt < 25; attempt += 1) {
+  for (let attempt = 0; check.checking && attempt < 125; attempt += 1) {
     await new Promise((resolve) => setTimeout(resolve, 1200));
     if (signal?.aborted) return check;
     check = await api('refresh', { token, signal });
@@ -86,7 +87,7 @@ function Filters({ draft, setDraft, submit, busy, serverState, token, setToken, 
     {(panel === 'more' || panel === 'area') && <>
     <Text style={styles.fieldLabel}>Area</Text>
     <View style={styles.chipRow}>
-      {Object.entries(NYC_SEARCH_AREAS).map(([key, region]) => <Chip key={key} selected={draft.region === key}
+      {Object.entries({ all: REGIONS.all, nyc: REGIONS.nyc, nj: REGIONS.nj, ct: REGIONS.ct, li: REGIONS.li, metroNorth: REGIONS.metroNorth, ...NYC_SEARCH_AREAS }).map(([key, region]) => <Chip key={key} selected={draft.region === key}
         onPress={() => set('region')(key)}>{region.label}</Chip>)}
     </View>
     <Field label="ZIP code (optional)" placeholder="Any ZIP in this area" value={draft.zip}
@@ -225,7 +226,7 @@ function sourceCheckText({ status, checkedAt, updatedAt, listingCount, pages, to
   return (error ?? 'Refresh unavailable') + next + saved;
 }
 
-function RentalSyncStatus({ refresh, refreshing, configuredSources, onRefresh }) {
+function RentalSyncStatus({ refresh, refreshing, configuredSources, onRefresh, onStreetEasy }) {
   const [expanded, setExpanded] = useState(false);
   const sites = new Map(marketplaceLinks(NYC_SEARCH_MARKETS[0], DEFAULT_FILTERS).map(({ id, name }) => [id, name]));
   for (const { id, name } of [...NYC_COMPANIES, ...configuredSources]) sites.set(id, name);
@@ -248,6 +249,7 @@ function RentalSyncStatus({ refresh, refreshing, configuredSources, onRefresh })
     return { id, name, source, synced, state: synced ? 'Synced' : source?.status === 'failed' ?
       'Did not sync' : pending ? 'Awaiting first check' : 'Not connected' };
   }).sort((a, b) => Number(b.synced) - Number(a.synced) || a.state.localeCompare(b.state) || a.name.localeCompare(b.name));
+  const streetEasy = refresh?.sources.find((source) => source.id === 'streeteasy-live');
   const synced = rows.filter((row) => row.synced).length;
   const failed = rows.filter(({ state }) => state === 'Did not sync').length;
   const disconnected = rows.filter(({ state }) => state === 'Not connected').length;
@@ -257,8 +259,10 @@ function RentalSyncStatus({ refresh, refreshing, configuredSources, onRefresh })
       <Button secondary onPress={onRefresh} disabled={!refresh || refreshing}>
         {refreshing ? 'Refreshing listings…' : 'Refresh listings'}
       </Button>
+      <Button secondary onPress={onStreetEasy} disabled={!refresh || refreshing}>Fetch all StreetEasy listings</Button>
       <Button secondary onPress={() => setExpanded(!expanded)}>{expanded ? 'Hide sync status' : 'Show sync status'}</Button>
     </View>
+    <Text style={styles.smallMuted}>StreetEasy: {streetEasy?.listingCount ?? 0} saved listings{streetEasy?.total != null ? ` from ${streetEasy.total} source records` : ''}. Full inventory is fetched before your search filters. Saved data appears immediately; a failed fetch does not replace it.</Text>
     <Text accessibilityLiveRegion="polite" style={styles.smallMuted}>{synced} synced · {failed} did not sync · {disconnected} not connected</Text>
     {refresh?.lastCheckedAt && <Text style={styles.smallMuted}>Sources last checked {CHECK_TIME.format(new Date(refresh.lastCheckedAt))}</Text>}
     {expanded && <>
@@ -338,7 +342,7 @@ function Marketplaces({ filters, sources, configuredSources, companies, onCompan
   </View>;
 }
 
-function Results({ result, applied, sort, onSort, openCommute, commuteConfigured, checkingInventory, columns, savedByKey, showMarkets, onSave, onSaveLink, onRemove, onError }) {
+function Results({ result, applied, sort, onSort, onPage, paging, openCommute, commuteConfigured, checkingInventory, columns, savedByKey, showMarkets, onSave, onSaveLink, onRemove, onError }) {
   const [visible, setVisible] = useState(PAGE_SIZE);
   useEffect(() => { setVisible(PAGE_SIZE); }, [result]);
   const { matches } = result;
@@ -366,7 +370,7 @@ function Results({ result, applied, sort, onSort, openCommute, commuteConfigured
     </View>
     {result.commute && <Text style={styles.smallMuted}>Weekday-morning estimates from TravelTime.</Text>}
     {result.commuteNotice && <Text style={styles.smallMuted}>{result.commuteNotice}</Text>}
-    {result.total > matches.length && <Text style={styles.smallMuted}>List shows the first {matches.length} matches in this sort order.</Text>}
+    {result.total > matches.length && <Text style={styles.smallMuted}>Showing records {(result.offset ?? 0) + (matches.length ? 1 : 0)}–{(result.offset ?? 0) + matches.length} of {result.total}.</Text>}
     {matches.length === 0 && (savedView || !checkingInventory) && <View style={styles.empty}>
       <Text accessibilityRole="header" style={styles.panelTitle}>{savedView ? 'Your saved list is empty' : 'No recently checked matches'}</Text>
       <Text style={styles.bodyText}>{savedView ? 'Save a result or add an apartment you found on a rental platform.' :
@@ -384,6 +388,10 @@ function Results({ result, applied, sort, onSort, openCommute, commuteConfigured
         onSave={onSave} onSaveLink={onSaveLink} onError={onError} onRemove={savedView ? onRemove : null} saved={Boolean(saved)} /></View>;
     })}
     </View>
+    {!savedView && onPage && <View style={styles.chipRow}>
+      {(result.offset ?? 0) > 0 && <Button secondary disabled={paging} onPress={() => onPage(Math.max(0, result.offset - result.pageSize))}>Previous 100</Button>}
+      {result.nextOffset != null && <Button secondary disabled={paging} onPress={() => onPage(result.nextOffset)}>Next 100</Button>}
+    </View>}
     {visible < matches.length && <Button secondary onPress={() => setVisible(visible + PAGE_SIZE)}>
       Show more ({Math.min(visible, matches.length)} of {matches.length})
     </Button>}
@@ -424,6 +432,7 @@ function ApartmentSearch() {
   const [serverState, setServerState] = useState(API_ORIGIN === null ? 'offline' : 'checking');
   const [configuredSources, setConfiguredSources] = useState([]);
   const [companies, setCompanies] = useState({});
+  const [sourceCatalog, setSourceCatalog] = useState([]);
   const [refresh, setRefresh] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState('');
@@ -436,6 +445,21 @@ function ApartmentSearch() {
   const [activeToken, setActiveToken] = useState('');
   const [commuteConfigured, setCommuteConfigured] = useState(false);
   const [tab, setTab] = useState('results');
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const restore = () => {
+      const next = window.location.hash.slice(1);
+      setTab(['results', 'sources', 'chart', 'marketplaces', 'affordable'].includes(next) ? next : 'results');
+    };
+    restore();
+    window.addEventListener('popstate', restore);
+    window.addEventListener('hashchange', restore);
+    return () => { window.removeEventListener('popstate', restore); window.removeEventListener('hashchange', restore); };
+  }, []);
+  const navigateTab = (next) => {
+    if (Platform.OS === 'web' && window.location.hash !== '#' + next) window.history.pushState(null, '', '#' + next);
+    setTab(next);
+  };
   const [scope, setScope] = useState('market');
   const [adding, setAdding] = useState<false | 'single' | 'import'>(false);
   const [expanded, setExpanded] = useState('');
@@ -466,22 +490,23 @@ function ApartmentSearch() {
 
   const updateConfig = useCallback((config) => {
     setConfiguredSources(config.sources);
+    setSourceCatalog(config.sourceCatalog ?? []);
     setCommuteConfigured(config.commuteConfigured === true);
     setCompanies(config.companies ?? {});
     setRefresh(config.refresh ?? null);
   }, []);
 
-  const checkSources = useCallback(async (sessionStart = false) => {
+  const checkSources = useCallback(async (sessionStart = false, source: string | null = null) => {
     const signal = sourceSession.current;
     if (!signal || signal.aborted || checking.current === signal) return;
     checking.current = signal;
     setRefreshing(true);
     setRefreshError('');
     try {
-      const request = await api('refresh', { body: { check: 'now', sessionStart }, token: activeToken, signal });
+      const request = await api('refresh', { body: { check: 'now', sessionStart, ...(source ? { source } : {}) }, token: activeToken, signal });
       const check = await finishSourceCheck(request, activeToken, signal);
       if (signal?.aborted) return;
-      const failedExports = retryablePublicSources(check);
+      const failedExports = source ? [] : retryablePublicSources(check);
       if (failedExports.length) {
         const plan = await api('refresh', { token: activeToken, signal });
         const exports = await pullPublicSources(plan, fetch, new Date(), retryablePublicSources(plan));
@@ -496,6 +521,11 @@ function ApartmentSearch() {
       const config = await api('config', { token: activeToken, signal });
       if (signal?.aborted) return;
       updateConfig(config);
+      if (source) {
+        const status = config.refresh?.sources.find((item) => item.id === source);
+        if (status?.status === 'failed') setRefreshError((status.error || 'This source could not be fetched.') + ' Previously saved listings are preserved; this is not a fresh fetch.');
+        else if (check.state === 'already_checked') setRefreshError('This source is cooling down. Previously saved listings are shown; try again after the retry time in source status.');
+      }
       const filters = appliedFilters.current;
       const version = searchVersion.current;
       const fresh = await api('search', {
@@ -542,7 +572,7 @@ function ApartmentSearch() {
             // A browser that disables session storage can still sync when the app opens.
           }
         }
-        if (!alreadyChecked) void checkSources(true);
+        if (!alreadyChecked || config.refresh.checking) void checkSources(true);
       }
     }).catch((failure) => {
       if (controller.signal.aborted) return;
@@ -582,7 +612,7 @@ function ApartmentSearch() {
       setResult(searchResult);
       setScope('market');
       setAdding(false);
-      setTab('results');
+      navigateTab('results');
       setExpanded('');
     } catch (failure) {
       if (failure.commuteError) setExpanded('commute');
@@ -590,6 +620,18 @@ function ApartmentSearch() {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function fetchPage(offset: number) {
+    if (busy || serverState !== 'ready') return;
+    const version = ++searchVersion.current;
+    const filters = appliedFilters.current;
+    setBusy(true); setError('');
+    try {
+      const page = await api('search', { body: { ...filters, offset }, token: activeToken });
+      if (searchVersion.current === version && appliedFilters.current === filters) setResult(page);
+    } catch (failure) { setError(failure.message || 'Could not load the next page.'); }
+    finally { setBusy(false); }
   }
 
   function searchCompany(company) {
@@ -625,7 +667,7 @@ function ApartmentSearch() {
 
   function showSaved() {
     setScope('saved');
-    setTab('results');
+    navigateTab('results');
   }
 
   const toggleFilter = (panel) => setExpanded((current) => current === panel ? '' : panel);
@@ -647,9 +689,9 @@ function ApartmentSearch() {
       <Text style={styles.topLabel}>NYC METRO</Text>
     </View>
     <View style={styles.tabs}>
-      {[['results', 'Rent'], ['chart', 'Rent chart'], ['marketplaces', 'Platforms'], ['affordable', 'Affordable']].map(([key, label]) =>
+      {[['results', 'Rent'], ['chart', 'Rent chart'], ['sources', 'Sources'], ['marketplaces', 'Platforms'], ['affordable', 'Affordable']].map(([key, label]) =>
         <Pressable key={key} accessibilityRole="tab" accessibilityState={{ selected: tab === key }}
-          style={[styles.tab, tab === key && styles.tabActive]} onPress={() => setTab(key)}>
+          style={[styles.tab, tab === key && styles.tabActive]} onPress={() => navigateTab(key)}>
           <Text style={[styles.tabLabel, tab === key && styles.tabLabelActive]}>{label}</Text>
         </Pressable>)}
     </View>
@@ -673,7 +715,7 @@ function ApartmentSearch() {
             {error !== '' && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
             {refreshing && <Text accessibilityLiveRegion="polite" style={styles.smallMuted}>Checking rental sources…</Text>}
             {!refreshing && failedSources.length > 0 && <Text style={styles.noticeLine}>
-              {failedSources.length} {failedSources.length === 1 ? 'source is' : 'sources are'} temporarily unavailable. See Platforms for details.
+              {failedSources.length} {failedSources.length === 1 ? 'source is' : 'sources are'} temporarily unavailable. See Sources for details.
             </Text>}
             {refreshError !== '' && <Text accessibilityRole="alert" style={styles.noticeLine}>{refreshError}</Text>}
             {tab === 'results' && <>
@@ -690,6 +732,7 @@ function ApartmentSearch() {
               </View>
               {scope === 'market' && <WebsiteFilter result={result} applied={applied} onSelect={selectSource} onError={setError} />}
               {scope === 'market' && <RentalSyncStatus refresh={refresh} refreshing={refreshing}
+                onStreetEasy={() => checkSources(false, 'streeteasy-live')}
                 configuredSources={configuredSources} onRefresh={() => checkSources()} />}
               </View>
               {adding === 'single' && <AddListing initialRegion={applied.region}
@@ -708,11 +751,12 @@ function ApartmentSearch() {
               <View style={[styles.resultLayout, split && styles.resultLayoutWide]}>
                 {listVisible && <View style={styles.results}>
                   <Results result={displayed} applied={applied} sort={scope === 'saved' ? SAVED_FILTERS.sort : applied.sort} onSort={selectSort}
+                    onPage={fetchPage} paging={busy}
                     openCommute={() => setExpanded('commute')}
                     commuteConfigured={commuteConfigured}
                     checkingInventory={refreshing || serverState === 'checking' || busy}
                     columns={wide} savedByKey={savedByKey}
-                    showMarkets={() => setTab('marketplaces')} onSave={saveListing} onSaveLink={saveLink}
+                    showMarkets={() => navigateTab('marketplaces')} onSave={saveListing} onSaveLink={saveLink}
                     onRemove={(listing) => setSaved((current) => current.filter((item) => listingKey(item) !== listingKey(listing)))}
                     onError={setError} />
                 </View>}
@@ -723,6 +767,7 @@ function ApartmentSearch() {
             </>}
             {tab === 'chart' && <RentChart initialRegion={applied.region} saved={saved} showSaved={showSaved} onError={setError}
               loadMarket={serverState === 'ready' ? loadMarket : undefined} />}
+            {tab === 'sources' && <SourcesPage catalog={sourceCatalog} refresh={refresh} refreshing={refreshing} onResync={(id) => checkSources(false, id ?? null)} />}
             {tab === 'marketplaces' && <Marketplaces filters={applied} sources={result.sources}
               configuredSources={configuredSources} companies={companies} onCompany={searchCompany} refresh={refresh} refreshing={refreshing}
               onRefresh={() => checkSources()} onError={setError} />}
@@ -730,7 +775,7 @@ function ApartmentSearch() {
               loadHousing={serverState === 'ready' ? loadHousing : undefined} onError={setError} />}
         </View>
         <View style={styles.footer}>
-          <Text style={styles.smallMuted}>Apartment Search · Manhattan and Brooklyn</Text>
+          <Text style={styles.smallMuted}>Apartment Search · New York, New Jersey and Connecticut</Text>
         </View>
       </View>
     </ScrollView>

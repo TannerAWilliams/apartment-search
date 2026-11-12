@@ -66,8 +66,11 @@ export function formatSearch(listings, filters, workplace, mode, sources, notice
       ...(additionalLinks.length ? { additionalLinks } : {}),
       transitSeconds: listing.transitSeconds, drivingSeconds: listing.drivingSeconds };
   }) : undefined;
-  if (matches.length > 100) notices = [...notices, 'Showing the first 100 matches for the selected sort order. Narrow the area or ZIP to see more of a specific location.'];
-  return { mode, workplace, matches: matches.slice(0, 100), total: matches.length, eligibleTotal: eligible.length,
+  const offset = filters.offset ?? 0;
+  const pageSize = 100;
+  return { mode, workplace, matches: matches.slice(offset, offset + pageSize), offset, pageSize,
+    nextOffset: offset + pageSize < matches.length ? offset + pageSize : null,
+    total: matches.length, eligibleTotal: eligible.length,
     sourceCounts: [...bySource.values()].sort((a, b) => b.checkedCount - a.checkedCount || b.count - a.count),
     sources, notices, ...(mapPoints ? { mapPoints } : {}) };
 }

@@ -67,6 +67,7 @@ export function parseFilters(input: Record<string, unknown> = {}) {
 
   return {
     region,
+    offset: optionalNumber(input.offset, 'result offset', 0, 1000000) ?? 0,
     workplace,
     customWorkplace: workplace === 'custom' ? customWorkplace : '',
     zip,

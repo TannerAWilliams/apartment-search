@@ -308,3 +308,27 @@ test('company filters match the advertiser field and company URLs can be saved a
   assert.deepEqual(companyCounts([source]), { compass: 1 });
   assert.equal(marketplaceIdForUrl('https://serhant.com/properties/example'), 'serhant');
 });
+
+test('server result pages expose every match beyond the first 100 without repeats', () => {
+  const rows = Array.from({ length: 235 }, (_, n) => normalize({ ...sample, id: String(n), addressLine2: 'Apt ' + n, price: 1800 + n }));
+  const ids = [];
+  let offset = 0;
+  do {
+    const filters = parseFilters({ region: 'all', bedrooms: null, maxRent: null, offset });
+    const page = localSearch(rows, filters, localWorkplace(filters), 'live');
+    assert.equal(page.total, 235);
+    assert.equal(page.offset, offset);
+    assert.ok(page.matches.length <= 100);
+    ids.push(...page.matches.map(row => row.id));
+    offset = page.nextOffset;
+  } while (offset !== null);
+  assert.equal(ids.length, 235);
+  assert.equal(new Set(ids).size, 235);
+  const previous = localSearch(rows, parseFilters({ offset: 100 }), localWorkplace(DEFAULT_FILTERS), 'live');
+  assert.equal(previous.matches[0].rent, 1900);
+});
+
+test('result offset validation rejects malformed pagination requests', () => {
+  for (const offset of [-1, 1.5, 'x', 1000001]) assert.throws(() => parseFilters({ offset }));
+  assert.equal(parseFilters({}).offset, 0);
+});

@@ -1,6 +1,6 @@
 # Apartment Search
 
-The app's search, map, rent charts, and affordable housing results focus on Manhattan and Brooklyn. The search defaults to both boroughs and a $5,000 rent cap.
+The homepage defaults to saved active inventory from all connected providers across all regions, with no bedroom or rent cap. The manual StreetEasy button requests the full active inventory before applying search filters. Other providers and charts retain their documented source-specific coverage.
 
 Compare rentals by asking rent and weekday-morning transit or driving time to your workplace. The same Expo app runs on mobile web, iPhone, and Android. The built-in search, listing links, and rent chart require no paid API or API key.
 
@@ -8,10 +8,11 @@ Compare rentals by asking rent and weekday-morning transit or driving time to yo
 
 | Source | What the app imports |
 | --- | --- |
-| StreetEasy | The StreetEasy v6 sync requests active Manhattan and Brooklyn rentals at most once per 24 hours. It partitions searches into bounded price ranges to stay within the observed 1,000-result search window, deduplicates overlapping gross/discounted-rent matches, and requires counts to reconcile before replacing inventory. It stops after 80 requests or 20,000 reported listings. Sync status shows the number received and the reported inventory. The separate [FirstMover Open Data](https://www.firstmovernyc.com/open-data) monthly snapshot supplies the rent charts and dated listings. |
+| StreetEasy | The StreetEasy v6 sync requests all active rentals without an area filter on explicit request. It partitions searches into bounded price ranges to stay within the observed 1,000-result search window, deduplicates overlapping gross/discounted-rent matches, and requires counts to reconcile before replacing inventory. It stops after 160 requests or 20,000 reported listings. Sync status shows the number received and the reported inventory. The separate [FirstMover Open Data](https://www.firstmovernyc.com/open-data) monthly snapshot supplies the rent charts and dated listings. |
 | Apartments.com | Individually identified, available units with exact asking rents from the first two public search pages for one- and two-bedroom rentals in each borough. Building-wide price ranges are excluded. |
+| HotPads | A bounded exact-unit sample from NYC, Jersey City and Stamford. Building summaries and rent ranges are excluded. |
 | Openigloo | A bounded live sample from its published NYC search interface. The app requests up to ten results per borough and bedroom count (one and two bedrooms), without a rent cap. |
-| Zillow, Compass, RentHop, and Realtor.com | Last saved samples and browse links. Automatic updates require an authorized feed. |
+| Zillow, Compass, RentHop, and Realtor.com | Last saved samples and browse links. Updates require an authorized feed. |
 | Trulia | The first two pages of each Manhattan and Brooklyn one- and two-bedroom search, without a rent cap. |
 | Zumper | Individual apartments with exact prices from the first two public search pages and the first low-price sort page in each borough. |
 | AffordableHousing.com | Apartments marked available now from the first two pages in Manhattan and Brooklyn. The importer uses the free U.S. Census batch geocoder when coordinates are available by exact address. |
@@ -115,9 +116,13 @@ and submits it through the authenticated import endpoint, then verifies saved
 counts. Pass a current owner service credential through stdin, not a command
 argument or a committed file. Use the host's approved secret delivery mechanism.
 
-It skips already-current daily data, respects retry times, retries inventory
-movement once, and does not solve CAPTCHAs or bypass authentication. Recovery
+Pass `--manual` to fetch on demand even when saved data is less than a day old. This mode updates only StreetEasy. No daily automation is needed or installed. The browser button calls the hosted Worker; if StreetEasy rejects that host with HTTP 403, it reports failure and preserves stored listings. The external runner is not automatically connected to that button. The runner respects retry times, retries inventory
+movement once, and does not solve CAPTCHAs or bypass authentication. Non-manual recovery
 affects only missing, failed, or day-old StreetEasy inventory; stale or incomplete receipts are rejected.
-The runner requires external scheduling and credential delivery. Publishing this
-file does **not** provision a worker or enable unattended sync. A VPS/container
-scheduler remains an operational setup step, and access must be verified there.
+The runner requires an accessible external host and credential delivery for each manual invocation. Publishing this file does **not** connect that host to the browser button. No daily schedule is configured.
+
+### Sources and manual refresh
+
+The Sources tab lists connected feeds and browse-only websites separately. It shows each source's last fetch attempt, last successful saved data, counts, coverage and failure. Individual resync targets only that source; Resync all connected providers respects source retry limits. Browse-only websites have disabled resync controls until a feed is configured. No automatic daily schedule is installed.
+
+Trulia and Zumper now include bounded Jersey City and Stamford samples alongside Manhattan and Brooklyn. These are explicitly samples, not exhaustive NY/NJ/CT coverage.

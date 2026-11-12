@@ -23,7 +23,8 @@ async function request(path: string, body?: object) {
 }
 const config = await request('/api/config');
 const status = config.refresh?.sources.find(({id}) => id === STREETEASY_LIVE.id);
-if (status?.transport === 'v6-daily' && ['updated','current'].includes(status.status) &&
+const manual = process.argv.includes('--manual');
+if (!manual && status?.transport === 'v6-daily' && ['updated','current'].includes(status.status) &&
     Date.now() - Date.parse(status.updatedAt) < 24 * 60 * 60_000) {
   console.log(JSON.stringify({state:'already_current',listingCount:status.listingCount}));
 } else {
@@ -35,8 +36,8 @@ if (status?.transport === 'v6-daily' && ['updated','current'].includes(status.st
       if(attempt || !(error instanceof Error) || !/inventory changed|incomplete inventory/.test(error.message)) throw error;
     }
   }
-  const outcome=await request('/api/refresh',{...encodeSourceImport({[STREETEASY_LIVE.id]:data}),fallback:true});
-  if(outcome.state==='running')throw new Error('Another refresh owns the lock; retry on the next scheduled run.');
+  const outcome=await request('/api/refresh',{...encodeSourceImport({[STREETEASY_LIVE.id]:data}),fallback:true,...(manual ? {source:STREETEASY_LIVE.id} : {})});
+  if(outcome.state==='running')throw new Error('Another refresh owns the lock; retry after it finishes.');
   const saved=(await request('/api/config')).refresh?.sources.find(({id})=>id===STREETEASY_LIVE.id);
   if(saved?.status!=='updated' || saved.transport!=='v6-daily' || saved.total!==data.total ||
       saved.listingCount!==data.listings.length || Date.parse(saved.updatedAt)<Date.parse(data.checkedAt)) {

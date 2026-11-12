@@ -8,7 +8,7 @@ import { CommuteError, geocodeAddress, resolveWorkplace, routeCommutes, routingC
 import { OPENIGLOO } from './openigloo.ts';
 import { DIRECT_RENTAL_SOURCES } from './direct-rentals.ts';
 import { decodeSourceImport } from '../src/pull-sources.ts';
-import { type SourceFetch, refreshPlan, refreshSources, refreshStatus, sourceRecent, storedDirectRentals, storedFeed, storedHdcRerentals, storedHousing, storedMarket,
+import { type SourceFetch, refreshCatalog, refreshPlan, refreshSources, refreshStatus, sourceRecent, storedDirectRentals, storedFeed, storedHdcRerentals, storedHousing, storedMarket,
   storedOpenigloo, storedRentHistory } from './refresh.ts';
 
 const REQUEST_LIMIT = 4096;
@@ -172,7 +172,7 @@ export async function handleApi(request, env, { requireToken = false, fetcher = 
         ...(sourceRecent(refresh, OPENIGLOO.id) ? [{ id: OPENIGLOO.id, name: OPENIGLOO.name, sample: true, coverage: 'NYC' }] : []),
       ];
       const companies = companyCounts((await storedMarket(env.BUCKET)).listings);
-      return json({ ...config, refresh, companies,
+      return json({ ...config, refresh, companies, sourceCatalog: refreshCatalog(env),
         mode: liveSources.length ? 'live' : config.mode,
         sources: [...liveSources, ...config.sources.filter(({ id }) => !liveSources.some((item) => item.id === id))],
         snapshotMonth: refresh.sources.find(({ id }) => id === 'firstmover')?.month ?? SNAPSHOT_MONTH,
@@ -231,14 +231,16 @@ export async function handleApi(request, env, { requireToken = false, fetcher = 
   try {
     if (path === '/api/refresh') {
       if (body?.check === 'now') {
-        const work = refreshSources(env, { fetcher, onDemand: true, skipStreetEasy: body.sessionStart === false });
+        if (body.source !== undefined && !refreshCatalog(env).some((source) => source.id === body.source && source.resyncable)) return json({ error: 'Unknown or disconnected refresh source.' }, 422);
+        const work = refreshSources(env, { fetcher, onDemand: true, skipStreetEasy: body.sessionStart === true && !body.source, sourceId: body.source, forceRefresh: body.sessionStart !== true });
         waitUntil?.(work.catch(() => {}));
         return json(await work);
       }
       let imports;
       try { imports = decodeSourceImport(body); }
       catch { return json({ error: 'Send a valid compressed source import.' }, 422); }
-      const result = await refreshSources(env, { fetcher, imports, fallback: body.fallback === true });
+      if (body.source !== undefined && body.source !== 'streeteasy-live') return json({ error: 'Unknown refresh source.' }, 422);
+      const result = await refreshSources(env, { fetcher, imports, fallback: body.fallback === true, onlyStreetEasy: body.source === 'streeteasy-live' });
       const unavailable = result.state === 'partial' && result.sources.every(({ status }) =>
         status === 'failed' || status === 'feed_required');
       return json(result, unavailable ? 502 : 200);

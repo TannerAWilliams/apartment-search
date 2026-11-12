@@ -1,5 +1,4 @@
 import { normalizeListing } from '../src/listings.ts';
-import { searchBorough } from '../src/regions.ts';
 import { NJ_ZIPS, nycBorough } from './firstmover.ts';
 import { deduplicatePublicRentals, jsonLd, publicListingUrl } from './public-rentals.ts';
 
@@ -7,7 +6,7 @@ const SOURCE = { id: 'streeteasy', name: 'StreetEasy', kind: 'feed', maxBedrooms
 const ORIGIN = 'https://streeteasy.com';
 const SEARCH_URL = 'https://api-v6.streeteasy.com/';
 const PAGE_SIZE = 500;
-const MAX_PAGES = 80;
+const MAX_PAGES = 160;
 const RESULT_WINDOW = 1000;
 const MAX_INVENTORY = 20000;
 type PriceRange = { lower: number; upper: number };
@@ -15,7 +14,7 @@ const searchQuery = (page: number, range?: PriceRange) => `query SearchRentals {
   searchRentals(input: {
     sorting: { attribute: LISTED_AT, direction: DESCENDING }
     adStrategy: NONE
-    filters: { areas: [100, 300], rentalStatus: ACTIVE
+    filters: { rentalStatus: ACTIVE
       ${range ? `price: { lowerBound: ${range.lower}, upperBound: ${range.upper} }` : ''} }
     perPage: ${PAGE_SIZE}
     page: ${page}
@@ -33,9 +32,9 @@ const searchQuery = (page: number, range?: PriceRange) => `query SearchRentals {
 }`;
 export const STREETEASY_LIVE = {
   ...SOURCE, id: 'streeteasy-live', marketplace: SOURCE.id,
-  coverage: 'its active rentals in Manhattan and Brooklyn',
+  coverage: 'all active rentals returned by StreetEasy across its markets',
   // Preserve support for previously imported NYC and NJ batches.
-  regions: ['nyc', 'nj'], minPages: 1, maxPages: MAX_PAGES,
+  regions: ['nyc', 'nj', 'li', 'metroNorth', 'ct'], minPages: 1, maxPages: MAX_PAGES,
   rowsPerPage: PAGE_SIZE, listingUrl: streetEasyListingUrl, load: loadStreetEasy,
 };
 const MULTIFAMILY = new Set(['TWOFAMILY', 'THREEFAMILY', 'MULTIFAMILY']);
@@ -99,7 +98,9 @@ type SearchRental = {
 async function fetchPage(fetcher: typeof fetch, page: number, range?: PriceRange, signal?: AbortSignal) {
   const response = await fetcher(SEARCH_URL, {
     method: 'POST',
-    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json',
+      Origin: ORIGIN, Referer: ORIGIN + '/for-rent/nyc',
+      'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36' },
     body: JSON.stringify({ query: searchQuery(page, range) }),
     redirect: 'error',
     signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(9000)]) : AbortSignal.timeout(9000),
@@ -189,11 +190,15 @@ export async function loadStreetEasy(fetcher = fetch, now = new Date()) {
   const rows = edges.flatMap(({ node }) => {
     if (node?.status !== 'ACTIVE') return [];
     const url = streetEasyListingUrl(node.urlPath);
-    const borough = searchBorough({ state: 'NY', zip: node.zipCode });
-    if (!url || !borough) return [];
+    const zip = node.zipCode ?? '';
+    const borough = nycBorough(zip);
+    const nj = NJ_ZIPS[zip];
+    const state = borough ? 'NY' : /^0[78]\d{3}$/.test(zip) ? 'NJ' : /^06\d{3}$/.test(zip) ? 'CT' : /^1\d{4}$/.test(zip) ? 'NY' : null;
+    if (!url || !state) return [];
     const listing = normalizeListing({
       id: node.id, url, address: node.street, unit: node.unit, zipCode: node.zipCode,
-      city: borough === 'brooklyn' ? 'Brooklyn' : 'Manhattan', state: 'NY',
+      city: borough ?? nj?.[0] ?? (state === 'NJ' ? 'New Jersey' : state === 'CT' ? 'Connecticut' : 'New York State'),
+      state, county: nj?.[1], region: state === 'NJ' ? 'nj' : state === 'CT' ? 'ct' : undefined,
       neighborhood: node.areaName, bedrooms: node.bedroomCount, rent: node.price,
       latitude: node.geoPoint?.latitude, longitude: node.geoPoint?.longitude,
       status: 'Active', updatedAt: checkedAt,

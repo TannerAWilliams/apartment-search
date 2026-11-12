@@ -4,16 +4,22 @@ import { loadPublicPages, publicListingUrl } from './public-rentals.ts';
 
 const SOURCE = { id: 'trulia', name: 'Trulia', kind: 'feed' };
 const ORIGIN = 'https://www.trulia.com';
-const MARKETS = ['Manhattan', 'Brooklyn'].flatMap((city) => [1, 2].flatMap((bedrooms) =>
+export const TRULIA_MARKETS = [
+  { city: 'Manhattan', state: 'NY', region: 'nyc' },
+  { city: 'Brooklyn', state: 'NY', region: 'nyc' },
+  { city: 'Jersey City', state: 'NJ', region: 'nj' },
+  { city: 'Stamford', state: 'CT', region: 'ct' },
+];
+const MARKETS = TRULIA_MARKETS.flatMap((market) => [1, 2].flatMap((bedrooms) =>
   ['', '2_p/'].map((page) => ({
-    url: `${ORIGIN}/for_rent/${city},NY/${bedrooms}_beds/${page}`,
-    city, state: 'NY', region: 'nyc', bedrooms,
+    ...market, bedrooms,
+    url: `${ORIGIN}/for_rent/${market.city.replaceAll(' ', '_')},${market.state}/${bedrooms}_beds/${page}`,
   }))));
 const listingUrl = (url) => publicListingUrl(url, ORIGIN, /^\/(?:home|building)\/[^/]+-\d+\/?$/);
 
 export const TRULIA_LIVE = {
-  ...SOURCE, id: 'trulia-live', marketplace: SOURCE.id, coverage: 'Manhattan and Brooklyn',
-  regions: ['nyc'], minPages: MARKETS.length, maxPages: MARKETS.length, rowsPerPage: 50,
+  ...SOURCE, id: 'trulia-live', marketplace: SOURCE.id, coverage: 'first two one- and two-bedroom pages in Manhattan, Brooklyn, Jersey City and Stamford',
+  regions: ['nyc', 'nj', 'ct'], minPages: MARKETS.length, maxPages: MARKETS.length, rowsPerPage: 50,
   listingUrl, load: (fetcher, now) => loadPublicPages(SOURCE, MARKETS, parseTruliaPage, fetcher, now),
 };
 
@@ -29,7 +35,8 @@ export function parseTruliaPage(html, market, checkedAt) {
     if (!url || !address || row.metadata?.unifiedListingType !== 'RENTAL_SINGLE_UNIT' ||
         row.activeListing?.['__typename'] !== 'HOME_ForRentListing' ||
         location.stateCode !== market.state ||
-        searchBorough({ state: location.stateCode, zip: location.zipCode }) !== market.city.toLowerCase() ||
+        (market.state === 'NY' ? searchBorough({ state: location.stateCode, zip: location.zipCode }) !== market.city.toLowerCase() :
+          location.city?.trim().toLowerCase() !== market.city.toLowerCase()) ||
         !Number.isFinite(latitude) || !Number.isFinite(longitude) || !/^\d{5}$/.test(location.zipCode)) return [];
 
     const rent = row.price?.price ?? (row.price?.min === row.price?.max ? row.price?.min : null);

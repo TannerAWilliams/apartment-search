@@ -4,15 +4,22 @@ import { loadPublicPages, publicListingUrl } from './public-rentals.ts';
 
 const SOURCE = { id: 'zumper', name: 'Zumper', kind: 'feed' };
 const ORIGIN = 'https://www.zumper.com';
-const PAGES = ['manhattan', 'brooklyn'].flatMap((borough) => ['', '/cheap', '?page=2'].map((suffix) => ({
-  url: ORIGIN + '/apartments-for-rent/' + borough + '-ny' + suffix, state: 'NY', region: 'nyc', borough,
+export const ZUMPER_MARKETS = [
+  { city: 'Manhattan', state: 'NY', region: 'nyc', borough: 'manhattan' },
+  { city: 'Brooklyn', state: 'NY', region: 'nyc', borough: 'brooklyn' },
+  { city: 'Jersey City', state: 'NJ', region: 'nj', borough: null },
+  { city: 'Stamford', state: 'CT', region: 'ct', borough: null },
+];
+const PAGES = ZUMPER_MARKETS.flatMap((market) => ['', '/cheap', '?page=2'].map((suffix) => ({
+  ...market,
+  url: ORIGIN + '/apartments-for-rent/' + market.city.toLowerCase().replaceAll(' ', '-') + '-' + market.state.toLowerCase() + suffix,
 })));
 const listingUrl = (url) => publicListingUrl(url, ORIGIN, /^\/listings\/\d+p?\/[^/]+\/?$/);
 const sharedRental = /\b(?:room[- ]for[- ]rent|private (?:bed)?room|shared (?:apartment|home|housing)|roommates?|roomates?|(?:small|medium|large) (?:size )?room|rent (?:a|one) room)\b/i;
 
 export const ZUMPER_LIVE = {
-  ...SOURCE, id: 'zumper-live', marketplace: SOURCE.id, coverage: 'Manhattan and Brooklyn',
-  regions: ['nyc'], minPages: PAGES.length, maxPages: PAGES.length, rowsPerPage: 60,
+  ...SOURCE, id: 'zumper-live', marketplace: SOURCE.id, coverage: 'three search pages each in Manhattan, Brooklyn, Jersey City and Stamford',
+  regions: ['nyc', 'nj', 'ct'], minPages: PAGES.length, maxPages: PAGES.length, rowsPerPage: 60,
   listingUrl, load: (fetcher, now) => loadPublicPages(SOURCE, PAGES, parseZumperPage, fetcher, now),
 };
 
@@ -25,11 +32,11 @@ export function parseZumperPage(html, market, checkedAt) {
     const borough = searchBorough({ state: row?.state, zip: row?.zipcode });
     if (!url || row.listing_status !== 1 || row.listing_type !== 1 || row.property_type !== 4 ||
         row.state !== market.state || !/^\d{5}$/.test(row.zipcode) || !/^\d/.test(row.address ?? '') ||
-        borough !== market.borough || sharedRental.test(url + ' ' + (row.title ?? '') + ' ' + (row.description ?? '')) ||
+        (market.state === 'NY' ? borough !== market.borough : row.city?.trim().toLowerCase() !== market.city.toLowerCase()) || sharedRental.test(url + ' ' + (row.title ?? '') + ' ' + (row.description ?? '')) ||
         row.min_price !== row.max_price || row.min_bedrooms !== row.max_bedrooms ||
         !Number.isFinite(row.lat) || !Number.isFinite(row.lng)) return [];
 
-    const city = NYC_SEARCH_AREAS[borough].label;
+    const city = market.state === 'NY' ? NYC_SEARCH_AREAS[borough].label : market.city;
     const listing = normalizeListing({
       id: String(row.listing_id), url, address: row.address, city, state: row.state, region: market.region,
       zipCode: row.zipcode, latitude: row.lat, longitude: row.lng, bedrooms: row.min_bedrooms,

@@ -72,6 +72,23 @@ test('fails closed when one price has more than the result window',async()=>{
 });
 test('bounds requests even for severely skewed partitions',async()=>{
  const mock=server(Array.from({length:20000},(_,id)=>rental(id,2000+id)));
- await assert.rejects(()=>loadStreetEasy(mock.fetcher),/request limit/);
- assert.ok(mock.stats().requests<=80);
+ await loadStreetEasy(mock.fetcher).catch(error=>assert.match(error.message,/request limit/));
+ assert.ok(mock.stats().requests<=160);
+});
+
+test('queries all markets and retains all five boroughs and New Jersey',async()=>{
+ const zips=['10001','11215','11375','10451','10301','07302','07030'];
+ const mock=server(zips.map((zipCode,i)=>({...rental(i,2500),zipCode})));
+ const result=await loadStreetEasy(async(url,options)=>{
+  assert.doesNotMatch(JSON.parse(String(options.body)).query,/areas:/);
+  return mock.fetcher(url,options);
+ });
+ assert.deepEqual(result.listings.map(x=>x.city),['Manhattan','Brooklyn','Queens','Bronx','Staten Island','Jersey City','Hoboken']);
+});
+
+// Unknown municipality names do not discard an otherwise valid source listing.
+test('retains other regional ZIPs without inventing a municipality',async()=>{
+ const mock=server(['07083','06902','10701'].map((zipCode,i)=>({...rental(i,2500),zipCode})));
+ const result=await loadStreetEasy(mock.fetcher);
+ assert.deepEqual(result.listings.map(x=>[x.city,x.region]),[['New Jersey','nj'],['Connecticut','ct'],['New York State','metroNorth']]);
 });

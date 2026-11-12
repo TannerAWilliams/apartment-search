@@ -69,8 +69,23 @@ type RefreshOptions = {
   imports?: Record<string, any>;
   onDemand?: boolean;
   skipStreetEasy?: boolean;
+  onlyStreetEasy?: boolean;
+  sourceId?: string;
+  forceRefresh?: boolean;
   fallback?: boolean;
 };
+
+export function refreshCatalog(env) {
+  return [
+    { id: 'firstmover', name: 'FirstMover rent history', coverage: 'Historical rent charts, not active inventory', resyncable: true },
+    { id: 'housingconnect', name: 'NYC Housing Connect', coverage: 'NYC affordable housing opportunities', resyncable: true },
+    { ...HDC_RERENTALS, coverage: 'NYC affordable re-rentals', resyncable: true },
+    { id: 'openigloo', name: 'Openigloo', coverage: 'Limited NYC sample', resyncable: true },
+    ...DIRECT_RENTAL_SOURCES.map(({ id, name, marketplace, coverage }) => ({ id, name, marketplace, coverage,
+      resyncable: AUTO_IDS.includes(id) })),
+    ...configuredFeeds(env).map(({ id, name }) => ({ id, name, coverage: 'Configured feed', resyncable: true })),
+  ].map(({ id, name, marketplace, coverage, resyncable }: any) => ({ id, name, marketplace, coverage, resyncable }));
+}
 
 let cachedMarket;
 
@@ -265,7 +280,9 @@ async function refreshDirectRentals(bucket, source, result, at) {
     ...(verifiedStreetEasy ? { transport: STREETEASY_TRANSPORT } : {}) };
 }
 
-export async function refreshSources(env, { fetcher = fetch, now = new Date(), imports, onDemand = false, fallback = false, skipStreetEasy = false }: RefreshOptions = {}) {
+export async function refreshSources(env, { fetcher = fetch, now = new Date(), imports, onDemand = false, fallback = false, skipStreetEasy = false, onlyStreetEasy = false, sourceId, forceRefresh = false }: RefreshOptions = {}) {
+  const selected = sourceId ?? (onlyStreetEasy ? STREETEASY_LIVE.id : null);
+  if (selected && !refreshCatalog(env).some((source) => source.id === selected && source.resyncable)) throw new Error('Unknown or disconnected refresh source.');
   const bucket = env.BUCKET;
   if (!bucket) throw new Error('Source storage is unavailable.');
   const current = await readState(bucket);
@@ -278,22 +295,23 @@ export async function refreshSources(env, { fetcher = fetch, now = new Date(), i
   const previousById = new Map((previous.sources ?? []).map((source) => [source.id, source]));
   const ready = (id) => {
     const prior = previousById.get(id);
+    if ((selected === STREETEASY_LIVE.id || forceRefresh) && id === STREETEASY_LIVE.id) return !coolingDown(prior, now);
     if (id !== STREETEASY_LIVE.id) return !coolingDown(prior, now);
     if (prior?.transport !== STREETEASY_TRANSPORT) return true;
     return !coolingDown(prior, now) && now.getTime() - Date.parse(prior.checkedAt) >= STREETEASY_SYNC_INTERVAL;
   };
   const feeds = configuredFeeds(env);
-  const feedChecks = fallback ? [] : feeds.filter(({ id }) => !onDemand || ready(id));
-  const publicChecks = fallback ? PUBLIC_IDS.filter((id) => imports?.[id] && previousById.get(id)?.status === 'failed' && ready(id)) :
+  const feedChecks = onlyStreetEasy ? [] : fallback ? [] : feeds.filter(({ id }) => !onDemand || ready(id));
+  const publicChecks = onlyStreetEasy ? [] : fallback ? PUBLIC_IDS.filter((id) => imports?.[id] && previousById.get(id)?.status === 'failed' && ready(id)) :
     PUBLIC_IDS.filter((id) => !onDemand || ready(id));
   const priorStreetEasy = previousById.get(STREETEASY_LIVE.id);
   const recoveredStreetEasy = imports?.[STREETEASY_LIVE.id]?.transport === STREETEASY_TRANSPORT &&
     (!priorStreetEasy || priorStreetEasy.status === 'failed' ||
       now.getTime() - Date.parse(priorStreetEasy.updatedAt) >= STREETEASY_SYNC_INTERVAL);
-  const liveChecks = fallback ? (recoveredStreetEasy ? [STREETEASY_LIVE.id] : []) : onDemand ? AUTO_IDS.filter((id) => ready(id) && (!skipStreetEasy || id !== STREETEASY_LIVE.id)) : LIVE_IDS.filter((id) => imports && Object.hasOwn(imports, id));
-  const checkHdc = onDemand && !fallback && ready(HDC_RERENTALS.id);
-  const ids = [...publicChecks, ...liveChecks, ...feedChecks.map(({ id }) => id), ...(checkHdc ? [HDC_RERENTALS.id] : [])];
-  if (ids.length === 0 || (!onDemand && !previous.running && !imports?.firstmover?.changed && checkedDuring(previous.sources, ids, hour))) {
+  const liveChecks = onlyStreetEasy ? (ready(STREETEASY_LIVE.id) ? [STREETEASY_LIVE.id] : []) : fallback ? (recoveredStreetEasy ? [STREETEASY_LIVE.id] : []) : onDemand ? AUTO_IDS.filter((id) => ready(id) && (!skipStreetEasy || id !== STREETEASY_LIVE.id)) : LIVE_IDS.filter((id) => imports && Object.hasOwn(imports, id));
+  const checkHdc = onDemand && !onlyStreetEasy && !fallback && ready(HDC_RERENTALS.id);
+  const ids = [...publicChecks, ...liveChecks, ...feedChecks.map(({ id }) => id), ...(checkHdc ? [HDC_RERENTALS.id] : [])].filter((id) => !selected || id === selected);
+  if (ids.length === 0 || (!onDemand && !onlyStreetEasy && !previous.running && !imports?.firstmover?.changed && checkedDuring(previous.sources, ids, hour))) {
     return { state: 'already_checked', ...publicStatus(previous) };
   }
 
@@ -302,9 +320,9 @@ export async function refreshSources(env, { fetcher = fetch, now = new Date(), i
   });
   if (!lease) return { state: 'running', ...publicStatus((await readState(bucket)).value, now) };
 
-  const sourceFetch = onDemand ? requestForRefresh(fetcher, AbortSignal.timeout(PAGE_FETCH_TIMEOUT)) : fetcher;
+  const sourceFetch = onDemand ? requestForRefresh(fetcher, AbortSignal.timeout(ids.includes(STREETEASY_LIVE.id) ? 120_000 : PAGE_FETCH_TIMEOUT)) : fetcher;
   const liveData = (id, load) => onDemand ? load(sourceFetch, now) : imports[id];
-  const checks: { id: string; name: string; work: () => Promise<CheckResult> }[] = [
+  const candidates: { id: string; name: string; work: () => Promise<CheckResult> }[] = [
     ...(publicChecks.includes('firstmover') ? [{ id: 'firstmover', name: 'FirstMover (StreetEasy)', work: () =>
       refreshMarket(bucket, previous.market, at, sourceFetch, imports?.firstmover, Boolean(imports), onDemand) }] : []),
     ...(publicChecks.includes('housingconnect') ? [{ id: 'housingconnect', name: 'NYC Housing Connect', work: () =>
@@ -327,6 +345,7 @@ export async function refreshSources(env, { fetcher = fetch, now = new Date(), i
       return { status: 'updated', updatedAt: at, listingCount: listings.length, pages: result.pages };
     } })),
   ];
+  const checks = selected ? candidates.filter(({ id }) => id === selected) : candidates;
   const results = await Promise.allSettled(checks.map(({ work }) => work()));
   const attempted = checks.map(({ id, name }, index) => {
     const result = results[index];
