@@ -105,3 +105,19 @@ received HTTP 403 in the same check. This loader fix does not establish that
 StreetEasy permits access from every hosting network. A browser or external
 sync worker requires its own verified deployment and unattended access; OCR,
 spoofed headers, or a successful first page do not establish complete coverage.
+
+
+### External StreetEasy recovery runner
+
+The owner-only Site serves `/_streeteasy-sync.mjs`. On an authorized Node.js
+host with StreetEasy access, this runner downloads complete partitioned inventory
+and submits it through the authenticated import endpoint, then verifies saved
+counts. Pass a current owner service credential through stdin, not a command
+argument or a committed file. Use the host's approved secret delivery mechanism.
+
+It skips already-current daily data, respects retry times, retries inventory
+movement once, and does not solve CAPTCHAs or bypass authentication. Recovery
+affects only missing, failed, or day-old StreetEasy inventory; stale or incomplete receipts are rejected.
+The runner requires external scheduling and credential delivery. Publishing this
+file does **not** provision a worker or enable unattended sync. A VPS/container
+scheduler remains an operational setup step, and access must be verified there.

@@ -201,6 +201,6 @@ export async function loadStreetEasy(fetcher = fetch, now = new Date()) {
     return listing ? [listing] : [];
   });
   if (first.totalCount > 0 && !rows.length) throw new Error('StreetEasy v6 returned no supported apartment listings.');
-  return { listings: deduplicatePublicRentals(rows), pages, total: first.totalCount };
+  return { listings: deduplicatePublicRentals(rows), pages, total: first.totalCount, rawCount: edges.length, checkedAt, transport: 'v6-daily' };
 }
 

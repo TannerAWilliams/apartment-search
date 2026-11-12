@@ -31,6 +31,7 @@ const PAGE_FETCH_TIMEOUT = 25_000;
 export type SourceFetch = (url: string, options?: RequestInit) => Response | Promise<Response>;
 
 type CheckResult = {
+  transport?: string;
   status: string;
   updatedAt: string | null;
   listingCount?: number;
@@ -238,6 +239,13 @@ async function refreshOpenigloo(bucket, result, at) {
 }
 
 async function refreshDirectRentals(bucket, source, result, at) {
+  const verifiedStreetEasy = source.id === STREETEASY_LIVE.id && result?.transport === STREETEASY_TRANSPORT;
+  if (verifiedStreetEasy && (!Number.isSafeInteger(result.total) || result.total < 0 || result.total > 20000 ||
+      result.rawCount !== result.total || !Array.isArray(result.listings) || result.listings.length > result.total ||
+      !Number.isFinite(Date.parse(result.checkedAt)) || Date.parse(result.checkedAt) > Date.parse(at) ||
+      Date.parse(at) - Date.parse(result.checkedAt) > 10 * 60_000)) {
+    throw new Error('StreetEasy import is incomplete or stale.');
+  }
   if (!Number.isInteger(result?.pages) || result.pages < source.minPages || result.pages > source.maxPages ||
       !Array.isArray(result.listings) || (!result.listings.length && result.total !== 0) || result.listings.length > result.pages * source.rowsPerPage ||
       result.listings.some((listing) => listing?.kind !== 'feed' || !source.regions.includes(listing.region) ||
@@ -253,7 +261,8 @@ async function refreshDirectRentals(bucket, source, result, at) {
   }
   const listings = result.listings.map((listing) => ({ ...listing, checkedAt: at }));
   await bucket.put('rentals/' + source.id + '.json.gz', compressed({ ...result, listings }));
-  return { status: 'updated', updatedAt: at, listingCount: result.listings.length, pages: result.pages, total: result.total };
+  return { status: 'updated', updatedAt: at, listingCount: result.listings.length, pages: result.pages, total: result.total,
+    ...(verifiedStreetEasy ? { transport: STREETEASY_TRANSPORT } : {}) };
 }
 
 export async function refreshSources(env, { fetcher = fetch, now = new Date(), imports, onDemand = false, fallback = false, skipStreetEasy = false }: RefreshOptions = {}) {
@@ -277,7 +286,11 @@ export async function refreshSources(env, { fetcher = fetch, now = new Date(), i
   const feedChecks = fallback ? [] : feeds.filter(({ id }) => !onDemand || ready(id));
   const publicChecks = fallback ? PUBLIC_IDS.filter((id) => imports?.[id] && previousById.get(id)?.status === 'failed' && ready(id)) :
     PUBLIC_IDS.filter((id) => !onDemand || ready(id));
-  const liveChecks = fallback ? [] : onDemand ? AUTO_IDS.filter((id) => ready(id) && (!skipStreetEasy || id !== STREETEASY_LIVE.id)) : LIVE_IDS.filter((id) => imports && Object.hasOwn(imports, id));
+  const priorStreetEasy = previousById.get(STREETEASY_LIVE.id);
+  const recoveredStreetEasy = imports?.[STREETEASY_LIVE.id]?.transport === STREETEASY_TRANSPORT &&
+    (!priorStreetEasy || priorStreetEasy.status === 'failed' ||
+      now.getTime() - Date.parse(priorStreetEasy.updatedAt) >= STREETEASY_SYNC_INTERVAL);
+  const liveChecks = fallback ? (recoveredStreetEasy ? [STREETEASY_LIVE.id] : []) : onDemand ? AUTO_IDS.filter((id) => ready(id) && (!skipStreetEasy || id !== STREETEASY_LIVE.id)) : LIVE_IDS.filter((id) => imports && Object.hasOwn(imports, id));
   const checkHdc = onDemand && !fallback && ready(HDC_RERENTALS.id);
   const ids = [...publicChecks, ...liveChecks, ...feedChecks.map(({ id }) => id), ...(checkHdc ? [HDC_RERENTALS.id] : [])];
   if (ids.length === 0 || (!onDemand && !previous.running && !imports?.firstmover?.changed && checkedDuring(previous.sources, ids, hour))) {
@@ -322,7 +335,7 @@ export async function refreshSources(env, { fetcher = fetch, now = new Date(), i
     const failure = result.status === 'rejected' ? result.reason : null;
     const item: SourceStatus = { id, name, checkedAt: at, status: next?.status ?? 'failed',
       updatedAt: next?.updatedAt ?? older?.updatedAt ?? null };
-    if (onDemand && id === STREETEASY_LIVE.id) item.transport = STREETEASY_TRANSPORT;
+    if (id === STREETEASY_LIVE.id && (onDemand || next?.transport === STREETEASY_TRANSPORT)) item.transport = STREETEASY_TRANSPORT;
     if (id === HDC_RERENTALS.id) item.listingCount = next?.listingCount ?? older?.listingCount;
     if (id === 'firstmover') {
       item.month = next?.month ?? older?.month ?? SNAPSHOT_MONTH;

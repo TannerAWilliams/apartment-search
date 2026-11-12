@@ -582,3 +582,40 @@ test('a new FirstMover month keeps the previous published medians in the six-mon
     { month: '2026-11', median: 2200, count: 1 },
   ]);
 });
+
+test('external StreetEasy recovery updates only failed inventory and keeps it daily-fresh', async () => {
+  const env = { BUCKET: new TestBucket() };
+  const initial = await refreshSources(env, { now: at, imports: {
+    firstmover: null, housingconnect: null, [STREETEASY_LIVE.id]: null,
+  } });
+  const [listing] = parseStreetEasyPage(streetEasyHtml([publicRental]), 'NY', 1, at.toISOString());
+  const recovered = { listings: [listing], pages: 41, total: 1, rawCount: 1, checkedAt: at.toISOString(), transport: 'v6-daily' };
+  const retryAt = new Date(at.getTime() + 1000);
+  const result = await refreshSources(env, { now: retryAt, fallback: true, imports: { [STREETEASY_LIVE.id]: recovered } });
+  const status = result.sources.find(({id})=>id===STREETEASY_LIVE.id);
+  assert.equal(status.status,'updated'); assert.equal(status.pages,41); assert.equal(status.transport,'v6-daily');
+  for(const id of ['firstmover','housingconnect'])assert.deepEqual(result.sources.find(s=>s.id===id),initial.sources.find(s=>s.id===id));
+  assert.equal(sourceRecent(result,STREETEASY_LIVE.id,new Date(at.getTime()+3*60*60_000)),true);
+});
+test('external StreetEasy recovery rejects stale or incomplete receipt without overwriting stored inventory', async()=>{
+ const env={BUCKET:new TestBucket()};
+ await refreshSources(env,{now:at,imports:{[STREETEASY_LIVE.id]:null}});
+ const [listing]=parseStreetEasyPage(streetEasyHtml([publicRental]),'NY',1,at.toISOString());
+ for(const changes of [{rawCount:0},{checkedAt:new Date(at.getTime()-11*60_000).toISOString()}]){
+   const result=await refreshSources(env,{now:at,fallback:true,imports:{[STREETEASY_LIVE.id]:{
+    listings:[listing],pages:1,total:1,rawCount:1,checkedAt:at.toISOString(),transport:'v6-daily',...changes,
+   }}});
+   assert.equal(result.sources.find(s=>s.id===STREETEASY_LIVE.id).status,'failed');
+   assert.equal(await storedDirectRentals(env.BUCKET,STREETEASY_LIVE),null);
+ }
+});
+test('external daily StreetEasy sync continues without anyone opening the app',async()=>{
+ const env={BUCKET:new TestBucket()};
+ const [listing]=parseStreetEasyPage(streetEasyHtml([publicRental]),'NY',1,at.toISOString());
+ const receipt=(now)=>({listings:[listing],pages:1,total:1,rawCount:1,checkedAt:now.toISOString(),transport:'v6-daily'});
+ const first=await refreshSources(env,{now:at,fallback:true,imports:{[STREETEASY_LIVE.id]:receipt(at)}});
+ assert.equal(first.sources.find(s=>s.id===STREETEASY_LIVE.id).status,'updated');
+ const later=new Date(at.getTime()+24*60*60_000+1);
+ const second=await refreshSources(env,{now:later,fallback:true,imports:{[STREETEASY_LIVE.id]:receipt(later)}});
+ assert.equal(second.sources.find(s=>s.id===STREETEASY_LIVE.id).updatedAt,later.toISOString());
+});

@@ -27,6 +27,13 @@ const runner = await build({
 assets['/_refresh-runner.mjs'] = { type: 'text/javascript; charset=utf-8', binary: false,
   content: runner.outputFiles[0].text };
 
+const streetEasyRunner = await build({
+  entryPoints: ['scripts/sync-streeteasy.ts'], bundle: true, platform: 'node',
+  format: 'esm', target: 'node22', write: false, minify: true,
+});
+assets['/_streeteasy-sync.mjs'] = { type: 'text/javascript; charset=utf-8', binary: false,
+  content: streetEasyRunner.outputFiles[0].text };
+
 if (!assets['/index.html']) throw new Error('The Expo web build is missing index.html.');
 await build({
   entryPoints: ['server/worker.ts'],
