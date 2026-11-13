@@ -100,7 +100,9 @@ export function mergeSourceLinks(first, second) {
   const links = new Map();
   for (const source of [...first, ...second]) {
     const key = source.url ?? source.id;
-    if (!links.has(key)) links.set(key, source);
+    const existing = links.get(key);
+    // A retained/historic link must not hide fresh evidence for the same URL.
+    if (!existing || (existing.kind !== 'feed' && source.kind === 'feed')) links.set(key, source);
   }
   return [...links.values()];
 }
@@ -134,4 +136,5 @@ export function mergeListings(listings, { preferFirst = false } = {}) {
   }
   return [...merged.values()];
 }
+
 
