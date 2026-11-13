@@ -139,3 +139,10 @@ The next capacity iteration uses an800x600 viewport, bounded JPEG screenshot and
 96MiB renderer V8 old-space cap, with the Chromium sandbox/site isolation intact.
 The heap flag is not a whole-process memory guarantee. Runtime fixture tests now
 exercise screenshot capture too. No automatic provider retry is added.
+
+The reduced-memory version captured a real same-session StreetEasy “Press & Hold”
+challenge successfully (HTTP403 remained; no listing API query). The authenticated
+owner action surface now accepts an explicit bounded hold: coordinates inside the
+800x600 viewport and100–10000ms, with mouse-up in a finally block. This is only a
+manual/owner-authorized challenge interaction; no solver loop or automatic holds
+are triggered by a listing request.

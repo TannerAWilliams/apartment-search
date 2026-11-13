@@ -88,9 +88,7 @@ export class PlaywrightDriver implements BrowserDriver {
   async screenshot() { if (!this.page) throw new Error('Browser unavailable'); return this.page.screenshot({ type: 'jpeg', quality: 40, scale: 'css', timeout: 10000, clip: { x: 0, y: 0, ...BROWSER_VIEWPORT } }); }
   async action(action: BrowserAction) {
     if (!this.page) throw new Error('Browser unavailable');
-    if (action.type === 'click') await this.page.mouse.click(action.x, action.y);
-    else if (action.type === 'type') await this.page.keyboard.insertText(action.text);
-    else await this.page.keyboard.press(action.key);
+    await performBrowserAction(this.page, action);
   }
   async close() { this.stopped = true; this.network.close(); await this.browser?.close(); this.browser = undefined; this.context = undefined; this.page = undefined; }
 }
@@ -100,4 +98,14 @@ export class PlaywrightDriver implements BrowserDriver {
 export async function verifyBrowserRuntime(): Promise<void> {
   const browser = await chromium.launch(browserLaunchOptions());
   await browser.close();
+}
+
+export async function performBrowserAction(page: Page, action: BrowserAction): Promise<void> {
+  if (action.type === 'hold') {
+    await page.mouse.move(action.x, action.y);
+    try { await page.mouse.down(); await new Promise(resolve => setTimeout(resolve, action.durationMs)); }
+    finally { await page.mouse.up(); }
+  } else if (action.type === 'click') await page.mouse.click(action.x, action.y);
+  else if (action.type === 'type') await page.keyboard.insertText(action.text);
+  else await page.keyboard.press(action.key);
 }

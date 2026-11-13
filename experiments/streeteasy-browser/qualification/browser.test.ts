@@ -1,7 +1,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { chromium, type Browser } from 'playwright';
-import { BROWSER_VIEWPORT, browserLaunchOptions } from '../server/playwright-session.ts';
+import { BROWSER_VIEWPORT, browserLaunchOptions, performBrowserAction } from '../server/playwright-session.ts';
 import { BrowserNetworkGuard } from '../server/browser-network.ts';
 
 // Real Chromium, synthetic intercepted responses only. Never contact a provider.
@@ -33,6 +33,13 @@ test('same browser context preserves HttpOnly cookies across cross-origin API fe
     const screenshot = await page.screenshot({ type: 'jpeg', quality: 40, scale: 'css', timeout: 10000, clip: { x: 0, y: 0, ...BROWSER_VIEWPORT } });
     assert.ok(screenshot.byteLength > 0 && screenshot.byteLength < 1024 * 1024);
     console.log('fixture bounded screenshot passed');
+    await page.evaluate(() => {
+      document.addEventListener('mousedown', () => { document.body.dataset.hold = 'down'; });
+      document.addEventListener('mouseup', () => { document.body.dataset.hold += '-up'; });
+    });
+    await performBrowserAction(page, {type:'hold',x:100,y:100,durationMs:100});
+    assert.equal(await page.evaluate(() => document.body.dataset.hold), 'down-up');
+    console.log('fixture bounded hold and release passed');
   } finally { guard.close(); await context.close(); }
 });
 

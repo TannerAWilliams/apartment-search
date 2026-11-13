@@ -58,3 +58,8 @@ test('owner actions remain within reduced screenshot viewport', () => {
   assert.equal(isBrowserAction({type:'click',x:800,y:599}),false);
   assert.equal(isBrowserAction({type:'click',x:799,y:600}),false);
 });
+test('owner hold actions are bounded coordinates and finite duration', () => {
+  assert.equal(isBrowserAction({type:'hold',x:400,y:355,durationMs:5000}),true);
+  for (const durationMs of [0,99,10001,Infinity,NaN,'5000']) assert.equal(isBrowserAction({type:'hold',x:400,y:355,durationMs}),false);
+  assert.equal(isBrowserAction({type:'hold',x:800,y:355,durationMs:5000}),false);
+});
