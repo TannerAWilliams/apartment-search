@@ -680,3 +680,21 @@ test('relay preparation is isolated to listing requests, not imports or unrelate
   await call({ check: 'now', source: 'hotpads-live' });
   assert.equal(prepared, 2);
 });
+
+test('provider 403 without wrapper metadata saves failure, releases lock and preserves inventory', async () => {
+  const env = { BUCKET: new TestBucket() };
+  const [listing] = parseStreetEasyPage(streetEasyHtml([publicRental]), 'NY', 1, at.toISOString());
+  await refreshSources(env, { now: at, sourceId: STREETEASY_LIVE.id,
+    imports: { [STREETEASY_LIVE.id]: { listings: [listing], pages: 10 } } });
+  const before = await storedDirectRentals(env.BUCKET, STREETEASY_LIVE);
+  assert.equal(before.listings.length, 1);
+  const result = await refreshSources(env, { now: next, sourceId: STREETEASY_LIVE.id, onDemand: true,
+    fetcher: async () => { throw Object.assign(new Error('Provider denied request'), { httpStatus: 403 }); } });
+  const status = result.sources.find(({ id }) => id === STREETEASY_LIVE.id);
+  assert.equal(result.state, 'partial');
+  assert.equal(status.status, 'failed');
+  assert.equal(status.updatedAt, at.toISOString());
+  assert.equal(Date.parse(status.retryAt), next.getTime() + 15 * 60_000);
+  assert.deepEqual(await storedDirectRentals(env.BUCKET, STREETEASY_LIVE), before);
+  assert.equal((await (await env.BUCKET.get('rentals/refresh.json')).json()).running, false);
+});

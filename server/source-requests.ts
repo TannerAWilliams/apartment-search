@@ -49,6 +49,8 @@ export function retrySchedule(error, previous, startedAt) {
   const attempts = Math.min((previous?.retryAttempts ?? 0) + 1, 7);
   const base = status === 401 || status === 403 ? 15 * MINUTE : MINUTE;
   const backoff = Math.min(base * 2 ** (attempts - 1), 60 * MINUTE);
-  const retryAt = Math.max(error.retryAfter, Math.max(error.receivedAt, startedAt) + backoff);
+  const receivedAt = Number.isFinite(error.receivedAt) ? error.receivedAt : startedAt;
+  const serverRetryAt = Number.isFinite(error.retryAfter) ? error.retryAfter : 0;
+  const retryAt = Math.max(serverRetryAt, Math.max(receivedAt, startedAt) + backoff);
   return { retryAt: new Date(retryAt).toISOString(), retryAttempts: attempts };
 }

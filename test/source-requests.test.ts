@@ -46,3 +46,21 @@ test('non-idempotent POST is never retried after a transient error', async () =>
   await assert.rejects(request('https://example.test', { method: 'POST' }), /HTTP 503/);
   assert.equal(calls, 1);
 });
+
+test('provider auth/rate errors without request-wrapper metadata still get cooldowns', () => {
+  const startedAt = Date.parse('2026-11-13T15:00:00Z');
+  for (const [httpStatus, minutes] of [[401, 15], [403, 15], [429, 1]]) {
+    const result = retrySchedule({ httpStatus }, undefined, startedAt);
+    assert.equal(result.retryAttempts, 1);
+    assert.equal(Date.parse(result.retryAt), startedAt + minutes * 60_000);
+  }
+});
+
+test('malformed optional timestamps do not break failure status persistence', () => {
+  const startedAt = Date.parse('2026-11-13T15:00:00Z');
+  for (const timestamp of [undefined, null, NaN, Infinity, 'invalid']) {
+    const result = retrySchedule({ httpStatus: 403, receivedAt: timestamp, retryAfter: timestamp },
+      { retryAttempts: 1 }, startedAt);
+    assert.equal(Date.parse(result.retryAt), startedAt + 30 * 60_000);
+  }
+});
