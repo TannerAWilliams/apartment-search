@@ -116,7 +116,7 @@ and submits it through the authenticated import endpoint, then verifies saved
 counts. Pass a current owner service credential through stdin, not a command
 argument or a committed file. Use the host's approved secret delivery mechanism.
 
-Pass `--manual` to fetch on demand even when saved data is less than a day old. This mode updates only StreetEasy. No daily automation is needed or installed. The browser button calls the hosted Worker; if StreetEasy rejects that host with HTTP 403, it reports failure and preserves stored listings. The external runner is not automatically connected to that button. The runner respects retry times, retries inventory
+Pass `--manual` to fetch on demand even when saved data is less than a day old. This mode updates only StreetEasy. No daily automation is needed or installed. The browser button calls the hosted Worker, which can use the configured authenticated Render relay described below. Without that relay, StreetEasy may reject the Worker with HTTP 403. Failed refreshes preserve stored listings. The runner respects retry times, retries inventory
 movement once, and does not solve CAPTCHAs or bypass authentication. Non-manual recovery
 affects only missing, failed, or day-old StreetEasy inventory; stale or incomplete receipts are rejected.
 The runner requires an accessible external host and credential delivery for each manual invocation. Publishing this file does **not** connect that host to the browser button. No daily schedule is configured.
@@ -126,3 +126,19 @@ The runner requires an accessible external host and credential delivery for each
 The Sources tab lists connected feeds and browse-only websites separately. It shows each source's last fetch attempt, last successful saved data, counts, coverage and failure. Individual resync targets only that source; Resync all connected providers respects source retry limits. Browse-only websites have disabled resync controls until a feed is configured. No automatic daily schedule is installed.
 
 Trulia and Zumper now include bounded Jersey City and Stamford samples alongside Manhattan and Brooklyn. These are explicitly samples, not exhaustive NY/NJ/CT coverage.
+
+### Optional free listing relay
+
+`server/relay-service.ts` runs on a Render Free web service using only Node built-ins:
+`node --experimental-strip-types server/relay-service.ts` (Node 24). It keeps no data.
+Configure a random `LISTING_RELAY_TOKEN` secret of at least 32 characters on Render.
+Configure the same secret and `LISTING_RELAY_URL` on the private Site. The Site then
+routes only StreetEasy search pages and the three supported HotPads pages through
+Render. No browser receives the secret. All other sources use their existing path.
+The relay cannot fetch arbitrary URLs, follows no redirects, limits response size,
+concurrency and hourly requests, and preserves upstream failures/rate limits.
+Render Free sleeps when idle; the Site wakes it before starting short source timers.
+The first refresh may take an extra minute. Normal source cooldowns and inventory
+completeness checks still apply; a failed source never replaces its previous data.
+This is not a guarantee of permanent provider access or exhaustive coverage for
+sources other than the count-reconciled StreetEasy API. No scheduled job is added.

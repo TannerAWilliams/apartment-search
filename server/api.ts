@@ -154,7 +154,7 @@ function json(value, status = 200) {
   return Response.json(value, { status, headers: { 'Cache-Control': 'no-store' } });
 }
 
-export async function handleApi(request, env, { requireToken = false, fetcher = (url, options) => globalThis.fetch(url, options), waitUntil }: { requireToken?: boolean; fetcher?: SourceFetch; waitUntil?: (work: Promise<unknown>) => void } = {}) {
+export async function handleApi(request, env, { requireToken = false, fetcher = (url, options) => globalThis.fetch(url, options), waitUntil, prepareListingSources }: { requireToken?: boolean; fetcher?: SourceFetch; waitUntil?: (work: Promise<unknown>) => void; prepareListingSources?: () => Promise<void> } = {}) {
   const { pathname: path, searchParams } = new URL(request.url);
   if (!API_PATHS.has(path)) return json({ error: 'Endpoint not found.' }, 404);
   if (requireToken && request.headers.get('Authorization') !== `Bearer ${env.APP_ACCESS_TOKEN}`) {
@@ -232,6 +232,7 @@ export async function handleApi(request, env, { requireToken = false, fetcher = 
     if (path === '/api/refresh') {
       if (body?.check === 'now') {
         if (body.source !== undefined && !refreshCatalog(env).some((source) => source.id === body.source && source.resyncable)) return json({ error: 'Unknown or disconnected refresh source.' }, 422);
+        if (!body.source || ['streeteasy-live', 'hotpads-live'].includes(body.source)) await prepareListingSources?.();
         const work = refreshSources(env, { fetcher, onDemand: true, skipStreetEasy: body.sessionStart === true && !body.source, sourceId: body.source, forceRefresh: body.sessionStart !== true });
         waitUntil?.(work.catch(() => {}));
         return json(await work);

@@ -1,5 +1,6 @@
 import assets from 'virtual:web-assets';
 import { handleApi } from './api.ts';
+import { relayConfig, withListingRelay, wakeListingRelay } from './relay-client.ts';
 
 function workerFetch(url, options) {
   // The Worker supports manual redirects. Source readers reject non-success responses.
@@ -11,7 +12,14 @@ export default {
   async fetch(request, env, context) {
     const { pathname } = new URL(request.url);
     if (pathname.startsWith('/api/')) {
-      return handleApi(request, env, { fetcher: workerFetch, waitUntil: context?.waitUntil?.bind(context) });
+      try {
+        const relay = relayConfig(env);
+        return handleApi(request, env, { fetcher: relay ? withListingRelay(workerFetch, relay) : workerFetch,
+          waitUntil: context?.waitUntil?.bind(context),
+          prepareListingSources: relay ? () => wakeListingRelay(workerFetch, relay) : undefined });
+      } catch {
+        return Response.json({ error: 'The listing sync service could not be reached. Cached listings are unchanged. Try again after it wakes up.' }, { status: 503 });
+      }
     }
     if (!['GET', 'HEAD'].includes(request.method)) return new Response(null, { status: 405 });
     const key = pathname === '/' ? '/index.html' : pathname;

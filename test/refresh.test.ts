@@ -663,3 +663,20 @@ test('unknown or disconnected targeted provider is rejected before acquiring ref
   }
   assert.equal(bucket.records.size, 0);
 });
+
+test('relay preparation is isolated to listing requests, not imports or unrelated sources', async () => {
+  const env = { BUCKET: new TestBucket() };
+  let prepared = 0;
+  const prepareListingSources = async () => { prepared++; throw new Error('relay unavailable'); };
+  const call = (body) => handleApi(new Request('https://private.test/api/refresh', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  }), env, { prepareListingSources, fetcher: async () => new Response('blocked', { status: 403 }) });
+  await call({ source: 'streeteasy-live', imports: {} });
+  assert.equal(prepared, 0);
+  await call({ check: 'now', source: 'apartments-live' });
+  assert.equal(prepared, 0);
+  await call({ check: 'now', source: 'streeteasy-live' });
+  assert.equal(prepared, 1);
+  await call({ check: 'now', source: 'hotpads-live' });
+  assert.equal(prepared, 2);
+});
