@@ -97,6 +97,14 @@ export class NativeFixtureController {
     const result=await this.send('Runtime.evaluate',{expression:'document.body ? document.body.innerText : ""',returnByValue:true},this.mainSession);
     if(!record(result.result)||typeof result.result.value!=='string'||Buffer.byteLength(result.result.value)>2*1024*1024)throw Error('Invalid fixture result');return result.result.value;
   }
+  async documentSnapshot():Promise<{url:string;readyState:string;text:string}>{
+    if(!this.mainSession)throw Error('Fixture not ready');
+    const result=await this.send('Runtime.evaluate',{expression:'JSON.stringify({url:location.href,readyState:document.readyState,text:document.body?document.body.innerText:""})',returnByValue:true},this.mainSession);
+    if(!record(result.result)||typeof result.result.value!=='string'||Buffer.byteLength(result.result.value)>2*1024*1024)throw Error('Invalid fixture snapshot');
+    const value:unknown=JSON.parse(result.result.value);
+    if(!record(value)||typeof value.url!=='string'||typeof value.readyState!=='string'||typeof value.text!=='string')throw Error('Invalid fixture snapshot');
+    return {url:value.url,readyState:value.readyState,text:value.text};
+  }
   private async receive(event:CdpEvent):Promise<void>{
     if(this.stopped)return;
     if(++this.pendingEvents>32){this.pendingEvents--;await this.close();return;}

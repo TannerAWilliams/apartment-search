@@ -1,3 +1,4 @@
+import { nativeQualificationGate, runNativeFixtureBasics } from '../qualification/native-remote-run.ts';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
 import { qualificationGate } from './qualification-gate.ts';
@@ -9,6 +10,7 @@ import { PlaywrightDriver, verifyBrowserRuntime } from './playwright-session.ts'
 const token = process.env.LISTING_RELAY_TOKEN || '';
 const session = new BrowserSession(async () => new PlaywrightDriver(), process.env.BROWSERLESS_TOKEN ? 110000 : 600000);
 const baseHandler = browserGateway(token, session);
+const nativeGate = nativeQualificationGate(process.env.NATIVE_QUALIFICATION_TOKEN || '', signal => runNativeFixtureBasics(process.env.BROWSERLESS_TOKEN || '',signal), () => !stopQualification && (session.state === 'idle' || session.state === 'closed'));
 let stopQualification: (() => void) | undefined;
 const qualify = () => new Promise<boolean>(resolve => {
   const child = spawn(process.execPath, ['--experimental-strip-types','--test','--test-isolation=none',fileURLToPath(new URL('../qualification/browser.test.ts',import.meta.url))], {stdio:'ignore',env:process.env});
@@ -36,7 +38,8 @@ const server = createServer(async (incoming, outgoing) => {
       method: incoming.method, headers, signal: abort.signal,
       ...(incoming.method === 'POST' ? { body: Readable.toWeb(incoming) as ReadableStream<Uint8Array>, duplex: 'half' } : {}),
     });
-    const response = await handler(request);
+    const nativeResponse = await nativeGate.handle(request);
+    const response = nativeResponse || (nativeGate.running ? new Response('Synthetic qualification running', {status:423,headers:{'Cache-Control':'no-store'}}) : await handler(request));
     outgoing.writeHead(response.status, Object.fromEntries(response.headers));
     outgoing.end(Buffer.from(await response.arrayBuffer()));
   } catch { if (!outgoing.headersSent) outgoing.writeHead(502, { 'Cache-Control': 'no-store' }); outgoing.end('Browser relay unavailable'); }
@@ -45,5 +48,5 @@ const server = createServer(async (incoming, outgoing) => {
 server.headersTimeout = 10000; server.requestTimeout = 45000;
 await verifyBrowserRuntime();
 server.listen(Number(process.env.PORT || 10000), '0.0.0.0');
-process.on('SIGTERM', () => { stopQualification?.(); const stop = setTimeout(() => process.exit(1), 5000); stop.unref(); void session.close(); server.close(() => process.exit(0)); });
+process.on('SIGTERM', () => { stopQualification?.(); const stop = setTimeout(() => process.exit(1), 5000); stop.unref(); void Promise.allSettled([nativeGate.cancel(),session.close()]).finally(() => server.close(() => process.exit(0))); });
 
