@@ -1,3 +1,4 @@
+import { relayConfig, type ListingTransports } from './relay-client.ts';
 import { companyCounts } from '../src/companies.ts';
 import { matchListings, needsCommute, parseFilters, SearchInputError } from '../src/search.ts';
 import { formatSearch, RENT_GROUPINGS, rentAreas, SNAPSHOT_MONTH } from '../src/market.ts';
@@ -20,6 +21,7 @@ export function appConfig(env) {
   return {
     mode: feeds.length > 0 ? 'live' : 'snapshot',
     browserImportAllowed: env.PUBLIC_APP !== 'true',
+    listingRequestTransport: relayConfig(env) ? 'relay' : 'direct',
     snapshotMonth: SNAPSHOT_MONTH,
     sources: feeds.map(({ id, name }) => ({ id, name })),
     ...(routingCredentials(env) ? { commuteConfigured: true } : {}),
@@ -155,7 +157,7 @@ function json(value, status = 200) {
   return Response.json(value, { status, headers: { 'Cache-Control': 'no-store' } });
 }
 
-export async function handleApi(request, env, { requireToken = false, fetcher = (url, options) => globalThis.fetch(url, options), waitUntil, prepareListingSources }: { requireToken?: boolean; fetcher?: SourceFetch; waitUntil?: (work: Promise<unknown>) => void; prepareListingSources?: () => Promise<void> } = {}) {
+export async function handleApi(request, env, { requireToken = false, fetcher = (url, options) => globalThis.fetch(url, options), waitUntil, prepareListingSources, listingTransports }: { requireToken?: boolean; fetcher?: SourceFetch; waitUntil?: (work: Promise<unknown>) => void; prepareListingSources?: () => Promise<void>; listingTransports?: ListingTransports } = {}) {
   const { pathname: path, searchParams } = new URL(request.url);
   if (!API_PATHS.has(path)) return json({ error: 'Endpoint not found.' }, 404);
   if (requireToken && request.headers.get('Authorization') !== `Bearer ${env.APP_ACCESS_TOKEN}`) {
@@ -234,7 +236,7 @@ export async function handleApi(request, env, { requireToken = false, fetcher = 
       if (body?.check === 'now') {
         if (body.source !== undefined && !refreshCatalog(env).some((source) => source.id === body.source && source.resyncable)) return json({ error: 'Unknown or disconnected refresh source.' }, 422);
         if (!body.source || ['streeteasy-live', 'hotpads-live'].includes(body.source)) await prepareListingSources?.();
-        const work = refreshSources(env, { fetcher, onDemand: true, skipStreetEasy: body.sessionStart === true && !body.source && env.TEMPORARY_CACHE !== 'true', sourceId: body.source, forceRefresh: body.sessionStart !== true });
+        const work = refreshSources(env, { fetcher, listingTransports, onDemand: true, skipStreetEasy: body.sessionStart === true && !body.source && env.TEMPORARY_CACHE !== 'true', sourceId: body.source, forceRefresh: body.sessionStart !== true });
         waitUntil?.(work.catch(() => {}));
         return json(await work);
       }

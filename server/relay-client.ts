@@ -48,3 +48,18 @@ export async function wakeListingRelay(fetcher: SourceFetch, config: RelayConfig
   }
   throw new Error('The listing sync service is unavailable. Cached listings have been kept.');
 }
+
+// Per-request diagnostics contain route labels only, never URLs or credentials.
+export type ListingTransports = Partial<Record<string, 'direct' | 'relay'>>;
+export function createListingSourceClient(env, fetcher: SourceFetch = fetch) {
+  const config = relayConfig(env);
+  const listingTransports: ListingTransports = {};
+  const routed = config ? withListingRelay(fetcher, config) : fetcher;
+  const observed: SourceFetch = (url, options) => {
+    const payload = sourceRelayPayload(url, options);
+    if (payload) listingTransports[payload.source + '-live'] = config ? 'relay' : 'direct';
+    return routed(url, options);
+  };
+  return { fetcher: observed, listingTransports,
+    prepareListingSources: config ? () => wakeListingRelay(fetcher, config) : undefined };
+}

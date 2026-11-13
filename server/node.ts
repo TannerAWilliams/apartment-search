@@ -4,6 +4,7 @@ import { extname, resolve, sep } from 'node:path';
 import { URL, fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { handleApi } from './api.ts';
+import { createListingSourceClient } from './relay-client.ts';
 import { MIME } from './mime.ts';
 import { createMemoryBucket } from './memory-bucket.ts';
 import { createPublicRequestLimits, isPublicRefresh } from './public-access.ts';
@@ -65,7 +66,7 @@ createServer(async (incoming, outgoing) => {
         const retry = publicLimits.refreshRetrySeconds();
         if (retry) { outgoing.writeHead(429, { 'Content-Type': 'application/json', 'Retry-After': String(retry) }).end(JSON.stringify({ error: `Sources were just requested. Try again in ${retry} seconds.` })); return; }
       }
-      const response = await handleApi(new Request(url.href, { method: incoming.method, headers: incoming.headers as Record<string, string>, body: bytes ? Buffer.concat(chunks) : undefined }), env);
+      const response = await handleApi(new Request(url.href, { method: incoming.method, headers: incoming.headers as Record<string, string>, body: bytes ? Buffer.concat(chunks) : undefined }), env, createListingSourceClient(env));
       if (publicApp && !bearer) outgoing.setHeader('X-Refresh-Retry-After', String(publicLimits.refreshRemainingSeconds()));
       outgoing.writeHead(response.status, Object.fromEntries(response.headers)).end(Buffer.from(await response.arrayBuffer())); return;
     }
