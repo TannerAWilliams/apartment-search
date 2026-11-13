@@ -263,6 +263,7 @@ async function refreshDirectRentals(bucket, source, result, at) {
   }
   if (!Number.isInteger(result?.pages) || result.pages < source.minPages || result.pages > source.maxPages ||
       !Array.isArray(result.listings) || (!result.listings.length && result.total !== 0) || result.listings.length > result.pages * source.rowsPerPage ||
+      new Set(result.listings.map((listing) => listing?.id)).size !== result.listings.length ||
       result.listings.some((listing) => listing?.kind !== 'feed' || !source.regions.includes(listing.region) ||
         typeof listing.id !== 'string' || !listing.id.startsWith(source.marketplace + ':') ||
         typeof listing.address !== 'string' || !listing.address || typeof listing.unit !== 'string' ||

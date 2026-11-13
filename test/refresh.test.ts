@@ -698,3 +698,20 @@ test('provider 403 without wrapper metadata saves failure, releases lock and pre
   assert.deepEqual(await storedDirectRentals(env.BUCKET, STREETEASY_LIVE), before);
   assert.equal((await (await env.BUCKET.get('rentals/refresh.json')).json()).running, false);
 });
+
+test('duplicate imported listing IDs fail without replacing the last valid source snapshot', async () => {
+  const env = { BUCKET: new TestBucket() };
+  const [listing] = parseStreetEasyPage(streetEasyHtml([publicRental]), 'NY', 1, at.toISOString());
+  await refreshSources(env, { now: at, sourceId: STREETEASY_LIVE.id,
+    imports: { [STREETEASY_LIVE.id]: { listings: [listing], pages: 10 } } });
+  const before = await storedDirectRentals(env.BUCKET, STREETEASY_LIVE);
+  for (const duplicate of [listing, { ...listing, rent: listing.rent + 100 }]) {
+    const result = await refreshSources(env, { now: next, sourceId: STREETEASY_LIVE.id,
+      imports: { [STREETEASY_LIVE.id]: { listings: [listing, duplicate], pages: 10 } } });
+    const status = result.sources.find(({ id }) => id === STREETEASY_LIVE.id);
+    assert.equal(status.status, 'failed');
+    assert.equal(status.listingCount, 1);
+    assert.equal(status.updatedAt, at.toISOString());
+    assert.deepEqual(await storedDirectRentals(env.BUCKET, STREETEASY_LIVE), before);
+  }
+});
