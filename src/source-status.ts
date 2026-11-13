@@ -16,11 +16,16 @@ export function sourceRows(catalog: SourceDefinition[], statuses: SourceStatus[]
 
 /** A partial refresh must not look like an empty or successful full inventory fetch. */
 export function refreshSummary(sources: SourceStatus[]): string {
-  const successful = sources.filter((source) => source.status === 'updated' || source.status === 'current');
+  const updated = sources.filter((source) => source.status === 'updated');
+  const unchanged = sources.filter((source) => source.status === 'current');
+  const successful = updated.length + unchanged.length;
   const failed = sources.filter((source) => source.status === 'failed');
   const unavailable = failed.map((source) => source.name ?? source.id).join(', ');
-  if (failed.length) return `${successful.length} sources have saved data; ${unavailable} could not refresh. Previous cached listings are retained where available. This is not complete coverage.`;
-  if (successful.length) return `${successful.length} sources checked. Available listings updated; connected providers may return limited samples.`;
+  const count = (number: number) => `${number} source${number === 1 ? '' : 's'}`;
+  const outcome = [updated.length ? `${count(updated.length)} updated` : '',
+    unchanged.length ? `${count(unchanged.length)} checked with no changes` : ''].filter(Boolean).join('; ');
+  if (failed.length) return `${outcome ? outcome + '; ' : ''}${unavailable} could not refresh. Previous cached listings are retained where available. This is not complete coverage.`;
+  if (successful) return `${outcome}. Connected providers may return limited samples.`;
   return 'No sources refreshed. Check Sources for connection status and retry times.';
 }
 
@@ -35,3 +40,4 @@ export function sourceCoverage(status?: SourceStatus): string {
   if (!parts.length) return '';
   return `${status.status === 'failed' ? 'Last saved snapshot: ' : ''}${parts.join(' · ')}. Provider totals may include listings excluded by our filters; counts do not prove complete coverage.`;
 }
+

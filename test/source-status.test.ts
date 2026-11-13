@@ -24,10 +24,38 @@ test('partial refresh summary names blocked providers without claiming complete 
     { id: 'streeteasy-live', name: 'StreetEasy', status: 'failed' },
     { id: 'zillow', status: 'feed_required' },
   ]);
-  assert.match(message, /1 sources have saved data/);
+  assert.match(message, /1 source updated/);
   assert.match(message, /StreetEasy could not refresh/);
   assert.match(message, /not complete coverage/);
   assert.doesNotMatch(message, /Zillow/);
+});
+
+test('unchanged refresh checks never claim inventory was updated', async () => {
+  const { refreshSummary } = await import('../src/source-status.ts');
+  const message = refreshSummary([{ id: 'market', status: 'current' }]);
+  assert.match(message, /1 source checked with no changes/);
+  assert.doesNotMatch(message, /updated|No sources refreshed/);
+});
+
+test('mixed refresh distinguishes changed and unchanged sources', async () => {
+  const { refreshSummary } = await import('../src/source-status.ts');
+  const message = refreshSummary([
+    { id: 'hotpads', status: 'updated' },
+    { id: 'market', status: 'current' },
+    { id: 'history', status: 'current' },
+  ]);
+  assert.match(message, /1 source updated; 2 sources checked with no changes/);
+});
+
+test('failed refresh does not turn unchanged checks into updates', async () => {
+  const { refreshSummary } = await import('../src/source-status.ts');
+  const message = refreshSummary([
+    { id: 'market', status: 'current' },
+    { id: 'streeteasy-live', name: 'StreetEasy', status: 'failed' },
+  ]);
+  assert.match(message, /1 source checked with no changes; StreetEasy could not refresh/);
+  assert.match(message, /cached listings are retained where available/);
+  assert.doesNotMatch(message, /updated/);
 });
 
 test('empty source check is not described as success', async () => {
@@ -50,3 +78,4 @@ test('failed attempts label retained coverage as the last saved snapshot', async
   assert.equal(sourceCoverage({ id: 'unknown', total: NaN, pages: -1, sampleLimit: Infinity }), '');
   assert.equal(sourceCoverage(), '');
 });
+
