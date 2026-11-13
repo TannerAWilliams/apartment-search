@@ -13,6 +13,7 @@ test('same browser context preserves HttpOnly cookies across cross-origin API fe
   let observed = false;
   const guard = new BrowserNetworkGuard(async (url, init) => {
     if (url.startsWith('https://api-v6.streeteasy.com/')) {
+      console.log('fixture API request', { method: init.method, cookiePresent: new Headers(init.headers).get('cookie')?.includes('fixture=only') === true });
       assert.equal(new Headers(init.headers).get('cookie')?.includes('fixture=only'), true);
       observed = true;
       return new Response('{"fixture":true}', { headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': 'https://streeteasy.com', 'Access-Control-Allow-Credentials': 'true' } });
@@ -22,7 +23,10 @@ test('same browser context preserves HttpOnly cookies across cross-origin API fe
   await context.route('**/*', route => guard.route(route));
   await context.routeWebSocket('**/*', socket => socket.close());
   try {
-    const page = await context.newPage(); await page.goto('https://streeteasy.com/for-rent/nyc');
+    const page = await context.newPage();
+    page.on('console', message => console.log('fixture console', message.text()));
+    await page.goto('https://streeteasy.com/for-rent/nyc');
+    assert.equal((await context.cookies('https://streeteasy.com')).some(cookie => cookie.name === 'fixture' && cookie.value === 'only'), true, 'fixture cookie stored in browser');
     const result = await page.evaluate(async () => (await fetch('https://api-v6.streeteasy.com/fixture', { credentials: 'include' })).json());
     assert.deepEqual(result, { fixture: true }); assert.equal(observed, true);
   } finally { guard.close(); await context.close(); }
