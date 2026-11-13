@@ -35,4 +35,6 @@ Still needed: complete successful manual listing/import workflows, deduplication
 
 ## Initial verification
 
-2026-11-13: test discovery succeeds. Existing application unit suite: 100 passed; application TypeScript check passed. Browser execution in the authoring environment could not start: installed Chromium aborted before navigation with `socket() failed: Operation not permitted`. Thus these browser assertions have not yet been executed successfully; keep this change draft until run on a suitable machine. Missing bundled browser was separately diagnosed; using installed Chromium confirmed the environment restriction.
+2026-11-13: 20/20 browser cases passed on Render's isolated free test build (desktop and mobile Chromium, 12.9 seconds, commit `943069b`). Chromium sandbox remained enabled and provider calls were mocked. These tests found and fixed a Platforms crash for All regions/non-NYC selection and missing selected-tab ARIA state. The authoring environment itself could not launch Chromium (`socket() failed: Operation not permitted`), so execution was moved to the explicitly approved isolated service, not worked around by disabling the sandbox.
+
+Playwright discovery, E2E/config TypeScript checks, existing application unit tests and Expo web export also passed. This is evidence for the listed UI flows only, not complete browser coverage or live provider availability. The temporary Render service has automatic deployments off and exposes only an inert health message, never test reports, source data or credentials.
