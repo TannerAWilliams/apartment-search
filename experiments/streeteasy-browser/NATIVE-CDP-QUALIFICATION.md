@@ -45,3 +45,21 @@ Only after these gates and independent review may a bounded explicitly authorize
 provider attempt run. A successful page or HTTP200 still does not prove a complete
 StreetEasy crawl or persisted application data. Production configuration and
 cached listings remain unchanged throughout this development stage.
+
+## Actual bootstrap evidence: November 13, 2026, 3:55 p.m. New York
+
+The raw Browserless `/chromium` endpoint was reached from the workspace using its
+standard configured HTTPS proxy (official Undici client). A direct connection
+preflight returned Chrome/158.0.8127.18 and Browser.close acknowledgment. An initial
+controller probe failed before socket opening; a second diagnostic probe completed
+owned blank-page cleanup, context creation, pause-on-start, buffered early attach,
+Fetch setup, the Network blocked-URL command and resume. Browser.close was
+acknowledged. No fixture or provider navigation occurred.
+
+This establishes actual API/bootstrap compatibility only. In particular, accepting
+Network.setBlockedURLs does not establish that WebSocket handshakes were prevented.
+Independent destination counters and compressed response tests remain mandatory.
+A close acknowledgment is recorded as acknowledged, not independently observed
+browser destruction. Native network guard/controller code remains unwired from the
+live app. Local closure now disposes queued work and timers synchronously; cancellation
+of an in-flight CDP command can still make remote termination unconfirmed.

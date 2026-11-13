@@ -52,3 +52,11 @@ test('aborted in-flight fulfillment cannot issue any later request',async()=>{
  await new Promise(r=>setImmediate(r));await f.guard.close();await response;finish();
  await f.guard.request(request('b'));assert.ok(f.events.includes('browser-closed'));assert.ok(!f.events.includes('continue:b'));
 });
+test('local disposal drains queue and clears timers without protocol sends or remote-close claim',async()=>{
+ const f=fixture([], {requestMs:15,cleanupMs:10});await f.guard.request(request('a'));await f.guard.request(request('b'));const queue=f.guard.request(request('c'));
+ f.guard.disposeLocal();await queue;assert.deepEqual(f.guard.pendingLocalWork,{active:0,queued:0,disposed:true});await new Promise(r=>setTimeout(r,25));
+ await f.guard.request(request('late'));await f.guard.response({id:'late',status:200,headers:[]});await f.guard.close();assert.deepEqual(f.events,['continue:a','continue:b']);assert.equal(f.guard.browserClosureState,'not-requested');
+});
+test('local disposal aborts in-flight read and late completion cannot send cleanup or fulfillment',async()=>{
+ const f=fixture();let release!:(v:{data:Uint8Array;eof:boolean})=>void;f.transport.readStream=()=>new Promise(r=>{release=r;});await f.guard.request(request('a'));const response=f.guard.response({id:'a',status:200,headers:[]});await new Promise(r=>setImmediate(r));f.guard.disposeLocal();await response;release({data:Buffer.from('late'),eof:true});await new Promise(r=>setImmediate(r));assert.deepEqual(f.events,['continue:a','stream:a']);assert.deepEqual(f.guard.pendingLocalWork,{active:0,queued:0,disposed:true});
+});

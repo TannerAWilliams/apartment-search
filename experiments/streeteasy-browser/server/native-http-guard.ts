@@ -23,6 +23,7 @@ const hopByHop = new Set(['connection','content-length','content-encoding','tran
 
 export class NativeHttpGuard {
   private stopped = false;
+  private disposed = false;
   private received = 0;
   private entries = new Map<string, Entry>();
   private queued: Array<{ request: NativeRequest; resolve: () => void }> = [];
@@ -30,8 +31,10 @@ export class NativeHttpGuard {
   private closure: 'not-requested'|'closing'|'confirmed'|'unconfirmed' = 'not-requested';
   get browserClosureState() { return this.closure; }
   private transport: NativeHttpTransport;
+  private allowUrl: (url: string) => boolean;
   private timeouts: { requestMs: number; cleanupMs: number };
-  constructor(transport: NativeHttpTransport, timeouts = { requestMs: 12000, cleanupMs: 1000 }) { this.transport = transport; this.timeouts = timeouts; }
+  /** Third argument is trusted programmatic qualification configuration, never request/env input. */
+  constructor(transport: NativeHttpTransport, timeouts = { requestMs: 12000, cleanupMs: 1000 }, allowUrl = allowedBrowserUrl) { this.transport = transport; this.timeouts = timeouts; this.allowUrl = allowUrl; }
   private bounded<T>(action: () => Promise<T>, ms: number): Promise<T> {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error('Native protocol deadline')), ms);
@@ -48,6 +51,17 @@ export class NativeHttpGuard {
     this.hardClosing = Promise.resolve().then(() => this.bounded(() => this.transport.failClosedBrowser(), this.timeouts.cleanupMs)).then(() => { this.closure = 'confirmed'; }, () => { this.closure = 'unconfirmed'; });
     return this.hardClosing;
   }
+  /** Synchronous local disposal only: no protocol sends, no remote-close claim.
+   * Abort may close a transport through its existing signal listener; callers must
+   * independently qualify remote termination and keep unconfirmed status truthful.
+   */
+  disposeLocal(): void {
+    this.stopped = true; this.disposed = true;
+    const entries = [...this.entries.values()]; this.entries.clear();
+    for (const entry of entries) { clearTimeout(entry.timer); entry.abort.abort(); }
+    for (const item of this.queued.splice(0)) item.resolve();
+  }
+  get pendingLocalWork() { return { active: this.entries.size, queued: this.queued.length, disposed: this.disposed }; }
   private async command<T>(entry: Entry, action: () => Promise<T>): Promise<T> {
     if (this.stopped || entry.terminal || entry.abort.signal.aborted) throw new Error('Native HTTP stopped');
     entry.inFlight++;
@@ -73,20 +87,23 @@ export class NativeHttpGuard {
     }
   }
   private terminate(id: string, entry: Entry, failed: boolean): Promise<void> {
+    if (this.disposed) { clearTimeout(entry.timer); return Promise.resolve(); }
     if (entry.terminal) return entry.terminal;
     const uncertain = failed && entry.inFlight > 0;
     clearTimeout(entry.timer); entry.abort.abort();
     entry.terminal = Promise.resolve().then(async () => {
+      if (this.disposed) return;
       if (uncertain || this.hardClosing) { await this.hardClose(); return; }
       try {
         // A response stream must be disposed before failing its paused request.
         if (entry.stream) { const stream = entry.stream; entry.stream = undefined; await this.bounded(() => this.transport.closeStream(stream),this.timeouts.cleanupMs); }
-        if (failed) await this.bounded(() => this.transport.fail(id),this.timeouts.cleanupMs);
+        if (failed && !this.disposed) await this.bounded(() => this.disposed ? Promise.resolve() : this.transport.fail(id),this.timeouts.cleanupMs);
       } catch { await this.hardClose(); }
     }).finally(() => this.finish(id, entry));
     return entry.terminal;
   }
   private async reject(id: string) {
+    if (this.disposed) return;
     if (this.hardClosing) { await this.hardClosing; return; }
     try { await this.bounded(() => this.transport.fail(id),this.timeouts.cleanupMs); }
     catch { await this.hardClose(); }
@@ -101,7 +118,7 @@ export class NativeHttpGuard {
   }
   async request(request: NativeRequest): Promise<void> {
     if (this.entries.has(request.id) || this.queued.some(item => item.request.id === request.id)) { await this.hardClose(); return; }
-    if (this.stopped || !allowedBrowserUrl(request.url) || !Number.isSafeInteger(request.bodyBytes) || request.bodyBytes < 0 || request.bodyBytes > READ_BYTES) { await this.reject(request.id); return; }
+    if (this.stopped || !this.allowUrl(request.url) || !Number.isSafeInteger(request.bodyBytes) || request.bodyBytes < 0 || request.bodyBytes > READ_BYTES) { await this.reject(request.id); return; }
     if (this.entries.size < 2) return this.begin(request);
     if (this.queued.length >= 4) { await this.reject(request.id); return; }
     return new Promise(resolve => this.queued.push({request,resolve}));
