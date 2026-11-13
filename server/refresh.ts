@@ -1,3 +1,4 @@
+import type { ListingTransports } from './relay-client.ts';
 import { gzipSync, gunzipSync, strFromU8, strToU8 } from 'fflate';
 import { decodeMarketRows, marketSnapshot, packRentMonth, SNAPSHOT_MONTH } from '../src/market.ts';
 import { bundledRentAreas, priorRentMonths } from '../src/rent-history.ts';
@@ -45,6 +46,7 @@ type CheckResult = {
 };
 
 type SourceStatus = CheckResult & {
+  requestTransport?: 'direct' | 'relay' | 'import' | 'not-recorded';
   id: string;
   name: string;
   checkedAt: string | null;
@@ -64,6 +66,7 @@ type RefreshState = {
 };
 
 type RefreshOptions = {
+  listingTransports?: ListingTransports;
   fetcher?: SourceFetch;
   now?: Date;
   imports?: Record<string, any>;
@@ -281,7 +284,7 @@ async function refreshDirectRentals(bucket, source, result, at) {
     ...(verifiedStreetEasy ? { transport: STREETEASY_TRANSPORT } : {}) };
 }
 
-export async function refreshSources(env, { fetcher = fetch, now = new Date(), imports, onDemand = false, fallback = false, skipStreetEasy = false, onlyStreetEasy = false, sourceId, forceRefresh = false }: RefreshOptions = {}) {
+export async function refreshSources(env, { fetcher = fetch, now = new Date(), imports, onDemand = false, fallback = false, skipStreetEasy = false, onlyStreetEasy = false, sourceId, forceRefresh = false, listingTransports }: RefreshOptions = {}) {
   const selected = sourceId ?? (onlyStreetEasy ? STREETEASY_LIVE.id : null);
   if (selected && !refreshCatalog(env).some((source) => source.id === selected && source.resyncable)) throw new Error('Unknown or disconnected refresh source.');
   const bucket = env.BUCKET;
@@ -355,6 +358,7 @@ export async function refreshSources(env, { fetcher = fetch, now = new Date(), i
     const failure = result.status === 'rejected' ? result.reason : null;
     const item: SourceStatus = { id, name, checkedAt: at, status: next?.status ?? 'failed',
       updatedAt: next?.updatedAt ?? older?.updatedAt ?? null };
+    if (id === STREETEASY_LIVE.id || id === 'hotpads-live') item.requestTransport = onDemand ? listingTransports?.[id] ?? 'not-recorded' : 'import';
     if (id === STREETEASY_LIVE.id && (onDemand || next?.transport === STREETEASY_TRANSPORT)) item.transport = STREETEASY_TRANSPORT;
     if (id === HDC_RERENTALS.id) item.listingCount = next?.listingCount ?? older?.listingCount;
     if (id === 'firstmover') {
