@@ -110,7 +110,15 @@ export function distanceMiles(from, to) {
 }
 
 export function compareResults(a, b, sort = 'rent') {
-  if (sort === 'recent' && (a.kind === 'feed') !== (b.kind === 'feed')) return a.kind === 'feed' ? -1 : 1;
+  if (sort === 'recent') {
+    if ((a.kind === 'feed') !== (b.kind === 'feed')) return a.kind === 'feed' ? -1 : 1;
+    const firstSeen = Date.parse(a.seenAt);
+    const secondSeen = Date.parse(b.seenAt);
+    const firstHasDate = Number.isFinite(firstSeen);
+    const secondHasDate = Number.isFinite(secondSeen);
+    if (firstHasDate !== secondHasDate) return firstHasDate ? -1 : 1;
+    if (firstHasDate && firstSeen !== secondSeen) return secondSeen - firstSeen;
+  }
   const metric = SORT_METRICS[sort] ?? 'rent';
   return (a[metric] ?? Infinity) - (b[metric] ?? Infinity) ||
     a.rent - b.rent || a.id.localeCompare(b.id);
@@ -142,3 +150,4 @@ export function directionsLink(listing, workplace, mode = 'transit') {
     travelmode: driving ? 'driving' : 'transit',
   })}`;
 }
+
