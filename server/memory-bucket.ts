@@ -18,7 +18,7 @@ export function createMemoryBucket(maxBytes = 96 * 1024 * 1024) {
       const previous = objects.get(key);
       if (options.onlyIf?.etagMatches && previous?.etag !== options.onlyIf.etagMatches) return null;
       if (options.onlyIf?.etagDoesNotMatch === '*' && previous) return null;
-      const bytes = typeof body === 'string' ? new TextEncoder().encode(body) : body.slice();
+      const bytes = typeof body === 'string' ? new TextEncoder().encode(body) : Uint8Array.from(body);
       const nextUsed = used - (previous?.bytes.length ?? 0) + bytes.length;
       if (nextUsed > maxBytes) throw new Error('Temporary listing cache capacity exceeded.');
       const value = { bytes, etag: randomUUID(), customMetadata: { ...options.customMetadata } };
