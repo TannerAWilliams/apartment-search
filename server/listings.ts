@@ -45,6 +45,7 @@ export async function loadFeed(feed, fetcher) {
   const deadline = AbortSignal.timeout(25000);
   const visited = new Set();
   const listings = [];
+  const listingIds = new Set<string>();
   let rowCount = 0;
   let reportedTotal;
   let url = start.href;
@@ -69,7 +70,11 @@ export async function loadFeed(feed, fetcher) {
     }
     for (const row of rows) {
       const listing = normalizeListing(row, feed);
-      if (listing) listings.push(listing);
+      if (listing) {
+        if (listingIds.has(listing.id)) throw new IncompleteFeedError('Inventory repeated a listing across feed rows');
+        listingIds.add(listing.id);
+        listings.push(listing);
+      }
     }
     if (body.next == null) break;
     if (typeof body.next !== 'string' || !body.next.trim()) throw new IncompleteFeedError('Invalid next page');
@@ -83,3 +88,4 @@ export async function loadFeed(feed, fetcher) {
   if (reportedTotal !== undefined && rowCount !== reportedTotal) throw new IncompleteFeedError('Inventory count did not match');
   return { listings, pages: visited.size };
 }
+

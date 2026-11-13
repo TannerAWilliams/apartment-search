@@ -715,3 +715,24 @@ test('duplicate imported listing IDs fail without replacing the last valid sourc
     assert.deepEqual(await storedDirectRentals(env.BUCKET, STREETEASY_LIVE), before);
   }
 });
+
+test('partner feed pagination duplicates cannot replace a complete cached snapshot', async () => {
+  const env = { BUCKET: new TestBucket(), FREE_PARTNER_FEEDS_JSON: JSON.stringify([feed]) };
+  await refreshSources(env, { fetcher: sources(), now: at, sourceId: feed.id });
+  const before = await storedFeed(env.BUCKET, feed);
+  assert.equal(before.listings.length, 1);
+  let calls = 0;
+  const result = await refreshSources(env, { now: next, sourceId: feed.id, onDemand: true,
+    fetcher: async (url) => {
+      calls++;
+      assert.ok(url === feed.url || url === feed.url + '?page=2');
+      return Response.json({ listings: [{ ...listing, price: calls === 1 ? 3000 : 3100 }],
+        total: 2, next: calls === 1 ? '?page=2' : null });
+    } });
+  assert.equal(calls, 2);
+  const status = result.sources.find(({ id }) => id === feed.id);
+  assert.equal(status.status, 'failed');
+  assert.equal(status.updatedAt, at.toISOString());
+  assert.deepEqual(await storedFeed(env.BUCKET, feed), before);
+});
+
