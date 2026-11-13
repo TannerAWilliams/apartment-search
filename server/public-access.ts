@@ -8,6 +8,9 @@ export function createPublicRequestLimits(now = Date.now) {
       if (now() >= windowEnds) { windowEnds = now() + 60_000; requests = 0; }
       return ++requests <= 240;
     },
+    refreshRemainingSeconds(): number {
+      return Math.max(0, Math.ceil((refreshAfter - now()) / 1000));
+    },
     refreshRetrySeconds(): number {
       const remaining = Math.ceil((refreshAfter - now()) / 1000);
       if (remaining > 0) return remaining;

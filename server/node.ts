@@ -66,6 +66,7 @@ createServer(async (incoming, outgoing) => {
         if (retry) { outgoing.writeHead(429, { 'Content-Type': 'application/json', 'Retry-After': String(retry) }).end(JSON.stringify({ error: `Sources were just requested. Try again in ${retry} seconds.` })); return; }
       }
       const response = await handleApi(new Request(url.href, { method: incoming.method, headers: incoming.headers as Record<string, string>, body: bytes ? Buffer.concat(chunks) : undefined }), env);
+      if (publicApp && !bearer) outgoing.setHeader('X-Refresh-Retry-After', String(publicLimits.refreshRemainingSeconds()));
       outgoing.writeHead(response.status, Object.fromEntries(response.headers)).end(Buffer.from(await response.arrayBuffer())); return;
     }
     if (!['GET', 'HEAD'].includes(incoming.method)) { outgoing.writeHead(405).end(); return; }

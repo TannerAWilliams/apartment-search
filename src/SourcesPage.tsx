@@ -5,16 +5,16 @@ import { sourceRows, type SourceDefinition, type SourceStatus } from './source-s
 import { styles } from './styles.ts';
 import { Button } from './ui.tsx';
 const time = (value?: string) => value && Number.isFinite(Date.parse(value)) ? new Date(value).toLocaleString() : 'Never';
-export function SourcesPage({ catalog, refresh, refreshing, onResync }: { catalog: SourceDefinition[]; refresh: { sources: SourceStatus[]; checking?: boolean } | null; refreshing: boolean; onResync: (id?: string) => void }) {
+export function SourcesPage({ catalog, refresh, refreshing, cooldownSeconds = 0, onResync }: { catalog: SourceDefinition[]; refresh: { sources: SourceStatus[]; checking?: boolean } | null; refreshing: boolean; cooldownSeconds?: number; onResync: (id?: string) => void }) {
   const [now, setNow] = useState(Date.now);
   useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(timer); }, []);
   const rows = sourceRows(catalog, refresh?.sources ?? [], { ...MARKETPLACE_NAMES, settled: 'Settled.nyc' }, now);
-  const busy = refreshing;
+  const busy = refreshing || cooldownSeconds > 0;
   return <View style={styles.marketplacePanel}>
     <Text accessibilityRole="header" style={styles.panelTitle}>Sources</Text>
     <Text style={styles.bodyText}>Check every source, its last attempt, and the last successful saved data. Browse-only sites are not connected feeds. Refresh failures preserve the previous data, not its freshness.</Text>
     {refresh?.checking && !refreshing && <Text style={styles.smallMuted}>A source check may still be running. Resync checks its status without starting a duplicate job.</Text>}
-    <Button onPress={() => onResync()} disabled={!refresh || busy}>{busy ? 'Resync in progress…' : 'Resync all connected providers'}</Button>
+    <Button onPress={() => onResync()} disabled={!refresh || busy}>{refreshing ? 'Resync in progress…' : cooldownSeconds > 0 ? `Resync available in ${cooldownSeconds}s` : 'Resync all connected providers'}</Button>
     <Text style={styles.smallMuted}>Provider retry limits are respected. Some connected sources return limited samples, not their complete inventory.</Text>
     {rows.map((row) => <View key={row.id} style={styles.chartSource}>
       <Text accessibilityRole="header" style={styles.fieldLabel}>{row.name}</Text>
@@ -30,3 +30,4 @@ export function SourcesPage({ catalog, refresh, refreshing, onResync }: { catalo
     </View>)}
   </View>;
 }
+

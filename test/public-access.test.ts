@@ -19,3 +19,15 @@ test('public API budget is bounded independent of spoofed IP headers', () => {
   assert.equal(limits.allowApi(),false);
   time+=60_000; assert.equal(limits.allowApi(),true);
 });
+test('reading remaining cooldown never reserves or extends a refresh slot', () => {
+  let time = 1000; const limits = createPublicRequestLimits(() => time);
+  assert.equal(limits.refreshRemainingSeconds(), 0);
+  assert.equal(limits.refreshRemainingSeconds(), 0);
+  assert.equal(limits.refreshRetrySeconds(), 0);
+  time += 59_001;
+  assert.equal(limits.refreshRemainingSeconds(), 1);
+  assert.equal(limits.refreshRemainingSeconds(), 1);
+  time += 999;
+  assert.equal(limits.refreshRemainingSeconds(), 0);
+  assert.equal(limits.refreshRetrySeconds(), 0);
+});

@@ -55,9 +55,12 @@ async function api(path: string, { body, token, signal }: { body?: object; token
     body: body ? JSON.stringify(body) : undefined,
   });
   const data = await response.json();
+  const wait = Number(response.headers.get('X-Refresh-Retry-After') ?? (response.status === 429 ? response.headers.get('Retry-After') : 0));
+  const refreshRetryAt = Number.isFinite(wait) && wait > 0 ? Date.now() + wait * 1000 : 0;
+  data.refreshRetryAt = refreshRetryAt;
   if (!response.ok) {
     const error = Object.assign(new Error(data.error || 'Could not reach the apartment search server.'), {
-      status: response.status, commuteError: data.commuteError === true,
+      refreshRetryAt, status: response.status, commuteError: data.commuteError === true,
     });
     throw error;
   }
@@ -227,7 +230,7 @@ function sourceCheckText({ status, checkedAt, updatedAt, listingCount, pages, to
   return (error ?? 'Refresh unavailable') + next + saved;
 }
 
-function RentalSyncStatus({ refresh, refreshing, configuredSources, onRefresh, onStreetEasy }) {
+function RentalSyncStatus({ refresh, refreshing, cooldownSeconds, configuredSources, onRefresh, onStreetEasy }) {
   const [expanded, setExpanded] = useState(false);
   const sites = new Map(marketplaceLinks(NYC_SEARCH_MARKETS[0], DEFAULT_FILTERS).map(({ id, name }) => [id, name]));
   for (const { id, name } of [...NYC_COMPANIES, ...configuredSources]) sites.set(id, name);
@@ -257,10 +260,10 @@ function RentalSyncStatus({ refresh, refreshing, configuredSources, onRefresh, o
 
   return <View style={styles.chartSource}>
     <View style={styles.chipRow}>
-      <Button secondary onPress={onRefresh} disabled={!refresh || refreshing}>
+      <Button secondary onPress={onRefresh} disabled={!refresh || refreshing || cooldownSeconds > 0}>
         {refreshing ? 'Refreshing listings…' : 'Refresh listings'}
       </Button>
-      <Button secondary onPress={onStreetEasy} disabled={!refresh || refreshing}>Fetch all StreetEasy listings</Button>
+      <Button secondary onPress={onStreetEasy} disabled={!refresh || refreshing || cooldownSeconds > 0}>Fetch all StreetEasy listings</Button>
       <Button secondary onPress={() => setExpanded(!expanded)}>{expanded ? 'Hide sync status' : 'Show sync status'}</Button>
     </View>
     <Text style={styles.smallMuted}>StreetEasy: {streetEasy?.listingCount ?? 0} saved listings{streetEasy?.total != null ? ` from ${streetEasy.total} source records` : ''}. Full inventory is fetched before your search filters. Saved data appears immediately; a failed fetch does not replace it.</Text>
@@ -275,7 +278,7 @@ function RentalSyncStatus({ refresh, refreshing, configuredSources, onRefresh, o
   </View>;
 }
 
-function Marketplaces({ filters, sources, configuredSources, companies, onCompany, refresh, refreshing, onRefresh, onError }) {
+function Marketplaces({ filters, sources, configuredSources, companies, onCompany, refresh, refreshing, cooldownSeconds, onRefresh, onError }) {
   const markets = NYC_SEARCH_MARKETS.filter(({ label }) => filters.region === NYC_SEARCH_DEFAULT || label.toLowerCase() === filters.region);
   const [marketLabel, setMarketLabel] = useState('');
   const market = markets.find((item) => item.label === marketLabel) ??
@@ -299,7 +302,7 @@ function Marketplaces({ filters, sources, configuredSources, companies, onCompan
       {sampleNames.length > 0 && <Text style={styles.smallMuted}>{sampleNames.join(' · ')}</Text>}
       <Link label="FirstMover Open Data" url={SNAPSHOT_SOURCE} onError={onError} />
       <Text style={styles.smallMuted}>Settled.nyc · source access unverified.</Text>
-      {refresh && <Button secondary onPress={onRefresh} disabled={refreshing}>
+      {refresh && <Button secondary onPress={onRefresh} disabled={refreshing || cooldownSeconds > 0}>
         {refreshing ? 'Checking sources…' : 'Refresh listings now'}
       </Button>}
       <Text style={styles.smallMuted}>The app checks available feeds once per session. If a provider limits requests, its next check waits until the retry time.</Text>
@@ -436,6 +439,16 @@ function ApartmentSearch() {
   const [sourceCatalog, setSourceCatalog] = useState([]);
   const [refresh, setRefresh] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [refreshRetryAt, setRefreshRetryAt] = useState(0);
+  const refreshRetryAtRef = useRef(0);
+  refreshRetryAtRef.current = refreshRetryAt;
+  const [refreshClock, setRefreshClock] = useState(Date.now);
+  const cooldownSeconds = Math.max(0, Math.ceil((refreshRetryAt - refreshClock) / 1000));
+  useEffect(() => {
+    if (!refreshRetryAt) return;
+    const timer = setInterval(() => setRefreshClock(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [refreshRetryAt]);
   const [refreshError, setRefreshError] = useState('');
   const browserImportAllowed = useRef(false);
   const checking = useRef(null);
@@ -496,17 +509,22 @@ function ApartmentSearch() {
     setCommuteConfigured(config.commuteConfigured === true);
     setCompanies(config.companies ?? {});
     setRefresh(config.refresh ?? null);
+    setRefreshClock(Date.now());
+    setRefreshRetryAt(config.refreshRetryAt ?? 0);
     browserImportAllowed.current = config.browserImportAllowed === true;
   }, []);
 
   const checkSources = useCallback(async (sessionStart = false, source: string | null = null) => {
     const signal = sourceSession.current;
     if (!signal || signal.aborted || checking.current === signal) return;
+    if (Date.now() < refreshRetryAtRef.current) return;
     checking.current = signal;
     setRefreshing(true);
     setRefreshError('');
     try {
       const request = await api('refresh', { body: { check: 'now', sessionStart, ...(source ? { source } : {}) }, token: activeToken, signal });
+      setRefreshClock(Date.now());
+      setRefreshRetryAt(request.refreshRetryAt ?? 0);
       const check = await finishSourceCheck(request, activeToken, signal);
       if (signal?.aborted) return;
       const failedExports = source ? [] : retryablePublicSources(check);
@@ -540,6 +558,7 @@ function ApartmentSearch() {
         setResult(fresh);
       }
     } catch (failure) {
+      if (failure.refreshRetryAt) { setRefreshClock(Date.now()); setRefreshRetryAt(failure.refreshRetryAt); }
       if (!signal?.aborted) setRefreshError(failure.message || 'The listing sources could not be checked.');
     } finally {
       if (checking.current === signal) {
@@ -717,6 +736,7 @@ function ApartmentSearch() {
           connect={() => setActiveToken(token.trim())} />}
         <View style={styles.results}>
             {error !== '' && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
+            {cooldownSeconds > 0 && !refreshing && <Text accessibilityLiveRegion="polite" style={styles.smallMuted}>Resync available in {cooldownSeconds} seconds. No request will be sent until then.</Text>}
             {refreshing && <Text accessibilityLiveRegion="polite" style={styles.smallMuted}>Checking rental sources…</Text>}
             {!refreshing && failedSources.length > 0 && <Text style={styles.noticeLine}>
               {failedSources.length} {failedSources.length === 1 ? 'source is' : 'sources are'} temporarily unavailable. See Sources for details.
@@ -735,7 +755,7 @@ function ApartmentSearch() {
                 </View>}
               </View>
               {scope === 'market' && <WebsiteFilter result={result} applied={applied} onSelect={selectSource} onError={setError} />}
-              {scope === 'market' && <RentalSyncStatus refresh={refresh} refreshing={refreshing}
+              {scope === 'market' && <RentalSyncStatus refresh={refresh} refreshing={refreshing} cooldownSeconds={cooldownSeconds}
                 onStreetEasy={() => checkSources(false, 'streeteasy-live')}
                 configuredSources={configuredSources} onRefresh={() => checkSources()} />}
               </View>
@@ -771,9 +791,9 @@ function ApartmentSearch() {
             </>}
             {tab === 'chart' && <RentChart initialRegion={applied.region} saved={saved} showSaved={showSaved} onError={setError}
               loadMarket={serverState === 'ready' ? loadMarket : undefined} />}
-            {tab === 'sources' && <SourcesPage catalog={sourceCatalog} refresh={refresh} refreshing={refreshing} onResync={(id) => checkSources(false, id ?? null)} />}
+            {tab === 'sources' && <SourcesPage catalog={sourceCatalog} refresh={refresh} refreshing={refreshing} cooldownSeconds={cooldownSeconds} onResync={(id) => checkSources(false, id ?? null)} />}
             {tab === 'marketplaces' && <Marketplaces filters={applied} sources={result.sources}
-              configuredSources={configuredSources} companies={companies} onCompany={searchCompany} refresh={refresh} refreshing={refreshing}
+              configuredSources={configuredSources} companies={companies} onCompany={searchCompany} refresh={refresh} refreshing={refreshing} cooldownSeconds={cooldownSeconds}
               onRefresh={() => checkSources()} onError={setError} />}
             {tab === 'affordable' && <AffordableHousing region={applied.region}
               loadHousing={serverState === 'ready' ? loadHousing : undefined} onError={setError} />}

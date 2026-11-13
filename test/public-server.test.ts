@@ -17,5 +17,7 @@ test('public server opens browsing but blocks cross-origin writes and anonymous 
   // Invalid source exercises the accepted path without fetching any upstream provider.
   assert.equal((await post({check:'now',source:'nonexistent'})).status,422);
   const retry=await post({check:'now',source:'nonexistent'}); assert.equal(retry.status,429); assert.ok(Number(retry.headers.get('retry-after'))>0);
+  const after=await fetch(origin+'/api/config'); assert.equal(after.status,200); assert.ok(Number(after.headers.get('x-refresh-retry-after'))>0);
+  assert.ok(Number(after.headers.get('x-refresh-retry-after'))<=60);
  } finally { child.kill(); await once(child,'exit'); }
 });
