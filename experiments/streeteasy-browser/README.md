@@ -81,3 +81,26 @@ no secret headers, tokens or page content are intentionally logged.
 document and no recognized challenge; the API may still independently deny access.
 Completeness must be proven through all partitions, unique counts and persisted
 records using the real app button. None of those end-to-end gates has passed here.
+
+## Hosted memory-offload qualification (not deployed)
+
+An optional `BROWSERLESS_TOKEN` enables the fixed Browserless native Playwright
+endpoint, using compatible client 1.64.1. It is **memory offload only**: the bounded
+transport still executes in the Node host, not Browserless provider egress.
+Remote startup validates configuration without opening a session or using units.
+Explicit operations have a 110-second deadline, no automatic reconnect/fallback,
+and sanitized connection/cleanup failures. Token belongs only in a secret store.
+Run the provider-free fixture explicitly to qualify the hosted connection; do not
+put it in remote-mode startup. Health alone means configured, not qualified.
+
+The owner subsequently reported Render's explicit 'exceeded its memory limit'
+notification for apartment-browser-gateway. This confirms a gateway memory-limit
+event, without assigning that cause to every independent restart above.
+
+Hosted controllers additionally gate live endpoints on one explicit authenticated
+`POST /browser/qualify` per process. It runs the synthetic fixture with a 110-second
+child deadline. Startup/health never trigger it. Failure stays failed; success
+allows existing guarded requests. Restart loses qualification and requires an
+explicit new test. The free 1,000-unit allowance is finite; do not schedule this
+endpoint. Native WebSocket tests in the current local workspace failed DNS
+`EAI_AGAIN` before a session; HTTPS reachability alone does not qualify them.

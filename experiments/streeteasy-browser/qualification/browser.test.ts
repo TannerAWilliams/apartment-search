@@ -2,12 +2,22 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { chromium, type Browser } from 'playwright';
 import { BROWSER_VIEWPORT, browserLaunchOptions, performBrowserAction } from '../server/playwright-session.ts';
+import { connectRemoteBrowser, REMOTE_BROWSER_TIMEOUT_MS } from '../server/remote-browser.ts';
 import { BrowserNetworkGuard } from '../server/browser-network.ts';
 
 // Real Chromium, synthetic intercepted responses only. Never contact a provider.
 let browser: Browser;
-before(async () => { browser = await chromium.launch(browserLaunchOptions()); });
-after(async () => { await browser?.close(); });
+let deadline: ReturnType<typeof setTimeout> | undefined;
+before(async () => {
+  const token = process.env.BROWSERLESS_TOKEN;
+  if (!token) { browser = await chromium.launch(browserLaunchOptions()); return; }
+  let expired = false;
+  deadline = setTimeout(() => { expired = true; void browser?.close().catch(() => undefined); }, REMOTE_BROWSER_TIMEOUT_MS);
+  deadline.unref();
+  browser = await connectRemoteBrowser(token, (url, options) => chromium.connect(url, options));
+  if (expired) { await browser.close().catch(() => undefined); throw new Error('Remote fixture deadline expired'); }
+});
+after(async () => { if (deadline) clearTimeout(deadline); await browser?.close().catch(() => undefined); });
 
 test('same browser context preserves HttpOnly cookies across cross-origin API fetch', async () => {
   const context = await browser.newContext({ serviceWorkers: 'block', viewport: BROWSER_VIEWPORT });
@@ -40,7 +50,7 @@ test('same browser context preserves HttpOnly cookies across cross-origin API fe
     await performBrowserAction(page, {type:'hold',x:100,y:100,durationMs:100});
     assert.equal(await page.evaluate(() => document.body.dataset.hold), 'down-up');
     console.log('fixture bounded hold and release passed');
-  } finally { guard.close(); await context.close(); }
+  } finally { guard.close(); await context.close().catch(() => { throw new Error("Fixture context cleanup failed"); }); }
 });
 
 test('real browser cannot follow redirect or navigate to unapproved target', async () => {
@@ -53,5 +63,5 @@ test('real browser cannot follow redirect or navigate to unapproved target', asy
     assert.equal(response?.status(), 502); assert.deepEqual(contacted, ['https://streeteasy.com/redirect-fixture']);
     await assert.rejects(page.goto('https://not-allowed.invalid/private'));
     assert.deepEqual(contacted, ['https://streeteasy.com/redirect-fixture']);
-  } finally { guard.close(); await context.close(); }
+  } finally { guard.close(); await context.close().catch(() => { throw new Error("Fixture context cleanup failed"); }); }
 });

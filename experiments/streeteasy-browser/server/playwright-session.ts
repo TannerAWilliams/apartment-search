@@ -4,6 +4,7 @@ import type { BrowserAction, BrowserDriver } from './browser-session.ts';
 const MAX_RESPONSE = 8 * 1024 * 1024;
 export const BROWSER_VIEWPORT = { width: 800, height: 600 };
 export const browserLaunchOptions = () => ({ headless: true, chromiumSandbox: true, executablePath: process.env.CHROMIUM_EXECUTABLE_PATH || undefined, args: ['--js-flags=--max-old-space-size=64'] });
+import { connectRemoteBrowser, remoteBrowserEndpoint, REMOTE_BROWSER_TIMEOUT_MS } from './remote-browser.ts';
 import { BrowserNetworkGuard } from './browser-network.ts';
 export { allowedBrowserUrl } from './browser-network.ts';
 export function blockedDocument(status: number | undefined): boolean { return status === undefined || status < 200 || status >= 300; }
@@ -13,6 +14,7 @@ export function recheckDeadline(retryAfter: string | undefined, now: number): nu
 }
 export class PlaywrightDriver implements BrowserDriver {
   private browser?: Browser;
+  private expiry?: ReturnType<typeof setTimeout>;
   private context?: BrowserContext;
   private page?: Page;
   private requestCount = 0;
@@ -24,8 +26,18 @@ export class PlaywrightDriver implements BrowserDriver {
   async start() {
     // Deliberately retain Chromium sandbox. Never add --no-sandbox or stealth flags.
     this.check();
-    const browser = await chromium.launch(browserLaunchOptions());
-    if (this.stopped) { await browser.close(); this.check(); }
+    const remoteToken = process.env.BROWSERLESS_TOKEN;
+    if (remoteToken) {
+      this.expiry = setTimeout(() => { void this.close(); }, REMOTE_BROWSER_TIMEOUT_MS);
+      this.expiry.unref();
+    }
+    let browser: Browser;
+    try {
+      browser = remoteToken
+        ? await connectRemoteBrowser(remoteToken, (url, options) => chromium.connect(url, options))
+        : await chromium.launch(browserLaunchOptions());
+    } catch { await this.close(); throw new Error('Browser startup failed'); }
+    if (this.stopped) { await browser.close().catch(() => undefined); this.check(); }
     this.browser = browser;
     browser.on('disconnected', () => { if (!this.stopped) console.warn('Unexpected browser disconnect'); });
     this.context = await browser.newContext({ viewport: BROWSER_VIEWPORT, acceptDownloads: false, serviceWorkers: 'block' });
@@ -92,12 +104,14 @@ export class PlaywrightDriver implements BrowserDriver {
     if (!this.page) throw new Error('Browser unavailable');
     await performBrowserAction(this.page, action);
   }
-  async close() { this.stopped = true; this.network.close(); await this.browser?.close(); this.browser = undefined; this.context = undefined; this.page = undefined; }
+  async close() { this.stopped = true; if (this.expiry) clearTimeout(this.expiry); this.network.close(); const browser = this.browser; this.browser = undefined; this.context = undefined; this.page = undefined; await browser?.close().catch(() => undefined); }
 }
 
 
 /** Provider-free runtime preflight. Failure prevents a healthy listening service. */
 export async function verifyBrowserRuntime(): Promise<void> {
+  // Hosted health is configuration-only: never consume units during boot/restart.
+  if (process.env.BROWSERLESS_TOKEN) { remoteBrowserEndpoint(process.env.BROWSERLESS_TOKEN); return; }
   const browser = await chromium.launch(browserLaunchOptions());
   await browser.close();
 }

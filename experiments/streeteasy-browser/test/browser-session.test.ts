@@ -63,3 +63,13 @@ test('owner hold actions are bounded coordinates and finite duration', () => {
   for (const durationMs of [0,99,10001,Infinity,NaN,'5000']) assert.equal(isBrowserAction({type:'hold',x:400,y:355,durationMs}),false);
   assert.equal(isBrowserAction({type:'hold',x:800,y:355,durationMs:5000}),false);
 });
+
+test('short hosted lifetime becomes terminal and cleanup redacts driver rejection', async () => {
+  const driver: BrowserDriver = {start:async()=>{},recheck:async()=>{},hasChallenge:async()=>true,fetch:async()=>({status:200,body:'{}',contentType:'application/json'}),screenshot:async()=>new Uint8Array(),action:async()=>{},close:async()=>{throw new Error('synthetic-secret-vendor-url');}};
+  const session = new BrowserSession(async()=>driver, 10);
+  assert.equal((await session.request({source:'streeteasy',page:1})).status,403);
+  await new Promise(resolve=>setTimeout(resolve,30));
+  assert.equal(session.state,'closed');
+  await assert.doesNotReject(session.close());
+  assert.equal((await session.request({source:'streeteasy',page:1})).status,503);
+});

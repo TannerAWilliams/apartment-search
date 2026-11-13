@@ -1,11 +1,23 @@
+import { fileURLToPath } from 'node:url';
+import { spawn } from 'node:child_process';
+import { qualificationGate } from './qualification-gate.ts';
 import { createServer } from 'node:http';
 import { Readable } from 'node:stream';
 import { BrowserSession } from './browser-session.ts';
 import { browserGateway } from './browser-gateway.ts';
 import { PlaywrightDriver, verifyBrowserRuntime } from './playwright-session.ts';
 const token = process.env.LISTING_RELAY_TOKEN || '';
-const session = new BrowserSession(async () => new PlaywrightDriver());
-const handler = browserGateway(token, session);
+const session = new BrowserSession(async () => new PlaywrightDriver(), process.env.BROWSERLESS_TOKEN ? 110000 : 600000);
+const baseHandler = browserGateway(token, session);
+let stopQualification: (() => void) | undefined;
+const qualify = () => new Promise<boolean>(resolve => {
+  const child = spawn(process.execPath, ['--experimental-strip-types','--test','--test-isolation=none',fileURLToPath(new URL('../qualification/browser.test.ts',import.meta.url))], {stdio:'ignore',env:process.env});
+  stopQualification = () => { child.kill('SIGKILL'); resolve(false); };
+  const deadline = setTimeout(() => { stopQualification?.(); }, 110000);
+  child.once('error', () => { clearTimeout(deadline); stopQualification=undefined; resolve(false); });
+  child.once('exit', code => { clearTimeout(deadline); stopQualification=undefined; resolve(code === 0); });
+});
+const handler = process.env.BROWSERLESS_TOKEN ? qualificationGate(token, qualify, baseHandler) : baseHandler;
 const memoryMonitor = setInterval(() => {
   if (session.state === 'idle' || session.state === 'closed') return;
   const { rss, heapUsed, external } = process.memoryUsage();
@@ -14,7 +26,7 @@ const memoryMonitor = setInterval(() => {
 memoryMonitor.unref();
 const server = createServer(async (incoming, outgoing) => {
   const abort = new AbortController();
-  const deadline = setTimeout(() => { abort.abort(); incoming.destroy(); }, 45000);
+  const deadline = setTimeout(() => { abort.abort(); incoming.destroy(); }, incoming.url === '/browser/qualify' ? 115000 : 45000);
   outgoing.on('close', () => { if (!outgoing.writableEnded) abort.abort(); });
   incoming.on('aborted', () => abort.abort());
   try {
@@ -33,5 +45,5 @@ const server = createServer(async (incoming, outgoing) => {
 server.headersTimeout = 10000; server.requestTimeout = 45000;
 await verifyBrowserRuntime();
 server.listen(Number(process.env.PORT || 10000), '0.0.0.0');
-process.on('SIGTERM', () => { const stop = setTimeout(() => process.exit(1), 5000); stop.unref(); void session.close(); server.close(() => process.exit(0)); });
+process.on('SIGTERM', () => { stopQualification?.(); const stop = setTimeout(() => process.exit(1), 5000); stop.unref(); void session.close(); server.close(() => process.exit(0)); });
 

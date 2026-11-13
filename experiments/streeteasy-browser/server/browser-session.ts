@@ -20,7 +20,8 @@ export class BrowserSession {
   private expires?: ReturnType<typeof setTimeout>;
   private readonly factory: () => Promise<BrowserDriver>;
   get state(): BrowserState { return this.disposed ? 'closed' : this.current; }
-  constructor(factory: () => Promise<BrowserDriver>) { this.factory = factory; }
+  private readonly lifetimeMs: number;
+  constructor(factory: () => Promise<BrowserDriver>, lifetimeMs = 10 * 60 * 1000) { this.factory = factory; this.lifetimeMs = lifetimeMs; }
   private check(signal?: AbortSignal) {
     if (this.disposed) throw new Error('Browser session closed');
     if (signal?.aborted) throw new Error('Browser request canceled');
@@ -40,10 +41,10 @@ export class BrowserSession {
       const driver = await this.factory();
       if (this.disposed || signal?.aborted) { await driver.close(); this.check(signal); }
       this.driver = driver;
+      this.expires = setTimeout(() => { void this.close().catch(() => undefined); }, this.lifetimeMs);
+      this.expires.unref();
       try { await driver.start(); this.check(signal); }
       catch (error) { await driver.close(); throw error; }
-      this.expires = setTimeout(() => { void this.close(); }, 10 * 60 * 1000);
-      this.expires.unref();
       this.current = 'ready';
     }
   }
@@ -96,7 +97,7 @@ export class BrowserSession {
     this.disposed = true;
     clearTimeout(this.expires);
     const driver = this.driver; this.driver = undefined;
-    if (driver) await driver.close();
+    if (driver) await driver.close().catch(() => undefined);
   }
 }
 export function isBrowserAction(value: unknown): value is BrowserAction {
