@@ -233,7 +233,7 @@ export async function handleApi(request, env, { requireToken = false, fetcher = 
       if (body?.check === 'now') {
         if (body.source !== undefined && !refreshCatalog(env).some((source) => source.id === body.source && source.resyncable)) return json({ error: 'Unknown or disconnected refresh source.' }, 422);
         if (!body.source || ['streeteasy-live', 'hotpads-live'].includes(body.source)) await prepareListingSources?.();
-        const work = refreshSources(env, { fetcher, onDemand: true, skipStreetEasy: body.sessionStart === true && !body.source, sourceId: body.source, forceRefresh: body.sessionStart !== true });
+        const work = refreshSources(env, { fetcher, onDemand: true, skipStreetEasy: body.sessionStart === true && !body.source && env.TEMPORARY_CACHE !== 'true', sourceId: body.source, forceRefresh: body.sessionStart !== true });
         waitUntil?.(work.catch(() => {}));
         return json(await work);
       }
@@ -258,3 +258,4 @@ export async function handleApi(request, env, { requireToken = false, fetcher = 
     return json({ error: 'The address or listing feed could not be reached. Try again or use a workplace preset.' }, 502);
   }
 }
+

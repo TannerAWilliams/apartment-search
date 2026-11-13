@@ -142,3 +142,29 @@ The first refresh may take an extra minute. Normal source cooldowns and inventor
 completeness checks still apply; a failed source never replaces its previous data.
 This is not a guarantee of permanent provider access or exhaustive coverage for
 sources other than the count-reconciled StreetEasy API. No scheduled job is added.
+
+
+
+## Full app on Render Free
+
+The Node entrypoint can serve the complete web UI and API with a temporary,
+single-process listing cache. Build with `npm ci && npm run build:web`, then run
+`node --experimental-strip-types server/node.ts` with `HOST=0.0.0.0` and a random
+`APP_ACCESS_TOKEN` of at least 32 characters in Render's secret environment.
+Render supplies `PORT` and `RENDER_EXTERNAL_URL`. Do not put the access password
+in source, URLs or logs. Reveal it from your own Render Environment dashboard to
+sign into the private form; the browser receives a Secure, HttpOnly, SameSite
+session cookie. `/health` reveals only liveness; listings and assets require auth.
+POST `/logout` clears the session cookie; rotating the access password invalidates
+all sessions.
+
+**Temporary means temporary:** cached listings, refresh timestamps and rent
+chart refreshes reset on service restart, redeployment or free-service sleep.
+Saved apartments remain device-local. The first homepage load attempts source
+refreshes; failed providers are reported rather than fabricated. Render does not
+remove provider CAPTCHAs or guarantee StreetEasy/HotPads access. The previous
+Sites deployment and its saved data are not deleted by this deployment.
+
+Render Free can sleep after 15 idle minutes and take about a minute to wake.
+The free instance-hours and build/bandwidth quotas are workspace-wide. No paid
+database, persistent disk or paid worker is provisioned by this app.
