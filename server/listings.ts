@@ -99,6 +99,10 @@ export async function loadFeed(feed, fetcher) {
       }
       reportedTotal = body.total;
     }
+    // Stop immediately once complete coverage is impossible; do not fetch more pages.
+    if (reportedTotal !== undefined && rowCount > reportedTotal) {
+      throw new IncompleteFeedError('Inventory count exceeded its reported total');
+    }
     for (const row of rows) {
       const listing = normalizeListing(row, feed);
       if (listing) {
@@ -119,5 +123,6 @@ export async function loadFeed(feed, fetcher) {
   if (reportedTotal !== undefined && rowCount !== reportedTotal) throw new IncompleteFeedError('Inventory count did not match');
   return { listings, pages: visited.size };
 }
+
 
 
