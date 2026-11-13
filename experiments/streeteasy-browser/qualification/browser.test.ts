@@ -18,7 +18,7 @@ test('same browser context preserves HttpOnly cookies across cross-origin API fe
       observed = true;
       return new Response('{"fixture":true}', { headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': 'https://streeteasy.com', 'Access-Control-Allow-Credentials': 'true' } });
     }
-    return new Response('<!doctype html><title>Fixture only</title>', { headers: { 'Content-Type': 'text/html', 'Set-Cookie': 'fixture=only; Domain=.streeteasy.com; Secure; HttpOnly; SameSite=None' } });
+    return new Response('<!doctype html><title>Fixture only</title>', { headers: { 'Content-Type': 'text/html', 'Set-Cookie': 'fixture=only; Domain=.streeteasy.com; Path=/; Secure; HttpOnly; SameSite=None' } });
   });
   await context.route('**/*', route => guard.route(route));
   await context.routeWebSocket('**/*', socket => socket.close());
