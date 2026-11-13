@@ -17,7 +17,7 @@ export async function runNativeFixtureBasics(token:string,signal:AbortSignal):Pr
   await new Promise<void>((ok,no)=>{const timer=setTimeout(()=>no(Error('open timeout')),15000);const finish=(pass:boolean)=>{clearTimeout(timer);pass?ok():no(Error('open failed'));};socket.addEventListener('open',()=>finish(true),{once:true});socket.addEventListener('error',()=>finish(false),{once:true});socket.addEventListener('close',()=>finish(false),{once:true});});
   controller=new NativeFixtureController(socket,{ownedDisposableBrowser:true,origins:['https://apartment-native-fixture-a.onrender.com','https://apartment-native-fixture-b.onrender.com']});
   await controller.start();checks.push({name:'bootstrap',passed:true});
-  const cases=[['health','/health','fixture-only'],['cookie-set','/cookie','cookie-set'],['cookie-persisted','/cookie/check','{"present":true}'],['gzip-decoded','/gzip','native-fixture-decoded-body\n'.repeat(128).trimEnd()],['br-decoded','/br','native-fixture-decoded-body\n'.repeat(128).trimEnd()]];
+  const cases=[['health','/health','fixture-only'],['cookie-set','/cookie','cookie-set'],['cookie-persisted','/cookie/check','{"present":true}'],['cors','/harness/cors','cors-fixture'],['gzip-decoded','/gzip','native-fixture-decoded-body\n'.repeat(128).trimEnd()],['br-decoded','/br','native-fixture-decoded-body\n'.repeat(128).trimEnd()]];
   for(const [name,path,expected] of cases){
    if(timedOut)throw Error('deadline');
    await controller.navigate('https://apartment-native-fixture-a.onrender.com'+path);
@@ -28,7 +28,7 @@ export async function runNativeFixtureBasics(token:string,signal:AbortSignal):Pr
  } catch {checks.push({name:'execution',passed:false});}
  finally {if(controller)try{await controller.close()}catch{}else socket.close();clearTimeout(deadline);signal.removeEventListener('abort',cancel);}
  const termination=controller?.terminationState||'unconfirmed';
- return {status:checks.length===6&&checks.every(c=>c.passed)&&termination==='acknowledged'?'passed':'failed',checks,termination,completeQualification:false};
+ return {status:checks.length===7&&checks.every(c=>c.passed)&&termination==='acknowledged'?'passed':'failed',checks,termination,completeQualification:false};
 }
 /** Authenticated, once-per-process explicit trigger. Never starts from health/read. */
 export function nativeQualificationGate(controlToken:string,run:(signal:AbortSignal)=>Promise<NativeResult>,idle:()=>boolean,path='/native/qualification'){
@@ -51,7 +51,7 @@ export function nativeQualificationGate(controlToken:string,run:(signal:AbortSig
 /** Destination counters are inspected separately; this reports exercise/cleanup only. */
 export async function runNativeFixtureContainment(token:string,signal:AbortSignal):Promise<NativeResult>{
  const checks:Array<{name:string;passed:boolean;evidence?:Record<string,number|boolean>}>=[];let termination='not-requested';
- for(const [name,path] of [['redirect','/redirect'],['forbidden-iframe','/harness/iframe'],['worker','/harness/worker'],['websocket','/harness/websocket'],['overflow','/overflow']]){
+ for(const [name,path] of [['redirect','/redirect'],['forbidden-iframe','/harness/iframe'],['worker','/harness/worker'],['websocket','/harness/websocket'],['overflow','/overflow'],['inherited-websocket','/harness/inherited-websocket'],['popup','/harness/popup']]){
   if(signal.aborted)break;
   const socket=new WebSocket(nativeBrowserEndpoint(token));let controller:NativeFixtureController|undefined;let opened=false;let navigationAttempted=false;
   const cancel=()=>{if(controller)void controller.close().catch(()=>{}).finally(()=>socket.close());else socket.close()};
@@ -63,14 +63,15 @@ export async function runNativeFixtureContainment(token:string,signal:AbortSigna
    controller=new NativeFixtureController(socket,{ownedDisposableBrowser:true,origins:['https://apartment-native-fixture-a.onrender.com','https://qualification-unused.invalid']});
    await controller.start();navigationAttempted=true;
    try{await controller.navigate('https://apartment-native-fixture-a.onrender.com'+path)}catch{/* Navigation rejection is expected for denied/oversized responses. */}
+   if(name==='popup'){let ready=false;for(let n=0;n<30;n++){const doc=await controller.documentSnapshot();if(doc.url==='https://apartment-native-fixture-a.onrender.com/harness/popup'&&doc.readyState!=='loading'){ready=true;break;}await new Promise(r=>setTimeout(r,100));}if(!ready)throw Error('Popup fixture not ready');await controller.clickFixtureButton();}
    await new Promise(r=>setTimeout(r,1000));
   }catch{/* Never return endpoint/token-bearing errors. */}
   finally{if(controller)try{await controller.close()}catch{}else socket.close();clearTimeout(deadline);signal.removeEventListener('abort',cancel)}
   termination=controller?.terminationState||'unconfirmed';
   const evidence=controller?.observations;
-  const faultObserved=!!evidence&&({redirect:evidence.redirectResponses>0,'forbidden-iframe':evidence.deniedOriginRequests>0,worker:evidence.workerTargets>0,websocket:evidence.webSocketCspBlocked>0,overflow:evidence.resourceOverflow} as Record<string,boolean>)[name];
+  const faultObserved=!!evidence&&({redirect:evidence.redirectResponses>0,'forbidden-iframe':evidence.deniedOriginRequests>0,worker:evidence.workerTargets>0,websocket:evidence.webSocketCspBlocked>0,overflow:evidence.resourceOverflow,'inherited-websocket':evidence.wsCspSrcdoc&&evidence.wsCspBlank&&evidence.wsCspBlob&&evidence.wsCspData,popup:evidence.popupTargets>0} as Record<string,boolean>)[name];
   const passed=faultObserved&&opened&&navigationAttempted&&termination==='acknowledged'&&controller?.pendingLocalWork.active===0&&controller.pendingLocalWork.queued===0;
   checks.push({name:name+'-exercised-and-cleaned',passed,evidence:controller?.observations});if(!passed)break;
  }
- return {status:checks.length===5&&checks.every(c=>c.passed)?'passed':'failed',checks,termination,completeQualification:false};
+ return {status:checks.length===7&&checks.every(c=>c.passed)?'passed':'failed',checks,termination,completeQualification:false};
 }

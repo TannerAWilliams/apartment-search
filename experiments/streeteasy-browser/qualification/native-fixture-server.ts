@@ -11,7 +11,7 @@ type HeaderMap = Record<string, string | string[]>;
 export interface FixtureRequest { method: string; path: string; headers: Record<string, string | string[] | undefined> }
 export interface FixtureResponse { status: number; headers: HeaderMap; body: Buffer | AsyncIterable<Buffer> }
 export interface FixtureConfig { origin: string; peerOrigin: string; controlToken: string }
-const keys = ['cookie', 'cors', 'gzip', 'br', 'overflow', 'redirect', 'redirectDestination', 'iframeDestination', 'workerDestination', 'websocketAttempt'] as const;
+const keys = ['cookie', 'cors', 'gzip', 'br', 'overflow', 'redirect', 'redirectDestination', 'iframeDestination', 'workerDestination', 'websocketAttempt', 'popupDestination','websocketSrcdoc','websocketBlank','websocketBlob','websocketData'] as const;
 type Counter = typeof keys[number];
 const text = (value: string) => Buffer.from(value);
 const payload = text('native-fixture-decoded-body\n'.repeat(128));
@@ -59,6 +59,15 @@ export function createNativeFixture(config: FixtureConfig) {
    case '/destination/nested-iframe': hit('iframeDestination'); return reply(200, text('<!doctype html><p>nested iframe destination</p>'), {'Content-Type':'text/html; charset=utf-8'});
    case '/destination/worker': hit('workerDestination'); return reply(200, text('worker-destination'));
    case '/worker.js': return reply(200, text(`fetch(${JSON.stringify(fixed.peerOrigin + '/destination/worker')}).catch(()=>{});`), {'Content-Type':'application/javascript'});
+   case '/destination/popup': hit('popupDestination'); return reply(200,text('popup destination'));
+   case '/harness/popup': return reply(200,text(`<!doctype html><title>Popup fixture</title><button>Open controlled popup</button><script>document.querySelector('button').onclick=()=>window.open(${JSON.stringify(fixed.peerOrigin+'/destination/popup')});</script>`),{'Content-Type':'text/html; charset=utf-8'});
+   case '/harness/cors': return reply(200,text(`<!doctype html><p>pending-cors</p><script>fetch(${JSON.stringify(fixed.peerOrigin+'/cors')},{credentials:'include'}).then(r=>r.text()).then(t=>document.body.textContent=t).catch(()=>document.body.textContent='cors-failed');</script>`),{'Content-Type':'text/html; charset=utf-8'});
+   case '/harness/inherited-websocket': {
+    const snippets=['srcdoc','blank','blob','data'].map(name=>'<script>try{new WebSocket('+JSON.stringify(fixed.peerOrigin.replace('https:','wss:')+'/destination/websocket/'+name)+')}catch{}<'+ '/script>');
+    const encoded=JSON.stringify(snippets).replaceAll('<','\\u003c');
+    const html=`<!doctype html><title>Inherited policy fixture</title><body><script>const html=${encoded};const a=document.createElement('iframe');a.srcdoc=html[0];document.body.append(a);const b=document.createElement('iframe');document.body.append(b);b.contentDocument.write(html[1]);b.contentDocument.close();const c=document.createElement('iframe');c.src=URL.createObjectURL(new Blob([html[2]],{type:'text/html'}));document.body.append(c);const d=document.createElement('iframe');d.src='data:text/html,'+encodeURIComponent(html[3]);document.body.append(d);</script>`;
+    return reply(200,text(html),{'Content-Type':'text/html; charset=utf-8'});
+   }
    case '/harness/iframe': return reply(200, text(`<!doctype html><title>Iframe fixture</title><iframe src="${fixed.peerOrigin}/destination/iframe"></iframe>`), {'Content-Type':'text/html; charset=utf-8'});
    case '/harness/worker': return reply(200, text(`<!doctype html><title>Worker fixture</title><script>new Worker('/worker.js');</script>`), {'Content-Type':'text/html; charset=utf-8'});
    case '/harness/websocket': return reply(200, text(`<!doctype html><title>WebSocket fixture</title><script>const ws = new WebSocket(${JSON.stringify(fixed.peerOrigin.replace('https:', 'wss:') + '/destination/websocket')}); ws.onerror=()=>{};</script>`), {'Content-Type':'text/html; charset=utf-8'});
@@ -96,7 +105,7 @@ export function createNativeFixture(config: FixtureConfig) {
  });
  // Count actual Upgrade arrival then reject; never accept a socket or echo credentials.
  server.on('upgrade', (req, socket) => {
-  if (req.method === 'GET' && req.url === '/destination/websocket') hit('websocketAttempt');
+  if (req.method === 'GET') {const key=({'/destination/websocket':'websocketAttempt','/destination/websocket/srcdoc':'websocketSrcdoc','/destination/websocket/blank':'websocketBlank','/destination/websocket/blob':'websocketBlob','/destination/websocket/data':'websocketData'} as const)[req.url as '/destination/websocket'];if(key)hit(key);}
   socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Length: 0\r\n\r\n');
  });
  server.maxConnections = 8;

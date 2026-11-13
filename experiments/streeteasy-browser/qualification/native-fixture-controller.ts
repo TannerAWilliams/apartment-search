@@ -10,7 +10,7 @@ import { NativeHttpGuard, type NativeHttpTransport } from '../server/native-http
 import { NativeTargetBarrier } from '../server/native-target-barrier.ts';
 const record=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v);
 const identity=(v:unknown):v is string=>typeof v==='string'&&v.length>0&&v.length<=1024&&!/[\x00-\x1f\x7f]/.test(v);
-const paths=new Set(['/health','/cookie','/cookie/check','/cors','/gzip','/br','/overflow','/redirect','/destination/redirect','/destination/iframe','/destination/nested-iframe','/destination/worker','/worker.js','/harness/iframe','/harness/worker','/harness/websocket']);
+const paths=new Set(['/health','/cookie','/cookie/check','/cors','/gzip','/br','/overflow','/redirect','/destination/redirect','/destination/iframe','/destination/nested-iframe','/destination/worker','/worker.js','/harness/iframe','/harness/worker','/harness/websocket','/harness/inherited-websocket','/harness/popup','/destination/popup','/harness/cors']);
 export class NativeFixtureController {
   private connection: NativeCdpConnection;
   private guard: NativeHttpGuard;
@@ -27,7 +27,7 @@ export class NativeFixtureController {
   private closeState:'not-requested'|'closing'|'acknowledged'|'unconfirmed'='not-requested';
   private pendingEvents=0;
   private requests=0;
-  private evidence={requestEvents:0,deniedOriginRequests:0,workerTargets:0,webSocketCreated:0,webSocketCspBlocked:0};
+  private evidence={requestEvents:0,deniedOriginRequests:0,workerTargets:0,popupTargets:0,webSocketCreated:0,webSocketCspBlocked:0,wsCspSrcdoc:false,wsCspBlank:false,wsCspBlob:false,wsCspData:false};
   get observations(){return {...this.evidence,...this.guard.observations}};
   private readyResolve!:()=>void;
   private readyReject!:(e:Error)=>void;
@@ -99,6 +99,10 @@ export class NativeFixtureController {
     const result=await this.send('Runtime.evaluate',{expression:'document.body ? document.body.innerText : ""',returnByValue:true},this.mainSession);
     if(!record(result.result)||typeof result.result.value!=='string'||Buffer.byteLength(result.result.value)>2*1024*1024)throw Error('Invalid fixture result');return result.result.value;
   }
+  async clickFixtureButton():Promise<void>{
+    if(!this.mainSession)throw Error('Fixture not ready');
+    await this.send('Runtime.evaluate',{expression:"document.querySelector('button')?.click()",userGesture:true},this.mainSession);
+  }
   async documentSnapshot():Promise<{url:string;readyState:string;text:string}>{
     if(!this.mainSession)throw Error('Fixture not ready');
     const result=await this.send('Runtime.evaluate',{expression:'JSON.stringify({url:location.href,readyState:document.readyState,text:document.body?document.body.innerText:""})',returnByValue:true},this.mainSession);
@@ -117,11 +121,12 @@ export class NativeFixtureController {
         if(!record(t)||!identity(t.targetId)||!identity(p.sessionId)||typeof t.type!=='string'||p.waitingForDebugger!==true||this.sessions.has(p.sessionId)||this.sessions.size>=16)throw Error('Invalid target');
         if(t.browserContextId!==this.context && !(t.type==='iframe'&&t.browserContextId===undefined&&event.sessionId&&this.sessions.has(event.sessionId)))throw Error('Unexpected context');
         if(event.sessionId&&!this.sessions.has(event.sessionId))throw Error('Unknown parent');
+        if(t.type==='page'&&typeof t.openerId==='string')this.evidence.popupTargets++;
         if(['worker','service_worker','shared_worker'].includes(t.type)&&event.sessionId&&this.sessions.has(event.sessionId))this.evidence.workerTargets++;
         this.sessions.set(p.sessionId,new NativeHttpAdapter({command:(m,args,s,signal,timeout)=>{if(this.stopped)return Promise.reject(Error('Fixture stopped'));return this.connection.command(m,args,s,signal,timeout);}},p.sessionId,()=>this.close()));
         await this.barrier.attached({targetId:t.targetId,sessionId:p.sessionId,type:t.type,parentSessionId:event.sessionId,openerId:typeof t.openerId==='string'?t.openerId:undefined,waitingForDebugger:true});
         if(t.targetId===this.mainTarget&&!this.stopped){this.mainSession=p.sessionId;this.readyResolve();}
-      }else if(event.method==='Log.entryAdded'){const e=event.params.entry;if(event.sessionId&&this.sessions.has(event.sessionId)&&record(e)&&e.source==='security'&&typeof e.text==='string'&&e.text.includes('wss://apartment-native-fixture-b.onrender.com/destination/websocket')&&e.text.includes('connect-src https:'))this.evidence.webSocketCspBlocked++;}
+      }else if(event.method==='Log.entryAdded'){const e=event.params.entry;if(event.sessionId&&this.sessions.has(event.sessionId)&&record(e)&&e.source==='security'&&typeof e.text==='string'&&e.text.includes('wss://apartment-native-fixture-b.onrender.com/destination/websocket')&&e.text.includes('connect-src https:')){this.evidence.webSocketCspBlocked++;for(const [name,key] of [['srcdoc','wsCspSrcdoc'],['blank','wsCspBlank'],['blob','wsCspBlob'],['data','wsCspData']] as const){if(e.text.includes('wss://apartment-native-fixture-b.onrender.com/destination/websocket/'+name))this.evidence[key]=true;}}}
       else if(event.method==='Network.webSocketCreated'){if(event.sessionId&&this.sessions.has(event.sessionId)&&event.params.url==='wss://apartment-native-fixture-b.onrender.com/destination/websocket')this.evidence.webSocketCreated++;}
       else if(event.method==='Target.detachedFromTarget'||event.method==='Inspector.targetCrashed'){await this.close();}
       else if(event.method==='Fetch.requestPaused'){

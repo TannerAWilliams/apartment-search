@@ -70,3 +70,4 @@ test('response concurrency is bounded and released after stalled output closes',
  await new Promise(resolve=>setImmediate(resolve));
  for(const res of responses) {assert.equal(res.listenerCount('drain'),0);assert.equal(res.listenerCount('error'),0);}
 });
+test('additional harnesses are fixed and inherited frame script is structurally bounded',()=>{const f=setup();const body=f.get('/harness/inherited-websocket').body.toString();assert.match(body,/<body><script>/);assert.equal((body.match(/<script>/g)||[]).length,1);assert.equal((body.match(/<\/script>/g)||[]).length,1);for(const path of ['/harness/popup','/harness/cors'])assert.equal(f.get(path).status,200);assert.equal(f.get('/destination/popup').status,200);const counters=f.get('/control/counters',{authorization:`Bearer ${config.controlToken}`});assert.equal(JSON.parse(counters.body.toString()).popupDestination,1)});
