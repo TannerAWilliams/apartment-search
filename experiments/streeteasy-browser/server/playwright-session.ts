@@ -2,6 +2,8 @@ import { chromium, type Browser, type BrowserContext, type Page } from 'playwrig
 import type { BrowserAction, BrowserDriver } from './browser-session.ts';
 
 const MAX_RESPONSE = 8 * 1024 * 1024;
+export const BROWSER_VIEWPORT = { width: 800, height: 600 };
+export const browserLaunchOptions = () => ({ headless: true, chromiumSandbox: true, executablePath: process.env.CHROMIUM_EXECUTABLE_PATH || undefined, args: ['--js-flags=--max-old-space-size=96'] });
 import { BrowserNetworkGuard } from './browser-network.ts';
 export { allowedBrowserUrl } from './browser-network.ts';
 export function blockedDocument(status: number | undefined): boolean { return status === undefined || status < 200 || status >= 300; }
@@ -22,10 +24,10 @@ export class PlaywrightDriver implements BrowserDriver {
   async start() {
     // Deliberately retain Chromium sandbox. Never add --no-sandbox or stealth flags.
     this.check();
-    const browser = await chromium.launch({ headless: true, chromiumSandbox: true, executablePath: process.env.CHROMIUM_EXECUTABLE_PATH || undefined });
+    const browser = await chromium.launch(browserLaunchOptions());
     if (this.stopped) { await browser.close(); this.check(); }
     this.browser = browser;
-    this.context = await browser.newContext({ viewport: { width: 1280, height: 800 }, acceptDownloads: false, serviceWorkers: 'block' });
+    this.context = await browser.newContext({ viewport: BROWSER_VIEWPORT, acceptDownloads: false, serviceWorkers: 'block' });
     this.check();
     await this.context.routeWebSocket('**/*', socket => socket.close());
     await this.context.route('**/*', async route => {
@@ -83,7 +85,7 @@ export class PlaywrightDriver implements BrowserDriver {
     if (result.status === 403 || result.status === 429) this.nextRecheckAt = Math.max(this.nextRecheckAt, recheckDeadline(result.retryAfter, Date.now()));
     return result;
   }
-  async screenshot() { if (!this.page) throw new Error('Browser unavailable'); return this.page.screenshot({ type: 'jpeg', quality: 60 }); }
+  async screenshot() { if (!this.page) throw new Error('Browser unavailable'); return this.page.screenshot({ type: 'jpeg', quality: 40, scale: 'css', timeout: 10000, clip: { x: 0, y: 0, ...BROWSER_VIEWPORT } }); }
   async action(action: BrowserAction) {
     if (!this.page) throw new Error('Browser unavailable');
     if (action.type === 'click') await this.page.mouse.click(action.x, action.y);
@@ -96,6 +98,6 @@ export class PlaywrightDriver implements BrowserDriver {
 
 /** Provider-free runtime preflight. Failure prevents a healthy listening service. */
 export async function verifyBrowserRuntime(): Promise<void> {
-  const browser = await chromium.launch({ headless: true, chromiumSandbox: true, executablePath: process.env.CHROMIUM_EXECUTABLE_PATH || undefined });
+  const browser = await chromium.launch(browserLaunchOptions());
   await browser.close();
 }

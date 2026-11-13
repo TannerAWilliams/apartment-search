@@ -1,15 +1,16 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { chromium, type Browser } from 'playwright';
+import { BROWSER_VIEWPORT, browserLaunchOptions } from '../server/playwright-session.ts';
 import { BrowserNetworkGuard } from '../server/browser-network.ts';
 
 // Real Chromium, synthetic intercepted responses only. Never contact a provider.
 let browser: Browser;
-before(async () => { browser = await chromium.launch({ headless: true, chromiumSandbox: true, executablePath: process.env.CHROMIUM_EXECUTABLE_PATH || undefined }); });
+before(async () => { browser = await chromium.launch(browserLaunchOptions()); });
 after(async () => { await browser?.close(); });
 
 test('same browser context preserves HttpOnly cookies across cross-origin API fetch', async () => {
-  const context = await browser.newContext({ serviceWorkers: 'block' });
+  const context = await browser.newContext({ serviceWorkers: 'block', viewport: BROWSER_VIEWPORT });
   let observed = false;
   const guard = new BrowserNetworkGuard(async (url, init) => {
     if (url.startsWith('https://api-v6.streeteasy.com/')) {
@@ -29,11 +30,14 @@ test('same browser context preserves HttpOnly cookies across cross-origin API fe
     assert.equal((await context.cookies('https://streeteasy.com')).some(cookie => cookie.name === 'fixture' && cookie.value === 'only'), true, 'fixture cookie stored in browser');
     const result = await page.evaluate(async () => (await fetch('https://api-v6.streeteasy.com/fixture', { credentials: 'include' })).json());
     assert.deepEqual(result, { fixture: true }); assert.equal(observed, true);
+    const screenshot = await page.screenshot({ type: 'jpeg', quality: 40, scale: 'css', timeout: 10000, clip: { x: 0, y: 0, ...BROWSER_VIEWPORT } });
+    assert.ok(screenshot.byteLength > 0 && screenshot.byteLength < 1024 * 1024);
+    console.log('fixture bounded screenshot passed');
   } finally { guard.close(); await context.close(); }
 });
 
 test('real browser cannot follow redirect or navigate to unapproved target', async () => {
-  const context = await browser.newContext({ serviceWorkers: 'block' });
+  const context = await browser.newContext({ serviceWorkers: 'block', viewport: BROWSER_VIEWPORT });
   const contacted: string[] = [];
   const guard = new BrowserNetworkGuard(async url => { contacted.push(url); return new Response(null, { status: 302, headers: { Location: 'https://not-allowed.invalid/private' } }); });
   await context.route('**/*', route => guard.route(route));

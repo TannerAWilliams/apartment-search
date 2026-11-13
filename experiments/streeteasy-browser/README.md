@@ -125,3 +125,17 @@ Run on a permitted host with the pinned official Playwright Chromium installed.
 Passing on a build host does not establish512MiB runtime capacity or live provider
 access. Latest local preflight still fails before navigation with Unix socket EPERM;
 no sandbox setting was weakened to bypass that restriction.
+
+## Runtime evidence and capacity follow-up
+
+On November13, both provider-free real-Chromium fixtures passed on the actual
+Free Render runtime: cross-origin HttpOnly cookies/CORS and redirect isolation.
+One live page attempt then returned403 and paused before the listing API query.
+Screenshot retrieval failed and the runtime restarted. Memory metrics reached
+approximately504MiB against a512MiB limit; no explicit OOM event was returned.
+This is evidence of capacity pressure, not a successful refresh.
+
+The next capacity iteration uses an800x600 viewport, bounded JPEG screenshot and
+96MiB renderer V8 old-space cap, with the Chromium sandbox/site isolation intact.
+The heap flag is not a whole-process memory guarantee. Runtime fixture tests now
+exercise screenshot capture too. No automatic provider retry is added.

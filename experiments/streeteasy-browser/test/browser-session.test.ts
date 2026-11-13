@@ -53,3 +53,8 @@ test('initial failure cooldown honors longer numeric and HTTP date Retry-After',
   assert.equal(recheckDeadline('Fri, 13 Nov 2026 19:05:00 GMT', now), now + 300000);
   assert.equal(recheckDeadline('invalid', now), now + 60000);
 });
+test('owner actions remain within reduced screenshot viewport', () => {
+  assert.equal(isBrowserAction({type:'click',x:799,y:599}),true);
+  assert.equal(isBrowserAction({type:'click',x:800,y:599}),false);
+  assert.equal(isBrowserAction({type:'click',x:799,y:600}),false);
+});

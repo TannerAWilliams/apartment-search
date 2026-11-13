@@ -102,7 +102,7 @@ export class BrowserSession {
 export function isBrowserAction(value: unknown): value is BrowserAction {
   if (!value || typeof value !== 'object') return false;
   const v = value as Record<string, unknown>;
-  if (v.type === 'click') return Number.isInteger(v.x) && Number.isInteger(v.y) && Number(v.x) >= 0 && Number(v.x) < 1280 && Number(v.y) >= 0 && Number(v.y) < 800;
+  if (v.type === 'click') return Number.isInteger(v.x) && Number.isInteger(v.y) && Number(v.x) >= 0 && Number(v.x) < 800 && Number(v.y) >= 0 && Number(v.y) < 600;
   if (v.type === 'type') return typeof v.text === 'string' && v.text.length > 0 && v.text.length <= 128 && !/[\x00-\x1f]/.test(v.text);
   return v.type === 'key' && ['Enter', 'Tab', 'Backspace'].includes(String(v.key));
 }
