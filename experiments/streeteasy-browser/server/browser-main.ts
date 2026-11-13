@@ -2,7 +2,7 @@ import { createServer } from 'node:http';
 import { Readable } from 'node:stream';
 import { BrowserSession } from './browser-session.ts';
 import { browserGateway } from './browser-gateway.ts';
-import { PlaywrightDriver } from './playwright-session.ts';
+import { PlaywrightDriver, verifyBrowserRuntime } from './playwright-session.ts';
 const token = process.env.LISTING_RELAY_TOKEN || '';
 const session = new BrowserSession(async () => new PlaywrightDriver());
 const handler = browserGateway(token, session);
@@ -25,5 +25,7 @@ const server = createServer(async (incoming, outgoing) => {
   finally { clearTimeout(deadline); }
 });
 server.headersTimeout = 10000; server.requestTimeout = 45000;
+await verifyBrowserRuntime();
 server.listen(Number(process.env.PORT || 10000), '0.0.0.0');
 process.on('SIGTERM', () => { const stop = setTimeout(() => process.exit(1), 5000); stop.unref(); void session.close(); server.close(() => process.exit(0)); });
+

@@ -77,3 +77,33 @@ is visible. It retains that browser for authenticated screenshot/owner actions,
 but will not issue an API query while the document remains blocked. Resume requires
 a subsequent successful document navigation and no recognized challenge. This is
 fail-closed behavior, not a bypass or a guarantee that the provider will grant access.
+
+
+## Redirect and owner-recheck hardening (draft)
+
+The route handler rejects **all** HTTP redirects (including allowed-to-allowed
+redirects), rather than trusting Playwright's first-request-only route allowlist.
+It uses `route.fetch` with `maxRedirects: 0`, `maxRetries: 0`, and a 12-second timeout,
+then fulfills non-redirect responses and disposes the transport buffer. This
+changes intercepted traffic to Playwright's context request transport; it is **not**
+a claim of untouched native-browser networking or a proven way around a403.
+Legitimate provider redirects may therefore fail closed and require explicit review.
+Resource buffering and DNS-level egress still need runtime isolation/qualification.
+
+An authenticated explicit resume now performs exactly one fixed rental-page
+navigation in the same context, with at least60seconds between owner rechecks.
+Missing/non-2xx documents and visible challenges remain blocked. There are no
+background retries. API access can still independently fail after a page succeeds.
+The newly added tests are mocked transport/session regressions, not live-provider
+or real-browser redirect qualification. No deployed behavior changes in this draft.
+
+Runtime startup now launches and closes sandboxed Chromium without provider access
+before listening. A failed launch cannot present a healthy HTTP endpoint. This
+preflight is implemented but has not been run on the free Render runtime.
+Main-document failures set a minimum60second recheck delay from the initial failure;
+HTTP Retry-After is honored when longer. Resource buffering by `route.fetch` is
+currently **unbounded before** the browser-side8MiB API check. This is an explicit
+deployment blocker, not a production-ready egress/memory guarantee.
+API403/429 also starts the owner-recheck cooldown. Browser-visible Retry-After
+extends it when supplied; CORS may prevent that header being visible, in which
+case the conservative60second minimum applies. No retry runs automatically.

@@ -5,6 +5,7 @@ export type BrowserAction = { type: 'click'; x: number; y: number } | { type: 't
 export interface BrowserDriver {
   start(): Promise<void>;
   hasChallenge(): Promise<boolean>;
+  recheck(): Promise<void>;
   fetch(request: { url: string; init: RequestInit }): Promise<{ status: number; body: string; contentType: string }>;
   screenshot(): Promise<Uint8Array>;
   action(action: BrowserAction): Promise<void>;
@@ -84,6 +85,7 @@ export class BrowserSession {
   async resume() {
     return this.serial(async () => {
       if (this.current !== 'challenge' || !this.driver) throw new Error('No pending challenge');
+      await this.driver.recheck(); this.check();
       const challenged = await this.driver.hasChallenge(); this.check();
       if (challenged) throw new Error('Browser challenge remains visible');
       // Explicit owner retry, not evidence the API challenge passed.
@@ -104,3 +106,4 @@ export function isBrowserAction(value: unknown): value is BrowserAction {
   if (v.type === 'type') return typeof v.text === 'string' && v.text.length > 0 && v.text.length <= 128 && !/[\x00-\x1f]/.test(v.text);
   return v.type === 'key' && ['Enter', 'Tab', 'Backspace'].includes(String(v.key));
 }
+

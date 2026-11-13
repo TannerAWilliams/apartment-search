@@ -2,12 +2,13 @@ import { chromium, type Browser, type BrowserContext, type Page } from 'playwrig
 import type { BrowserAction, BrowserDriver } from './browser-session.ts';
 
 const MAX_RESPONSE = 8 * 1024 * 1024;
-const allowedHosts = new Set(['streeteasy.com', 'www.streeteasy.com', 'api-v6.streeteasy.com']);
-const challengeSuffixes = ['.px-cloud.net', '.px-cdn.net', '.px-client.net', '.perimeterx.net'];
-export function allowedBrowserUrl(raw: string): boolean {
-  try { const url = new URL(raw); return url.protocol === 'https:' && !url.username && !url.password && (!url.port || url.port === '443') && (allowedHosts.has(url.hostname) || challengeSuffixes.some(s => url.hostname.endsWith(s))); } catch { return false; }
+import { guardBrowserRoute } from './browser-network.ts';
+export { allowedBrowserUrl } from './browser-network.ts';
+export function blockedDocument(status: number | undefined): boolean { return status === undefined || status < 200 || status >= 300; }
+export function recheckDeadline(retryAfter: string | undefined, now: number): number {
+  const parsed = retryAfter && /^\d+$/.test(retryAfter) ? now + Number(retryAfter) * 1000 : Date.parse(retryAfter || '');
+  return Math.max(now + 60000, Number.isFinite(parsed) ? parsed : 0);
 }
-export function blockedDocument(status: number | undefined): boolean { return status === 403 || status === 429; }
 export class PlaywrightDriver implements BrowserDriver {
   private browser?: Browser;
   private context?: BrowserContext;
@@ -15,6 +16,7 @@ export class PlaywrightDriver implements BrowserDriver {
   private requestCount = 0;
   private stopped = false;
   private documentStatus?: number;
+  private nextRecheckAt = 0;
   private check() { if (this.stopped) throw new Error('Browser closed'); }
   async start() {
     // Deliberately retain Chromium sandbox. Never add --no-sandbox or stealth flags.
@@ -26,9 +28,8 @@ export class PlaywrightDriver implements BrowserDriver {
     this.check();
     await this.context.routeWebSocket('**/*', socket => socket.close());
     await this.context.route('**/*', async route => {
-      if (++this.requestCount > 1000 || !allowedBrowserUrl(route.request().url())) { await route.abort(); return; }
-      if (route.request().resourceType() === 'image' && !challengeSuffixes.some(s => new URL(route.request().url()).hostname.endsWith(s))) { await route.abort(); return; }
-      await route.continue();
+      if (++this.requestCount > 1000) { await route.abort(); return; }
+      await guardBrowserRoute(route);
     });
     this.check();
     this.page = await this.context.newPage();
@@ -37,15 +38,32 @@ export class PlaywrightDriver implements BrowserDriver {
     this.page.on('download', download => void download.cancel());
     this.page.setDefaultTimeout(15000);
     this.page.on('response', response => {
-      if (response.request().isNavigationRequest() && response.frame() === this.page?.mainFrame()) this.documentStatus = response.status();
+      if (response.request().isNavigationRequest() && response.frame() === this.page?.mainFrame()) {
+        this.documentStatus = response.status();
+        if (blockedDocument(this.documentStatus)) {
+          const retry = response.headers()['retry-after'];
+          this.nextRecheckAt = Math.max(this.nextRecheckAt, recheckDeadline(retry, Date.now()));
+        }
+      }
     });
     await this.page.goto('https://streeteasy.com/for-rent/nyc', { waitUntil: 'domcontentloaded', timeout: 30000 });
   }
   async hasChallenge() { if (!this.page) return false; return blockedDocument(this.documentStatus) || await this.page.locator('#px-captcha, iframe[src*="captcha"], [data-testid="captcha"]').count() > 0; }
+  async recheck() {
+    this.check();
+    if (!this.page || this.page.isClosed()) throw new Error('Browser unavailable');
+    if (Date.now() < this.nextRecheckAt) throw new Error('Owner recheck cooldown');
+    this.nextRecheckAt = Date.now() + 60000;
+    this.documentStatus = undefined;
+    // One explicit owner recheck only. Preserve cookies/context, never retry loops.
+    const response = await this.page.goto('https://streeteasy.com/for-rent/nyc', { waitUntil: 'domcontentloaded', timeout: 30000 });
+    this.documentStatus = response?.status();
+    if (await this.hasChallenge()) throw new Error('Source document is not ready');
+  }
   async fetch(request: { url: string; init: RequestInit }) {
     if (!this.page || this.page.isClosed()) throw new Error('Browser unavailable');
     // Fetch executes inside the real page, retaining its cookies/session. No storage export.
-    return this.page.evaluate(async ({ url, body, max }) => {
+    const result = await this.page.evaluate(async ({ url, body, max }) => {
       const abort = new AbortController();
       const timer = setTimeout(() => abort.abort(), 12000);
       try {
@@ -54,9 +72,11 @@ export class PlaywrightDriver implements BrowserDriver {
         const chunks: Uint8Array[] = []; let length = 0;
         if (reader) while (true) { const { done, value } = await reader.read(); if (done) break; length += value.length; if (length > max) { await reader.cancel(); throw new Error('Response too large'); } chunks.push(value); }
         const bytes = new Uint8Array(length); let offset = 0; for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
-        return { status: response.status, body: new TextDecoder().decode(bytes), contentType: response.headers.get('Content-Type') || 'application/json' };
+        return { status: response.status, body: new TextDecoder().decode(bytes), contentType: response.headers.get('Content-Type') || 'application/json', retryAfter: response.headers.get('Retry-After') || undefined };
       } finally { clearTimeout(timer); }
     }, { url: request.url, body: String(request.init.body), max: MAX_RESPONSE });
+    if (result.status === 403 || result.status === 429) this.nextRecheckAt = Math.max(this.nextRecheckAt, recheckDeadline(result.retryAfter, Date.now()));
+    return result;
   }
   async screenshot() { if (!this.page) throw new Error('Browser unavailable'); return this.page.screenshot({ type: 'jpeg', quality: 60 }); }
   async action(action: BrowserAction) {
@@ -66,4 +86,11 @@ export class PlaywrightDriver implements BrowserDriver {
     else await this.page.keyboard.press(action.key);
   }
   async close() { this.stopped = true; await this.browser?.close(); this.browser = undefined; this.context = undefined; this.page = undefined; }
+}
+
+
+/** Provider-free runtime preflight. Failure prevents a healthy listening service. */
+export async function verifyBrowserRuntime(): Promise<void> {
+  const browser = await chromium.launch({ headless: true, chromiumSandbox: true, executablePath: process.env.CHROMIUM_EXECUTABLE_PATH || undefined });
+  await browser.close();
 }
