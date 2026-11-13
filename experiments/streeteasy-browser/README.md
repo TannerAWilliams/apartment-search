@@ -104,3 +104,17 @@ allows existing guarded requests. Restart loses qualification and requires an
 explicit new test. The free 1,000-unit allowance is finite; do not schedule this
 endpoint. Native WebSocket tests in the current local workspace failed DNS
 `EAI_AGAIN` before a session; HTTPS reachability alone does not qualify them.
+
+## Hosted result, November 13 at 3:35 p.m. New York time
+
+The Free Render hosted controller deployed commit ff2bb7c at 3:32:38 p.m.
+Its explicitly requested remote synthetic qualification passed (HTTP 200).
+One authorized live session returned403 and a valid screenshot of Press & Hold.
+One authorized eight-second hold request hit the client's20-second timeout;
+subsequent screenshots showed processing, then explicitly **Please try again**.
+The controller stayed alive around169MiB RSS, unlike the local-Chromium attempt.
+The session was closed (HTTP200, state closed) without another hold or API retry.
+
+This qualifies memory offload, not provider access. The native hosted transport
+remains a separate design question: current guard sends provider HTTP through
+Render's Node fetch. No complete inventory or production Resync success occurred.
