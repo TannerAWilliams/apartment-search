@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { BrowserSession, isBrowserAction, type BrowserDriver } from '../server/browser-session.ts';
-import { allowedBrowserUrl } from '../server/playwright-session.ts';
+import { allowedBrowserUrl, blockedDocument } from '../server/playwright-session.ts';
 function setup(status = 200) {
   const calls: string[] = [];
   const driver: BrowserDriver = { hasChallenge: async () => false, start: async () => { calls.push('start'); }, fetch: async () => { calls.push('fetch'); return { status, body: '{"data":{}}', contentType: 'application/json' }; }, screenshot: async () => new Uint8Array([1]), action: async () => { calls.push('action'); }, close: async () => { calls.push('close'); } };
@@ -19,3 +19,6 @@ test('close during startup cleans up late browser and stays closed', async()=>{
  const session=new BrowserSession(async()=>driver);const pending=session.request({source:'streeteasy',page:1});await new Promise(r=>setImmediate(r));await session.close();release();await pending;assert.equal(session.state,'closed');assert.equal(open,false);assert.ok(closes>=2);
 });
 test('canceled queued request never goes upstream',async()=>{let release!:()=>void;const wait=new Promise<void>(r=>release=r);let fetches=0;const driver:BrowserDriver={start:async()=>{},hasChallenge:async()=>false,fetch:async()=>{fetches++;await wait;return{status:200,body:'{}',contentType:'application/json'}},screenshot:async()=>new Uint8Array(),action:async()=>{},close:async()=>{}};const session=new BrowserSession(async()=>driver);const first=session.request({source:'streeteasy',page:1});const abort=new AbortController();const second=session.request({source:'streeteasy',page:2},abort.signal);abort.abort();release();await first;assert.equal((await second).status,503);assert.equal(fetches,1);await session.close();});
+
+test('blocked main document is not mistaken for an API-ready browser',()=>{assert.equal(blockedDocument(403),true);assert.equal(blockedDocument(429),true);assert.equal(blockedDocument(200),false);});
+test('document block retains session for owner actions without API request',async()=>{let calls=0,blocked=true;const driver:BrowserDriver={start:async()=>{},hasChallenge:async()=>blocked,fetch:async()=>{calls++;return{status:200,body:'{}',contentType:'application/json'};},screenshot:async()=>new Uint8Array([1]),action:async()=>{},close:async()=>{}};const session=new BrowserSession(async()=>driver);assert.equal((await session.request({source:'streeteasy',page:1})).status,403);assert.equal(calls,0);assert.deepEqual(await session.screenshot(),new Uint8Array([1]));await assert.rejects(session.resume());blocked=false;await session.resume();assert.equal((await session.request({source:'streeteasy',page:1})).status,200);assert.equal(calls,1);await session.close();});

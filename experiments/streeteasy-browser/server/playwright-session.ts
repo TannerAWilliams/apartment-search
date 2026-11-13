@@ -7,12 +7,14 @@ const challengeSuffixes = ['.px-cloud.net', '.px-cdn.net', '.px-client.net', '.p
 export function allowedBrowserUrl(raw: string): boolean {
   try { const url = new URL(raw); return url.protocol === 'https:' && !url.username && !url.password && (!url.port || url.port === '443') && (allowedHosts.has(url.hostname) || challengeSuffixes.some(s => url.hostname.endsWith(s))); } catch { return false; }
 }
+export function blockedDocument(status: number | undefined): boolean { return status === 403 || status === 429; }
 export class PlaywrightDriver implements BrowserDriver {
   private browser?: Browser;
   private context?: BrowserContext;
   private page?: Page;
   private requestCount = 0;
   private stopped = false;
+  private documentStatus?: number;
   private check() { if (this.stopped) throw new Error('Browser closed'); }
   async start() {
     // Deliberately retain Chromium sandbox. Never add --no-sandbox or stealth flags.
@@ -34,9 +36,12 @@ export class PlaywrightDriver implements BrowserDriver {
     this.context.on('page', page => { if (page !== this.page) void page.close(); });
     this.page.on('download', download => void download.cancel());
     this.page.setDefaultTimeout(15000);
+    this.page.on('response', response => {
+      if (response.request().isNavigationRequest() && response.frame() === this.page?.mainFrame()) this.documentStatus = response.status();
+    });
     await this.page.goto('https://streeteasy.com/for-rent/nyc', { waitUntil: 'domcontentloaded', timeout: 30000 });
   }
-  async hasChallenge() { if (!this.page) return false; return await this.page.locator('#px-captcha, iframe[src*="captcha"], [data-testid="captcha"]').count() > 0; }
+  async hasChallenge() { if (!this.page) return false; return blockedDocument(this.documentStatus) || await this.page.locator('#px-captcha, iframe[src*="captcha"], [data-testid="captcha"]').count() > 0; }
   async fetch(request: { url: string; init: RequestInit }) {
     if (!this.page || this.page.isClosed()) throw new Error('Browser unavailable');
     // Fetch executes inside the real page, retaining its cookies/session. No storage export.

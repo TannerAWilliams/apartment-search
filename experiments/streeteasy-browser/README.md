@@ -61,3 +61,19 @@ run the actual app button, finish all partitions, verify unique counts and saved
 records, and separately test aborts, challenge pauses and cold starts.
 Provider access and permissions still apply. There is no guaranteed full StreetEasy
 refresh or automatic CAPTCHA solver here.
+
+## November 13 access diagnostic
+
+A separate sandbox-enabled Chromium probe ran on Render's build host. The
+StreetEasy top-level rental page returned HTTP403 before any explicit API query.
+No recognized CAPTCHA element was present at that immediate observation; this
+is not proof a delayed challenge could never render. No CAPTCHA was solved and
+no inventory was obtained. The production Node relay independently returned403.
+Build-host browser startup is now demonstrated, but browser memory/sandbox behavior
+on the free runtime instance remains unverified.
+
+The prototype now pauses on a403/429 main document even when no challenge selector
+is visible. It retains that browser for authenticated screenshot/owner actions,
+but will not issue an API query while the document remains blocked. Resume requires
+a subsequent successful document navigation and no recognized challenge. This is
+fail-closed behavior, not a bypass or a guarantee that the provider will grant access.
