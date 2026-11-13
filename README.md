@@ -168,3 +168,16 @@ Sites deployment and its saved data are not deleted by this deployment.
 Render Free can sleep after 15 idle minutes and take about a minute to wake.
 The free instance-hours and build/bandwidth quotas are workspace-wide. No paid
 database, persistent disk or paid worker is provisioned by this app.
+
+### Public Render browsing
+
+Set `PUBLIC_APP=true` to explicitly enable public browsing without a login. Keep
+`APP_ACCESS_TOKEN` server-side for trusted imports; never add it to the browser.
+Anonymous visitors may request source refreshes but cannot upload listing data.
+POST requests must be same-origin. The single Render process limits anonymous
+API traffic to 240 requests/minute and source refresh initiation to once/minute
+across all visitors, returning HTTP 429 with `Retry-After` when busy. These are
+basic resource limits, not a bot-proof security boundary; a non-browser client
+can spoof Origin. Limits reset on restart and are not distributed across replicas.
+Public access does not make a blocked provider available, remove CAPTCHAs, or
+promise complete inventory. The independent Sites deployment stays private.

@@ -6,6 +6,7 @@ import { parseArgs } from 'node:util';
 import { handleApi } from './api.ts';
 import { MIME } from './mime.ts';
 import { createMemoryBucket } from './memory-bucket.ts';
+import { createPublicRequestLimits, isPublicRefresh } from './public-access.ts';
 import { SESSION_COOKIE, secretsEqual, issueSession, validSession } from './private-session.ts';
 
 const { values } = parseArgs({ options: { host: { type: 'string' }, port: { type: 'string' }, strictPort: { type: 'boolean' } } });
@@ -13,8 +14,10 @@ const host = values.host || process.env.HOST || '127.0.0.1';
 const port = Number(values.port || process.env.PORT || 3000);
 const root = fileURLToPath(new URL('../web-build', import.meta.url));
 const token = process.env.APP_ACCESS_TOKEN;
+const publicApp = process.env.PUBLIC_APP === 'true';
+const publicLimits = createPublicRequestLimits();
 const local = ['127.0.0.1', '::1', 'localhost'].includes(host);
-if (!local && (!token || token.length < 32)) throw new Error('A private APP_ACCESS_TOKEN of at least 32 characters is required.');
+if (!publicApp && !local && (!token || token.length < 32)) throw new Error('A private APP_ACCESS_TOKEN of at least 32 characters is required.');
 const env = { ...process.env, BUCKET: createMemoryBucket(), TEMPORARY_CACHE: 'true' };
 const publicOrigin = process.env.RENDER_EXTERNAL_URL;
 let failures = 0; let resetAt = 0;
@@ -31,7 +34,7 @@ createServer(async (incoming, outgoing) => {
     const origin = incoming.headers.origin;
     const sameOrigin = publicOrigin ? origin === publicOrigin : local && (!origin || new URL(origin).hostname === 'localhost');
     const bearer = token && secretsEqual(incoming.headers.authorization ?? '', `Bearer ${token}`);
-    const authenticated = !token || bearer || validSession(incoming.headers.cookie ?? '', token);
+    const authenticated = publicApp || !token || bearer || validSession(incoming.headers.cookie ?? '', token);
     if (incoming.method === 'POST' && !bearer && !sameOrigin) { outgoing.writeHead(403).end('Cross-origin request rejected.'); return; }
     if (url.pathname === '/logout' && incoming.method === 'POST') {
       outgoing.writeHead(303, { Location: '/', 'Set-Cookie': `${SESSION_COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0` }).end(); return;
@@ -50,8 +53,18 @@ createServer(async (incoming, outgoing) => {
       return;
     }
     if (url.pathname.startsWith('/api/')) {
+      if (publicApp && !bearer && !publicLimits.allowApi()) {
+        outgoing.writeHead(429, { 'Content-Type': 'application/json', 'Retry-After': '60' }).end(JSON.stringify({ error: 'The app is busy. Please try again in one minute.' })); return;
+      }
       const chunks = []; let bytes = 0; const limit = url.pathname === '/api/refresh' ? 2 * 1024 * 1024 : 4096;
       for await (const chunk of incoming) { bytes += chunk.length; if (bytes > limit) { outgoing.writeHead(413).end('Request too large.'); return; } chunks.push(chunk); }
+      if (publicApp && !bearer && url.pathname === '/api/refresh' && incoming.method === 'POST') {
+        let body: unknown;
+        try { body = JSON.parse(Buffer.concat(chunks).toString()); } catch { /* Rejected below. */ }
+        if (!isPublicRefresh(body)) { outgoing.writeHead(403, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'Public refresh can fetch sources but cannot import listing data.' })); return; }
+        const retry = publicLimits.refreshRetrySeconds();
+        if (retry) { outgoing.writeHead(429, { 'Content-Type': 'application/json', 'Retry-After': String(retry) }).end(JSON.stringify({ error: `Sources were just requested. Try again in ${retry} seconds.` })); return; }
+      }
       const response = await handleApi(new Request(url.href, { method: incoming.method, headers: incoming.headers as Record<string, string>, body: bytes ? Buffer.concat(chunks) : undefined }), env);
       outgoing.writeHead(response.status, Object.fromEntries(response.headers)).end(Buffer.from(await response.arrayBuffer())); return;
     }
@@ -62,4 +75,4 @@ createServer(async (incoming, outgoing) => {
     const content = await readFile(file);
     outgoing.writeHead(200, { 'Content-Type': MIME[extname(file)] || 'application/octet-stream' }).end(incoming.method === 'HEAD' ? undefined : content);
   } catch (error) { outgoing.writeHead(error.code === 'ENOENT' || error.code === 'EISDIR' ? 404 : 500).end('The request could not be completed.'); }
-}).listen(port, host, () => console.log(`Private Apartment Search is serving on port ${port}`));
+}).listen(port, host, () => console.log(`Apartment Search is serving on port ${port}`));
