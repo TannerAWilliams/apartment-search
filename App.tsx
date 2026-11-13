@@ -20,6 +20,7 @@ import { AddListing } from './src/AddListing.tsx';
 import { ImportListings } from './src/ImportListings.tsx';
 import { ListingMap } from './src/ListingMap';
 import { SourcesPage } from './src/SourcesPage.tsx';
+import { refreshSummary } from './src/source-status.ts';
 import { ListingSources } from './src/ListingSources.tsx';
 import { RentChart } from './src/RentChart.tsx';
 
@@ -436,6 +437,7 @@ function ApartmentSearch() {
   const [refresh, setRefresh] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState('');
+  const browserImportAllowed = useRef(false);
   const checking = useRef(null);
   const sourceSession = useRef(null);
   const submitted = useRef(false);
@@ -494,6 +496,7 @@ function ApartmentSearch() {
     setCommuteConfigured(config.commuteConfigured === true);
     setCompanies(config.companies ?? {});
     setRefresh(config.refresh ?? null);
+    browserImportAllowed.current = config.browserImportAllowed === true;
   }, []);
 
   const checkSources = useCallback(async (sessionStart = false, source: string | null = null) => {
@@ -507,7 +510,7 @@ function ApartmentSearch() {
       const check = await finishSourceCheck(request, activeToken, signal);
       if (signal?.aborted) return;
       const failedExports = source ? [] : retryablePublicSources(check);
-      if (failedExports.length) {
+      if (failedExports.length && browserImportAllowed.current) {
         const plan = await api('refresh', { token: activeToken, signal });
         const exports = await pullPublicSources(plan, fetch, new Date(), retryablePublicSources(plan));
         if (signal?.aborted) return;
@@ -521,6 +524,7 @@ function ApartmentSearch() {
       const config = await api('config', { token: activeToken, signal });
       if (signal?.aborted) return;
       updateConfig(config);
+      if (!source) setRefreshError(refreshSummary(config.refresh?.sources ?? []));
       if (source) {
         const status = config.refresh?.sources.find((item) => item.id === source);
         if (status?.status === 'failed') setRefreshError((status.error || 'This source could not be fetched.') + ' Previously saved listings are preserved; this is not a fresh fetch.');
@@ -785,3 +789,4 @@ function ApartmentSearch() {
 export default function App() {
   return <SafeAreaProvider><ApartmentSearch /></SafeAreaProvider>;
 }
+

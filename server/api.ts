@@ -19,6 +19,7 @@ export function appConfig(env) {
   const feeds = configuredFeeds(env);
   return {
     mode: feeds.length > 0 ? 'live' : 'snapshot',
+    browserImportAllowed: env.PUBLIC_APP !== 'true',
     snapshotMonth: SNAPSHOT_MONTH,
     sources: feeds.map(({ id, name }) => ({ id, name })),
     ...(routingCredentials(env) ? { commuteConfigured: true } : {}),

@@ -12,3 +12,14 @@ export function sourceRows(catalog: SourceDefinition[], statuses: SourceStatus[]
       state: !definition.resyncable ? 'Not connected' : status?.status === 'failed' ? 'Last attempt failed' : status?.updatedAt ? 'Saved data available' : 'Not fetched yet' };
   }).sort((a, b) => Number(b.resyncable) - Number(a.resyncable) || a.name.localeCompare(b.name));
 }
+
+
+/** A partial refresh must not look like an empty or successful full inventory fetch. */
+export function refreshSummary(sources: SourceStatus[]): string {
+  const successful = sources.filter((source) => source.status === 'updated' || source.status === 'current');
+  const failed = sources.filter((source) => source.status === 'failed');
+  const unavailable = failed.map((source) => source.name ?? source.id).join(', ');
+  if (failed.length) return `${successful.length} sources have saved data; ${unavailable} could not refresh. Previous cached listings are retained where available. This is not complete coverage.`;
+  if (successful.length) return `${successful.length} sources checked. Available listings updated; connected providers may return limited samples.`;
+  return 'No sources refreshed. Check Sources for connection status and retry times.';
+}

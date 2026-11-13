@@ -15,3 +15,23 @@ test('a connected but never fetched provider remains actionable and is not label
   assert.equal(row.state, 'Not fetched yet');
   assert.equal(row.coolingDown, false);
 });
+
+
+test('partial refresh summary names blocked providers without claiming complete coverage', async () => {
+  const { refreshSummary } = await import('../src/source-status.ts');
+  const message = refreshSummary([
+    { id: 'hotpads', status: 'updated', listingCount: 67 },
+    { id: 'streeteasy-live', name: 'StreetEasy', status: 'failed' },
+    { id: 'zillow', status: 'feed_required' },
+  ]);
+  assert.match(message, /1 sources have saved data/);
+  assert.match(message, /StreetEasy could not refresh/);
+  assert.match(message, /not complete coverage/);
+  assert.doesNotMatch(message, /Zillow/);
+});
+
+test('empty source check is not described as success', async () => {
+  const { refreshSummary } = await import('../src/source-status.ts');
+  assert.match(refreshSummary([]), /No sources refreshed/);
+  assert.match(refreshSummary([{ id: 'hotpads', status: 'updated' }]), /limited samples/);
+});
