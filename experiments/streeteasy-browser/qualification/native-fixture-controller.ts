@@ -27,7 +27,7 @@ export class NativeFixtureController {
   private closeState:'not-requested'|'closing'|'acknowledged'|'unconfirmed'='not-requested';
   private pendingEvents=0;
   private requests=0;
-  private evidence={requestEvents:0,deniedOriginRequests:0,workerTargets:0,popupTargets:0,webSocketCreated:0,webSocketCspBlocked:0,wsCspSrcdoc:false,wsCspBlank:false,wsCspBlob:false,wsCspData:false};
+  private evidence={requestEvents:0,deniedOriginRequests:0,workerTargets:0,popupTargets:0,popupSandboxBlocked:0,webSocketCreated:0,webSocketCspBlocked:0,wsCspSrcdoc:false,wsCspBlank:false,wsCspBlob:false,wsCspData:false};
   get observations(){return {...this.evidence,...this.guard.observations}};
   private readyResolve!:()=>void;
   private readyReject!:(e:Error)=>void;
@@ -126,7 +126,7 @@ export class NativeFixtureController {
         this.sessions.set(p.sessionId,new NativeHttpAdapter({command:(m,args,s,signal,timeout)=>{if(this.stopped)return Promise.reject(Error('Fixture stopped'));return this.connection.command(m,args,s,signal,timeout);}},p.sessionId,()=>this.close()));
         await this.barrier.attached({targetId:t.targetId,sessionId:p.sessionId,type:t.type,parentSessionId:event.sessionId,openerId:typeof t.openerId==='string'?t.openerId:undefined,waitingForDebugger:true});
         if(t.targetId===this.mainTarget&&!this.stopped){this.mainSession=p.sessionId;this.readyResolve();}
-      }else if(event.method==='Log.entryAdded'){const e=event.params.entry;if(event.sessionId&&this.sessions.has(event.sessionId)&&record(e)&&e.source==='security'&&typeof e.text==='string'&&e.text.includes('wss://apartment-native-fixture-b.onrender.com/destination/websocket')&&e.text.includes('connect-src https:')){this.evidence.webSocketCspBlocked++;for(const [name,key] of [['srcdoc','wsCspSrcdoc'],['blank','wsCspBlank'],['blob','wsCspBlob'],['data','wsCspData']] as const){if(e.text.includes('wss://apartment-native-fixture-b.onrender.com/destination/websocket/'+name))this.evidence[key]=true;}}}
+      }else if(event.method==='Log.entryAdded'){const e=event.params.entry;if(event.sessionId&&this.sessions.has(event.sessionId)&&record(e)&&typeof e.text==='string'&&e.text.includes('https://apartment-native-fixture-b.onrender.com/destination/popup')&&e.text.includes('sandbox')&&e.text.includes('allow-popups'))this.evidence.popupSandboxBlocked++;if(event.sessionId&&this.sessions.has(event.sessionId)&&record(e)&&e.source==='security'&&typeof e.text==='string'&&e.text.includes('wss://apartment-native-fixture-b.onrender.com/destination/websocket')&&e.text.includes('connect-src https:')){this.evidence.webSocketCspBlocked++;for(const [name,key] of [['srcdoc','wsCspSrcdoc'],['blank','wsCspBlank'],['blob','wsCspBlob'],['data','wsCspData']] as const){if(e.text.includes('wss://apartment-native-fixture-b.onrender.com/destination/websocket/'+name))this.evidence[key]=true;}}}
       else if(event.method==='Network.webSocketCreated'){if(event.sessionId&&this.sessions.has(event.sessionId)&&event.params.url==='wss://apartment-native-fixture-b.onrender.com/destination/websocket')this.evidence.webSocketCreated++;}
       else if(event.method==='Target.detachedFromTarget'||event.method==='Inspector.targetCrashed'){await this.close();}
       else if(event.method==='Fetch.requestPaused'){
