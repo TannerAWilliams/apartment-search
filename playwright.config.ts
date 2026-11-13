@@ -9,6 +9,9 @@ export default defineConfig({
   projects: [
     { name: 'desktop-chromium', use: { ...devices['Desktop Chrome'] } },
     { name: 'mobile-chromium', use: { ...devices['Pixel 7'] } },
+    // Official Playwright portrait descriptor: 402×681 CSS viewport, 402×874 screen, DPR3.
+    // Chromium layout emulation only, not a physical iPhone or Safari/WebKit qualification.
+    { name: 'iphone17-portrait-chromium', use: { ...devices['iPhone 17'], browserName: 'chromium' } },
   ],
   webServer: { command: 'node e2e/serve.mjs', url: 'http://127.0.0.1:4173', reuseExistingServer: false },
 });

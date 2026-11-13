@@ -38,3 +38,9 @@ Still needed: complete successful manual listing/import workflows, deduplication
 2026-11-13: 20/20 browser cases passed on Render's isolated free test build (desktop and mobile Chromium, 12.9 seconds, commit `943069b`). Chromium sandbox remained enabled and provider calls were mocked. These tests found and fixed a Platforms crash for All regions/non-NYC selection and missing selected-tab ARIA state. The authoring environment itself could not launch Chromium (`socket() failed: Operation not permitted`), so execution was moved to the explicitly approved isolated service, not worked around by disabling the sandbox.
 
 Playwright discovery, E2E/config TypeScript checks, existing application unit tests and Expo web export also passed. This is evidence for the listed UI flows only, not complete browser coverage or live provider availability. The temporary Render service has automatic deployments off and exposes only an inert health message, never test reports, source data or credentials.
+
+## iPhone 17 portrait contract
+
+The `iphone17-portrait-chromium` project uses Playwright 1.65's `iPhone 17` device descriptor: 402×681 CSS viewport, 402×874 screen, DPR 3 and touch/mobile emulation. It reruns the existing interaction flows, then checks horizontal overflow and on-screen navigation/resync controls across rent, filters, Sources, Platforms and add-listing screens. Successful layout checks save screenshots in the test output directory for visual review.
+
+This is Chromium-based layout emulation, not a physical iPhone 17, iOS keyboard/safe-area check, or Safari/WebKit result. Those require separate qualification. Run `npm run test:e2e -- --project=iphone17-portrait-chromium` after installing Chromium. This portrait addition has been collected/typechecked but not yet browser-executed; do not present it as passed until the runner logs confirm execution.

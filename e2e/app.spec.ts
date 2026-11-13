@@ -128,3 +128,38 @@ test('Sources tab is keyboard operable', async ({ page }) => {
   await expect(page).toHaveURL(/#sources$/);
   await expect(page.getByRole('button', { name: 'Resync all connected providers' })).toBeVisible();
 });
+
+
+test('iPhone 17 portrait keeps primary controls inside the screen', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'iphone17-portrait-chromium', 'Portrait-specific layout qualification');
+  await mockApp(page, { failed: true });
+  expect(page.viewportSize()).toEqual({ width: 402, height: 681 });
+  async function checkLayout(label: string) {
+    const dimensions = await page.evaluate(() => ({ width: document.documentElement.clientWidth, contentWidth: document.documentElement.scrollWidth }));
+    expect(dimensions.contentWidth, label + ' must not overflow horizontally').toBeLessThanOrEqual(dimensions.width + 1);
+    const controls = page.getByRole('tab');
+    for (const control of await controls.all()) {
+      const box = await control.boundingBox();
+      expect(box, label + ': navigation remains rendered').not.toBeNull();
+      expect(box!.x).toBeGreaterThanOrEqual(-1);
+      expect(box!.x + box!.width).toBeLessThanOrEqual(403);
+    }
+    await page.screenshot({ path: testInfo.outputPath(label + '.png'), fullPage: true });
+  }
+  await checkLayout('rent');
+  await page.getByRole('button', { name: 'More filters', exact: true }).click();
+  await checkLayout('filters');
+  await page.getByRole('tab', { name: 'Sources', exact: true }).click();
+  await checkLayout('sources');
+  const resync = page.getByRole('button', { name: 'Resync all connected providers', exact: true });
+  await expect(resync).toBeVisible();
+  const box = await resync.boundingBox();
+  expect(box!.x).toBeGreaterThanOrEqual(0);
+  expect(box!.x + box!.width).toBeLessThanOrEqual(402);
+  await page.getByRole('tab', { name: 'Platforms', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Browse rental platforms', exact: true })).toBeVisible();
+  await checkLayout('platforms');
+  await page.getByRole('tab', { name: 'Rent', exact: true }).click();
+  await page.getByRole('button', { name: '+ Add listing', exact: true }).click();
+  await checkLayout('add-listing');
+});
