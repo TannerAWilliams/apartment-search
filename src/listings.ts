@@ -1,5 +1,6 @@
 import { MARKETPLACE_NAMES, marketplaceIdForUrl, safeListingUrl } from './marketplaces.ts';
 import { regionOf } from './regions.ts';
+import { isPoint } from './search.ts';
 
 const clean = (value, max = 160) => typeof value === 'string' ? value.trim().slice(0, max) : '';
 const numeric = (value) => typeof value === 'number' ? value :
@@ -120,7 +121,7 @@ export function mergeListings(listings, { preferFirst = false } = {}) {
     const listingTime = Date.parse(listing.seenAt) || 0;
     const preferred = !preferFirst && listingTime > currentTime ? listing : current;
     const alternate = preferred === listing ? current : listing;
-    const hasLocation = Number.isFinite(preferred.latitude) && Number.isFinite(preferred.longitude);
+    const hasLocation = isPoint(preferred);
     merged.set(key, {
       ...preferred,
       id: current.id,
@@ -133,3 +134,4 @@ export function mergeListings(listings, { preferFirst = false } = {}) {
   }
   return [...merged.values()];
 }
+
