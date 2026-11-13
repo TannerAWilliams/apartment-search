@@ -17,7 +17,7 @@
     "build": "npm run build:web && node --experimental-strip-types scripts/build-site.ts",
     "test": "node --experimental-strip-types --test test/*.test.ts",
     "typecheck": "tsc --noEmit",
-    "test:e2e": "npm run typecheck && npm test && npm run build:web && playwright test",
+    "test:e2e": "npm run typecheck && npm run build:web && npm test && playwright test",
     "test:e2e:list": "playwright test --list"
   },
   "dependencies": {
