@@ -713,7 +713,7 @@ function ApartmentSearch() {
     </View>
     <View style={styles.tabs}>
       {[['results', 'Rent'], ['chart', 'Rent chart'], ['sources', 'Sources'], ['marketplaces', 'Platforms'], ['affordable', 'Affordable']].map(([key, label]) =>
-        <Pressable key={key} accessibilityRole="tab" accessibilityState={{ selected: tab === key }}
+        <Pressable key={key} accessibilityRole="tab" aria-selected={tab === key} accessibilityState={{ selected: tab === key }}
           style={[styles.tab, tab === key && styles.tabActive]} onPress={() => navigateTab(key)}>
           <Text style={[styles.tabLabel, tab === key && styles.tabLabelActive]}>{label}</Text>
         </Pressable>)}
