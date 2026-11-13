@@ -181,3 +181,9 @@ basic resource limits, not a bot-proof security boundary; a non-browser client
 can spoof Origin. Limits reset on restart and are not distributed across replicas.
 Public access does not make a blocked provider available, remove CAPTCHAs, or
 promise complete inventory. The independent Sites deployment stays private.
+
+## UI design target
+
+Design new and changed screens mobile-first for Tanner's iPhone 17 in portrait (approximately 402 CSS pixels wide), while retaining usable desktop layouts. Keep primary actions and navigation within the viewport, avoid horizontal page overflow, use readable text and touch-friendly controls, and let longer forms/lists scroll vertically. Treat the visible height as variable because browser chrome and the on-screen keyboard change it.
+
+This is a design preference, not a requirement to run every build or automated test on an iPhone 17. Use proportionate layout review and existing regression checks; optional device-emulation tests must not block unrelated work. Do not describe Chromium emulation as physical-device or Safari verification.
