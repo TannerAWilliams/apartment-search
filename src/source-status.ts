@@ -1,4 +1,4 @@
-export type SourceStatus = { id: string; name?: string; marketplace?: string; status?: string; checkedAt?: string; updatedAt?: string; retryAt?: string; error?: string; listingCount?: number };
+export type SourceStatus = { id: string; name?: string; marketplace?: string; status?: string; checkedAt?: string; updatedAt?: string; retryAt?: string; error?: string; listingCount?: number; total?: number; pages?: number; sampleLimit?: number };
 export type SourceDefinition = { id: string; name: string; marketplace?: string; coverage?: string; resyncable: boolean };
 export function sourceRows(catalog: SourceDefinition[], statuses: SourceStatus[], browseNames: Record<string, string>, now = Date.now()) {
   const definitions = new Map(catalog.map((source) => [source.id, source]));
@@ -22,4 +22,16 @@ export function refreshSummary(sources: SourceStatus[]): string {
   if (failed.length) return `${successful.length} sources have saved data; ${unavailable} could not refresh. Previous cached listings are retained where available. This is not complete coverage.`;
   if (successful.length) return `${successful.length} sources checked. Available listings updated; connected providers may return limited samples.`;
   return 'No sources refreshed. Check Sources for connection status and retry times.';
+}
+
+/** Report observed scope, never infer complete coverage from matching counts. */
+export function sourceCoverage(status?: SourceStatus): string {
+  if (!status) return '';
+  const validCount = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+  const parts: string[] = [];
+  if (validCount(status.total)) parts.push(`Provider reported ${status.total.toLocaleString('en-US')} records`);
+  if (validCount(status.pages) && status.pages > 0) parts.push(`${status.pages} pages fetched`);
+  if (validCount(status.sampleLimit) && status.sampleLimit > 0) parts.push(`sample capped at ${status.sampleLimit.toLocaleString('en-US')} records`);
+  if (!parts.length) return '';
+  return `${status.status === 'failed' ? 'Last saved snapshot: ' : ''}${parts.join(' · ')}. Provider totals may include listings excluded by our filters; counts do not prove complete coverage.`;
 }

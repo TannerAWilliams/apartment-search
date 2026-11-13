@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
 import { MARKETPLACE_NAMES } from './marketplaces.ts';
-import { sourceRows, type SourceDefinition, type SourceStatus } from './source-status.ts';
+import { sourceCoverage, sourceRows, type SourceDefinition, type SourceStatus } from './source-status.ts';
 import { styles } from './styles.ts';
 import { Button } from './ui.tsx';
 const time = (value?: string) => value && Number.isFinite(Date.parse(value)) ? new Date(value).toLocaleString() : 'Never';
@@ -20,6 +20,7 @@ export function SourcesPage({ catalog, refresh, refreshing, cooldownSeconds = 0,
       <Text accessibilityRole="header" style={styles.fieldLabel}>{row.name}</Text>
       <Text style={styles.smallMuted}>{row.state}{row.status?.listingCount != null ? ` · ${row.status.listingCount.toLocaleString()} saved records` : ''}</Text>
       <Text style={styles.smallMuted}>{row.coverage}</Text>
+      {sourceCoverage(row.status) !== '' && <Text style={styles.smallMuted}>{sourceCoverage(row.status)}</Text>}
       <Text style={styles.smallMuted}>Last fetch attempt: {time(row.status?.checkedAt)}</Text>
       <Text style={styles.smallMuted}>Last successful data: {time(row.status?.updatedAt)}</Text>
       {row.status?.error && <Text style={styles.error}>{row.status.error}</Text>}
