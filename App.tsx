@@ -279,7 +279,7 @@ function RentalSyncStatus({ refresh, refreshing, cooldownSeconds, configuredSour
 }
 
 function Marketplaces({ filters, sources, configuredSources, companies, onCompany, refresh, refreshing, cooldownSeconds, onRefresh, onError }) {
-  const markets = NYC_SEARCH_MARKETS.filter(({ label }) => filters.region === NYC_SEARCH_DEFAULT || label.toLowerCase() === filters.region);
+  const markets = marketsForSearch(filters);
   const [marketLabel, setMarketLabel] = useState('');
   const market = markets.find((item) => item.label === marketLabel) ??
     markets.find((item) => item.zip === filters.zip) ?? markets[0];

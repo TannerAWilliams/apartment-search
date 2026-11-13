@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parseFilters, DEFAULT_FILTERS, localWorkplace, directionsLink } from '../src/search.ts';
-import { MARKETS, NYC_SEARCH_DEFAULT, regionOf, searchBorough } from '../src/regions.ts';
+import { MARKETS, NYC_SEARCH_DEFAULT, REGIONS, marketsForSearch, regionOf, searchBorough } from '../src/regions.ts';
 import { marketplaceAddressSearches, marketplaceIdForUrl, marketplaceLinks } from '../src/marketplaces.ts';
 import { listingKey, mergeListings, normalizeListing, sourceLink } from '../src/listings.ts';
 import { localSearch, marketSnapshot, median, rentAreas, snapshotSearch, SNAPSHOT_MONTH } from '../src/market.ts';
@@ -333,3 +333,15 @@ test('result offset validation rejects malformed pagination requests', () => {
   assert.equal(parseFilters({}).offset, 0);
 });
 
+
+
+test('every selectable region supplies a marketplace without undefined dereferences', () => {
+  for (const region of Object.keys(REGIONS)) {
+    const filters = parseFilters({ region });
+    const markets = marketsForSearch(filters);
+    assert.ok(markets.length > 0, region);
+    for (const market of markets) assert.ok(marketplaceLinks(market, filters).length > 0, region);
+  }
+  assert.deepEqual(marketsForSearch({ region: 'all' }), MARKETS);
+  assert.ok(marketsForSearch({ region: 'nj' }).every(market => market.state === 'NJ'));
+});
