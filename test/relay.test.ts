@@ -64,3 +64,20 @@ test('Worker relay maps only known source requests and keeps auth server-side', 
   await fetcher('https://example.com');
   await wakeListingRelay(async (url) => { assert.equal(url, 'https://test.onrender.com/health'); return new Response('ok'); }, config);
 });
+
+test('separate app credential preserves legacy auth and denies invalid keys', async () => {
+ const legacy='a'.repeat(40), app='b'.repeat(64);
+ assert.throws(()=>createRelay(legacy, fetch, ''));
+ assert.throws(()=>createRelay(legacy, fetch, 'short'));
+ let calls=0;
+ const server=createRelay(legacy, async()=>{calls++;return new Response('{}');},app);
+ await new Promise<void>(r=>server.listen(0,'127.0.0.1',r));
+ const addr=server.address();assert.ok(addr && typeof addr!=='string');
+ try {
+ for(const [key,status] of [[legacy,200],[app,200],['c'.repeat(64),401],['short',401]] as const){
+ const result=await fetch('http://127.0.0.1:'+addr.port+'/fetch',{method:'POST',headers:{Authorization:'Bearer '+key},body:JSON.stringify({source:'streeteasy',page:1})});
+ assert.equal(result.status,status);
+ }
+ assert.equal(calls,2);
+ }finally{server.closeAllConnections();await new Promise<void>(r=>server.close(()=>r()));}
+});
