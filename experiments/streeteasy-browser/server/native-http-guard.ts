@@ -25,6 +25,9 @@ export class NativeHttpGuard {
   private stopped = false;
   private disposed = false;
   private received = 0;
+  private redirectResponses = 0;
+  private resourceOverflow = false;
+  get observations(){return {receivedBytes:this.received,redirectResponses:this.redirectResponses,resourceOverflow:this.resourceOverflow}}
   private entries = new Map<string, Entry>();
   private queued: Array<{ request: NativeRequest; resolve: () => void }> = [];
   private hardClosing?: Promise<void>;
@@ -140,6 +143,7 @@ export class NativeHttpGuard {
     const check = () => { if (this.stopped || entry.terminal || entry.abort.signal.aborted) throw new Error('Native HTTP canceled'); };
     try {
       check();
+      if(response.status>=300&&response.status<400)this.redirectResponses++;
       if (!Number.isInteger(response.status) || response.status < 200 || response.status > 599 || (response.status >= 300 && response.status < 400)) throw new Error('Native HTTP status rejected');
       for (const header of response.headers) {
         if (header.name.toLowerCase() === 'content-length' && (!/^\d+$/.test(header.value) || Number(header.value) > MAX_RESOURCE_BYTES)) throw new Error('Native HTTP resource limit');
@@ -152,7 +156,7 @@ export class NativeHttpGuard {
         check();
         if (chunk.data.byteLength > READ_BYTES || (!chunk.eof && chunk.data.byteLength === 0)) throw new Error('Invalid bounded native stream');
         length += chunk.data.byteLength; this.received += chunk.data.byteLength;
-        if (length > MAX_RESOURCE_BYTES || this.received > SESSION_BYTES) { await this.hardClose(); throw new Error('Native HTTP budget exceeded'); }
+        if (length > MAX_RESOURCE_BYTES || this.received > SESSION_BYTES) { this.resourceOverflow=true; await this.hardClose(); throw new Error('Native HTTP budget exceeded'); }
         chunks.push(chunk.data); if (chunk.eof) break;
       }
       const nominated = response.headers.filter(h=>h.name.toLowerCase()==='connection').flatMap(h=>h.value.split(',').map(v=>v.trim().toLowerCase()));

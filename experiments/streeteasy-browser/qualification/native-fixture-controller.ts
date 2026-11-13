@@ -27,6 +27,8 @@ export class NativeFixtureController {
   private closeState:'not-requested'|'closing'|'acknowledged'|'unconfirmed'='not-requested';
   private pendingEvents=0;
   private requests=0;
+  private evidence={requestEvents:0,deniedOriginRequests:0,workerTargets:0,webSocketCreated:0};
+  get observations(){return {...this.evidence,...this.guard.observations}};
   private readyResolve!:()=>void;
   private readyReject!:(e:Error)=>void;
   private ready:Promise<void>;
@@ -115,10 +117,12 @@ export class NativeFixtureController {
         if(!record(t)||!identity(t.targetId)||!identity(p.sessionId)||typeof t.type!=='string'||p.waitingForDebugger!==true||this.sessions.has(p.sessionId)||this.sessions.size>=16)throw Error('Invalid target');
         if(t.browserContextId!==this.context && !(t.type==='iframe'&&t.browserContextId===undefined&&event.sessionId&&this.sessions.has(event.sessionId)))throw Error('Unexpected context');
         if(event.sessionId&&!this.sessions.has(event.sessionId))throw Error('Unknown parent');
+        if(['worker','service_worker','shared_worker'].includes(t.type)&&event.sessionId&&this.sessions.has(event.sessionId))this.evidence.workerTargets++;
         this.sessions.set(p.sessionId,new NativeHttpAdapter({command:(m,args,s,signal,timeout)=>{if(this.stopped)return Promise.reject(Error('Fixture stopped'));return this.connection.command(m,args,s,signal,timeout);}},p.sessionId,()=>this.close()));
         await this.barrier.attached({targetId:t.targetId,sessionId:p.sessionId,type:t.type,parentSessionId:event.sessionId,openerId:typeof t.openerId==='string'?t.openerId:undefined,waitingForDebugger:true});
         if(t.targetId===this.mainTarget&&!this.stopped){this.mainSession=p.sessionId;this.readyResolve();}
-      }else if(event.method==='Target.detachedFromTarget'||event.method==='Inspector.targetCrashed'){await this.close();}
+      }else if(event.method==='Network.webSocketCreated'){if(event.sessionId&&this.sessions.has(event.sessionId)&&event.params.url==='wss://apartment-native-fixture-b.onrender.com/destination/websocket')this.evidence.webSocketCreated++;}
+      else if(event.method==='Target.detachedFromTarget'||event.method==='Inspector.targetCrashed'){await this.close();}
       else if(event.method==='Fetch.requestPaused'){
         if(!event.sessionId||!this.sessions.has(event.sessionId)||!identity(event.params.requestId))throw Error('Unknown request session');
         const p=event.params,id=nativeRequestKey(event.sessionId,p.requestId as string);
@@ -131,6 +135,8 @@ export class NativeFixtureController {
           if(++this.requests>1000||!record(p.request)||typeof p.request.url!=='string')throw Error('Request budget');
           // Initial fixture qualification permits GET only; HEAD/bodyless semantics are unqualified. Unknown or POST body sizes are denied.
           if(p.request.method!=='GET'||p.request.hasPostData===true||p.request.postData!==undefined||p.request.postDataEntries!==undefined)throw Error('Unexpected request body');
+          this.evidence.requestEvents++;
+          try{if(new URL(p.request.url).origin==='https://apartment-native-fixture-b.onrender.com'&&!this.origins.has(new URL(p.request.url).origin))this.evidence.deniedOriginRequests++;}catch{}
           await this.guard.request({id,url:p.request.url,bodyBytes:0});
         }
       }else if(event.method==='Fetch.authRequired'){throw Error('Unexpected authentication');}
