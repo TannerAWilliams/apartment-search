@@ -161,6 +161,9 @@ export class NativeHttpGuard {
       }
       const nominated = response.headers.filter(h=>h.name.toLowerCase()==='connection').flatMap(h=>h.value.split(',').map(v=>v.trim().toLowerCase()));
       const headers = response.headers.filter(h=>!hopByHop.has(h.name.toLowerCase()) && !nominated.includes(h.name.toLowerCase()));
+      // Enforced additional policy intersects existing CSP. HTTPS fetch remains
+      // subject to Fetch admission; ws/wss cannot escape through native sockets.
+      headers.push({name:'Content-Security-Policy',value:'connect-src https:'});
       check();
       await this.command(entry,() => this.transport.fulfill(response.id,response.status,headers,Buffer.concat(chunks,length),entry.abort.signal));
       failed = false;

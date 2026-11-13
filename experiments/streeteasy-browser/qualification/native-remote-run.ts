@@ -68,7 +68,7 @@ export async function runNativeFixtureContainment(token:string,signal:AbortSigna
   finally{if(controller)try{await controller.close()}catch{}else socket.close();clearTimeout(deadline);signal.removeEventListener('abort',cancel)}
   termination=controller?.terminationState||'unconfirmed';
   const evidence=controller?.observations;
-  const faultObserved=!!evidence&&({redirect:evidence.redirectResponses>0,'forbidden-iframe':evidence.deniedOriginRequests>0,worker:evidence.workerTargets>0,websocket:evidence.webSocketCreated>0,overflow:evidence.resourceOverflow} as Record<string,boolean>)[name];
+  const faultObserved=!!evidence&&({redirect:evidence.redirectResponses>0,'forbidden-iframe':evidence.deniedOriginRequests>0,worker:evidence.workerTargets>0,websocket:evidence.webSocketCspBlocked>0,overflow:evidence.resourceOverflow} as Record<string,boolean>)[name];
   const passed=faultObserved&&opened&&navigationAttempted&&termination==='acknowledged'&&controller?.pendingLocalWork.active===0&&controller.pendingLocalWork.queued===0;
   checks.push({name:name+'-exercised-and-cleaned',passed,evidence:controller?.observations});if(!passed)break;
  }
