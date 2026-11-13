@@ -84,6 +84,8 @@ export function matchesRegion(listing, region: string, broader?: string) {
 }
 
 export function marketsForSearch(filters) {
+  if (filters.region === 'all') return MARKETS;
+  if (!Object.hasOwn(NYC_SEARCH_AREAS, filters.region)) return MARKETS.filter(({ region }) => region === filters.region);
   const borough = filters.region === NYC_SEARCH_DEFAULT ? searchBorough({ state: 'NY', zip: filters.zip }) : filters.region;
   return borough ? NYC_SEARCH_MARKETS.filter(({ label }) => label.toLowerCase() === borough) : NYC_SEARCH_MARKETS;
 }

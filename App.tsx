@@ -279,7 +279,7 @@ function RentalSyncStatus({ refresh, refreshing, cooldownSeconds, configuredSour
 }
 
 function Marketplaces({ filters, sources, configuredSources, companies, onCompany, refresh, refreshing, cooldownSeconds, onRefresh, onError }) {
-  const markets = NYC_SEARCH_MARKETS.filter(({ label }) => filters.region === NYC_SEARCH_DEFAULT || label.toLowerCase() === filters.region);
+  const markets = marketsForSearch(filters);
   const [marketLabel, setMarketLabel] = useState('');
   const market = markets.find((item) => item.label === marketLabel) ??
     markets.find((item) => item.zip === filters.zip) ?? markets[0];
@@ -713,7 +713,7 @@ function ApartmentSearch() {
     </View>
     <View style={styles.tabs}>
       {[['results', 'Rent'], ['chart', 'Rent chart'], ['sources', 'Sources'], ['marketplaces', 'Platforms'], ['affordable', 'Affordable']].map(([key, label]) =>
-        <Pressable key={key} accessibilityRole="tab" accessibilityState={{ selected: tab === key }}
+        <Pressable key={key} accessibilityRole="tab" aria-selected={tab === key} accessibilityState={{ selected: tab === key }}
           style={[styles.tab, tab === key && styles.tabActive]} onPress={() => navigateTab(key)}>
           <Text style={[styles.tabLabel, tab === key && styles.tabLabelActive]}>{label}</Text>
         </Pressable>)}
