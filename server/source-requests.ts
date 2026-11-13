@@ -12,7 +12,7 @@ class SourceResponseError extends Error {
     const retryAfter = response.headers.get('Retry-After')?.trim();
     const retryTime = /^\d{1,9}$/.test(retryAfter ?? '') ? receivedAt + Number(retryAfter) * 1000 : Date.parse(retryAfter);
     const reset = response.headers.get('X-RateLimit-Reset');
-    const resetTime = response.headers.get('X-RateLimit-Remaining') === '0' && /^\d{1,12}$/.test(reset ?? '') ?
+    const resetTime = response.headers.get('X-RateLimit-Remaining')?.trim() === '0' && /^\d{1,12}$/.test(reset ?? '') ?
       Number(reset) * 1000 : 0;
     this.retryAfter = Math.max(retryTime || 0, resetTime || 0);
   }
@@ -26,9 +26,10 @@ export function requestForRefresh(fetcher, deadline) {
       AbortSignal.any([options.signal, deadline]) : deadline;
     const init = { ...options, headers, signal };
     let response = await fetcher(url, init);
-    const method = options?.method ?? 'GET';
+    const method = (options?.method ?? 'GET').toUpperCase();
+    const exhausted = response.headers.get('X-RateLimit-Remaining')?.trim() === '0';
     if ((method === 'GET' || method === 'HEAD') && TRANSIENT.has(response.status) && !signal.aborted &&
-        !response.headers.has('Retry-After')) {
+        !response.headers.has('Retry-After') && !exhausted) {
       await response.body?.cancel().catch(() => {});
       await new Promise((resolve) => setTimeout(resolve, 250));
       if (!signal.aborted) response = await fetcher(url, init);
