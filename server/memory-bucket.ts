@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { Buffer } from 'node:buffer';
 
 // Render Free has no durable disk. This single-process cache deliberately resets
 // on restart; a failed refresh never replaces a previously saved source object.
@@ -18,9 +19,11 @@ export function createMemoryBucket(maxBytes = 96 * 1024 * 1024) {
       const previous = objects.get(key);
       if (options.onlyIf?.etagMatches && previous?.etag !== options.onlyIf.etagMatches) return null;
       if (options.onlyIf?.etagDoesNotMatch === '*' && previous) return null;
-      const bytes = typeof body === 'string' ? new TextEncoder().encode(body) : Uint8Array.from(body);
-      const nextUsed = used - (previous?.bytes.length ?? 0) + bytes.length;
+      // Reject before allocating a second payload-sized buffer on memory-limited hosts.
+      const byteLength = typeof body === 'string' ? Buffer.byteLength(body, 'utf8') : body.byteLength;
+      const nextUsed = used - (previous?.bytes.length ?? 0) + byteLength;
       if (nextUsed > maxBytes) throw new Error('Temporary listing cache capacity exceeded.');
+      const bytes = typeof body === 'string' ? new TextEncoder().encode(body) : Uint8Array.from(body);
       const value = { bytes, etag: randomUUID(), customMetadata: { ...options.customMetadata } };
       objects.set(key, value); used = nextUsed;
       return { etag: value.etag };
