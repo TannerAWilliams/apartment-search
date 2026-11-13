@@ -2,7 +2,7 @@ import { chromium, type Browser, type BrowserContext, type Page } from 'playwrig
 import type { BrowserAction, BrowserDriver } from './browser-session.ts';
 
 const MAX_RESPONSE = 8 * 1024 * 1024;
-import { guardBrowserRoute } from './browser-network.ts';
+import { BrowserNetworkGuard } from './browser-network.ts';
 export { allowedBrowserUrl } from './browser-network.ts';
 export function blockedDocument(status: number | undefined): boolean { return status === undefined || status < 200 || status >= 300; }
 export function recheckDeadline(retryAfter: string | undefined, now: number): number {
@@ -14,6 +14,7 @@ export class PlaywrightDriver implements BrowserDriver {
   private context?: BrowserContext;
   private page?: Page;
   private requestCount = 0;
+  private readonly network = new BrowserNetworkGuard();
   private stopped = false;
   private documentStatus?: number;
   private nextRecheckAt = 0;
@@ -29,7 +30,7 @@ export class PlaywrightDriver implements BrowserDriver {
     await this.context.routeWebSocket('**/*', socket => socket.close());
     await this.context.route('**/*', async route => {
       if (++this.requestCount > 1000) { await route.abort(); return; }
-      await guardBrowserRoute(route);
+      await this.network.route(route);
     });
     this.check();
     this.page = await this.context.newPage();
@@ -38,6 +39,10 @@ export class PlaywrightDriver implements BrowserDriver {
     this.page.on('download', download => void download.cancel());
     this.page.setDefaultTimeout(15000);
     this.page.on('response', response => {
+      if (response.url().startsWith('https://api-v6.streeteasy.com/') && [403, 429].includes(response.status())) {
+        // Playwright sees the actual response headers, unlike CORS-filtered page fetch.
+        this.nextRecheckAt = Math.max(this.nextRecheckAt, recheckDeadline(response.headers()['retry-after'], Date.now()));
+      }
       if (response.request().isNavigationRequest() && response.frame() === this.page?.mainFrame()) {
         this.documentStatus = response.status();
         if (blockedDocument(this.documentStatus)) {
@@ -85,7 +90,7 @@ export class PlaywrightDriver implements BrowserDriver {
     else if (action.type === 'type') await this.page.keyboard.insertText(action.text);
     else await this.page.keyboard.press(action.key);
   }
-  async close() { this.stopped = true; await this.browser?.close(); this.browser = undefined; this.context = undefined; this.page = undefined; }
+  async close() { this.stopped = true; this.network.close(); await this.browser?.close(); this.browser = undefined; this.context = undefined; this.page = undefined; }
 }
 
 

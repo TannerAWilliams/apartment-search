@@ -5,7 +5,8 @@
   "scripts": {
     "start": "node --experimental-strip-types server/browser-main.ts",
     "test": "node --experimental-strip-types --test test/*.test.ts",
-    "typecheck": "tsc --noEmit --strict --types node --lib ESNext,DOM --target ES2022 --module nodenext --allowImportingTsExtensions server/*.ts test/*.ts"
+    "typecheck": "tsc --noEmit --strict --types node --lib ESNext,DOM --target ES2022 --module nodenext --allowImportingTsExtensions server/*.ts test/*.ts qualification/*.ts",
+    "test:browser": "node --experimental-strip-types --test qualification/browser.test.ts"
   },
   "type": "module",
   "devDependencies": {

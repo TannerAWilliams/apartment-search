@@ -79,31 +79,49 @@ a subsequent successful document navigation and no recognized challenge. This is
 fail-closed behavior, not a bypass or a guarantee that the provider will grant access.
 
 
-## Redirect and owner-recheck hardening (draft)
+## Bounded interception and owner rechecks (draft)
 
-The route handler rejects **all** HTTP redirects (including allowed-to-allowed
-redirects), rather than trusting Playwright's first-request-only route allowlist.
-It uses `route.fetch` with `maxRedirects: 0`, `maxRetries: 0`, and a 12-second timeout,
-then fulfills non-redirect responses and disposes the transport buffer. This
-changes intercepted traffic to Playwright's context request transport; it is **not**
-a claim of untouched native-browser networking or a proven way around a403.
-Legitimate provider redirects may therefore fail closed and require explicit review.
-Resource buffering and DNS-level egress still need runtime isolation/qualification.
+All HTTP redirects, including allowed-to-allowed redirects, fail closed before
+Location reaches the browser. Browser requests are intercepted using streaming
+Node fetch with `redirect: manual`, not untouched native-browser transport.
+Original browser request headers/cookies remain internal and are sent only to the
+exact allowlisted destination. Set-Cookie responses return to that browser context;
+no cookie export API or token replay exists. Actual browser cookie behavior remains
+to be qualified. Legitimate redirects may require policy review, not automatic retry.
 
-An authenticated explicit resume now performs exactly one fixed rental-page
-navigation in the same context, with at least60seconds between owner rechecks.
-Missing/non-2xx documents and visible challenges remain blocked. There are no
-background retries. API access can still independently fail after a page succeeds.
-The newly added tests are mocked transport/session regressions, not live-provider
-or real-browser redirect qualification. No deployed behavior changes in this draft.
+Network resource limits now apply **before** full buffering:
+-8MiB decoded bytes per response,64KiB request bodies;
+-four active requests, eight queued requests; excess requests fail closed;
+-12second active-request deadline and128MiB aggregate received-byte budget;
+-close cancels active streams and queued requests; no automatic network retries.
+Response copies and browser allocations still consume additional memory. These
+are bounded transport budgets, not proof that Chromium fits a512MiB free runtime.
+Browser script allocation, DNS-level isolation, actual resource scheduling and
+sandbox startup still require runtime qualification.
 
-Runtime startup now launches and closes sandboxed Chromium without provider access
-before listening. A failed launch cannot present a healthy HTTP endpoint. This
-preflight is implemented but has not been run on the free Render runtime.
-Main-document failures set a minimum60second recheck delay from the initial failure;
-HTTP Retry-After is honored when longer. Resource buffering by `route.fetch` is
-currently **unbounded before** the browser-side8MiB API check. This is an explicit
-deployment blocker, not a production-ready egress/memory guarantee.
-API403/429 also starts the owner-recheck cooldown. Browser-visible Retry-After
-extends it when supplied; CORS may prevent that header being visible, in which
-case the conservative60second minimum applies. No retry runs automatically.
+An authenticated explicit resume performs one fixed rental-page navigation in
+the same context. Initial document failures and API403/429 set a minimum60second
+delay; Retry-After captured from browser response events can extend it, even when CORS
+hides that header from page JavaScript. Missing/non-2xx documents and
+visible challenges remain blocked. No background retries or provider calls happen
+at startup. API access may independently fail after a page succeeds.
+
+Startup launches and closes sandboxed Chromium without provider access before
+listening. A failed launch cannot present a healthy HTTP endpoint. This preflight
+has not been run on the free Render runtime. Unit regressions cover redirects,
+stream cancellation, request/response limits, concurrency/queue/session budgets,
+internal cookie/header transfer, and resume failures. These are not real-browser
+or provider qualification. No production deployment or full StreetEasy crawl has
+been completed by this experiment.
+
+## Provider-free real-browser qualification
+
+`npm run test:browser` launches sandboxed Chromium and uses only synthetic
+intercepted responses. It checks real cookie/session propagation, CORS credentials,
+redirect rejection and blocked destinations. No StreetEasy request is sent: the
+injected transport returns fixtures rather than calling fetch. It is separate
+from default unit tests so an unavailable browser cannot silently look like a pass.
+Run on a permitted host with the pinned official Playwright Chromium installed.
+Passing on a build host does not establish512MiB runtime capacity or live provider
+access. Latest local preflight still fails before navigation with Unix socket EPERM;
+no sandbox setting was weakened to bypass that restriction.
