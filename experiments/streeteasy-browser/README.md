@@ -90,9 +90,9 @@ no cookie export API or token replay exists. Actual browser cookie behavior rema
 to be qualified. Legitimate redirects may require policy review, not automatic retry.
 
 Network resource limits now apply **before** full buffering:
--8MiB decoded bytes per response,64KiB request bodies;
--four active requests, eight queued requests; excess requests fail closed;
--12second active-request deadline and128MiB aggregate received-byte budget;
+-2MiB decoded bytes per response,64KiB request bodies;
+-two active requests, four queued requests; excess requests fail closed;
+-12second active-request deadline and32MiB aggregate received-byte budget;
 -close cancels active streams and queued requests; no automatic network retries.
 Response copies and browser allocations still consume additional memory. These
 are bounded transport budgets, not proof that Chromium fits a512MiB free runtime.
@@ -136,7 +136,7 @@ approximately504MiB against a512MiB limit; no explicit OOM event was returned.
 This is evidence of capacity pressure, not a successful refresh.
 
 The next capacity iteration uses an800x600 viewport, bounded JPEG screenshot and
-96MiB renderer V8 old-space cap, with the Chromium sandbox/site isolation intact.
+64MiB renderer V8 old-space cap, with the Chromium sandbox/site isolation intact.
 The heap flag is not a whole-process memory guarantee. Runtime fixture tests now
 exercise screenshot capture too. No automatic provider retry is added.
 
@@ -146,3 +146,10 @@ owner action surface now accepts an explicit bounded hold: coordinates inside th
 800x600 viewport and100–10000ms, with mouse-up in a finally block. This is only a
 manual/owner-authorized challenge interaction; no solver loop or automatic holds
 are triggered by a listing request.
+
+After a further live challenge interaction restarted the runtime, a final bounded
+capacity iteration reduces transport limits to2MiB/resource,32MiB/session and two
+active/four queued operations, and caps Node old-space at64MiB as well. Authenticated
+service logs record only process memory totals and crash/disconnect events, not
+headers, URLs, tokens or page contents, to distinguish Node from browser pressure.
+Larger resources fail closed; these tighter limits may reduce provider compatibility.

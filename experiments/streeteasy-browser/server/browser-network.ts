@@ -5,11 +5,11 @@ const challengeSuffixes = ['.px-cloud.net', '.px-cdn.net', '.px-client.net', '.p
 export function allowedBrowserUrl(raw: string): boolean {
   try { const url = new URL(raw); return url.protocol === 'https:' && !url.username && !url.password && (!url.port || url.port === '443') && (allowedHosts.has(url.hostname) || challengeSuffixes.some(s => url.hostname.endsWith(s))); } catch { return false; }
 }
-export const MAX_RESOURCE_BYTES = 8 * 1024 * 1024;
-const MAX_SESSION_BYTES = 128 * 1024 * 1024;
+export const MAX_RESOURCE_BYTES = 2 * 1024 * 1024;
+const MAX_SESSION_BYTES = 32 * 1024 * 1024;
 const MAX_REQUEST_BYTES = 64 * 1024;
-const MAX_CONCURRENT = 4;
-const MAX_WAITING = 8;
+const MAX_CONCURRENT = 2;
+const MAX_WAITING = 4;
 type Fetcher = (url: string, init: RequestInit) => Promise<Response>;
 
 /** Bounded server transport, NOT native browser transport. Cookies only pass to

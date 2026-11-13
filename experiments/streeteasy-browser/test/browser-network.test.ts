@@ -59,12 +59,12 @@ test('transport concurrency and queue are bounded, close aborts active and queue
     await new Promise<void>((_, reject) => init.signal!.addEventListener('abort', () => reject(new Error('aborted')), { once: true }));
     active--; return new Response('never');
   });
-  const routes = Array.from({length: 13}, () => mockRoute());
+  const routes = Array.from({length: 7}, () => mockRoute());
   const tasks = routes.map(r => guard.route(r.route));
   await new Promise(r => setImmediate(r));
-  assert.equal(started, 4); assert.equal(max, 4); assert.deepEqual(routes[12].calls, [['abort','blockedbyclient']]);
+  assert.equal(started, 2); assert.equal(max, 2); assert.deepEqual(routes[6].calls, [['abort','blockedbyclient']]);
   guard.close(); await Promise.all(tasks);
-  assert.equal(started, 4); assert.ok(routes.every(r => r.calls.every(([name]) => name === 'abort')));
+  assert.equal(started, 2); assert.ok(routes.every(r => r.calls.every(([name]) => name === 'abort')));
 });
 test('oversized request body never reaches transport', async () => {
   const {route, calls} = mockRoute(undefined, Buffer.alloc(65537));

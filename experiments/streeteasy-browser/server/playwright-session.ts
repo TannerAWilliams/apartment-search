@@ -3,7 +3,7 @@ import type { BrowserAction, BrowserDriver } from './browser-session.ts';
 
 const MAX_RESPONSE = 8 * 1024 * 1024;
 export const BROWSER_VIEWPORT = { width: 800, height: 600 };
-export const browserLaunchOptions = () => ({ headless: true, chromiumSandbox: true, executablePath: process.env.CHROMIUM_EXECUTABLE_PATH || undefined, args: ['--js-flags=--max-old-space-size=96'] });
+export const browserLaunchOptions = () => ({ headless: true, chromiumSandbox: true, executablePath: process.env.CHROMIUM_EXECUTABLE_PATH || undefined, args: ['--js-flags=--max-old-space-size=64'] });
 import { BrowserNetworkGuard } from './browser-network.ts';
 export { allowedBrowserUrl } from './browser-network.ts';
 export function blockedDocument(status: number | undefined): boolean { return status === undefined || status < 200 || status >= 300; }
@@ -27,6 +27,7 @@ export class PlaywrightDriver implements BrowserDriver {
     const browser = await chromium.launch(browserLaunchOptions());
     if (this.stopped) { await browser.close(); this.check(); }
     this.browser = browser;
+    browser.on('disconnected', () => { if (!this.stopped) console.warn('Unexpected browser disconnect'); });
     this.context = await browser.newContext({ viewport: BROWSER_VIEWPORT, acceptDownloads: false, serviceWorkers: 'block' });
     this.check();
     await this.context.routeWebSocket('**/*', socket => socket.close());
@@ -40,6 +41,7 @@ export class PlaywrightDriver implements BrowserDriver {
     this.context.on('page', page => { if (page !== this.page) void page.close(); });
     this.page.on('download', download => void download.cancel());
     this.page.setDefaultTimeout(15000);
+    this.page.on('crash', () => console.warn('Browser page crashed')); 
     this.page.on('response', response => {
       if (response.url().startsWith('https://api-v6.streeteasy.com/') && [403, 429].includes(response.status())) {
         // Playwright sees the actual response headers, unlike CORS-filtered page fetch.

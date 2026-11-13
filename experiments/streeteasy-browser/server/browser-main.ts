@@ -6,6 +6,12 @@ import { PlaywrightDriver, verifyBrowserRuntime } from './playwright-session.ts'
 const token = process.env.LISTING_RELAY_TOKEN || '';
 const session = new BrowserSession(async () => new PlaywrightDriver());
 const handler = browserGateway(token, session);
+const memoryMonitor = setInterval(() => {
+  if (session.state === 'idle' || session.state === 'closed') return;
+  const { rss, heapUsed, external } = process.memoryUsage();
+  console.info('Browser gateway memory', { rss, heapUsed, external });
+}, 5000);
+memoryMonitor.unref();
 const server = createServer(async (incoming, outgoing) => {
   const abort = new AbortController();
   const deadline = setTimeout(() => { abort.abort(); incoming.destroy(); }, 45000);
