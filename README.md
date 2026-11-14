@@ -22,7 +22,7 @@ Compare rentals by asking rent and weekday-morning transit or driving time to yo
 
 **Listing websites** shows direct source and saved links for a unit, followed by separate address searches. An address search can surface multiple units in a building. Matching known units uses the normalized street, ZIP, state, and unit number. A shared building address alone does not merge apartments. The **Available rentals** view and map show only apartments reported active in a recently checked source. The **Listing company** filter and company coverage cards use the advertiser field from the dated snapshot, including Compass, SERHANT., Corcoran, Douglas Elliman, Brown Harris Stevens, and other NYC brokerages and managers. Company-site links are separate from the original ad URL supplied by each source. Save or add Manhattan and Brooklyn listings separately. The saved list stays on the current device.
 
-Snapshot prices are from when the rentals first appeared in the month. Check the original website or another exact-unit link for current availability or price. Map popups list the known exact-unit links. Separate address searches open Google results for the named site. Use the Platforms tab to browse Manhattan and Brooklyn. Transit and driving directions open in Google Maps. Edit the workplace to use a different preset, coordinates, or a full street address. The default workplace is Rockefeller Center.
+Snapshot prices are from when the rentals first appeared in the month. Check the original website or another exact-unit link for current availability or price. Map popups list the known exact-unit links. Separate address searches open Google results for the named site. Use More → Rental platforms to browse Manhattan and Brooklyn. Transit and driving directions open in Google Maps. Edit the workplace to use a different preset, coordinates, or a full street address. The default workplace is Rockefeller Center.
 
 Results default to **Lowest rent** among available rentals. **Lowest rent**, **Fastest transit**, and **Fastest drive** sort all matching rentals before limiting the displayed list. Use **Import CSV** to add up to 500 collected listings per file to this device’s Saved list. The header is `url,address,unit,city,state,zip,bedrooms,rent` with optional `county,neighborhood,latitude,longitude` columns. Use studio = 0, five-digit ZIPs, and plain numeric rents. Coordinates are optional and support map placement when provided.
 
@@ -36,7 +36,7 @@ Set `TRAVELTIME_APP_ID` and `TRAVELTIME_API_KEY` on the server to enable automat
 
 The private hosted app checks FirstMover’s published monthly exports, the city’s Housing Connect export, and the active rental sources above. The FirstMover check uses the publisher’s release links and conditional requests for the CSV. Housing Connect listings reflect the city’s published export and application dates. The Affordable tab also links to official Mitchell-Lama and Section 8 resources. Settled.nyc feed access is unverified.
 
-The first successful connection in a browser tab session or native app launch triggers a source check. **Rent → Refresh listings** checks the other sources. **Show sync status** displays counts before your search filters, failures, and unconnected sites. Overlapping reloads share one check. Sources that rate-limit the app wait until their retry time. The browser can retry failed public exports when the source permits another check. The **Available rentals** view shows only active inventory from successful checks in the last two hours. Dated snapshots are used for rent charts. If a check fails or expires, its older inventory is excluded from the search and map. Openigloo uses the free U.S. Census batch geocoder for its public addresses.
+Opening the app reads saved inventory without starting a source refresh. **More → Sources & sync** holds manual per-source and all-source resync controls, import, freshness and coverage details. Sources that rate-limit the app wait until their retry time. The browser can retry failed public exports when the source permits another check. The **Available rentals** view shows only active inventory from successful checks in the last two hours. Dated snapshots are used for rent charts. If a check fails or expires, its older inventory is excluded from the search and map. Openigloo uses the free U.S. Census batch geocoder for its public addresses.
 
 The private app also serves a manual Node.js refresh runner at `/_refresh-runner.mjs`. Download it through owner-only service access and pass the service credential on stdin. Keep the credential out of files, command arguments, and logs.
 
@@ -123,7 +123,7 @@ The runner requires an accessible external host and credential delivery for each
 
 ### Sources and manual refresh
 
-The Sources tab lists connected feeds and browse-only websites separately. It shows each source's last fetch attempt, last successful saved data, counts, coverage and failure. Individual resync targets only that source; Resync all connected providers respects source retry limits. Browse-only websites have disabled resync controls until a feed is configured. No automatic daily schedule is installed.
+More → Sources & sync lists connected feeds and browse-only websites separately. It shows each source's last fetch attempt, last successful saved data, counts, coverage and failure. Individual resync targets only that source; Resync all connected providers respects source retry limits. Browse-only websites have disabled resync controls until a feed is configured. No automatic daily schedule is installed.
 
 Trulia and Zumper now include bounded Jersey City and Stamford samples alongside Manhattan and Brooklyn. These are explicitly samples, not exhaustive NY/NJ/CT coverage.
 
@@ -160,8 +160,9 @@ all sessions.
 
 **Temporary means temporary:** cached listings, refresh timestamps and rent
 chart refreshes reset on service restart, redeployment or free-service sleep.
-Saved apartments remain device-local. The first homepage load attempts source
-refreshes; failed providers are reported rather than fabricated. Render does not
+Saved apartments remain device-local. The homepage reads saved inventory without
+refreshing providers; source refreshes start only from More → Sources & sync.
+Failed providers are reported rather than fabricated. Render does not
 remove provider CAPTCHAs or guarantee StreetEasy/HotPads access. The previous
 Sites deployment and its saved data are not deleted by this deployment.
 
@@ -187,3 +188,9 @@ promise complete inventory. The independent Sites deployment stays private.
 Design new and changed screens mobile-first for Tanner's iPhone 17 in portrait (approximately 402 CSS pixels wide), while retaining usable desktop layouts. Keep primary actions and navigation within the viewport, avoid horizontal page overflow, use readable text and touch-friendly controls, and let longer forms/lists scroll vertically. Treat the visible height as variable because browser chrome and the on-screen keyboard change it.
 
 This is a design preference, not a requirement to run every build or automated test on an iPhone 17. Use proportionate layout review and existing regression checks; optional device-emulation tests must not block unrelated work. Do not describe Chromium emulation as physical-device or Safari verification.
+
+
+
+## Mobile browsing
+
+Search opens saved inventory in a list, with compact cards and optional Map view. Filters open in a dismissible sheet; Search, Saved, and More stay reachable at the bottom. More → Sources & sync contains explicit resync controls and CSV/manual import. Opening the application does not start a provider refresh. Sources retains detailed last-attempt, last-success, partial-coverage and error information. Card Details expands directions and provenance; missing or conflicting data is not guessed.

@@ -14,16 +14,18 @@ npm run test:e2e
 
 `npm run test:e2e:list` lists cases without launching a browser. Optional `PLAYWRIGHT_CHROMIUM_EXECUTABLE=/path/to/chromium` selects an installed Chromium. Chromium sandbox stays enabled; do not disable it to work around a constrained runner. No hosted paid testing service is used.
 
-The suite builds the actual Expo web bundle, serves it on loopback, blocks external browser requests and mocks every supported `/api` route before navigation. It cannot target production via a baseURL environment override. Unexpected API endpoints get an explicit test failure response. Refresh buttons exercise mocked request handling, not real StreetEasy traffic. Each test has an isolated browser context; saved-listing reload checks only synthetic local storage. Failure traces/screenshots are local under ignored output directories.
+The suite builds the actual Expo web bundle, serves it on loopback, blocks external browser requests and mocks every supported `/api` route before navigation. It cannot target production via a baseURL environment override. Unexpected API endpoints get an explicit test failure response. Refresh buttons exercise mocked request handling, not real StreetEasy traffic. Each test has an isolated browser context; saved-listing reload checks only synthetic local storage. Portrait screenshots and failure traces/screenshots are local under ignored output directories.
 
 ## Coverage map
 
 Desktop and mobile Chromium each exercise:
 
-- Homepage all-region search and once-per-session initial refresh.
+- Homepage all-region saved-inventory search with no automatic provider refresh.
 - StreetEasy HTTP 403 status, failed resync and retained cached listing.
 - Resync-all payload and disabled browse-only resync controls.
-- Tab clicks and browser back restoration.
+- Search/Saved/More navigation and browser back restoration.
+- Applied-filter, expanded-list and scroll restoration through navigation.
+- Portrait first-card visibility, list-first map state, filter cancellation/reset and horizontal overflow checks.
 - Empty add-listing validation and cancellation.
 - Search failure alerts rather than misleading empty success.
 - Save, reload persistence and remove.
@@ -38,3 +40,4 @@ Still needed: complete successful manual listing/import workflows, deduplication
 2026-11-13: 20/20 browser cases passed on Render's isolated free test build (desktop and mobile Chromium, 12.9 seconds, commit `943069b`). Chromium sandbox remained enabled and provider calls were mocked. These tests found and fixed a Platforms crash for All regions/non-NYC selection and missing selected-tab ARIA state. The authoring environment itself could not launch Chromium (`socket() failed: Operation not permitted`), so execution was moved to the explicitly approved isolated service, not worked around by disabling the sandbox.
 
 Playwright discovery, E2E/config TypeScript checks, existing application unit tests and Expo web export also passed. This is evidence for the listed UI flows only, not complete browser coverage or live provider availability. The temporary Render service has automatic deployments off and exposes only an inert health message, never test reports, source data or credentials.
+

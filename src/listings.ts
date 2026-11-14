@@ -107,6 +107,16 @@ export function mergeSourceLinks(first, second) {
   return [...links.values()];
 }
 
+function hasIndependentSources(first, second) {
+  const identities = (listing) => new Set((listing.sources ?? [])
+    .map((source) => source.id ?? source.url)
+    .filter(Boolean));
+  const firstSources = identities(first);
+  const secondSources = identities(second);
+  if (!firstSources.size || !secondSources.size) return false;
+  return [...firstSources].every((source) => !secondSources.has(source));
+}
+
 export function mergeListings(listings, { preferFirst = false } = {}) {
   const merged = new Map();
   const keysById = new Map();
@@ -124,8 +134,12 @@ export function mergeListings(listings, { preferFirst = false } = {}) {
     const preferred = !preferFirst && listingTime > currentTime ? listing : current;
     const alternate = preferred === listing ? current : listing;
     const hasLocation = isPoint(preferred);
+    const factsDiffer = preferred.rent !== alternate.rent || preferred.bedrooms !== alternate.bedrooms;
     merged.set(key, {
       ...preferred,
+      // A provider updating its own saved observation is history, not a disagreement between sources.
+      detailsConflict: Boolean(preferred.detailsConflict || alternate.detailsConflict ||
+        (factsDiffer && hasIndependentSources(preferred, alternate))),
       id: current.id,
       latitude: hasLocation ? preferred.latitude : alternate.latitude,
       longitude: hasLocation ? preferred.longitude : alternate.longitude,
@@ -138,3 +152,16 @@ export function mergeListings(listings, { preferFirst = false } = {}) {
 }
 
 
+
+
+/** Presentation never converts missing bedrooms to a studio or guesses from a URL. */
+export function listingPresentation(listing) {
+  const bedsKnown = Number.isInteger(listing.bedrooms) && listing.bedrooms >= 0;
+  const priceKnown = Number.isFinite(listing.rent) && listing.rent > 0;
+  const notices: string[] = [];
+  if (!bedsKnown) notices.push('Bedroom count not provided. Check the listing.');
+  if (!priceKnown) notices.push('Monthly price not provided. Check the listing.');
+  else if (listing.rent < 500) notices.push('Unusually low price. Verify the monthly rent and whether this is a room or a full apartment.');
+  if (listing.detailsConflict) notices.push('Sources report different prices or bedroom counts. Verify details before comparing.');
+  return { priceKnown, bedsLabel: !bedsKnown ? 'Beds unknown' : listing.bedrooms === 0 ? 'Studio' : `${listing.bedrooms} ${listing.bedrooms === 1 ? 'bedroom' : 'bedrooms'}`, notices };
+}
