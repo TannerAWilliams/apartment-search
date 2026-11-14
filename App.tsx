@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Platform, Pressable, ScrollView, StatusBar, Text, View, useWindowDimensions,
+  Modal, Platform, Pressable, ScrollView, StatusBar, Text, View, useWindowDimensions,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
@@ -10,6 +10,7 @@ import { MARKETPLACE_NAMES, marketplaceLinks } from './src/marketplaces.ts';
 import {
   DEFAULT_FILTERS, RESULT_SORTS, bedroomLabel, directionsLink, formatRent, localWorkplace, needsCommute, parseFilters,
 } from './src/search.ts';
+import { mobileStyles } from './src/mobileStyles.ts';
 import { colors, styles } from './src/styles.ts';
 import { formatSnapshotMonth, localSearch, SNAPSHOT_SOURCE } from './src/market.ts';
 import { listingKey, listingLinkLabel, mergeListings, mergeSourceLinks, orderedListingLinks } from './src/listings.ts';
@@ -21,7 +22,7 @@ import { ImportListings } from './src/ImportListings.tsx';
 import { ListingMap } from './src/ListingMap';
 import { SourcesPage } from './src/SourcesPage.tsx';
 import { refreshSummary } from './src/source-status.ts';
-import { ListingSources } from './src/ListingSources.tsx';
+import { Listing } from './src/Listing.tsx';
 import { RentChart } from './src/RentChart.tsx';
 
 const API_ORIGIN = Platform.OS === 'web' ? '' :
@@ -32,7 +33,6 @@ const BEDROOMS = [null, 0, 1, 2, 3, 4];
 const PAGE_SIZE = 12;
 const EMPTY_POINTS = [];
 const SAVED_KEY = 'apartment-search:saved-listings:v1';
-const SESSION_REFRESH_KEY = 'apartment-search:session-refresh';
 const SAVED_FILTERS = { ...SEARCH_DEFAULTS, bedrooms: null, maxRent: null, liveOnly: false };
 const CHECK_TIME = new Intl.DateTimeFormat('en-US', {
   timeZone: 'America/New_York', month: 'short', day: 'numeric',
@@ -146,138 +146,6 @@ function Filters({ draft, setDraft, submit, busy, serverState, token, setToken, 
   </View>;
 }
 
-function Listing({ listing, selectedSource, workplace, commute, onSave, onSaveLink, onRemove, onError, saved }) {
-  const { region, address, unit, city, state, zip, rent, bedrooms, transitSeconds, drivingSeconds, neighborhood } = listing;
-  const regionInfo = REGIONS[searchBorough(listing) ?? region];
-  const title = unit ? `${address}, ${unit.startsWith('#') ? unit : 'Unit ' + unit}` : address;
-  const subtitle = [neighborhood === city ? '' : neighborhood, `${city}, ${state} ${zip}`].filter(Boolean).join(' · ');
-  const feed = listing.sources.find(({ kind }) => kind === 'feed');
-  const [original] = orderedListingLinks(listing.sources, selectedSource);
-  const historical = ['snapshot', 'cached'].includes(original?.kind);
-  const checkedAt = listing.checkedAt ?? listing.seenAt;
-  const checked = Number.isFinite(Date.parse(checkedAt)) ?
-    'Checked ' + CHECK_TIME.format(new Date(checkedAt)) : 'Previous check';
-  const observation = listing.kind === 'snapshot' ? `First listed ${listing.seenAt}` :
-    listing.kind === 'saved' ? 'Saved listing' :
-    listing.kind === 'cached' ? checked + ' · Last saved result' :
-      (feed?.name ?? 'Live source') + ' · ' + checked;
-
-  return <View style={styles.rentalCard}>
-    {original && <ExternalLink url={original.url} onError={onError} style={styles.listingMedia}
-      accessibilityLabel={'Open photos and details for ' + title + ' on ' + original.name}>
-      <Text style={styles.mediaSource}>{original.name}</Text>
-      <Text style={styles.mediaLabel}>{historical ? 'View original ad ↗' : 'Photos and details ↗'}</Text>
-    </ExternalLink>}
-    <View style={styles.rentalCardBody}>
-    <View style={styles.listingTop}>
-      <View style={styles.listingContent}>
-        <View style={styles.listingKicker}>
-          <View style={[styles.regionDot, { backgroundColor: regionInfo.color }]} />
-          <Text style={[styles.regionLabel, { color: regionInfo.color }]}>{regionInfo.label}</Text>
-        </View>
-        {original ? <ExternalLink url={original.url} onError={onError} accessibilityLabel={title + ' on ' + original.name}>
-          <Text style={styles.listingAddress}>{title}</Text>
-        </ExternalLink> : <Text accessibilityRole="header" style={styles.listingTitle}>{title}</Text>}
-        <Text style={styles.smallMuted}>{subtitle}</Text>
-        {listing.company ? <Text style={styles.smallMuted}>{listing.kind === 'feed' &&
-          (listing.companyFromSnapshot || listing.sources.some(({ kind }) => kind === 'snapshot')) ?
-          'Snapshot advertiser' : 'Listed by'} {listing.company}</Text> : null}
-      </View>
-      <View style={styles.priceBlock}>
-        <Text style={styles.price}>{formatRent(rent)}</Text>
-        <Text style={styles.smallMuted}>{listing.kind === 'snapshot' ? 'recorded rent / mo' :
-          listing.priceIncludesFees ? 'total price / mo' : 'asking rent / mo'}</Text>
-      </View>
-    </View>
-    <View style={styles.cardStats}>
-      <Text style={styles.cardStat}>{bedroomLabel(bedrooms)}</Text>
-      {[...new Set<string>(listing.sources.filter(({ url }) => url).map(({ name }) => name))].slice(0, 4).map((name) =>
-        <Text key={name} style={styles.sourceBadge}>{name}</Text>)}
-      {commute && <>
-        <Text style={styles.cardStat}>{transitSeconds == null ? 'Transit unavailable' : `${Math.ceil(transitSeconds / 60)} min transit`}</Text>
-        <Text style={styles.cardStat}>{drivingSeconds == null ? 'Driving unavailable' : `${Math.ceil(drivingSeconds / 60)} min drive`}</Text>
-      </>}
-    </View>
-    <View style={styles.cardActions}>
-      <Text style={styles.smallMuted}>{observation}</Text>
-      <View style={styles.cardLinks}>
-        {original && <Link label={listingLinkLabel(original)}
-          url={original.url} onError={onError} />}
-        <Link label="Transit directions" url={directionsLink(listing, workplace)} onError={onError} />
-        <Link label="Driving directions" url={directionsLink(listing, workplace, 'driving')} onError={onError} />
-        {onRemove ? <Pressable accessibilityRole="button" onPress={() => onRemove(listing)} style={styles.link}>
-          <Text style={styles.linkText}>Remove saved</Text>
-        </Pressable> : <Pressable accessibilityRole="button" accessibilityState={{ disabled: saved }}
-          disabled={saved} onPress={() => onSave(listing)} style={styles.link}>
-          <Text style={styles.linkText}>{saved ? 'Saved' : 'Save apartment'}</Text>
-        </Pressable>}
-      </View>
-    </View>
-    <ListingSources listing={listing} onSaveLink={onSaveLink} onError={onError} />
-    </View>
-  </View>;
-}
-
-function sourceCheckText({ status, checkedAt, updatedAt, listingCount, pages, total, retryAt, error }) {
-  const saved = updatedAt ? ' · Saved data from ' + CHECK_TIME.format(new Date(updatedAt)) : '';
-  const checked = checkedAt ? ' · ' + CHECK_TIME.format(new Date(checkedAt)) : '';
-  if (status === 'feed_required') return 'Authorized feed required' + saved;
-  if (status === 'current') return 'Current' + checked;
-  if (status === 'updated') return (listingCount === undefined ? 'New data imported' :
-    listingCount.toLocaleString('en-US') + ' listings checked' +
-      (total > listingCount ? ' out of ' + total.toLocaleString('en-US') + ' reported' : '')) + (pages > 1 ? ' across ' + pages + ' pages' : '') + checked;
-  const next = Date.parse(retryAt) > Date.now() ? ' · Next check after ' + CHECK_TIME.format(new Date(retryAt)) : '';
-  return (error ?? 'Refresh unavailable') + next + saved;
-}
-
-function RentalSyncStatus({ refresh, refreshing, cooldownSeconds, configuredSources, onRefresh, onStreetEasy }) {
-  const [expanded, setExpanded] = useState(false);
-  const sites = new Map(marketplaceLinks(NYC_SEARCH_MARKETS[0], DEFAULT_FILTERS).map(({ id, name }) => [id, name]));
-  for (const { id, name } of [...NYC_COMPANIES, ...configuredSources]) sites.set(id, name);
-  sites.set('settled', 'Settled.nyc');
-  sites.set('linecity', 'Linecity');
-  const statusBySite = new Map();
-  for (const source of refresh?.sources ?? []) {
-    if (['firstmover', 'housingconnect', 'hdc-rerentals'].includes(source.id)) continue;
-    const id = source.marketplace ?? source.id.replace(/-live$/, '');
-    if (source.status === 'feed_required' && statusBySite.has(id)) continue;
-    statusBySite.set(id, source);
-    sites.set(id, source.name);
-  }
-  const rows = [...sites].map(([id, name]) => {
-    const source = statusBySite.get(id);
-    const synced = source?.status === 'updated' || source?.status === 'current';
-    const pending = (!source || source.status === 'feed_required') &&
-      (configuredSources.some((item) => item.id === id) ||
-        !source && ['openigloo', 'trulia', 'zumper', 'affordablehousing', 'streeteasy', 'apartments'].includes(id));
-    return { id, name, source, synced, state: synced ? 'Synced' : source?.status === 'failed' ?
-      'Did not sync' : pending ? 'Awaiting first check' : 'Not connected' };
-  }).sort((a, b) => Number(b.synced) - Number(a.synced) || a.state.localeCompare(b.state) || a.name.localeCompare(b.name));
-  const streetEasy = refresh?.sources.find((source) => source.id === 'streeteasy-live');
-  const synced = rows.filter((row) => row.synced).length;
-  const failed = rows.filter(({ state }) => state === 'Did not sync').length;
-  const disconnected = rows.filter(({ state }) => state === 'Not connected').length;
-
-  return <View style={styles.chartSource}>
-    <View style={styles.chipRow}>
-      <Button secondary onPress={onRefresh} disabled={!refresh || refreshing || cooldownSeconds > 0}>
-        {refreshing ? 'Refreshing listings…' : 'Refresh listings'}
-      </Button>
-      <Button secondary onPress={onStreetEasy} disabled={!refresh || refreshing || cooldownSeconds > 0}>Fetch all StreetEasy listings</Button>
-      <Button secondary onPress={() => setExpanded(!expanded)}>{expanded ? 'Hide sync status' : 'Show sync status'}</Button>
-    </View>
-    <Text style={styles.smallMuted}>StreetEasy: {streetEasy?.listingCount ?? 0} saved listings{streetEasy?.total != null ? ` from ${streetEasy.total} source records` : ''}. Full inventory is fetched before your search filters. Saved data appears immediately; a failed fetch does not replace it.</Text>
-    <Text accessibilityLiveRegion="polite" style={styles.smallMuted}>{synced} synced · {failed} did not sync · {disconnected} not connected</Text>
-    {refresh?.lastCheckedAt && <Text style={styles.smallMuted}>Sources last checked {CHECK_TIME.format(new Date(refresh.lastCheckedAt))}</Text>}
-    {expanded && <>
-      <Text style={styles.smallMuted}>Connected public searches return limited batches. Counts are before your search filters.</Text>
-      {rows.map(({ id, name, state, source }) => <Text key={id} style={styles.smallMuted}>
-        {name} · {state}{source && state !== 'Awaiting first check' && ` · ${sourceCheckText(source)}`}
-      </Text>)}
-    </>}
-  </View>;
-}
-
 function Marketplaces({ filters, sources, configuredSources, companies, onCompany, refresh, refreshing, cooldownSeconds, onRefresh, onError }) {
   const markets = marketsForSearch(filters);
   const [marketLabel, setMarketLabel] = useState('');
@@ -302,13 +170,6 @@ function Marketplaces({ filters, sources, configuredSources, companies, onCompan
       {sampleNames.length > 0 && <Text style={styles.smallMuted}>{sampleNames.join(' · ')}</Text>}
       <Link label="FirstMover Open Data" url={SNAPSHOT_SOURCE} onError={onError} />
       <Text style={styles.smallMuted}>Settled.nyc · source access unverified.</Text>
-      {refresh && <Button secondary onPress={onRefresh} disabled={refreshing || cooldownSeconds > 0}>
-        {refreshing ? 'Checking sources…' : 'Refresh listings now'}
-      </Button>}
-      <Text style={styles.smallMuted}>The app checks available feeds once per session. If a provider limits requests, its next check waits until the retry time.</Text>
-      {refresh?.lastCheckedAt && <Text style={styles.fieldLabel}>Last source check · {CHECK_TIME.format(new Date(refresh.lastCheckedAt))}</Text>}
-      {refresh?.sources.filter(({ status, marketplace }) => status !== 'feed_required' || !configured.has(marketplace))
-        .map((source) => <Text key={source.id} style={styles.smallMuted}>{source.name} · {sourceCheckText(source)}</Text>)}
     </View>
     <Text style={styles.fieldLabel}>Marketplace area</Text>
     <ScrollView horizontal showsHorizontalScrollIndicator keyboardShouldPersistTaps="handled"
@@ -346,9 +207,7 @@ function Marketplaces({ filters, sources, configuredSources, companies, onCompan
   </View>;
 }
 
-function Results({ result, applied, sort, onSort, onPage, paging, openCommute, commuteConfigured, checkingInventory, columns, savedByKey, showMarkets, onSave, onSaveLink, onRemove, onError }) {
-  const [visible, setVisible] = useState(PAGE_SIZE);
-  useEffect(() => { setVisible(PAGE_SIZE); }, [result]);
+function Results({ visible, setVisible, result, applied, sort, onSort, onPage, paging, openCommute, commuteConfigured, checkingInventory, columns, savedByKey, showMarkets, onSave, onSaveLink, onRemove, onError }) {
   const { matches } = result;
   const savedView = result.mode === 'saved';
   const summary = savedView ? 'Saved on this device · All apartment sizes' : [
@@ -432,6 +291,8 @@ function ApartmentSearch() {
   const [applied, setApplied] = useState(SEARCH_DEFAULTS);
   const [result, setResult] = useState(() => localSearch([], SEARCH_DEFAULTS, localWorkplace(SEARCH_DEFAULTS), 'live'));
   const [saved, setSaved] = useState([]);
+  const [visible, setVisible] = useState(PAGE_SIZE);
+  useEffect(() => { setVisible(PAGE_SIZE); }, [result]);
   const [storageReady, setStorageReady] = useState(false);
   const [serverState, setServerState] = useState(API_ORIGIN === null ? 'offline' : 'checking');
   const [configuredSources, setConfiguredSources] = useState([]);
@@ -464,7 +325,9 @@ function ApartmentSearch() {
     if (Platform.OS !== 'web') return;
     const restore = () => {
       const next = window.location.hash.slice(1);
-      setTab(['results', 'sources', 'chart', 'marketplaces', 'affordable'].includes(next) ? next : 'results');
+      setExpanded('');
+      setScope(next === 'saved' ? 'saved' : 'market');
+      setTab(['results', 'saved', 'more', 'sources', 'chart', 'marketplaces', 'affordable'].includes(next) ? next : 'results');
     };
     restore();
     window.addEventListener('popstate', restore);
@@ -473,12 +336,20 @@ function ApartmentSearch() {
   }, []);
   const navigateTab = (next) => {
     if (Platform.OS === 'web' && window.location.hash !== '#' + next) window.history.pushState(null, '', '#' + next);
+    setScope(next === 'saved' ? 'saved' : 'market');
+    setExpanded('');
     setTab(next);
   };
   const [scope, setScope] = useState('market');
   const [adding, setAdding] = useState<false | 'single' | 'import'>(false);
   const [expanded, setExpanded] = useState('');
-  const [mapView, setMapView] = useState(wide);
+  const [mapView, setMapView] = useState(false);
+  const scrollRef = useRef<React.ElementRef<typeof ScrollView>>(null);
+  const scrollPositions = useRef<Record<string, number>>({});
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => scrollRef.current?.scrollTo({ y: scrollPositions.current[tab] ?? 0, animated: false }));
+    return () => cancelAnimationFrame(frame);
+  }, [tab]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const failedSources = refresh?.sources.filter(({ status }) => status === 'failed') ?? [];
@@ -583,20 +454,10 @@ function ApartmentSearch() {
           .then((fresh) => {
             if (!submitted.current && !controller.signal.aborted && searchVersion.current === version) setResult(fresh);
           })
-          .catch(() => {});
+          .catch((failure) => { if (!controller.signal.aborted) setError(failure.message || 'Saved inventory could not be loaded. Please try again.'); });
       }
-      if (config.refresh) {
-        let alreadyChecked = false;
-        if (Platform.OS === 'web') {
-          try {
-            alreadyChecked = sessionStorage.getItem(SESSION_REFRESH_KEY) === 'checked';
-            sessionStorage.setItem(SESSION_REFRESH_KEY, 'checked');
-          } catch {
-            // A browser that disables session storage can still sync when the app opens.
-          }
-        }
-        if (!alreadyChecked || config.refresh.checking) void checkSources(true);
-      }
+      // Opening Search reads the saved inventory only. Refresh is explicitly user initiated.
+
     }).catch((failure) => {
       if (controller.signal.aborted) return;
       setServerState(failure.status === 401 ? 'locked' : 'offline');
@@ -690,10 +551,10 @@ function ApartmentSearch() {
 
   function showSaved() {
     setScope('saved');
-    navigateTab('results');
+    navigateTab('saved');
   }
 
-  const toggleFilter = (panel) => setExpanded((current) => current === panel ? '' : panel);
+  const toggleFilter = (panel) => { setDraft({ ...formDefaults(), ...applied, maxRent: applied.maxRent == null ? '' : String(applied.maxRent), maxTransitMinutes: applied.maxTransitMinutes == null ? '' : String(applied.maxTransitMinutes), maxDrivingMinutes: applied.maxDrivingMinutes == null ? '' : String(applied.maxDrivingMinutes) }); setExpanded((current) => current === panel ? '' : panel); };
   const displayed = scope === 'saved' ? savedResults : result;
   const points = displayed.mapPoints ?? EMPTY_POINTS;
   const split = WEB_MAP && wide && mapView;
@@ -711,70 +572,33 @@ function ApartmentSearch() {
         <Text style={styles.brandText}>Apartment Search</Text></View>
       <Text style={styles.topLabel}>NYC METRO</Text>
     </View>
-    <View style={styles.tabs}>
-      {[['results', 'Rent'], ['chart', 'Rent chart'], ['sources', 'Sources'], ['marketplaces', 'Platforms'], ['affordable', 'Affordable']].map(([key, label]) =>
-        <Pressable key={key} accessibilityRole="tab" aria-selected={tab === key} accessibilityState={{ selected: tab === key }}
-          style={[styles.tab, tab === key && styles.tabActive]} onPress={() => navigateTab(key)}>
-          <Text style={[styles.tabLabel, tab === key && styles.tabLabelActive]}>{label}</Text>
-        </Pressable>)}
-    </View>
-    {tab === 'results' && <View style={styles.filterBar}>
-      <View style={styles.chipRow}>
-        <Chip onPress={() => toggleFilter('area')} selected={expanded === 'area'}>{'⌖  ' + marketArea + '  ▾'}</Chip>
-        <Chip onPress={() => toggleFilter('price')} selected={expanded === 'price'}>{applied.maxRent === null ? 'Price ▾' : 'Up to ' + formatRent(applied.maxRent) + ' ▾'}</Chip>
-        <Chip onPress={() => toggleFilter('beds')} selected={expanded === 'beds'}>{bedroomLabel(applied.bedrooms) + ' ▾'}</Chip>
-        <Chip onPress={() => toggleFilter('commute')} selected={expanded === 'commute'}>{commuteLabel + ' ▾'}</Chip>
-        <Button secondary onPress={() => toggleFilter('more')}>{expanded === 'more' ? 'Hide filters' : 'More filters'}</Button>
-        {WEB_MAP && <Button secondary onPress={() => setMapView(!mapView)}>{mapView ? 'List only' : 'Show map'}</Button>}
-      </View>
+    {(tab === 'results' || tab === 'saved') && <View style={mobileStyles.searchBar}>
+      <View style={mobileStyles.summary}><Text numberOfLines={1} style={styles.fieldLabel}>{tab === 'saved' ? 'Your saved apartments' : marketArea}</Text>
+        <Text numberOfLines={1} style={styles.smallMuted}>{bedroomLabel(applied.bedrooms)} · {applied.maxRent == null ? 'Any price' : 'Up to ' + formatRent(applied.maxRent)}</Text></View>
+      {tab === 'results' && <Button secondary onPress={() => toggleFilter('more')}>Filters</Button>}
+      {WEB_MAP && <Button secondary onPress={() => setMapView(!mapView)}>{mapView ? 'List' : 'Map'}</Button>}
     </View>}
-    <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scroll}>
+    <Modal visible={Boolean(expanded)} transparent animationType="slide" onRequestClose={() => setExpanded('')}>
+      <View style={mobileStyles.overlay}><View style={[mobileStyles.sheet, wide && mobileStyles.wideSheet]} accessibilityViewIsModal>
+        <View style={mobileStyles.sheetHeader}><Text accessibilityRole="header" style={styles.panelTitle}>Search filters</Text><Button secondary onPress={() => setExpanded('')}>Cancel</Button></View>
+        <ScrollView keyboardShouldPersistTaps="handled">
+          {error !== '' && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
+          <Filters panel="more" draft={draft} setDraft={setDraft} submit={() => submit()} busy={busy} serverState={serverState} token={token} setToken={setToken} commuteConfigured={commuteConfigured} connect={() => setActiveToken(token.trim())} />
+          <WebsiteFilter result={result} applied={draft} onSelect={(source) => setDraft((current) => ({ ...current, source }))} onError={setError} />
+        </ScrollView>
+      </View></View>
+    </Modal>
+    <ScrollView ref={scrollRef} onScroll={(event) => { scrollPositions.current[tab] = event.nativeEvent.contentOffset.y; }} scrollEventThrottle={100} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scroll}>
       <View style={styles.shell}>
-        {tab === 'results' && expanded && <Filters panel={expanded} draft={draft} setDraft={setDraft} submit={() => submit()}
-          busy={busy} serverState={serverState} token={token} setToken={setToken}
-          commuteConfigured={commuteConfigured}
-          connect={() => setActiveToken(token.trim())} />}
         <View style={styles.results}>
             {error !== '' && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
-            {cooldownSeconds > 0 && !refreshing && <Text accessibilityLiveRegion="polite" style={styles.smallMuted}>Resync available in {cooldownSeconds} seconds. No request will be sent until then.</Text>}
-            {refreshing && <Text accessibilityLiveRegion="polite" style={styles.smallMuted}>Checking rental sources…</Text>}
-            {!refreshing && failedSources.length > 0 && <Text style={styles.noticeLine}>
-              {failedSources.length} {failedSources.length === 1 ? 'source is' : 'sources are'} temporarily unavailable. See Sources for details.
-            </Text>}
-            {refreshError !== '' && <Text accessibilityRole="alert" style={styles.noticeLine}>{refreshError}</Text>}
-            {tab === 'results' && <>
-              <View style={styles.resultControls}>
-              <View style={styles.scopeRow}>
-                <View style={styles.chipRow}>
-                  <Chip selected={scope === 'market'} onPress={showMarket}>Available rentals</Chip>
-                  <Chip selected={scope === 'saved'} onPress={showSaved}>Saved ({savedResults.total})</Chip>
-                </View>
-                {!adding && <View style={styles.chipRow}>
-                  <Button secondary onPress={() => { setAdding('single'); showSaved(); }}>+ Add listing</Button>
-                  <Button secondary onPress={() => { setAdding('import'); showSaved(); }}>Import CSV</Button>
-                </View>}
-              </View>
-              {scope === 'market' && <WebsiteFilter result={result} applied={applied} onSelect={selectSource} onError={setError} />}
-              {scope === 'market' && <RentalSyncStatus refresh={refresh} refreshing={refreshing} cooldownSeconds={cooldownSeconds}
-                onStreetEasy={() => checkSources(false, 'streeteasy-live')}
-                configuredSources={configuredSources} onRefresh={() => checkSources()} />}
-              </View>
-              {adding === 'single' && <AddListing initialRegion={applied.region}
-                onSave={(listing) => { saveListing(listing); setAdding(false); }}
-                onCancel={() => setAdding(false)}
-                geocode={serverState === 'ready' ? (address) => api('geocode', { body: { address }, token: activeToken }) : null} />}
-              {adding === 'import' && <ImportListings
-                onImport={(listings) => {
-                  if (listings.some((listing) => !matchesRegion(listing, NYC_SEARCH_DEFAULT))) {
-                    throw new Error('Import listings with Manhattan or Brooklyn ZIP codes.');
-                  }
-                  setSaved((current) => mergeListings([...listings, ...current]));
-                  setAdding(false);
-                }}
-                onCancel={() => setAdding(false)} />}
+            {(tab === 'results' || tab === 'saved') && <>
+              {tab === 'results' && <Pressable accessibilityRole="button" accessibilityLabel="View source freshness and coverage" onPress={() => navigateTab('sources')}>
+                <Text style={mobileStyles.freshness}>{refreshing ? 'Refreshing sources…' : failedSources.length ? 'Partial coverage · Some sources unavailable' : refresh?.lastCheckedAt ? 'Saved results · ' + CHECK_TIME.format(new Date(refresh.lastCheckedAt)) : 'Saved results · Not yet refreshed'} · Details</Text>
+              </Pressable>}
               <View style={[styles.resultLayout, split && styles.resultLayoutWide]}>
                 {listVisible && <View style={styles.results}>
-                  <Results result={displayed} applied={applied} sort={scope === 'saved' ? SAVED_FILTERS.sort : applied.sort} onSort={selectSort}
+                  <Results visible={visible} setVisible={setVisible} result={displayed} applied={applied} sort={scope === 'saved' ? SAVED_FILTERS.sort : applied.sort} onSort={selectSort}
                     onPage={fetchPage} paging={busy}
                     openCommute={() => setExpanded('commute')}
                     commuteConfigured={commuteConfigured}
@@ -789,9 +613,30 @@ function ApartmentSearch() {
                 </View>}
               </View>
             </>}
+            {tab === 'more' && <View style={styles.filters}><Text accessibilityRole="header" style={styles.panelTitle}>More</Text>
+              {[['sources', 'Sources & sync'], ['chart', 'Rent chart'], ['marketplaces', 'Rental platforms'], ['affordable', 'Affordable housing']].map(([key, label]) => <Button key={key} secondary onPress={() => navigateTab(key)}>{label}</Button>)}
+            </View>}
             {tab === 'chart' && <RentChart initialRegion={applied.region} saved={saved} showSaved={showSaved} onError={setError}
               loadMarket={serverState === 'ready' ? loadMarket : undefined} />}
-            {tab === 'sources' && <SourcesPage catalog={sourceCatalog} refresh={refresh} refreshing={refreshing} cooldownSeconds={cooldownSeconds} onResync={(id) => checkSources(false, id ?? null)} />}
+            {tab === 'sources' && <>
+              <Text accessibilityRole="header" style={styles.panelTitle}>Sources & sync</Text>
+              {refreshError !== '' && <Text accessibilityRole="alert" style={styles.noticeLine}>{refreshError}</Text>}
+              <View style={styles.chipRow}><Button secondary onPress={() => setAdding('single')}>+ Add listing</Button><Button secondary onPress={() => setAdding('import')}>Import CSV</Button></View>
+              {adding === 'single' && <AddListing initialRegion={applied.region}
+                onSave={(listing) => { saveListing(listing); setAdding(false); }}
+                onCancel={() => setAdding(false)}
+                geocode={serverState === 'ready' ? (address) => api('geocode', { body: { address }, token: activeToken }) : null} />}
+              {adding === 'import' && <ImportListings
+                onImport={(listings) => {
+                  if (listings.some((listing) => !matchesRegion(listing, NYC_SEARCH_DEFAULT))) {
+                    throw new Error('Import listings with Manhattan or Brooklyn ZIP codes.');
+                  }
+                  setSaved((current) => mergeListings([...listings, ...current]));
+                  setAdding(false);
+                }}
+                onCancel={() => setAdding(false)} />}
+              <SourcesPage catalog={sourceCatalog} refresh={refresh} refreshing={refreshing} cooldownSeconds={cooldownSeconds} onResync={(id) => checkSources(false, id ?? null)} />
+            </>}
             {tab === 'marketplaces' && <Marketplaces filters={applied} sources={result.sources}
               configuredSources={configuredSources} companies={companies} onCompany={searchCompany} refresh={refresh} refreshing={refreshing} cooldownSeconds={cooldownSeconds}
               onRefresh={() => checkSources()} onError={setError} />}
@@ -803,10 +648,17 @@ function ApartmentSearch() {
         </View>
       </View>
     </ScrollView>
+    <View style={mobileStyles.bottomNav}>
+      {[['results', 'Search'], ['saved', `Saved (${savedResults.total})`], ['more', 'More']].map(([key, label]) => {
+        const selected = key === 'more' ? !['results', 'saved'].includes(tab) : tab === key;
+        return <Pressable key={key} accessibilityRole="tab" aria-selected={selected} accessibilityState={{ selected }} style={[mobileStyles.navItem, selected && mobileStyles.navSelected]} onPress={() => navigateTab(key)}><Text style={styles.tabLabel}>{label}</Text></Pressable>;
+      })}
+    </View>
   </SafeAreaView>;
 }
 
 export default function App() {
   return <SafeAreaProvider><ApartmentSearch /></SafeAreaProvider>;
 }
+
 

@@ -20,10 +20,11 @@ The suite builds the actual Expo web bundle, serves it on loopback, blocks exter
 
 Desktop and mobile Chromium each exercise:
 
-- Homepage all-region search and once-per-session initial refresh.
+- Homepage all-region saved-inventory search with no automatic provider refresh.
 - StreetEasy HTTP 403 status, failed resync and retained cached listing.
 - Resync-all payload and disabled browse-only resync controls.
-- Tab clicks and browser back restoration.
+- Search/Saved/More navigation and browser back restoration.
+- Portrait first-card visibility, filter cancellation/reset and horizontal overflow checks.
 - Empty add-listing validation and cancellation.
 - Search failure alerts rather than misleading empty success.
 - Save, reload persistence and remove.
@@ -38,3 +39,4 @@ Still needed: complete successful manual listing/import workflows, deduplication
 2026-11-13: 20/20 browser cases passed on Render's isolated free test build (desktop and mobile Chromium, 12.9 seconds, commit `943069b`). Chromium sandbox remained enabled and provider calls were mocked. These tests found and fixed a Platforms crash for All regions/non-NYC selection and missing selected-tab ARIA state. The authoring environment itself could not launch Chromium (`socket() failed: Operation not permitted`), so execution was moved to the explicitly approved isolated service, not worked around by disabling the sandbox.
 
 Playwright discovery, E2E/config TypeScript checks, existing application unit tests and Expo web export also passed. This is evidence for the listed UI flows only, not complete browser coverage or live provider availability. The temporary Render service has automatic deployments off and exposes only an inert health message, never test reports, source data or credentials.
+
