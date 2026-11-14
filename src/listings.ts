@@ -107,6 +107,16 @@ export function mergeSourceLinks(first, second) {
   return [...links.values()];
 }
 
+function hasIndependentSources(first, second) {
+  const identities = (listing) => new Set((listing.sources ?? [])
+    .map((source) => source.id ?? source.url)
+    .filter(Boolean));
+  const firstSources = identities(first);
+  const secondSources = identities(second);
+  if (!firstSources.size || !secondSources.size) return false;
+  return [...firstSources].every((source) => !secondSources.has(source));
+}
+
 export function mergeListings(listings, { preferFirst = false } = {}) {
   const merged = new Map();
   const keysById = new Map();
@@ -124,9 +134,12 @@ export function mergeListings(listings, { preferFirst = false } = {}) {
     const preferred = !preferFirst && listingTime > currentTime ? listing : current;
     const alternate = preferred === listing ? current : listing;
     const hasLocation = isPoint(preferred);
+    const factsDiffer = preferred.rent !== alternate.rent || preferred.bedrooms !== alternate.bedrooms;
     merged.set(key, {
       ...preferred,
-      detailsConflict: Boolean(preferred.detailsConflict || alternate.detailsConflict || preferred.rent !== alternate.rent || preferred.bedrooms !== alternate.bedrooms),
+      // A provider updating its own saved observation is history, not a disagreement between sources.
+      detailsConflict: Boolean(preferred.detailsConflict || alternate.detailsConflict ||
+        (factsDiffer && hasIndependentSources(preferred, alternate))),
       id: current.id,
       latitude: hasLocation ? preferred.latitude : alternate.latitude,
       longitude: hasLocation ? preferred.longitude : alternate.longitude,

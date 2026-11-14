@@ -160,8 +160,9 @@ all sessions.
 
 **Temporary means temporary:** cached listings, refresh timestamps and rent
 chart refreshes reset on service restart, redeployment or free-service sleep.
-Saved apartments remain device-local. The first homepage load attempts source
-refreshes; failed providers are reported rather than fabricated. Render does not
+Saved apartments remain device-local. The homepage reads saved inventory without
+refreshing providers; source refreshes start only from More → Sources & sync.
+Failed providers are reported rather than fabricated. Render does not
 remove provider CAPTCHAs or guarantee StreetEasy/HotPads access. The previous
 Sites deployment and its saved data are not deleted by this deployment.
 

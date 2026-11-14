@@ -207,6 +207,19 @@ function Marketplaces({ filters, sources, configuredSources, companies, onCompan
   </View>;
 }
 
+function ResultNotices({ notices = [] }) {
+  const [expanded, setExpanded] = useState(false);
+  if (!notices.length) return null;
+  return <View style={styles.noticePanel}>
+    <Text style={styles.fieldLabel}>Source coverage</Text>
+    {expanded ? notices.map((notice, index) => <Text key={`${index}-${notice}`} style={styles.bodyText}>• {notice}</Text>) :
+      <Text style={styles.bodyText}>{notices.length} source coverage {notices.length === 1 ? 'note' : 'notes'}. Review before relying on result completeness.</Text>}
+    <Pressable accessibilityRole="button" accessibilityState={{ expanded }} onPress={() => setExpanded(!expanded)} style={styles.link}>
+      <Text style={styles.linkText}>{expanded ? 'Hide coverage notes' : 'Show coverage notes'}</Text>
+    </Pressable>
+  </View>;
+}
+
 function Results({ visible, setVisible, result, applied, sort, onSort, onPage, paging, openCommute, commuteConfigured, checkingInventory, columns, savedByKey, showMarkets, onSave, onSaveLink, onRemove, onError }) {
   const { matches } = result;
   const savedView = result.mode === 'saved';
@@ -233,6 +246,7 @@ function Results({ visible, setVisible, result, applied, sort, onSort, onPage, p
     </View>
     {result.commute && <Text style={styles.smallMuted}>Weekday-morning estimates from TravelTime.</Text>}
     {result.commuteNotice && <Text style={styles.smallMuted}>{result.commuteNotice}</Text>}
+    <ResultNotices notices={result.notices} />
     {result.total > matches.length && <Text style={styles.smallMuted}>Showing records {(result.offset ?? 0) + (matches.length ? 1 : 0)}–{(result.offset ?? 0) + matches.length} of {result.total}.</Text>}
     {matches.length === 0 && (savedView || !checkingInventory) && <View style={styles.empty}>
       <Text accessibilityRole="header" style={styles.panelTitle}>{savedView ? 'Your saved list is empty' : 'No recently checked matches'}</Text>
@@ -574,7 +588,7 @@ function ApartmentSearch() {
     </View>
     {(tab === 'results' || tab === 'saved') && <View style={mobileStyles.searchBar}>
       <View style={mobileStyles.summary}><Text numberOfLines={1} style={styles.fieldLabel}>{tab === 'saved' ? 'Your saved apartments' : marketArea}</Text>
-        <Text numberOfLines={1} style={styles.smallMuted}>{bedroomLabel(applied.bedrooms)} · {applied.maxRent == null ? 'Any price' : 'Up to ' + formatRent(applied.maxRent)}</Text></View>
+        <Text numberOfLines={1} style={styles.smallMuted}>{tab === 'saved' ? 'All apartment sizes · Any price' : bedroomLabel(applied.bedrooms) + ' · ' + (applied.maxRent == null ? 'Any price' : 'Up to ' + formatRent(applied.maxRent))}</Text></View>
       {tab === 'results' && <Button secondary onPress={() => toggleFilter('more')}>Filters</Button>}
       {WEB_MAP && <Button secondary onPress={() => setMapView(!mapView)}>{mapView ? 'List' : 'Map'}</Button>}
     </View>}
@@ -588,7 +602,7 @@ function ApartmentSearch() {
         </ScrollView>
       </View></View>
     </Modal>
-    <ScrollView ref={scrollRef} onScroll={(event) => { scrollPositions.current[tab] = event.nativeEvent.contentOffset.y; }} scrollEventThrottle={100} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scroll}>
+    <ScrollView ref={scrollRef} testID="main-scroll" onScroll={(event) => { scrollPositions.current[tab] = event.nativeEvent.contentOffset.y; }} scrollEventThrottle={100} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scroll}>
       <View style={styles.shell}>
         <View style={styles.results}>
             {error !== '' && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
