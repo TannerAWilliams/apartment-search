@@ -136,7 +136,7 @@ test('search shows source coverage notices instead of hiding data caveats', asyn
   await mockApp(page, { notices: ['Synthetic provider returned partial inventory.'] });
   await expect(page.getByText('1 source coverage note. Review before relying on result completeness.', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Show coverage notes', exact: true }).click();
-  await expect(page.getByText('Synthetic provider returned partial inventory.', { exact: true })).toBeVisible();
+  await expect(page.getByText('• Synthetic provider returned partial inventory.', { exact: true })).toBeVisible();
 });
 
 test('CSV import can be opened and cancelled without changing saved data', async ({ page }) => {
@@ -186,9 +186,11 @@ test('applied filters, expanded results and search scroll survive navigation', a
   await page.setViewportSize({ width: 393, height: 852 });
   const { requests } = await mockApp(page, { listingCount: 20 });
   await page.getByRole('button', { name: 'Filters', exact: true }).click();
+  await page.getByRole('button', { name: '1 BR', exact: true }).click();
   await page.getByRole('textbox', { name: 'Max rent per month ($)', exact: true }).fill('5000');
   await page.getByRole('button', { name: 'Search apartments →', exact: true }).click();
   await expect.poll(() => requests.filter(r => r.path === '/api/search').at(-1)?.body.maxRent).toBe(5000);
+  expect(requests.filter(r => r.path === '/api/search').at(-1)?.body.bedrooms).toBe(1);
   await expect(page.getByText('1 bedroom · Up to $5,000', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Show more (12 of 20)', exact: true }).click();
   await expect(page.getByRole('button', { name: /^Details for / })).toHaveCount(20);
@@ -208,5 +210,6 @@ test('applied filters, expanded results and search scroll survive navigation', a
   await expect.poll(async () => Math.abs(await scroller.evaluate((element) => element.scrollTop) - searchScroll)).toBeLessThan(5);
   expect(requests.filter(r => r.path === '/api/search')).toHaveLength(searchesBeforeNavigation);
   await page.getByRole('button', { name: 'Filters', exact: true }).click();
+  await expect(page.getByRole('button', { name: '1 BR', exact: true })).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByRole('textbox', { name: 'Max rent per month ($)', exact: true })).toHaveValue('5000');
 });
