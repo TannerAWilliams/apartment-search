@@ -194,3 +194,26 @@ This is a design preference, not a requirement to run every build or automated t
 ## Mobile browsing
 
 Search opens saved inventory in a list, with compact cards and optional Map view. Filters open in a dismissible sheet; Search, Saved, and More stay reachable at the bottom. More → Sources & sync contains explicit resync controls and CSV/manual import. Opening the application does not start a provider refresh. Sources retains detailed last-attempt, last-success, partial-coverage and error information. Card Details expands directions and provenance; missing or conflicting data is not guessed.
+
+### Durable PostgreSQL inventory (optional)
+
+Set `DATABASE_URL` in the Node service's secret environment to use an existing
+PostgreSQL database instead of the temporary memory bucket. The app creates the
+`apartment_objects` table if needed. Source payloads, metadata and conditional-write
+ETags survive Node restarts; competing writers serialize quota checks and publish
+whole objects atomically. A database connection/schema failure stops startup rather
+than silently switching to an empty temporary cache. `/api/config.storageMode`
+reports `persistent`, `temporary`, or `none`.
+
+Use a provider connection string with verified TLS according to its documentation;
+do not disable certificate verification. No database, account, paid plan or secret
+is provisioned by this code. Render's existing service remains temporary until an
+operator supplies a durable database connection. Backups and restore verification
+remain the database operator's responsibility. This does not fix provider 403s,
+make stale listings fresh, or change manual-only refresh behavior.
+
+`test/postgres-bucket.test.ts` exercises real embedded PostgreSQL through PGlite,
+including on-disk reopen, conditional writes, quota rollback, immutable input and
+connection failures. This is not verification of a hosted PostgreSQL server, TLS,
+network failures or multi-process production load. Run the full suite and a hosted
+database recovery check before production rollout.

@@ -269,7 +269,7 @@ test('the published snapshot provides dated StreetEasy links and measured rents'
 
 test('previous paid provider credentials never trigger network calls', async () => {
   const env = { RENTCAST_API_KEY: 'unused', GOOGLE_ROUTES_API_KEY: 'unused', PARTNER_FEEDS_JSON: 'unused' };
-  assert.deepEqual(appConfig(env), { mode: 'snapshot', browserImportAllowed: true, listingRequestTransport: 'direct', snapshotMonth: SNAPSHOT_MONTH, sources: [] });
+  assert.deepEqual(appConfig(env), { mode: 'snapshot', storageMode: 'none', browserImportAllowed: true, listingRequestTransport: 'direct', snapshotMonth: SNAPSHOT_MONTH, sources: [] });
   const result = await search(DEFAULT_FILTERS, env, () => assert.fail('No network call should occur'));
   assert.equal(result.mode, 'snapshot');
 });

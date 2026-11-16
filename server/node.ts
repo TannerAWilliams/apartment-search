@@ -7,6 +7,8 @@ import { handleApi } from './api.ts';
 import { createListingSourceClient } from './relay-client.ts';
 import { MIME } from './mime.ts';
 import { createMemoryBucket } from './memory-bucket.ts';
+import { Pool } from 'pg';
+import { createPostgresBucket } from './postgres-bucket.ts';
 import { createPublicRequestLimits, isPublicRefresh } from './public-access.ts';
 import { SESSION_COOKIE, secretsEqual, issueSession, validSession } from './private-session.ts';
 
@@ -19,10 +21,13 @@ const publicApp = process.env.PUBLIC_APP === 'true';
 const publicLimits = createPublicRequestLimits();
 const local = ['127.0.0.1', '::1', 'localhost'].includes(host);
 if (!publicApp && !local && (!token || token.length < 32)) throw new Error('A private APP_ACCESS_TOKEN of at least 32 characters is required.');
-const env = { ...process.env, BUCKET: createMemoryBucket(), TEMPORARY_CACHE: 'true' };
+// A configured database must connect successfully: never silently fall back and lose data.
+const database = process.env.DATABASE_URL ? new Pool({ connectionString: process.env.DATABASE_URL, max: 5, connectionTimeoutMillis: 10000, statement_timeout: 15000 }) : null;
+const bucket = database ? await createPostgresBucket(database) : createMemoryBucket();
+const env = { ...process.env, BUCKET: bucket, TEMPORARY_CACHE: database ? 'false' : 'true' };
 const publicOrigin = process.env.RENDER_EXTERNAL_URL;
 let failures = 0; let resetAt = 0;
-const loginPage = '<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><title>Apartment Search · Sign in</title></head><body><main><h1>Apartment Search</h1><p>This app is private. Enter the access password stored in your Render service environment.</p><form method="post" action="/login"><label>Access password <input name="password" type="password" required autocomplete="current-password"></label><button type="submit">Sign in</button></form><p>Listings are stored temporarily. A free-server restart clears them; use Resync to fetch available sources again.</p></main></body></html>';
+const loginPage = '<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><title>Apartment Search · Sign in</title></head><body><main><h1>Apartment Search</h1><p>This app is private. Enter the access password stored in your Render service environment.</p><form method="post" action="/login"><label>Access password <input name="password" type="password" required autocomplete="current-password"></label><button type="submit">Sign in</button></form><p>Listing storage mode is shown in the app. Provider refreshes are manual.</p></main></body></html>';
 
 createServer(async (incoming, outgoing) => {
   outgoing.setHeader('Cache-Control', 'no-store');

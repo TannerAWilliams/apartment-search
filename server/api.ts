@@ -20,6 +20,7 @@ export function appConfig(env) {
   const feeds = configuredFeeds(env);
   return {
     mode: feeds.length > 0 ? 'live' : 'snapshot',
+    storageMode: env.TEMPORARY_CACHE === 'true' ? 'temporary' : env.BUCKET ? 'persistent' : 'none',
     browserImportAllowed: env.PUBLIC_APP !== 'true',
     listingRequestTransport: relayConfig(env) ? 'relay' : 'direct',
     snapshotMonth: SNAPSHOT_MONTH,
