@@ -207,7 +207,9 @@ reports `persistent`, `temporary`, or `none`.
 
 Use a provider connection string with verified TLS according to its documentation;
 do not disable certificate verification. No database, account, paid plan or secret
-is provisioned by this code. Render's existing service remains temporary until an
+is provisioned by this code. Enabling this does not migrate the old in-memory inventory: a new database starts
+empty. Export/import any authorized inventory before switching, or perform a fresh
+manual sync; never imply old data was transferred. Render's existing service remains temporary until an
 operator supplies a durable database connection. Backups and restore verification
 remain the database operator's responsibility. This does not fix provider 403s,
 make stale listings fresh, or change manual-only refresh behavior.

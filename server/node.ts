@@ -8,6 +8,7 @@ import { createListingSourceClient } from './relay-client.ts';
 import { MIME } from './mime.ts';
 import { createMemoryBucket } from './memory-bucket.ts';
 import { Pool } from 'pg';
+import { monitorDatabaseErrors } from './database-errors.ts';
 import { createPostgresBucket } from './postgres-bucket.ts';
 import { createPublicRequestLimits, isPublicRefresh } from './public-access.ts';
 import { SESSION_COOKIE, secretsEqual, issueSession, validSession } from './private-session.ts';
@@ -23,6 +24,7 @@ const local = ['127.0.0.1', '::1', 'localhost'].includes(host);
 if (!publicApp && !local && (!token || token.length < 32)) throw new Error('A private APP_ACCESS_TOKEN of at least 32 characters is required.');
 // A configured database must connect successfully: never silently fall back and lose data.
 const database = process.env.DATABASE_URL ? new Pool({ connectionString: process.env.DATABASE_URL, max: 5, connectionTimeoutMillis: 10000, statement_timeout: 15000 }) : null;
+if (database) monitorDatabaseErrors(database);
 const bucket = database ? await createPostgresBucket(database) : createMemoryBucket();
 const env = { ...process.env, BUCKET: bucket, TEMPORARY_CACHE: database ? 'false' : 'true' };
 const publicOrigin = process.env.RENDER_EXTERNAL_URL;
