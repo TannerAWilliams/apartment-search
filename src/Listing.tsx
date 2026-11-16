@@ -6,6 +6,7 @@ import { listingLinkLabel, listingPresentation, orderedListingLinks } from './li
 import { colors, styles } from './styles.ts';
 import { ExternalLink, Link } from './ui.tsx';
 import { ListingSources } from './ListingSources.tsx';
+import { HousingCost } from './HousingCost.tsx';
 
 const CHECK_TIME = new Intl.DateTimeFormat('en-US', {
   timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short',
@@ -70,7 +71,9 @@ export function Listing({ listing, selectedSource, workplace, commute, onSave, o
           <Link label="Driving directions" url={directionsLink(listing, workplace, 'driving')} onError={onError} />
         </View>
         <ListingSources listing={listing} onSaveLink={onSaveLink} onError={onError} />
+        <HousingCost />
       </View>}
     </View>
   </View>;
 }
+

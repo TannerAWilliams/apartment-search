@@ -41,3 +41,24 @@ Still needed: complete successful manual listing/import workflows, deduplication
 
 Playwright discovery, E2E/config TypeScript checks, existing application unit tests and Expo web export also passed. This is evidence for the listed UI flows only, not complete browser coverage or live provider availability. The temporary Render service has automatic deployments off and exposes only an inert health message, never test reports, source data or credentials.
 
+
+
+## November 16 extension: unverified browser scenarios
+
+Six additional scenarios cover successful manual entry with validation recovery and reload,
+CSV atomic validation/recovery and reload, duplicate reimport/removal, oversized file
+reselection, unsupported-borough rejection, and housing-cost calculation/validation/reset.
+The housing-cost scenario requires the `HousingCost` feature to be integrated into listing details.
+
+The inventory now contains 19 named scenarios across desktop Chromium and Pixel 7 emulation
+(38 project cases). This is a scenario inventory, **not** 90% code coverage, complete product
+coverage, native-device testing, or a pass claim. Source/server code coverage needs its own
+instrumented denominator including unimported files. Native iOS/Android, WebKit/Firefox,
+real-provider integrations, accessibility audit, map gestures, source cooldown/race handling,
+and broader pagination/sort combinations remain outside this inventory.
+
+Local verification on November 16: Expo web export succeeded; TypeScript validation passed.
+The attempted 36-case run (before adding the cost scenario) could not launch Chromium:
+`process_singleton_posix.cc: socket() failed: Operation not permitted`.
+Zero browser scenarios were verified in that run. Chromium sandbox remains enabled.
+Use a runner that supports sandboxed Chromium before accepting the new tests.
