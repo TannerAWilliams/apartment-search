@@ -326,3 +326,20 @@ test('housing cost inputs require known amounts, calculate, reject invalid input
   await expect(page.getByRole('textbox', { name: 'Lease length in months', exact: true })).toHaveValue('');
   await expect(page.getByRole('alert').filter({ hasText: '1–120 months' })).toHaveCount(0);
 });
+
+test('saved notes and viewing status persist on this device without network writes', async ({ page }) => {
+  const { requests } = await mockApp(page);
+  await page.getByRole('button', { name: 'Save apartment', exact: true }).click();
+  await page.getByRole('button', { name: 'Details for 12 Grove Street', exact: true }).click();
+  const notes = page.getByRole('textbox', { name: 'Private apartment notes', exact: true });
+  await expect(notes).toBeVisible();
+  await notes.fill('Ask about utilities');
+  await page.getByRole('button', { name: 'Toured', exact: true }).click();
+  await page.getByRole('button', { name: 'Save notes', exact: true }).click();
+  await expect(page.getByText('Notes saved on this device.', { exact: true })).toBeVisible();
+  await page.reload();
+  await page.getByRole('button', { name: 'Details for 12 Grove Street', exact: true }).click();
+  await expect(notes).toHaveValue('Ask about utilities');
+  await expect(page.getByRole('button', { name: 'Toured', exact: true })).toHaveAttribute('aria-selected', 'true');
+  expect(requests.some(request => JSON.stringify(request.body ?? null).includes('Ask about utilities'))).toBe(false);
+});

@@ -219,3 +219,5 @@ including on-disk reopen, conditional writes, quota rollback, immutable input an
 connection failures. This is not verification of a hosted PostgreSQL server, TLS,
 network failures or multi-process production load. Run the full suite and a hosted
 database recovery check before production rollout.
+
+Saved apartments now include explicit-save notes and viewing status in Details. These are device-local, not cross-device sync. Notes are retained when an apartment is removed and become visible if the same apartment is saved again; clearing the notes and saving removes their text. Failed reads do not overwrite existing notes. Unsaved edits are lost when details close. Browser storage can still be cleared by the user or browser. The notes Playwright scenario is authored but browser execution is pending in a browser-capable runner.
