@@ -9,10 +9,12 @@ const fixtures = (count = 1) => Array.from({ length: count }, (_, index) => norm
   status: 'Active', url: `https://streeteasy.com/building/test/${index + 1}`,
 }, { id: 'streeteasy', name: 'StreetEasy', kind: 'feed' }));
 const now = '2026-11-13T12:00:00Z';
-async function mockApp(page: Page, options: { initialRefresh?: boolean; failed?: boolean; searchError?: boolean; listingCount?: number; notices?: string[] } = {}) {
+async function mockApp(page: Page, options: { initialRefresh?: boolean; failed?: boolean; searchError?: boolean; listingCount?: number; notices?: string[]; priceHistory?: boolean } = {}) {
   const requests: { path: string; method: string; body: any }[] = [];
   const unexpected: string[] = [];
   const listings = fixtures(options.listingCount);
+  if (options.priceHistory) Object.assign(listings[0], { priceHistory: { sourceId: 'synthetic-fixture', firstObservedAt: '2026-11-01T12:00:00Z', lastObservedAt: now, truncated: true,
+    observations: [{ checkedAt: '2026-11-01T12:00:00Z', rent: 1900, priceIncludesFees: false }, { checkedAt: now, rent: 1800, priceIncludesFees: true }] } });
   const refresh = { checking: false, lastCheckedAt: now, sources: [{ id: 'streeteasy-live', name: 'StreetEasy', status: options.failed ? 'failed' : 'updated', checkedAt: now, updatedAt: now, listingCount: listings.length, ...(options.failed ? { error: 'StreetEasy returned HTTP 403. Verification required.' } : {}) }] };
   if (!options.initialRefresh) await page.addInitScript(() => sessionStorage.setItem('apartment-search:session-refresh', 'checked'));
   await page.route('**/*', async route => {
@@ -342,4 +344,16 @@ test('saved notes and viewing status persist on this device without network writ
   await expect(notes).toHaveValue('Ask about utilities');
   await expect(page.getByRole('button', { name: 'Toured', exact: true })).toHaveAttribute('aria-selected', 'true');
   expect(requests.some(request => JSON.stringify(request.body ?? null).includes('Ask about utilities'))).toBe(false);
+});
+
+
+test('observed timeline distinguishes historical checks from live availability and fee bases', async ({ page }) => {
+  const { requests } = await mockApp(page, { priceHistory: true });
+  await page.getByRole('button', { name: 'Details for 12 Grove Street', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Observed price history', exact: true })).toBeVisible();
+  await expect(page.getByText(/Source: synthetic-fixture.*not proof/)).toBeVisible();
+  await expect(page.getByText(/\$1,900\/mo · asking rent; fees not confirmed/)).toBeVisible();
+  await expect(page.getByText(/\$1,800\/mo · includes reported fees/)).toBeVisible();
+  await expect(page.getByText('Older changes were trimmed; showing the most recent 24 observations.', { exact: true })).toBeVisible();
+  expect(requests.filter(request => request.path === '/api/refresh')).toHaveLength(0);
 });

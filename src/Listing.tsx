@@ -6,6 +6,7 @@ import { listingLinkLabel, listingPresentation, orderedListingLinks } from './li
 import { colors, styles } from './styles.ts';
 import { ExternalLink, Link } from './ui.tsx';
 import { ListingSources } from './ListingSources.tsx';
+import { PriceHistory } from './PriceHistory.tsx';
 import { SavedNotes } from './SavedNotes.tsx';
 import { listingKey } from './listings.ts';
 import { HousingCost } from './HousingCost.tsx';
@@ -74,6 +75,7 @@ export function Listing({ listing, selectedSource, workplace, commute, onSave, o
         </View>
         <ListingSources listing={listing} onSaveLink={onSaveLink} onError={onError} />
         {saved && <SavedNotes key={listingKey(listing)} identity={listingKey(listing)} />}
+        <PriceHistory value={listing.priceHistory} />
         <HousingCost />
       </View>}
     </View>
