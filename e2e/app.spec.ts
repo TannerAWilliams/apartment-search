@@ -456,7 +456,7 @@ test('historical dashboard loads privately and a failed series does not trap the
   await page.getByRole('button',{name:'Rent chart',exact:true}).click();
   await page.getByRole('button',{name:'StreetEasy dashboard files',exact:true}).click();
   await expect(page.getByText('This historical series could not be loaded. No values have been substituted.')).toBeVisible();
-  await page.getByRole('button',{name:'Rental inventory · All',exact:true}).click();
+  await page.getByRole('button',{name:'Rental inventory',exact:true}).click();
   await expect(page.getByRole('button',{name:'2025-02 · Test area: 0',exact:true})).toBeVisible();
   await expect(page.getByRole('button',{name:'2025-01 · Test area: Not reported',exact:true})).toBeVisible();
   await page.getByRole('button',{name:'All history',exact:true}).click();
