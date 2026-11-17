@@ -1,3 +1,4 @@
+import { searchAvailabilityMessage } from './src/search-availability.ts';
 import { inventoryExpired } from './src/inventory-freshness.ts';
 import { inventoryUnavailable } from './src/inventory-state.ts';
 import type { ListingData, SourceLink, SearchFilters, SearchResult } from './src/domain.ts';
@@ -178,8 +179,9 @@ function Filters({ draft, setDraft, submit, busy, serverState, token, setToken, 
       <Text style={styles.smallMuted}>Automatic transit and driving estimates are unavailable. You can still change your destination and use directions links; no travel times will be invented.</Text>
       {(draft.maxTransitMinutes != null && draft.maxTransitMinutes !== '' || draft.maxDrivingMinutes != null && draft.maxDrivingMinutes !== '' || draft.sort === 'transit' || draft.sort === 'driving') && <Button secondary onPress={() => setDraft(previous => ({ ...previous, maxTransitMinutes: '', maxDrivingMinutes: '', sort: previous.sort === 'transit' || previous.sort === 'driving' ? 'rent' : previous.sort }))}>Clear unavailable commute filters</Button>}
     </>}
-    {serverState !== 'ready' && <Text style={styles.smallMuted}>The search server is unavailable. Use a preset or latitude, longitude while offline; street addresses need the online geocoder.</Text>}
+    {serverState !== 'ready' && <Text style={styles.smallMuted}>Search and destination changes need the search server. Draft edits remain on this device until you apply after reconnecting.</Text>}
     </>}
+    {serverState === 'offline' && <Button secondary onPress={connect}>Retry connection</Button>}
     {serverState === 'locked' && <View style={styles.tokenForm}>
       <Field label="Server access token" placeholder="Enter your server token" value={token}
         onChangeText={setToken} secureTextEntry maxLength={256} />
@@ -384,6 +386,7 @@ function ApartmentSearch() {
   useEffect(() => { setVisible(PAGE_SIZE); }, [result]);
   const [storageReady, setStorageReady] = useState(false);
   const [serverState, setServerState] = useState(API_ORIGIN === null ? 'offline' : 'checking');
+  const [connectionAttempt, setConnectionAttempt] = useState(0);
   const [configuredSources, setConfiguredSources] = useState<ConfigSource[]>([]);
   const [companies, setCompanies] = useState<Record<string, number>>({});
   const [sourceCatalog, setSourceCatalog] = useState<SourceDefinition[]>([]);
@@ -535,6 +538,7 @@ function ApartmentSearch() {
 
   useEffect(() => {
     if (API_ORIGIN === null) return;
+    setServerState('checking');
     const controller = new AbortController();
     sourceSession.current = controller.signal;
     setRefreshing(false);
@@ -558,7 +562,7 @@ function ApartmentSearch() {
       if (failure.status === 401) setExpanded('more');
     });
     return () => controller.abort();
-  }, [activeToken, checkSources, updateConfig]);
+  }, [activeToken, checkSources, updateConfig, connectionAttempt]);
 
   const lastCheckedAt = refresh?.lastCheckedAt;
   const loadMarket = useCallback((region: string, grouping: string, signal?: AbortSignal) =>
@@ -571,6 +575,8 @@ function ApartmentSearch() {
 
   async function submit(nextDraft: typeof draft | typeof applied = draft) {
     if (busy) return;
+    const unavailable = searchAvailabilityMessage(serverState);
+    if (unavailable) { setError(unavailable); return; }
     submitted.current = true;
     searchVersion.current += 1;
     setError('');
@@ -586,8 +592,7 @@ function ApartmentSearch() {
         setExpanded('commute');
         throw new Error('Automatic commute estimates are currently unavailable.');
       }
-      const searchResult = serverState === 'ready' ?
-        await api('search', { body: filters, token: activeToken }) : localSearch([], filters, localWorkplace(filters), 'live');
+      const searchResult = await api('search', { body: filters, token: activeToken });
       appliedFilters.current = filters;
       setApplied(filters);
       setResult(searchResult);
@@ -688,7 +693,7 @@ function ApartmentSearch() {
         <View style={mobileStyles.sheetHeader}><Text accessibilityRole="header" style={[styles.panelTitle, { flex: 1, minWidth: 0 }]}>{expanded === 'commute' ? 'Change commute destination' : 'Search filters'}</Text><Button secondary onPress={() => setExpanded('')}>Cancel</Button></View>
         <ScrollView keyboardShouldPersistTaps="handled">
           {error !== '' && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
-          <Filters panel={expanded} draft={draft} setDraft={setDraft} submit={() => submit()} busy={busy} serverState={serverState} token={token} setToken={setToken} commuteConfigured={commuteConfigured} connect={() => setActiveToken(token.trim())} />
+          <Filters panel={expanded} draft={draft} setDraft={setDraft} submit={() => submit()} busy={busy} serverState={serverState} token={token} setToken={setToken} commuteConfigured={commuteConfigured} connect={() => { if (serverState === 'locked') setActiveToken(token.trim()); setConnectionAttempt(attempt => attempt + 1); }} />
           {expanded !== 'commute' && <WebsiteFilter result={result} applied={draft} onSelect={(source) => setDraft((current) => ({ ...current, source }))} onError={setError} />}
         </ScrollView>
       </View></View>
