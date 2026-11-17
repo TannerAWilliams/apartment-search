@@ -37,7 +37,7 @@ async function mockApp(page: Page, options: { initialRefresh?: boolean; failed?:
   });
   await page.goto('/');
   await expect.poll(() => requests.filter(r => r.path === '/api/search').length).toBeGreaterThan(0);
-  return { requests, unexpected };
+  return { requests, unexpected, listings };
 }
 
 test('homepage searches saved all-region inventory without starting a refresh', async ({ page }) => {
@@ -406,5 +406,22 @@ test('saved route context identifies destination, period and estimate rather tha
   await expect(page.getByText('To Synthetic test workplace · weekday-morning arrival', { exact: true })).toBeVisible();
   await expect(page.getByText('Transit: 31 min · Driving: 15 min', { exact: true })).toBeVisible();
   await expect(page.getByText(/This is a saved estimate, not current traffic or a guarantee/)).toBeVisible();
+  expect(requests.filter(request => request.path === '/api/refresh')).toHaveLength(0);
+});
+
+
+test('local change checks opt in, seed baseline and show newer observed price changes without refreshing', async ({ page }) => {
+  const { requests, listings } = await mockApp(page, { priceHistory: true });
+  Object.assign(listings[0], { priceIncludesFees: true });
+  await page.reload();
+  await page.getByRole('button', { name: 'Local price and discovery changes', exact: true }).click();
+  await page.getByRole('button', { name: 'Check this page and save local baseline', exact: true }).click();
+  await expect(page.getByText(/Baseline saved. Check again after a later source observation/)).toBeVisible();
+  Object.assign(listings[0], { rent: 1700, priceIncludesFees: true, priceHistory: { sourceId: 'synthetic-fixture', firstObservedAt: '2026-11-14T12:00:00Z', lastObservedAt: '2026-11-14T12:00:00Z', truncated: false,
+    observations: [{ checkedAt: '2026-11-14T12:00:00Z', rent: 1700, priceIncludesFees: true }] } });
+  await page.reload();
+  await page.getByRole('button', { name: 'Local price and discovery changes', exact: true }).click();
+  await page.getByRole('button', { name: 'Check this page and save local baseline', exact: true }).click();
+  await expect(page.getByText('Observed price decrease: $1,800 → $1,700/mo', { exact: true })).toBeVisible();
   expect(requests.filter(request => request.path === '/api/refresh')).toHaveLength(0);
 });
