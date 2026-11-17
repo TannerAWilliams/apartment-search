@@ -1,3 +1,4 @@
+import { withoutCommuteEstimate } from '../src/commute-estimate.ts';
 import { recordListingHistory } from './listing-history.ts';
 import type { ListingTransports } from './relay-client.ts';
 import { gzipSync, gunzipSync, strFromU8, strToU8 } from 'fflate';
@@ -262,7 +263,7 @@ async function refreshOpenigloo(bucket, result, at) {
         !/^https:\/\/www\.openigloo\.com\/unit\/nyc\//.test(listing.sources[0]?.url ?? ''))) {
     throw new Error('Openigloo did not return a valid live sample.');
   }
-  const listings = result.listings.map((listing) => ({ ...listing, checkedAt: at }));
+  const listings = result.listings.map((listing) => ({ ...withoutCommuteEstimate(listing), checkedAt: at }));
   await saveObservedSnapshot(bucket, OPENIGLOO_KEY, result, listings, 'openigloo', at, { updatedAt: at });
   return { status: 'updated', updatedAt: at, listingCount: result.listings.length,
     total: result.total, sampleLimit: result.sampleLimit };
@@ -290,7 +291,7 @@ async function refreshDirectRentals(bucket, source, result, at) {
           !source.listingUrl(link.url)) || !Number.isFinite(Date.parse(listing.seenAt)))) {
     throw new Error(source.name + ' did not return a valid live sample.');
   }
-  const listings = result.listings.map((listing) => ({ ...listing, checkedAt: at }));
+  const listings = result.listings.map((listing) => ({ ...withoutCommuteEstimate(listing), checkedAt: at }));
   await saveObservedSnapshot(bucket, 'rentals/' + source.id + '.json.gz', result, listings, source.id, at);
   return { status: 'updated', updatedAt: at, listingCount: result.listings.length, pages: result.pages, total: result.total,
     ...(verifiedStreetEasy ? { transport: STREETEASY_TRANSPORT } : {}) };
@@ -356,7 +357,7 @@ export async function refreshSources(env, { fetcher = fetch, now = new Date(), i
     })),
     ...feedChecks.map((feed) => ({ id: feed.id, name: feed.name, work: async () => {
       const result = await loadFeed(feed, sourceFetch);
-      const listings = result.listings.map((listing) => ({ ...listing, checkedAt: at }));
+      const listings = result.listings.map((listing) => ({ ...withoutCommuteEstimate(listing), checkedAt: at }));
       await saveObservedSnapshot(bucket, FEED_PREFIX + feed.id + '.json.gz', result, listings, feed.id, at);
       return { status: 'updated', updatedAt: at, listingCount: listings.length, pages: result.pages };
     } })),

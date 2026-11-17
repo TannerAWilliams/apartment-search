@@ -1,3 +1,4 @@
+import { savedCommuteEstimate } from './commute-estimate.ts';
 import { listingKey, listingPresentation } from './listings.ts';
 import { discoveryFacts, LAUNDRY_LABELS } from './discovery.ts';
 import { formatRent } from './search.ts';
@@ -21,6 +22,7 @@ export function comparisonOptions(listings: any[], query: string) {
 export function comparisonRows(listing: any) {
   const facts = discoveryFacts(listing), presentation = listingPresentation(listing);
   for (const key of Object.keys(facts)) if (Array.isArray(listing.discoveryConflicts) && listing.discoveryConflicts.includes(key)) facts[key] = null;
+  const commute = savedCommuteEstimate(listing);
   const checkedAt = listing.checkedAt ?? listing.seenAt;
   return [
     ['Monthly advertised price', presentation.priceKnown ? `${formatRent(listing.rent)}/mo` : 'Unknown'],
@@ -31,6 +33,11 @@ export function comparisonRows(listing: any) {
     ['Pets', facts.petsAllowed === null ? 'Unknown' : facts.petsAllowed ? 'Reported allowed; verify restrictions' : 'Reported not allowed'],
     ['Laundry', facts.laundry === null ? 'Unknown' : LAUNDRY_LABELS[facts.laundry]],
     ['Source checks', typeof checkedAt === 'string' && Number.isFinite(Date.parse(checkedAt)) ? new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', dateStyle: 'medium' }).format(new Date(checkedAt)) + ' ET' : 'Unknown'],
+    ['Commute destination', commute ? `${commute.destination.label} (${commute.destination.latitude.toFixed(4)}, ${commute.destination.longitude.toFixed(4)})` : 'Unknown'],
+    ['Commute estimate checked', commute ? new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', dateStyle: 'medium', timeStyle: 'short' }).format(new Date(commute.checkedAt)) + ' ET' : 'Unknown'],
+    ['Transit estimate', commute?.transitMinutes == null ? 'Unknown' : `${commute.transitMinutes} min (weekday morning)`],
+    ['Driving estimate', commute?.drivingMinutes == null ? 'Unknown' : `${commute.drivingMinutes} min (weekday morning)`],
+    ['Commute caveat', commute ? 'Saved TravelTime estimate, not current traffic. Compare only matching destinations.' : 'No destination-linked estimate; use directions.'],
     ['Cautions', presentation.notices.join(' ') || 'Verify current availability and lease terms.'],
   ];
 }

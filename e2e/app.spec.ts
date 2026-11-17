@@ -9,10 +9,11 @@ const fixtures = (count = 1) => Array.from({ length: count }, (_, index) => norm
   status: 'Active', url: `https://streeteasy.com/building/test/${index + 1}`,
 }, { id: 'streeteasy', name: 'StreetEasy', kind: 'feed' }));
 const now = '2026-11-13T12:00:00Z';
-async function mockApp(page: Page, options: { initialRefresh?: boolean; failed?: boolean; searchError?: boolean; listingCount?: number; notices?: string[]; priceHistory?: boolean; discovery?: boolean } = {}) {
+async function mockApp(page: Page, options: { initialRefresh?: boolean; failed?: boolean; searchError?: boolean; listingCount?: number; notices?: string[]; priceHistory?: boolean; discovery?: boolean; commute?: boolean } = {}) {
   const requests: { path: string; method: string; body: any }[] = [];
   const unexpected: string[] = [];
   const listings = fixtures(options.listingCount);
+  if (options.commute) Object.assign(listings[0], { transitSeconds: 1801, drivingSeconds: 900, commuteEstimate: { provider: 'TravelTime', arrivalPeriod: 'weekday_morning', checkedAt: now, destination: { label: 'Synthetic test workplace', latitude: 40.75, longitude: -73.98 } } });
   if (options.discovery) Object.assign(listings[0], { bathrooms: 1.5, squareFeet: 900, petsAllowed: true, laundry: 'in_unit' });
   if (options.priceHistory) Object.assign(listings[0], { priceHistory: { sourceId: 'synthetic-fixture', firstObservedAt: '2026-11-01T12:00:00Z', lastObservedAt: now, truncated: true,
     observations: [{ checkedAt: '2026-11-01T12:00:00Z', rent: 1900, priceIncludesFees: false }, { checkedAt: now, rent: 1800, priceIncludesFees: true }] } });
@@ -394,5 +395,16 @@ test('saved comparison caps four, enables replacements and clears without removi
   await page.getByRole('button', { name: 'Clear comparison', exact: true }).click();
   await expect(page.getByText('0 of 4 selected', { exact: true })).toBeVisible();
   await expect(page.getByRole('tab', { name: 'Saved (5)', exact: true })).toBeVisible();
+  expect(requests.filter(request => request.path === '/api/refresh')).toHaveLength(0);
+});
+
+
+test('saved route context identifies destination, period and estimate rather than live traffic', async ({ page }) => {
+  const { requests } = await mockApp(page, { commute: true });
+  await page.getByRole('button', { name: 'Details for 12 Grove Street', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Commute context', exact: true })).toBeVisible();
+  await expect(page.getByText('To Synthetic test workplace · weekday-morning arrival', { exact: true })).toBeVisible();
+  await expect(page.getByText('Transit: 31 min · Driving: 15 min', { exact: true })).toBeVisible();
+  await expect(page.getByText(/This is a saved estimate, not current traffic or a guarantee/)).toBeVisible();
   expect(requests.filter(request => request.path === '/api/refresh')).toHaveLength(0);
 });

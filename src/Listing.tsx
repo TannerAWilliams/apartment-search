@@ -7,6 +7,7 @@ import { listingLinkLabel, listingPresentation, orderedListingLinks } from './li
 import { colors, styles } from './styles.ts';
 import { ExternalLink, Link } from './ui.tsx';
 import { ListingSources } from './ListingSources.tsx';
+import { CommuteDetails } from './CommuteDetails.tsx';
 import { PriceHistory } from './PriceHistory.tsx';
 import { SavedNotes } from './SavedNotes.tsx';
 import { listingKey } from './listings.ts';
@@ -78,6 +79,7 @@ export function Listing({ listing, selectedSource, workplace, commute, onSave, o
         <ListingSources listing={listing} onSaveLink={onSaveLink} onError={onError} />
         {saved && <SavedNotes key={listingKey(listing)} identity={listingKey(listing)} />}
         <Text style={styles.smallMuted}>Source-reported details: {facts.bathrooms === null ? 'Bathrooms unknown' : `${facts.bathrooms} baths`} · {facts.squareFeet === null ? 'Area unknown' : `${facts.squareFeet.toLocaleString('en-US')} sq ft`} · {facts.petsAllowed === null ? 'Pet policy unknown' : facts.petsAllowed ? 'Pets allowed; verify restrictions' : 'Pets not allowed per source'} · {facts.laundry === null ? 'Laundry unknown' : LAUNDRY_LABELS[facts.laundry]}</Text>
+        <CommuteDetails listing={listing} />
         <PriceHistory value={listing.priceHistory} />
         <HousingCost />
       </View>}
