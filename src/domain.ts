@@ -23,6 +23,6 @@ export interface SearchFilters {
   workplace: string; customWorkplace: string; zip: string; offset?: number; includeMap?: boolean; includeCommute?: boolean;
 }
 export type { SourceStatus } from './source-status.ts';
-export type SearchResult = ReturnType<typeof import('./market.ts').formatSearch> & { commute?: boolean; commuteNotice?: string };
+export type SearchResult = ReturnType<typeof import('./market.ts').formatSearch> & { commute?: boolean; commuteNotice?: string; inventoryExpiresAt?: string };
 
 export type MapPoint = NonNullable<SearchResult['mapPoints']>[number];

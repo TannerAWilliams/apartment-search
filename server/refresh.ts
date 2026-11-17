@@ -141,6 +141,14 @@ export function sourceRecent(status: { sources: SourceStatus[] } | null | undefi
   return (source?.status === 'updated' || source?.status === 'current') && age >= 0 && age <= (id === STREETEASY_LIVE.id && source.transport === STREETEASY_TRANSPORT ? STREETEASY_SYNC_INTERVAL : LIVE_MAX_AGE);
 }
 
+/** Expiry of a currently usable observation, never an extension of its checked time. */
+export function sourceExpiresAt(status: { sources: SourceStatus[] } | null | undefined, id: string, now = new Date()): string | null {
+  if (!sourceRecent(status, id, now)) return null;
+  const source = status!.sources.find(item => item.id === id)!;
+  const lifetime = id === STREETEASY_LIVE.id && source.transport === STREETEASY_TRANSPORT ? STREETEASY_SYNC_INTERVAL : LIVE_MAX_AGE;
+  return new Date(Date.parse(source.updatedAt!) + lifetime).toISOString();
+}
+
 export async function storedOpenigloo(bucket: Bucket | undefined): Promise<StoredRentalSnapshot | null> {
   const object = await bucket?.get(OPENIGLOO_KEY);
   return object ? unpack(object) : null;
