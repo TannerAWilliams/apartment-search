@@ -52,7 +52,7 @@ const failureInfo = (value: unknown) => ({
 const API_ORIGIN = Platform.OS === 'web' ? '' :
   (process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, '') || null);
 const WEB_MAP = Platform.OS === 'web';
-const SEARCH_DEFAULTS: SearchFilters = { ...DEFAULT_FILTERS, region: 'all', bedrooms: null, maxRent: null, source: '', includeMap: WEB_MAP, liveOnly: true };
+const SEARCH_DEFAULTS: SearchFilters = { ...DEFAULT_FILTERS, region: 'all', bedrooms: null, maxRent: null, source: '', includeMap: WEB_MAP, liveOnly: true, includeCached: true };
 const BEDROOMS = [null, 0, 1, 2, 3, 4];
 const PAGE_SIZE = 12;
 const EMPTY_POINTS: NonNullable<SearchResult['mapPoints']> = [];
@@ -95,11 +95,12 @@ async function api<T>(path: string, { body, token, signal }: ApiOptions = {}): P
   return data as T;
 }
 
-async function finishSourceCheck(check: RefreshInfo, token: string, signal?: AbortSignal) {
+async function finishSourceCheck(check: RefreshInfo, token: string, signal?: AbortSignal, onProgress?: (check: RefreshInfo) => void) {
   for (let attempt = 0; check.checking && attempt < 125; attempt += 1) {
     await new Promise((resolve) => setTimeout(resolve, 1200));
     if (signal?.aborted) return check;
     check = await api('refresh', { token, signal });
+    onProgress?.(check);
   }
   if (check.checking) throw new Error('The source check is still running.');
   return check;
@@ -216,7 +217,7 @@ function Marketplaces({ filters, sources, configuredSources, companies, onCompan
     </View>
     <Text style={styles.bodyText}>Live results come from recent marketplace checks. FirstMover’s {formatSnapshotMonth(refresh?.sources.find(({ id }) => id === 'firstmover')?.month)} snapshot supplies the rent charts.</Text>
     <View style={styles.chartSource}>
-      <Text style={styles.fieldLabel}>{sampleNames.length ? sampleNames.length + ' live listing sources' : 'Recent live samples unavailable'}</Text>
+      <Text style={styles.fieldLabel}>{sampleNames.length ? sampleNames.length + ' connected listing sources' : 'Recent live samples unavailable'}</Text>
       {sampleNames.length > 0 && <Text style={styles.smallMuted}>{sampleNames.join(' · ')}</Text>}
       <Link label="FirstMover Open Data" url={SNAPSHOT_SOURCE} onError={onError} />
       <Text style={styles.smallMuted}>Settled.nyc · source access unverified.</Text>
@@ -238,7 +239,7 @@ function Marketplaces({ filters, sources, configuredSources, companies, onCompan
           </View>
           <Text style={styles.marketArrow}>↗</Text>
           <Text style={styles.marketType}>{configuredSources.some((source) => source.id === id && source.sample) ?
-            'LIMITED LIVE SAMPLE' : searchFeeds.has(id) ? 'FREE LIVE FEED' : unavailable.has(id) ? 'FEED UNAVAILABLE' :
+            'PUBLIC SEARCH CONNECTED' : searchFeeds.has(id) ? 'FREE LIVE FEED' : unavailable.has(id) ? 'FEED UNAVAILABLE' :
             configured.has(id) ? 'FREE FEED CONFIGURED' : feedRequired.has(id) ? 'AUTHORIZED FEED REQUIRED' : 'BROWSE ONLY'}</Text>
         </ExternalLink>)}
     </View>
@@ -306,7 +307,7 @@ function Results({ visible, setVisible, result, applied, sort, onSort, onPage, p
     <ResultNotices notices={result.notices} />
     {result.total > matches.length && <Text style={styles.smallMuted}>Showing records {(result.offset ?? 0) + (matches.length ? 1 : 0)}–{(result.offset ?? 0) + matches.length} of {result.total}.</Text>}
     {matches.length === 0 && (savedView || !checkingInventory) && <View style={styles.empty}>
-      <Text accessibilityRole="header" style={styles.panelTitle}>{savedView ? 'Your saved list is empty' : unavailable ? 'No recent inventory to search' : 'No recently checked matches'}</Text>
+      <Text accessibilityRole="header" style={styles.panelTitle}>{savedView ? 'Your saved list is empty' : unavailable ? 'No inventory to search yet' : 'No matching rentals'}</Text>
       <Text style={styles.bodyText}>{savedView ? 'Save a result or add an apartment you found on a rental platform.' : unavailable ? 'No sources have supplied recently checked active inventory. This is not a finding that no apartments match your budget or area. Check source status or browse the rental platforms directly.' :
         applied.source ? 'This website has no recently checked matches. Check its website for current availability.' :
           needsCommute(applied) ? 'Try a longer commute limit, or change the area or budget.' :
@@ -333,8 +334,9 @@ function Results({ visible, setVisible, result, applied, sort, onSort, onPage, p
   </>;
 }
 
-function WebsiteFilter({ result, applied, onSelect, onError }: { result: SearchResult; applied: SearchFilters | DraftFilters; onSelect: (source: string) => void; onError: (message: string) => void }) {
-  const counts = result.sourceCounts ?? [];
+function WebsiteFilter({ result, applied, onSelect, onError, configuredSources }: { result: SearchResult; applied: SearchFilters | DraftFilters; onSelect: (source: string) => void; onError: (message: string) => void; configuredSources: ConfigSource[] }) {
+  const counts = [...(result.sourceCounts ?? [])];
+  for (const source of configuredSources) if (!counts.some(({ id }) => id === source.id)) counts.push({ ...source, count: 0, checkedCount: 0 });
   const streetEasy = counts.find(({ id }) => id === 'streeteasy');
   const areas = marketsForSearch(applied);
 
@@ -492,7 +494,18 @@ function ApartmentSearch() {
       const request = await api('refresh', { body: { check: 'now', sessionStart, ...(source ? { source } : {}) }, token: activeToken, signal });
       setRefreshClock(Date.now());
       setRefreshRetryAt(request.refreshRetryAt ?? 0);
-      const check = await finishSourceCheck(request, activeToken, signal);
+      let lastProgress = '';
+      const check = await finishSourceCheck(request, activeToken, signal, (progress) => {
+        setRefresh(progress);
+        const signature = JSON.stringify(progress.sources.map(({ id, listingCount, status }) => [id, listingCount, status]));
+        if (signature === lastProgress || signal.aborted) return;
+        lastProgress = signature;
+        const filters = appliedFilters.current;
+        const version = searchVersion.current;
+        void api('search', { body: { ...filters, includeCommute: false }, token: activeToken, signal })
+          .then(fresh => { if (!signal.aborted && version === searchVersion.current && filters === appliedFilters.current) setResult(fresh); })
+          .catch(() => {});
+      });
       if (signal?.aborted) return;
       const failedExports = source ? [] : retryablePublicSources(check);
       if (failedExports.length && browserImportAllowed.current) {
@@ -554,7 +567,8 @@ function ApartmentSearch() {
           })
           .catch((failure) => { if (!controller.signal.aborted) setError(failure.message || 'Saved inventory could not be loaded. Please try again.'); });
       }
-      // Opening Search reads the saved inventory only. Refresh is explicitly user initiated.
+      // Opening Search shows saved results immediately, then checks the sources.
+      if (config.refresh) void checkSources(true);
 
     }).catch((failure) => {
       if (controller.signal.aborted) return;
@@ -694,7 +708,7 @@ function ApartmentSearch() {
         <ScrollView keyboardShouldPersistTaps="handled">
           {error !== '' && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
           <Filters panel={expanded} draft={draft} setDraft={setDraft} submit={() => submit()} busy={busy} serverState={serverState} token={token} setToken={setToken} commuteConfigured={commuteConfigured} connect={() => { if (serverState === 'locked') setActiveToken(token.trim()); setConnectionAttempt(attempt => attempt + 1); }} />
-          {expanded !== 'commute' && <WebsiteFilter result={result} applied={draft} onSelect={(source) => setDraft((current) => ({ ...current, source }))} onError={setError} />}
+          {expanded !== 'commute' && <WebsiteFilter result={result} applied={draft} onSelect={(source) => setDraft((current) => ({ ...current, source }))} onError={setError} configuredSources={configuredSources} />}
         </ScrollView>
       </View></View>
     </Modal>

@@ -87,6 +87,7 @@ export function parseFilters(rawInput: unknown = {}): SearchFilters {
     customWorkplace: workplace === 'custom' ? customWorkplace : '',
     zip,
     liveOnly: input.liveOnly === true,
+    includeCached: input.includeCached === true,
     includeMap: input.includeMap === true,
     source,
     sort,
@@ -147,7 +148,8 @@ export function compareResults(a: Pick<ListingData, 'id' | 'rent' | 'seenAt' | '
 export function matchListings(listings: ListingData[], filters: SearchFilters, workplace: Point | null | undefined) {
   return listings.flatMap((listing) => {
     const region = regionOf(listing);
-    const hasActiveLink = listing.kind === 'feed' && listing.sources.some(({ kind, url }) => kind === 'feed' && url);
+    const hasActiveLink = (listing.kind === 'feed' || (filters.includeCached && listing.kind === 'cached')) &&
+      listing.sources.some(({ kind, url }) => (kind === 'feed' || (filters.includeCached && kind === 'cached')) && url);
     if (!matchesDiscovery(listing, filters) || !region || !companyMatches(listing.company, filters.company) || (filters.liveOnly && !hasActiveLink) || !matchesRegion(listing, filters.region, region) ||
         (filters.zip && listing.zip !== filters.zip) ||
         (filters.bedrooms !== null && listing.bedrooms !== filters.bedrooms) ||

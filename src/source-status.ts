@@ -1,4 +1,4 @@
-export type SourceStatus = { id: string; name?: string; marketplace?: string; status?: string; checkedAt?: string; updatedAt?: string; retryAt?: string; error?: string; listingCount?: number; total?: number; pages?: number; sampleLimit?: number };
+export type SourceStatus = { id: string; name?: string; marketplace?: string; status?: string; checkedAt?: string; updatedAt?: string; retryAt?: string; error?: string; listingCount?: number; total?: number; pages?: number; sampleLimit?: number; partial?: boolean; requestedPages?: number; failedPages?: number };
 export type SourceDefinition = { id: string; name: string; marketplace?: string; coverage?: string; resyncable: boolean };
 export function sourceRows(catalog: SourceDefinition[], statuses: SourceStatus[], browseNames: Record<string, string>, now = Date.now()) {
   const definitions = new Map(catalog.map((source) => [source.id, source]));
@@ -34,6 +34,7 @@ export function sourceCoverage(status?: SourceStatus): string {
   if (!status) return '';
   const validCount = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
   const parts: string[] = [];
+  if (status.partial) parts.push(`Partial check: ${status.pages}/${status.requestedPages} pages succeeded; earlier units kept with their original check dates`);
   if (validCount(status.total)) parts.push(`Provider reported ${status.total.toLocaleString('en-US')} records`);
   if (validCount(status.pages) && status.pages > 0) parts.push(`${status.pages} pages fetched`);
   if (validCount(status.sampleLimit) && status.sampleLimit > 0) parts.push(`sample capped at ${status.sampleLimit.toLocaleString('en-US')} records`);

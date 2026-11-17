@@ -1,0 +1,124 @@
+import { test } from 'bun:test';
+import assert from 'node:assert/strict';
+import { handleApi, search } from '../server/api.ts';
+import { createMemoryBucket } from '../server/memory-bucket.ts';
+import { refreshSources, refreshStatus, storedDirectRentals } from '../server/refresh.ts';
+import { COMPASS_LIVE } from '../server/compass.ts';
+import { loadPublicPages, deduplicatePublicRentals } from '../server/public-rentals.ts';
+import { parseApartmentListPage } from '../server/apartmentlist.ts';
+import { parseRedfinPage } from '../server/redfin.ts';
+import { normalizeListing } from '../src/listings.ts';
+
+const at = new Date(Date.now() - 10_000);
+const source = { id: 'compass', name: 'Compass', kind: 'feed' };
+const row = (id: number, unit: string, rent = 2500) => normalizeListing({ id: String(id),
+  address: '10 Example Street', unit, city: 'Manhattan', state: 'NY', zip: '10001',
+  bedrooms: 1, rent, status: 'Active', updatedAt: at.toISOString(),
+  latitude: 40.75, longitude: -73.99,
+  url: `https://www.compass.com/homedetails/example-NY-10001/${id}_lid/`,
+}, source)!;
+
+async function until(check: () => Promise<boolean>) {
+  for (let i = 0; i < 100; i++) {
+    if (await check()) return;
+    await new Promise(resolve => setTimeout(resolve, 2));
+  }
+  throw new Error('Expected refresh progress was not persisted.');
+}
+
+test('every implemented rental provider is visible and resyncable before its first fetch', async () => {
+  const result = await (await handleApi(new Request('https://app.test/api/config'), { BUCKET: createMemoryBucket() })).json();
+  for (const id of ['zillow', 'compass', 'renthop', 'realtor', 'redfin', 'apartmentlist']) {
+    assert.ok(result.sources.some((source: { id: string }) => source.id === id));
+    assert.equal(result.sourceCatalog.find((source: { id: string }) => source.id === id + '-live')?.resyncable, true);
+  }
+});
+
+test('background refresh responds before relay preparation and publishes independent inventory while it waits', async () => {
+  const bucket = createMemoryBucket();
+  const feed = { id: 'partner', name: 'Partner', url: 'https://partner.test/rentals' };
+  const env = { BUCKET: bucket, FREE_PARTNER_FEEDS_JSON: JSON.stringify([feed]) };
+  let release!: () => void;
+  const blocked = new Promise<void>(resolve => { release = resolve; });
+  const response = await handleApi(new Request('https://app.test/api/refresh', { method: 'POST',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ check: 'now' }) }), env, {
+    backgroundRefresh: true,
+    prepareListingSources: async () => { await blocked; throw new Error('relay unavailable'); },
+    fetcher: async (url) => url === feed.url ? Response.json({ listings: [{ id: '1',
+      address: '10 Example Street', unit: '1A', city: 'Manhattan', state: 'NY', zip: '10001',
+      bedrooms: 1, price: 2500, status: 'Active', listingUrl: 'https://partner.test/rentals/1',
+    }] }) : new Response('', { status: 403 }),
+  });
+  assert.equal(response.status, 202);
+  assert.equal((await response.json()).checking, true);
+  await until(async () => (await refreshStatus(bucket)).sources.some(item => item.id === feed.id && item.status === 'updated'));
+  assert.equal((await search({ liveOnly: true }, env)).total, 1);
+  assert.equal((await refreshStatus(bucket)).checking, true);
+  release();
+  await until(async () => !(await refreshStatus(bucket)).checking);
+  const status = await refreshStatus(bucket);
+  assert.equal(status.sources.find(item => item.id === 'streeteasy-live')?.status, 'failed');
+  assert.equal(status.sources.find(item => item.id === feed.id)?.status, 'updated');
+});
+
+test('one failed public page keeps successful pages and identifies the missing portion', async () => {
+  const result = await loadPublicPages(source, [1, 2, 3].map(page => ({ url: `https://provider.test/${page}` })),
+    (_html, page) => [row(Number(page.url.slice(-1)), page.url.slice(-1))],
+    async url => url.endsWith('/2') ? new Response('', { status: 429 }) : new Response('<html/>', { headers: { 'Content-Type': 'text/html' } }));
+  assert.equal(result.pages, 2);
+  assert.equal(result.listings.length, 2);
+  assert.equal(result.partial, true);
+  assert.equal(result.requestedPages, 3);
+  assert.equal(result.failedPages, 1);
+});
+
+test('partial refresh keeps older units dated and cached, and a complete refresh replaces them', async () => {
+  const env = { BUCKET: createMemoryBucket() };
+  const initial = { listings: [row(1, 'A'), row(2, 'B'), row(3, 'C')], pages: 3 };
+  await refreshSources(env, { sourceId: COMPASS_LIVE.id, now: at, imports: { [COMPASS_LIVE.id]: initial } });
+  const later = new Date(at.getTime() + 1000);
+  const result = await refreshSources(env, { sourceId: COMPASS_LIVE.id, now: later,
+    imports: { [COMPASS_LIVE.id]: { listings: [row(1, 'A', 2400), row(2, 'B')], pages: 2, partial: true, requestedPages: 3, failedPages: 1 } } });
+  assert.equal(result.sources.find(item => item.id === COMPASS_LIVE.id)?.partial, true);
+  const saved = (await storedDirectRentals(env.BUCKET, COMPASS_LIVE))!;
+  assert.equal(saved.listings.length, 3);
+  const old = saved.listings.find(item => item.unit === 'C')!;
+  assert.equal(old.kind, 'cached');
+  assert.equal(old.checkedAt, at.toISOString());
+  assert.equal((await search({ liveOnly: true }, env)).total, 2);
+  const visible = await search({ liveOnly: true, includeCached: true, includeMap: true }, env);
+  assert.equal(visible.total, 3);
+  assert.equal(visible.inventoryExpiresAt, undefined);
+  assert.equal(visible.mapPoints?.length, 3);
+  await refreshSources(env, { sourceId: COMPASS_LIVE.id, now: new Date(at.getTime() + 2000),
+    imports: { [COMPASS_LIVE.id]: { listings: [row(1, 'A')], pages: 3 } } });
+  assert.equal((await search({ liveOnly: true, includeCached: true }, env)).total, 1);
+});
+
+test('Apartment List imports identified available units without collapsing units sharing a property URL', () => {
+  const payload = [
+    'a:' + JSON.stringify({ rental_id: 'p1', slug: '/ny/new-york/example' }),
+    'b:' + JSON.stringify({ status: 'success', data: { p1: [
+      { unit_rental_id: 'p1-A', unitTitle: 'Unit A', unitType: '1 Bed', price: 2500, availableNow: true },
+      { unit_rental_id: 'p1-B', unitTitle: 'Unit B', unitType: 'Studio', price: 2200, availableNow: true },
+      { unit_rental_id: 'p1-C', unitTitle: 'Unit C', unitType: '1 Bed', price: 2400, availableNow: false },
+    ] } }),
+  ].join('\n');
+  const html = `<a href="/ny/new-york/example">Example</a><address>10 Example Street, New York City, NY 10001</address><script>self.__next_f.push(${JSON.stringify([1, payload])})</script>`;
+  const listings = parseApartmentListPage(html, {}, at.toISOString());
+  assert.deepEqual(listings.map(item => item.unit), ['A', 'B']);
+  assert.equal(deduplicatePublicRentals([...listings, ...listings]).length, 2);
+});
+
+test('Redfin excludes communities, rent ranges and inactive rentals', () => {
+  const home = { homeData: { propertyType: 4, url: '/NY/New-York/Example/unit-2/home/1',
+    addressInfo: { formattedStreetLine: '10 Example Street #2', unitNumber: '#2', zip: '10001', centroid: { centroid: { latitude: 40.75, longitude: -73.99 } } } },
+    rentalExtension: { rentalId: 'one', status: 1, numAvailableUnits: 1, bedRange: { min: 1, max: 1 }, rentPriceRange: { min: 2500, max: 2500 } } };
+  const html = (homes: any[]) => '<script>root.__reactServerState.InitialContext = ' + JSON.stringify({ 'ReactServerAgent.cache': { dataCache: {
+    '/stingray/api/v1/search/rentals?includeKeyFacts=true': { res: { text: JSON.stringify({ homes }) } },
+  } } }) + ';</script>';
+  assert.equal(parseRedfinPage(html([home]), {}, at.toISOString()).length, 1);
+  for (const changes of [{ status: 2 }, { numAvailableUnits: 20 }, { rentPriceRange: { min: 2000, max: 3000 } }]) {
+    assert.equal(parseRedfinPage(html([{ ...home, rentalExtension: { ...home.rentalExtension, ...changes } }]), {}, at.toISOString()).length, 0);
+  }
+});

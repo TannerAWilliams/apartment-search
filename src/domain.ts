@@ -17,7 +17,7 @@ export interface ListingData {
 }
 export interface SearchFilters {
   region: string; bedrooms: number | null; maxRent: number | null; maxMiles: number | null;
-  maxTransitMinutes: number | null; maxDrivingMinutes: number | null; liveOnly: boolean;
+  maxTransitMinutes: number | null; maxDrivingMinutes: number | null; liveOnly: boolean; includeCached?: boolean;
   sort: string; bestFitRentWeight: number; source: string; company: string;
   minBathrooms: number | null; minSquareFeet: number | null; petsRequired: boolean; laundry: string;
   workplace: string; customWorkplace: string; zip: string; offset?: number; includeMap?: boolean; includeCommute?: boolean;

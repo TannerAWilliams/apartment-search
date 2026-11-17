@@ -47,19 +47,25 @@ export function jsonLd(html: string) {
 
 export async function loadPublicPages<P extends { url: string }>(source: { name: string }, pages: P[], parser: (html: string, page: P, checkedAt: string) => ListingData[], fetcher: FetchTransport = fetch, now = new Date()) {
   const listings: ListingData[] = [];
+  const failures: unknown[] = [];
+  let completedPages = 0;
   const checkedAt = now.toISOString();
   for (let index = 0; index < pages.length; index += 3) {
-    const batch = await Promise.all(pages.slice(index, index + 3).map(async (page) => {
+    const batch = await Promise.allSettled(pages.slice(index, index + 3).map(async (page) => {
       const html = await fetchPublicHtml(fetcher, page.url, source.name);
       return parser(html, page, checkedAt);
     }));
-    for (const rows of batch) listings.push(...rows);
+    for (const result of batch) {
+      if (result.status === 'fulfilled') { completedPages++; listings.push(...result.value); }
+      else failures.push(result.reason);
+    }
   }
   const unique = deduplicatePublicRentals(listings);
-  if (!unique.length) throw new Error(source.name + ' returned no supported apartment listings.');
-  return { listings: unique, pages: pages.length };
+  if (!unique.length) throw failures[0] ?? new Error(source.name + ' returned no supported apartment listings.');
+  return { listings: unique, pages: completedPages,
+    ...(failures.length ? { partial: true, requestedPages: pages.length, failedPages: failures.length } : {}) };
 }
 
 export function deduplicatePublicRentals(rows: ListingData[]) {
-  return mergeListings([...new Map(rows.map((listing) => [listing.sources[0].url, listing])).values()]);
+  return mergeListings([...new Map(rows.map((listing) => [listing.id, listing])).values()]);
 }

@@ -11,13 +11,13 @@ import { checkFirstMover, checkPublishedFirstMover } from './firstmover.ts';
 import { configuredFeeds, loadFeed } from './listings.ts';
 import { housingDate, loadHousingConnect } from './housing.ts';
 import { HDC_RERENTALS, loadHdcRerentals } from './hdc-rerentals.ts';
-import { AUTO_RENTAL_SOURCES, DIRECT_RENTAL_SOURCES, FEED_ONLY_SOURCES } from './direct-rentals.ts';
+import { AUTO_RENTAL_SOURCES, DIRECT_RENTAL_SOURCES } from './direct-rentals.ts';
 import { loadOpenigloo, OPENIGLOO_SAMPLE_LIMIT } from './openigloo.ts';
 import { requestForRefresh, retrySchedule } from './source-requests.ts';
 
 import { STREETEASY_LIVE } from './streeteasy.ts';
 
-type RentalSnapshot = { listings: ListingData[]; observationHistory?: ObservationHistory; pages?: number; total?: number; rawCount?: number; transport?: string; checkedAt?: string; sampleLimit?: number; limited?: boolean };
+type RentalSnapshot = { listings: ListingData[]; observationHistory?: ObservationHistory; pages?: number; total?: number; rawCount?: number; transport?: string; checkedAt?: string; sampleLimit?: number; limited?: boolean; partial?: boolean; requestedPages?: number; failedPages?: number };
 
 type StoredRentalSnapshot = Omit<RentalSnapshot, 'listings'> & { listings: (ListingData & { priceHistory?: UnitHistory })[] };
 
@@ -48,6 +48,9 @@ type CheckResult = {
   pages?: number;
   total?: number;
   sampleLimit?: number;
+  partial?: boolean;
+  requestedPages?: number;
+  failedPages?: number;
   month?: string;
   revision?: string;
   catalogEtag?: string;
@@ -85,6 +88,8 @@ type RefreshOptions = {
   sourceId?: string;
   forceRefresh?: boolean;
   fallback?: boolean;
+  prepareListingSources?: () => Promise<void>;
+  onStarted?: () => void;
 };
 
 export function refreshCatalog(env: AppEnv) {
@@ -114,13 +119,9 @@ function checkInProgress(state: RefreshState, now: Date) {
 }
 
 function publicStatus(state: RefreshState, now = new Date()) {
-  const sources = new Map((state.sources ?? []).map((source) => [source.id, source]));
-  for (const { id, name, marketplace } of FEED_ONLY_SOURCES) {
-    const previous = sources.get(id);
-    sources.set(id, { id, name, marketplace, status: 'feed_required', checkedAt: previous?.checkedAt ?? null,
-      updatedAt: previous?.updatedAt ?? null, listingCount: previous?.listingCount });
-  }
-  return { lastCheckedAt: state.lastCheckedAt ?? null, sources: [...sources.values()],
+  const sources = (state.sources ?? []).map((source) => source.status === 'feed_required' && DIRECT_BY_ID.has(source.id)
+    ? { ...source, status: 'pending' } : source);
+  return { lastCheckedAt: state.lastCheckedAt ?? null, sources,
     ...(checkInProgress(state, now) ? { checking: true } : {}) };
 }
 
@@ -264,6 +265,13 @@ export async function saveObservedSnapshot(bucket: Bucket, key: string, result: 
   const object = await bucket.get(key);
   const previous = object ? await unpack(object) : null;
   const observed = recordListingHistory(listings, previous?.observationHistory, sourceId, at);
+  if ('partial' in result && result.partial === true) {
+    const ids = new Set(observed.listings.map(listing => listing.id));
+    const retained = (previous?.listings ?? []).filter((listing: ListingData) => !ids.has(listing.id))
+      .map((listing: ListingData) => ({ ...listing, kind: 'cached',
+        sources: listing.sources.map(source => ({ ...source, kind: 'cached' })) }));
+    observed.listings.push(...retained);
+  }
   const saved = await bucket.put(key, compressed({ ...result, ...observed }), {
     customMetadata,
     onlyIf: object ? { etagMatches: object.etag } : { etagDoesNotMatch: '*' },
@@ -292,7 +300,10 @@ async function refreshDirectRentals(bucket: Bucket, source: typeof DIRECT_RENTAL
       Date.parse(at) - Date.parse(result.checkedAt ?? '') > 10 * 60_000)) {
     throw new Error('StreetEasy import is incomplete or stale.');
   }
-  if (!Number.isInteger(result?.pages) || result.pages! < source.minPages || result.pages! > source.maxPages ||
+  const validPartial = source.id !== STREETEASY_LIVE.id && result?.partial === true &&
+    Number.isInteger(result.requestedPages) && result.requestedPages! >= source.minPages && result.requestedPages! <= source.maxPages &&
+    Number.isInteger(result.failedPages) && result.failedPages! > 0 && result.pages! + result.failedPages! === result.requestedPages;
+  if (!Number.isInteger(result?.pages) || result.pages! < (validPartial ? 1 : source.minPages) || result.pages! > source.maxPages ||
       !Array.isArray(result.listings) || (!result.listings.length && result.total !== 0) || result.listings.length > result.pages! * source.rowsPerPage ||
       new Set(result.listings.map((listing: ListingData) => listing?.id)).size !== result.listings.length ||
       result.listings.some((listing) => listing?.kind !== 'feed' || !source.regions.includes(listing.region ?? '') ||
@@ -309,10 +320,11 @@ async function refreshDirectRentals(bucket: Bucket, source: typeof DIRECT_RENTAL
   const listings = result.listings.map((listing: ListingData) => ({ ...withoutCommuteEstimate(listing), checkedAt: at }));
   await saveObservedSnapshot(bucket, 'rentals/' + source.id + '.json.gz', result, listings, source.id, at);
   return { status: 'updated', updatedAt: at, listingCount: result.listings.length, pages: result.pages, total: result.total,
+    ...(validPartial ? { partial: true, requestedPages: result.requestedPages, failedPages: result.failedPages } : {}),
     ...(verifiedStreetEasy ? { transport: STREETEASY_TRANSPORT } : {}) };
 }
 
-export async function refreshSources(env: AppEnv, { fetcher = fetch, now = new Date(), imports, onDemand = false, fallback = false, skipStreetEasy = false, onlyStreetEasy = false, sourceId, forceRefresh = false, listingTransports }: RefreshOptions = {}) {
+export async function refreshSources(env: AppEnv, { fetcher = fetch, now = new Date(), imports, onDemand = false, fallback = false, skipStreetEasy = false, onlyStreetEasy = false, sourceId, forceRefresh = false, listingTransports, prepareListingSources, onStarted }: RefreshOptions = {}) {
   const selected = sourceId ?? (onlyStreetEasy ? STREETEASY_LIVE.id : null);
   if (selected && !refreshCatalog(env).some((source) => source.id === selected && source.resyncable)) throw new Error('Unknown or disconnected refresh source.');
   const bucket = env.BUCKET;
@@ -343,7 +355,7 @@ export async function refreshSources(env: AppEnv, { fetcher = fetch, now = new D
   const liveChecks = onlyStreetEasy ? (ready(STREETEASY_LIVE.id) ? [STREETEASY_LIVE.id] : []) : fallback ? (recoveredStreetEasy ? [STREETEASY_LIVE.id] : []) : onDemand ? AUTO_IDS.filter((id) => ready(id) && (!skipStreetEasy || id !== STREETEASY_LIVE.id)) : LIVE_IDS.filter((id) => imports && Object.hasOwn(imports, id));
   const checkHdc = onDemand && !onlyStreetEasy && !fallback && ready(HDC_RERENTALS.id);
   const ids = [...publicChecks, ...liveChecks, ...feedChecks.map(({ id }) => id), ...(checkHdc ? [HDC_RERENTALS.id] : [])].filter((id) => !selected || id === selected);
-  if (ids.length === 0 || (!onDemand && !onlyStreetEasy && !previous.running && !imports?.firstmover?.changed && checkedDuring(previous.sources, ids, hour))) {
+  if (ids.length === 0 || (!onDemand && !selected && !onlyStreetEasy && !previous.running && !imports?.firstmover?.changed && checkedDuring(previous.sources, ids, hour))) {
     return { state: 'already_checked', ...publicStatus(previous) };
   }
 
@@ -351,9 +363,12 @@ export async function refreshSources(env: AppEnv, { fetcher = fetch, now = new D
     onlyIf: current.etag ? { etagMatches: current.etag } : { etagDoesNotMatch: '*' },
   });
   if (!lease) return { state: 'running', ...publicStatus((await readState(bucket)).value, now) };
+  onStarted?.();
 
   const sourceFetch = onDemand ? requestForRefresh(fetcher, AbortSignal.timeout(ids.includes(STREETEASY_LIVE.id) ? 120_000 : PAGE_FETCH_TIMEOUT)) : fetcher;
   const liveData = <T>(id: string, load: (fetcher: SourceFetch, now: Date) => T): T => onDemand ? load(sourceFetch, now) : imports?.[id];
+  let preparation: Promise<void> | undefined;
+  const prepare = () => preparation ??= Promise.resolve().then(() => prepareListingSources?.());
   const candidates: { id: string; name: string; work: () => Promise<CheckResult> }[] = [
     ...(publicChecks.includes('firstmover') ? [{ id: 'firstmover', name: 'FirstMover (StreetEasy)', work: () =>
       refreshMarket(bucket, previous.market, at, sourceFetch, imports?.firstmover, Boolean(imports), onDemand) }] : []),
@@ -367,8 +382,10 @@ export async function refreshSources(env: AppEnv, { fetcher = fetch, now = new D
     ...(liveChecks.includes('openigloo') ? [{ id: 'openigloo', name: 'Openigloo', work: async () =>
       refreshOpenigloo(bucket, await liveData('openigloo', loadOpenigloo), at) }] : []),
     ...DIRECT_RENTAL_SOURCES.filter(({ id }) => liveChecks.includes(id)).map((source) => ({
-      id: source.id, name: source.name, work: async () =>
-        refreshDirectRentals(bucket, source, await liveData(source.id, source.load), at),
+      id: source.id, name: source.name, work: async () => {
+        if (onDemand && ['streeteasy-live', 'hotpads-live'].includes(source.id)) await prepare();
+        return refreshDirectRentals(bucket, source, await liveData(source.id, source.load), at);
+      },
     })),
     ...feedChecks.map((feed) => ({ id: feed.id, name: feed.name, work: async () => {
       const result = await loadFeed(feed, sourceFetch);
@@ -378,9 +395,7 @@ export async function refreshSources(env: AppEnv, { fetcher = fetch, now = new D
     } })),
   ];
   const checks = selected ? candidates.filter(({ id }) => id === selected) : candidates;
-  const results = await Promise.allSettled(checks.map(({ work }) => work()));
-  const attempted = checks.map(({ id, name }, index) => {
-    const result = results[index];
+  const statusFor = ({ id, name }: { id: string; name: string }, result: PromiseSettledResult<CheckResult>): SourceStatus => {
     const older = previousById.get(id);
     const next = result.status === 'fulfilled' ? result.value : null;
     const failure = result.status === 'rejected' ? result.reason : null;
@@ -406,6 +421,7 @@ export async function refreshSources(env: AppEnv, { fetcher = fetch, now = new D
       if (counts?.updatedAt) {
         item.listingCount = counts.listingCount;
         item.pages = counts.pages;
+        if (counts.partial) { item.partial = true; item.requestedPages = counts.requestedPages; item.failedPages = counts.failedPages; }
         if (counts.total !== undefined) item.total = counts.total;
       }
       if (!next) item.error = 'The ' + name + ' live sample could not be refreshed.';
@@ -424,7 +440,31 @@ export async function refreshSources(env: AppEnv, { fetcher = fetch, now = new D
       Object.assign(item, retrySchedule(failure, older?.transport === item.transport ? older : undefined, now.getTime()));
     }
     return item;
-  });
+  };
+
+  // Publish each successful provider immediately, even while another is slow.
+  let currentEtag = lease.etag;
+  const progress = new Map((previous.sources ?? []).map((source) => [source.id, source]));
+  let writes = Promise.resolve();
+  const persist = (item: SourceStatus) => {
+    writes = writes.then(async () => {
+      progress.set(item.id, item);
+      const receipt = await bucket.put(STATE_KEY, JSON.stringify({ ...previous,
+        running: true, startedAt: at, lastCheckedAt: at, sources: [...progress.values()] }),
+      { onlyIf: { etagMatches: currentEtag } });
+      if (!receipt) throw new Error('Source refresh was superseded.');
+      currentEtag = receipt.etag;
+    });
+    return writes;
+  };
+  const results = await Promise.all(checks.map(async (check): Promise<PromiseSettledResult<CheckResult>> => {
+    let result: PromiseSettledResult<CheckResult>;
+    try { result = { status: 'fulfilled', value: await check.work() }; }
+    catch (reason) { result = { status: 'rejected', reason }; }
+    await persist(statusFor(check, result));
+    return result;
+  }));
+  const attempted = checks.map((check, index) => statusFor(check, results[index]));
 
   const retainedIds = new Set([...PUBLIC_IDS, ...LIVE_IDS, HDC_RERENTALS.id, ...feeds.map(({ id }) => id)]);
   const sources = [...attempted, ...(previous.sources ?? []).filter(({ id }) => !ids.includes(id) && retainedIds.has(id))];
@@ -433,7 +473,7 @@ export async function refreshSources(env: AppEnv, { fetcher = fetch, now = new D
   const state = { running: false, hour, lastCheckedAt: at, market: market ? {
     revision: market.revision, catalogEtag: market.catalogEtag, csvEtag: market.csvEtag,
   } : null, sources };
-  const saved = await bucket.put(STATE_KEY, JSON.stringify(state), { onlyIf: { etagMatches: lease.etag } });
+  const saved = await bucket.put(STATE_KEY, JSON.stringify(state), { onlyIf: { etagMatches: currentEtag } });
   if (!saved) return { state: 'superseded', ...publicStatus((await readState(bucket)).value) };
   const result = publicStatus(state);
   return { state: result.sources.some(({ status }) => status === 'failed') ? 'partial' : 'complete', ...result };

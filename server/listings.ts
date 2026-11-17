@@ -1,11 +1,11 @@
 import type { FetchTransport } from '../src/fetch-type.ts';
 import { MARKETPLACE_NAMES, safeListingUrl } from '../src/marketplaces.ts';
 import { normalizeListing } from '../src/listings.ts';
-import { AUTO_RENTAL_SOURCES, FEED_ONLY_SOURCES } from './direct-rentals.ts';
+import { DIRECT_RENTAL_SOURCES } from './direct-rentals.ts';
 import { HDC_RERENTALS } from './hdc-rerentals.ts';
 
 const RESERVED_FEEDS = new Set(['firstmover', 'housingconnect', 'openigloo', HDC_RERENTALS.id,
-  ...[...AUTO_RENTAL_SOURCES, ...FEED_ONLY_SOURCES].map(({ id }) => id)]);
+  ...DIRECT_RENTAL_SOURCES.map(({ id }) => id)]);
 const MAX_PAGES = 40;
 const MAX_ROWS = 25000;
 // Bound decoded response bytes before JSON parsing, independently of row count.

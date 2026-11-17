@@ -58,10 +58,10 @@ async function withHousingLinks<T extends { matches: ListingData[] }>(result: T,
   }) };
 }
 
-async function storedSample(status: { sources: SourceStatus[] } | null, id: string, liveOnly: boolean, load: () => ReturnType<typeof storedOpenigloo>, strict = false) {
+async function storedSample(status: { sources: SourceStatus[] } | null, id: string, liveOnly: boolean, load: () => ReturnType<typeof storedOpenigloo>, strict = false, includeCached = false) {
   const sourceStatus = status?.sources.find((source) => source.id === id);
   const recent = sourceRecent(status, id);
-  const data = recent || (!liveOnly && sourceStatus?.updatedAt) ? await load().catch(error => { if (strict) throw error; return null; }) : null;
+  const data = recent || ((!liveOnly || includeCached) && sourceStatus?.updatedAt) ? await load().catch(error => { if (strict) throw error; return null; }) : null;
   const listings = data?.listings.map((listing) => recent ? listing : {
     ...listing, kind: 'cached', sources: listing.sources.map((source) => ({ ...source, kind: 'cached' })),
   }) ?? [];
@@ -114,7 +114,7 @@ export async function search(rawFilters: Record<string, unknown>, env: AppEnv, f
       const at = sourceExpiresAt(status, definition.id, observedAt);
       return at ? [at] : [];
     }).sort();
-    const inventoryExpiresAt = filters.liveOnly ? expires[0] : undefined;
+    const inventoryExpiresAt = filters.liveOnly && !filters.includeCached ? expires[0] : undefined;
     return withHousingLinks({ ...result, ...(snapshotMonth ? { snapshotMonth } : {}), ...commute,
       ...(inventoryExpiresAt ? { inventoryExpiresAt } : {}) }, bucket);
   }
@@ -123,13 +123,13 @@ export async function search(rawFilters: Record<string, unknown>, env: AppEnv, f
   const sourceRegion = Object.hasOwn(NYC_SEARCH_AREAS, filters.region) ? 'nyc' : filters.region;
   const directSources = DIRECT_RENTAL_SOURCES.filter(({ regions }) => sourceRegion === 'all' || regions.includes(sourceRegion));
   const [openigloo, direct, results] = await Promise.all([
-    storedSample(status, OPENIGLOO.id, filters.liveOnly, () => storedOpenigloo(bucket), observationsOnly),
+    storedSample(status, OPENIGLOO.id, filters.liveOnly, () => storedOpenigloo(bucket), observationsOnly, filters.includeCached),
     Promise.all(directSources.map(async (source) => ({
       source,
-      ...await storedSample(status, source.id, filters.liveOnly, () => storedDirectRentals(bucket, source), observationsOnly),
+      ...await storedSample(status, source.id, filters.liveOnly, () => storedDirectRentals(bucket, source), observationsOnly, filters.includeCached),
     }))),
     Promise.allSettled(feeds.map(async (feed) => {
-      if (bucket) return storedSample(status, feed.id, filters.liveOnly, () => storedFeed(bucket, feed), observationsOnly);
+      if (bucket) return storedSample(status, feed.id, filters.liveOnly, () => storedFeed(bucket, feed), observationsOnly, filters.includeCached);
       const data = await loadFeed(feed, fetcher);
       return { data, listings: data.listings, recent: true };
     })),
@@ -171,7 +171,7 @@ export async function search(rawFilters: Record<string, unknown>, env: AppEnv, f
     const market = await storedMarket(bucket);
     return finish(market.listings, 'snapshot', [{ id: 'streeteasy', name: 'StreetEasy', status: 'snapshot' }, ...sources], notices, market.month);
   }
-  if (!hasLive && filters.liveOnly) {
+  if (!hasLive && filters.liveOnly && !(filters.includeCached && hasSavedSamples)) {
     return finish([], 'live', sources, [...notices, 'No sources have recently confirmed active rentals.']);
   }
   if (!filters.liveOnly && (bucket || hasSavedSamples)) {
@@ -193,7 +193,7 @@ function json(value: unknown, status = 200) {
   return Response.json(value, { status, headers: { 'Cache-Control': 'no-store' } });
 }
 
-export async function handleApi(request: Request, env: AppEnv, { privateAuthenticated = false, requireToken = false, fetcher = (url, options) => globalThis.fetch(url, options), waitUntil, prepareListingSources, listingTransports }: { privateAuthenticated?: boolean; requireToken?: boolean; fetcher?: SourceFetch; waitUntil?: (work: Promise<unknown>) => void; prepareListingSources?: () => Promise<void>; listingTransports?: ListingTransports } = {}) {
+export async function handleApi(request: Request, env: AppEnv, { privateAuthenticated = false, requireToken = false, fetcher = (url, options) => globalThis.fetch(url, options), waitUntil, prepareListingSources, listingTransports, backgroundRefresh = false }: { privateAuthenticated?: boolean; requireToken?: boolean; fetcher?: SourceFetch; waitUntil?: (work: Promise<unknown>) => void; prepareListingSources?: () => Promise<void>; listingTransports?: ListingTransports; backgroundRefresh?: boolean } = {}) {
   const { pathname: path, searchParams } = new URL(request.url);
   if (!API_PATHS.has(path)) return json({ error: 'Endpoint not found.' }, 404);
   if (requireToken && request.headers.get('Authorization') !== `Bearer ${env.APP_ACCESS_TOKEN}`) {
@@ -212,13 +212,12 @@ export async function handleApi(request: Request, env: AppEnv, { privateAuthenti
       if (!env.BUCKET) return json(config);
       const refresh = await refreshStatus(env.BUCKET);
       const liveSources = [
-        ...DIRECT_RENTAL_SOURCES.filter(({ id }) => sourceRecent(refresh, id))
-          .map(({ marketplace: id, name, coverage }) => ({ id, name, sample: true, coverage })),
-        ...(sourceRecent(refresh, OPENIGLOO.id) ? [{ id: OPENIGLOO.id, name: OPENIGLOO.name, sample: true, coverage: 'NYC' }] : []),
+        ...DIRECT_RENTAL_SOURCES.map(({ marketplace: id, name, coverage }) => ({ id, name, sample: true, coverage })),
+        { id: OPENIGLOO.id, name: OPENIGLOO.name, sample: true, coverage: 'NYC' },
       ];
       const companies = companyCounts((await storedMarket(env.BUCKET)).listings);
       return json({ ...config, refresh, companies, sourceCatalog: refreshCatalog(env),
-        mode: liveSources.length ? 'live' : config.mode,
+        mode: refresh.sources.some(({ id }) => sourceRecent(refresh, id)) ? 'live' : config.mode,
         sources: [...liveSources, ...config.sources.filter(({ id }) => !liveSources.some((item) => item.id === id))],
         snapshotMonth: refresh.sources.find(({ id }) => id === 'firstmover')?.month ?? SNAPSHOT_MONTH,
       });
@@ -277,9 +276,20 @@ export async function handleApi(request: Request, env: AppEnv, { privateAuthenti
     if (path === '/api/refresh') {
       if (body?.check === 'now') {
         if (body.source !== undefined && !refreshCatalog(env).some((source) => source.id === body.source && source.resyncable)) return json({ error: 'Unknown or disconnected refresh source.' }, 422);
-        if (!body.source || ['streeteasy-live', 'hotpads-live'].includes(body.source)) await prepareListingSources?.();
-        const work = refreshSources(env, { fetcher, listingTransports, onDemand: true, skipStreetEasy: body.sessionStart === true && !body.source && env.TEMPORARY_CACHE !== 'true', sourceId: body.source, forceRefresh: body.sessionStart !== true });
+        let started!: () => void;
+        const starting = new Promise<void>(resolve => { started = resolve; });
+        const work = refreshSources(env, { fetcher, listingTransports, onDemand: true, prepareListingSources,
+          sourceId: body.source, forceRefresh: body.sessionStart !== true, onStarted: started });
         waitUntil?.(work.catch(() => {}));
+        if (backgroundRefresh) {
+          // Bun keeps this process alive independently of the initiating HTTP request.
+          void work.catch(() => {});
+          const outcome = await Promise.race([
+            work.then(result => ({ result, status: 200 })),
+            starting.then(async () => ({ result: { state: 'running', ...await refreshPlan(env.BUCKET) }, status: 202 })),
+          ]);
+          return json(outcome.result, outcome.status);
+        }
         return json(await work);
       }
       let imports;

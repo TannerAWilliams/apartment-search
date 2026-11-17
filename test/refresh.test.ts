@@ -352,7 +352,9 @@ test('opening or reloading the app fetches new source data even within the same 
       '/apartments-for-rent/jersey-city-nj', '/apartments-for-rent/jersey-city-nj/cheap',
       '/apartments-for-rent/manhattan-ny', '/apartments-for-rent/manhattan-ny/cheap',
       '/apartments-for-rent/stamford-ct', '/apartments-for-rent/stamford-ct/cheap']);
-  assert.ok(!requests.some((url) => /(^|\.)(zillow|compass|renthop|realtor)\.com$/.test(new URL(url).hostname)));
+  for (const domain of ['zillow', 'compass', 'renthop', 'realtor']) {
+    assert.ok(requests.some((url) => new URL(url).hostname === `www.${domain}.com`));
+  }
 });
 
 test('a rate-limited feed retains cached data and waits until its Retry-After time', async () => {
@@ -662,7 +664,7 @@ test('targeted provider resync only attempts selected provider and preserves oth
 });
 test('unknown or disconnected targeted provider is rejected before acquiring refresh lease', async () => {
   const bucket = new TestBucket();
-  for (const sourceId of ['unknown', 'zillow-live']) {
+  for (const sourceId of ['unknown', 'craigslist']) {
     await assert.rejects(refreshSources({ BUCKET: bucket }, { sourceId, onDemand: true }), /Unknown or disconnected/);
   }
   assert.equal(bucket.records.size, 0);
