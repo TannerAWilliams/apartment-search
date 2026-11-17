@@ -1,3 +1,4 @@
+import { dashboardSnapshot } from './dashboard-snapshot.ts';
 import { retrieveBuildingRecords } from './building-records.ts';
 import { wholeSearchCheck } from './whole-search-check.ts';
 import { relayConfig, type ListingTransports } from './relay-client.ts';
@@ -16,7 +17,7 @@ import { type SourceFetch, refreshCatalog, refreshPlan, refreshSources, refreshS
 
 const REQUEST_LIMIT = 4096;
 const IMPORT_LIMIT = 2 * 1024 * 1024;
-const API_PATHS = new Set(['/api/building-report', '/api/config', '/api/search', '/api/search-check', '/api/geocode', '/api/market', '/api/housing', '/api/refresh']);
+const API_PATHS = new Set(['/api/dashboard', '/api/building-report', '/api/config', '/api/search', '/api/search-check', '/api/geocode', '/api/market', '/api/housing', '/api/refresh']);
 
 export function appConfig(env) {
   const feeds = configuredFeeds(env);
@@ -162,11 +163,17 @@ function json(value, status = 200) {
   return Response.json(value, { status, headers: { 'Cache-Control': 'no-store' } });
 }
 
-export async function handleApi(request, env, { requireToken = false, fetcher = (url, options) => globalThis.fetch(url, options), waitUntil, prepareListingSources, listingTransports }: { requireToken?: boolean; fetcher?: SourceFetch; waitUntil?: (work: Promise<unknown>) => void; prepareListingSources?: () => Promise<void>; listingTransports?: ListingTransports } = {}) {
+export async function handleApi(request, env, { privateAuthenticated = false, requireToken = false, fetcher = (url, options) => globalThis.fetch(url, options), waitUntil, prepareListingSources, listingTransports }: { privateAuthenticated?: boolean; requireToken?: boolean; fetcher?: SourceFetch; waitUntil?: (work: Promise<unknown>) => void; prepareListingSources?: () => Promise<void>; listingTransports?: ListingTransports } = {}) {
   const { pathname: path, searchParams } = new URL(request.url);
   if (!API_PATHS.has(path)) return json({ error: 'Endpoint not found.' }, 404);
   if (requireToken && request.headers.get('Authorization') !== `Bearer ${env.APP_ACCESS_TOKEN}`) {
     return json({ error: 'Enter your apartment search server access token.' }, 401);
+  }
+  if (path === '/api/dashboard') {
+    if (env.PUBLIC_APP === 'true' || !env.APP_ACCESS_TOKEN || (!privateAuthenticated && request.headers.get('Authorization') !== `Bearer ${env.APP_ACCESS_TOKEN}`)) return json({ error: 'Private authenticated access is required for this research snapshot.' }, 403);
+    if (request.method !== 'GET') return json({ error: 'Use GET for dashboard data.' }, 405);
+    const result = dashboardSnapshot(searchParams.has('file') ? searchParams.get('file') : undefined);
+    return result ? json(result) : json({ error: 'Unknown dashboard file.' }, 404);
   }
   if (path === '/api/config') {
     if (request.method !== 'GET') return json({ error: 'Use GET for app configuration.' }, 405);

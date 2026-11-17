@@ -443,3 +443,22 @@ test('NYC building report loads automatically on Details and reuses completed se
   expect(requests.filter(item => item.path === '/api/refresh')).toHaveLength(0);
   expect(unexpected).toEqual([]);
 });
+
+test('historical dashboard loads privately and a failed series does not trap the selector', async ({ page }) => {
+  await mockApp(page);
+  await page.route('**/api/dashboard*', async route => {
+    const name = new URL(route.request().url()).searchParams.get('file');
+    if (name === 'medianAskingRent_All.csv') return route.fulfill({status:503,json:{error:'Synthetic unavailable series'}});
+    const file = {name:'rentalInventory_All.csv',metric:'rentalInventory',segment:'All',months:['2025-01','2025-02'],areas:[{name:'Test area',borough:'Queens',type:'neighborhood',values:[null,0]}]};
+    return route.fulfill({json:name ? {file} : {provenance:{downloadedAt:'2026-11-17'},files:[{name:'medianAskingRent_All.csv',metric:'medianAskingRent',segment:'All'},file]}});
+  });
+  await page.getByRole('tab',{name:'More',exact:true}).click();
+  await page.getByRole('button',{name:'Rent chart',exact:true}).click();
+  await page.getByRole('button',{name:'StreetEasy dashboard files',exact:true}).click();
+  await expect(page.getByText('This historical series could not be loaded. No values have been substituted.')).toBeVisible();
+  await page.getByRole('button',{name:'Rental inventory · All',exact:true}).click();
+  await expect(page.getByText('2025-02: 0',{exact:true})).toBeVisible();
+  await expect(page.getByText('2025-01: Not reported',{exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'Back to rent trends',exact:true}).click();
+  await expect(page.getByText('StreetEasy historical dashboard',{exact:true})).toHaveCount(0);
+});

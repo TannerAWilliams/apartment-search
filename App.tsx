@@ -506,6 +506,8 @@ function ApartmentSearch() {
     api('market?' + new URLSearchParams({ region, grouping }), { token: activeToken, signal }),
   [activeToken, lastCheckedAt]);
 
+  const loadDashboard = useCallback((file, signal) => api('dashboard' + (file ? '?file=' + encodeURIComponent(file) : ''), { token: activeToken, signal }), [activeToken]);
+
   const loadHousing = useCallback((signal) => api('housing', { token: activeToken, signal }), [activeToken, lastCheckedAt]);
 
   async function submit(nextDraft: typeof draft | typeof applied = draft) {
@@ -657,7 +659,7 @@ function ApartmentSearch() {
               {[['sources', 'Sources & sync'], ['chart', 'Rent chart'], ['marketplaces', 'Rental platforms'], ['affordable', 'Affordable housing']].map(([key, label]) => <Button key={key} secondary onPress={() => navigateTab(key)}>{label}</Button>)}
             </View>}
             {tab === 'chart' && <RentChart initialRegion={applied.region} saved={saved} showSaved={showSaved} onError={setError}
-              loadMarket={serverState === 'ready' ? loadMarket : undefined} />}
+              loadMarket={serverState === 'ready' ? loadMarket : undefined} loadDashboard={serverState === 'ready' ? loadDashboard : undefined} />}
             {tab === 'sources' && <>
               <Text accessibilityRole="header" style={styles.panelTitle}>Sources & sync</Text>
               {refreshError !== '' && <Text accessibilityRole="alert" style={styles.noticeLine}>{refreshError}</Text>}

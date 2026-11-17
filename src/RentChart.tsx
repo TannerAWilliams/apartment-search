@@ -6,6 +6,7 @@ import { NYC_SEARCH_AREAS } from './regions.ts';
 import { bedroomLabel, formatRent } from './search.ts';
 import { styles } from './styles.ts';
 import { Button, Chip, Field, Link } from './ui.tsx';
+import { DashboardExplorer } from './DashboardExplorer.tsx';
 import { RentTrend } from './RentTrend.tsx';
 
 const SIZES = ['Studio', '1 BR', '2 BR', '3 BR', '4 BR'];
@@ -57,7 +58,7 @@ function RentTable({ areas, selection, choose }) {
   </ScrollView>;
 }
 
-export function RentChart({ initialRegion, saved, onError, showSaved, loadMarket }) {
+export function RentChart({ initialRegion, saved, onError, showSaved, loadMarket, loadDashboard }) {
   const [dataset, setDataset] = useState('market');
   const [region, setRegion] = useState(initialRegion);
   const [grouping, setGrouping] = useState('neighborhood');
@@ -99,6 +100,11 @@ export function RentChart({ initialRegion, saved, onError, showSaved, loadMarket
     setVisible(PAGE_SIZE);
   }
 
+  if (dataset === 'dashboard') return <View style={styles.marketplacePanel}>
+    <Button secondary onPress={() => setDataset('market')}>Back to rent trends</Button>
+    <DashboardExplorer loadDashboard={loadDashboard} />
+  </View>;
+
   return <View style={styles.marketplacePanel}>
     <View style={styles.chartIntro}>
       <Text style={styles.chartKicker}>MARKET DATA</Text>
@@ -107,6 +113,7 @@ export function RentChart({ initialRegion, saved, onError, showSaved, loadMarket
     </View>
     <View style={styles.chipRow}>
       <Chip selected={dataset === 'market'} onPress={() => resetAreas(setDataset, 'market')}>Market snapshot</Chip>
+      <Chip selected={false} onPress={() => setDataset('dashboard')}>StreetEasy dashboard files</Chip>
       <Chip selected={dataset === 'saved'} onPress={() => resetAreas(setDataset, 'saved')}>Saved listings</Chip>
     </View>
     <View style={styles.chartControls}>
