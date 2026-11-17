@@ -3,6 +3,8 @@ import type { SourceFetch } from './refresh.ts';
 
 type RelayConfig = { origin: string; token: string };
 export function relayConfig(env: AppEnv): RelayConfig | null {
+  if (env.LISTING_FETCH_TRANSPORT === 'direct') return null;
+  if (env.LISTING_FETCH_TRANSPORT && env.LISTING_FETCH_TRANSPORT !== 'relay') throw new Error('Invalid listing request transport.');
   if (!env.LISTING_RELAY_URL && !env.LISTING_RELAY_TOKEN) return null;
   const url = new URL(env.LISTING_RELAY_URL ?? '');
   if (url.protocol !== 'https:' || !url.hostname.endsWith('.onrender.com') || url.username || url.password ||

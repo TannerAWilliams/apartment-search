@@ -43,3 +43,18 @@ test('invalid relay config fails closed instead of silently claiming direct mode
   assert.throws(()=>createListingSourceClient({LISTING_RELAY_URL:'http://localhost'}));
   assert.throws(()=>appConfig({LISTING_RELAY_URL:'http://localhost'}));
 });
+
+test('native hosting can use direct provider requests without forwarding stored relay credentials', async () => {
+  const env = { LISTING_FETCH_TRANSPORT: 'direct', LISTING_RELAY_URL: 'https://unused.onrender.com', LISTING_RELAY_TOKEN: 'stored-secret'.repeat(4) };
+  let requests = 0;
+  const client = createListingSourceClient(env, async (url, options) => {
+    requests++;
+    assert.equal(url, 'https://hotpads.com/stamford-ct/condos-for-rent');
+    assert.equal(new Headers(options?.headers).get('Authorization'), null);
+    return new Response('ok');
+  });
+  assert.equal(client.prepareListingSources, undefined);
+  await client.fetcher('https://hotpads.com/stamford-ct/condos-for-rent');
+  assert.equal(requests, 1);
+  assert.equal(appConfig(env).listingRequestTransport, 'direct');
+});

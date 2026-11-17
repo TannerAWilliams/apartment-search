@@ -42,6 +42,8 @@ Opening the browser reads saved inventory immediately and starts a source check,
 
 The Bun server acknowledges refresh jobs immediately and the page polls progress. Each completed source publishes its inventory and status independently; relay warmup only affects StreetEasy and HotPads. A failed page in a bounded public sample no longer discards other successful pages. Missing pages are counted explicitly; previously saved units are retained as cached with their original observation dates until a complete source check replaces them. StreetEasy and configured complete partner feeds keep their strict inventory validation. No recurring task, paid service, or provider access bypass is added.
 
+On native Render hosting, set `LISTING_FETCH_TRANSPORT=direct` to use the app's own server requests instead of requiring a second sleeping Render service for StreetEasy and HotPads. Existing relay settings are preserved for an explicit switch back to `relay`. This changes only the app's retrieval path and does not establish provider access when the upstream rejects the host.
+
 The private app also serves a manual Bun refresh runner at `/_refresh-runner.mjs`. Download it through owner-only service access and pass the service credential on stdin. Keep the credential out of files, command arguments, and logs.
 
 ## Rent chart
