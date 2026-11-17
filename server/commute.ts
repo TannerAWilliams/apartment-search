@@ -21,15 +21,16 @@ export function routingCredentials(env) {
 const coords = ({ latitude: lat, longitude: lng }) => ({ lat, lng });
 const pointKey = ({ latitude, longitude }) => `${latitude},${longitude}`;
 
-export async function routeCommutes(listings, workplace, credentials, fetcher) {
+export async function routeCommutes(listings, workplace, credentials, fetcher, now = new Date()) {
   if (!credentials) throw new CommuteError('Automatic commute estimates are unavailable because the routing service is disconnected.');
+  if (!isPoint(workplace) || typeof workplace.label !== 'string' || !workplace.label || workplace.label.length > 200 || !Number.isFinite(now.getTime())) throw new CommuteError('Choose a valid workplace before calculating commute times.', 422);
   const origins = new Map();
   for (const listing of listings) {
     if (isPoint(listing) && !origins.has(pointKey(listing))) {
       origins.set(pointKey(listing), { id: String(origins.size), coords: coords(listing) });
     }
   }
-  if (!origins.size) return listings;
+  if (!origins.size) return listings.map(listing => ({ ...listing, transitSeconds: null, drivingSeconds: null, commuteEstimate: null }));
   if (origins.size > 100_000) throw new CommuteError('Choose a smaller area or a lower rent limit to calculate commute times.', 422);
   const locations = [...origins.values()];
   const departure_location_ids = locations.map(({ id }) => id);
@@ -65,8 +66,8 @@ export async function routeCommutes(listings, workplace, credentials, fetcher) {
     }))];
   }));
   return listings.map((listing) => {
-    const id = origins.get(pointKey(listing))?.id;
-    return { ...listing, transitSeconds: timesByMode.transit.get(id) ?? null, drivingSeconds: timesByMode.driving.get(id) ?? null };
+    const id = isPoint(listing) ? origins.get(pointKey(listing))?.id : undefined;
+    return { ...listing, commuteEstimate: id === undefined ? null : { provider: 'TravelTime', arrivalPeriod: 'weekday_morning', checkedAt: now.toISOString(), destination: { label: workplace.label, latitude: workplace.latitude, longitude: workplace.longitude } }, transitSeconds: id === undefined ? null : timesByMode.transit.get(id) ?? null, drivingSeconds: id === undefined ? null : timesByMode.driving.get(id) ?? null };
   });
 }
 

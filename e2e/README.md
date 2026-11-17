@@ -4,15 +4,15 @@ These tests operate the real exported React Native Web UI with synthetic API res
 
 ## Run
 
-Use Node 22.13+ and a browser-capable machine:
+Use Bun 1.4.4 and a browser-capable machine:
 
 ```
-npm ci
-npx playwright install chromium
-npm run test:e2e
+bun install --frozen-lockfile
+bun ./node_modules/playwright/cli.js install chromium
+bun run test:e2e
 ```
 
-`npm run test:e2e:list` lists cases without launching a browser. Optional `PLAYWRIGHT_CHROMIUM_EXECUTABLE=/path/to/chromium` selects an installed Chromium. Chromium sandbox stays enabled; do not disable it to work around a constrained runner. No hosted paid testing service is used.
+`bun run test:e2e:list` lists cases without launching a browser. Optional `PLAYWRIGHT_CHROMIUM_EXECUTABLE=/path/to/chromium` selects an installed Chromium. Chromium sandbox stays enabled; do not disable it to work around a constrained runner. No hosted paid testing service is used.
 
 The suite builds the actual Expo web bundle, serves it on loopback, blocks external browser requests and mocks every supported `/api` route before navigation. It cannot target production via a baseURL environment override. Unexpected API endpoints get an explicit test failure response. Refresh buttons exercise mocked request handling, not real StreetEasy traffic. Each test has an isolated browser context; saved-listing reload checks only synthetic local storage. Portrait screenshots and failure traces/screenshots are local under ignored output directories.
 
@@ -41,3 +41,24 @@ Still needed: complete successful manual listing/import workflows, deduplication
 
 Playwright discovery, E2E/config TypeScript checks, existing application unit tests and Expo web export also passed. This is evidence for the listed UI flows only, not complete browser coverage or live provider availability. The temporary Render service has automatic deployments off and exposes only an inert health message, never test reports, source data or credentials.
 
+
+
+## November 16 extension: unverified browser scenarios
+
+Six additional scenarios cover successful manual entry with validation recovery and reload,
+CSV atomic validation/recovery and reload, duplicate reimport/removal, oversized file
+reselection, unsupported-borough rejection, and housing-cost calculation/validation/reset.
+The housing-cost scenario requires the `HousingCost` feature to be integrated into listing details.
+
+The inventory now contains 19 named scenarios across desktop Chromium and Pixel 7 emulation
+(38 project cases). This is a scenario inventory, **not** 90% code coverage, complete product
+coverage, native-device testing, or a pass claim. Source/server code coverage needs its own
+instrumented denominator including unimported files. Native iOS/Android, WebKit/Firefox,
+real-provider integrations, accessibility audit, map gestures, source cooldown/race handling,
+and broader pagination/sort combinations remain outside this inventory.
+
+Local verification on November 16: Expo web export succeeded; TypeScript validation passed.
+The attempted 36-case run (before adding the cost scenario) could not launch Chromium:
+`process_singleton_posix.cc: socket() failed: Operation not permitted`.
+Zero browser scenarios were verified in that run. Chromium sandbox remains enabled.
+Use a runner that supports sandboxed Chromium before accepting the new tests.

@@ -1,3 +1,4 @@
+import type { FetchTransport } from '../src/fetch-type.ts';
 import { mergeListings } from '../src/listings.ts';
 
 const MAX_HTML_BYTES = 5 * 1024 * 1024;
@@ -43,7 +44,7 @@ export function jsonLd(html) {
     .map(([, json]) => JSON.parse(json));
 }
 
-export async function loadPublicPages(source, pages, parser, fetcher = fetch, now = new Date()) {
+export async function loadPublicPages(source, pages, parser, fetcher: FetchTransport = fetch, now = new Date()) {
   const listings = [];
   const checkedAt = now.toISOString();
   for (let index = 0; index < pages.length; index += 3) {

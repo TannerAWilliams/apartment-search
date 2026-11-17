@@ -1,3 +1,4 @@
+import { LAUNDRY_OPTIONS, matchesDiscovery } from './discovery.ts';
 import { companyMatches } from './companies.ts';
 import { REGIONS, WORKPLACES, matchesRegion, regionOf } from './regions.ts';
 
@@ -12,6 +13,10 @@ export const DEFAULT_FILTERS = {
   sort: 'rent',
   source: '',
   company: '',
+  minBathrooms: null,
+  minSquareFeet: null,
+  petsRequired: false,
+  laundry: '',
   workplace: 'rockefeller',
   customWorkplace: '',
   zip: '',
@@ -65,7 +70,13 @@ export function parseFilters(input: Record<string, unknown> = {}) {
     throw new SearchInputError('Use the transit directions link on a listing to check travel time.');
   }
 
+  if (input.laundry != null && input.laundry !== '' && !LAUNDRY_OPTIONS.includes(input.laundry as any)) throw new SearchInputError('Choose a supported laundry option.');
+  if (input.petsRequired != null && typeof input.petsRequired !== 'boolean') throw new SearchInputError('Choose whether pets must be allowed.');
   return {
+    minBathrooms: optionalNumber(input.minBathrooms, 'minimum bathrooms', 0.5, 20, false),
+    minSquareFeet: optionalNumber(input.minSquareFeet, 'minimum square feet', 1, 100000),
+    petsRequired: input.petsRequired === true,
+    laundry: (input.laundry ?? '') as string,
     region,
     offset: optionalNumber(input.offset, 'result offset', 0, 1000000) ?? 0,
     workplace,
@@ -128,7 +139,7 @@ export function matchListings(listings, filters, workplace) {
   return listings.flatMap((listing) => {
     const region = regionOf(listing);
     const hasActiveLink = listing.kind === 'feed' && listing.sources.some(({ kind, url }) => kind === 'feed' && url);
-    if (!region || !companyMatches(listing.company, filters.company) || (filters.liveOnly && !hasActiveLink) || !matchesRegion(listing, filters.region, region) ||
+    if (!matchesDiscovery(listing, filters) || !region || !companyMatches(listing.company, filters.company) || (filters.liveOnly && !hasActiveLink) || !matchesRegion(listing, filters.region, region) ||
         (filters.zip && listing.zip !== filters.zip) ||
         (filters.bedrooms !== null && listing.bedrooms !== filters.bedrooms) ||
         (filters.maxRent !== null && listing.rent > filters.maxRent)) return [];

@@ -1,3 +1,4 @@
+import type { FetchTransport } from '../src/fetch-type.ts';
 import { normalizeListing } from '../src/listings.ts';
 import { marketplaceIdForUrl } from '../src/marketplaces.ts';
 import { searchBorough } from '../src/regions.ts';
@@ -46,7 +47,7 @@ async function searchMcp(fetcher) {
   }));
 }
 
-export async function loadOpenigloo(fetcher = fetch, now = new Date()) {
+export async function loadOpenigloo(fetcher: FetchTransport = fetch, now = new Date()) {
   const results = await searchMcp(fetcher);
   const listings = results.flatMap(({ area, bedrooms, apartments }) => apartments.slice(0, SAMPLE_LIMIT).flatMap((row) => {
     if (typeof row?.address !== 'string') return [];

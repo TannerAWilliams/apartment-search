@@ -1,9 +1,10 @@
+import type { FetchTransport } from '../src/fetch-type.ts';
 import { createServer } from 'node:http';
 import { timingSafeEqual } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { relayRequest } from './relay-policy.ts';
 
-export function createRelay(token: string, fetcher: typeof fetch = fetch, appToken?: string) {
+export function createRelay(token: string, fetcher: FetchTransport = fetch, appToken?: string) {
   if (token.length < 32) throw new Error('LISTING_RELAY_TOKEN must have at least 32 characters.');
   if (appToken !== undefined && appToken.length < 32) throw new Error('LISTING_RELAY_APP_TOKEN must have at least 32 characters.');
   let active = 0;

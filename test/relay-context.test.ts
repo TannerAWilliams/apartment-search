@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import { test } from 'bun:test';
 import { relayRequest } from '../server/relay-policy.ts';
 
 test('StreetEasy receives fixed source context, without caller-controlled credentials or identity', () => {

@@ -1,3 +1,5 @@
+import { withoutCommuteEstimate } from '../src/commute-estimate.ts';
+import { recordListingHistory } from './listing-history.ts';
 import type { ListingTransports } from './relay-client.ts';
 import { gzipSync, gunzipSync, strFromU8, strToU8 } from 'fflate';
 import { decodeMarketRows, marketSnapshot, packRentMonth, SNAPSHOT_MONTH } from '../src/market.ts';
@@ -243,6 +245,17 @@ async function refreshHousing(bucket, checkedAt, fetcher, now, imported, isImpor
   return { status: 'updated', updatedAt: checkedAt };
 }
 
+export async function saveObservedSnapshot(bucket, key, result, listings, sourceId, at, customMetadata = {}) {
+  const object = await bucket.get(key);
+  const previous = object ? await unpack(object) : null;
+  const observed = recordListingHistory(listings, previous?.observationHistory, sourceId, at);
+  const saved = await bucket.put(key, compressed({ ...result, ...observed }), {
+    customMetadata,
+    onlyIf: object ? { etagMatches: object.etag } : { etagDoesNotMatch: '*' },
+  });
+  if (!saved) throw new Error('Source snapshot changed during refresh. Retry the manual refresh.');
+}
+
 async function refreshOpenigloo(bucket, result, at) {
   if (!Array.isArray(result?.listings) || result.listings.length > OPENIGLOO_SAMPLE_LIMIT ||
       result.listings.some((listing) => listing.kind !== 'feed' || listing.region !== 'nyc' ||
@@ -250,8 +263,8 @@ async function refreshOpenigloo(bucket, result, at) {
         !/^https:\/\/www\.openigloo\.com\/unit\/nyc\//.test(listing.sources[0]?.url ?? ''))) {
     throw new Error('Openigloo did not return a valid live sample.');
   }
-  const listings = result.listings.map((listing) => ({ ...listing, checkedAt: at }));
-  await bucket.put(OPENIGLOO_KEY, compressed({ ...result, listings }), { customMetadata: { updatedAt: at } });
+  const listings = result.listings.map((listing) => ({ ...withoutCommuteEstimate(listing), checkedAt: at }));
+  await saveObservedSnapshot(bucket, OPENIGLOO_KEY, result, listings, 'openigloo', at, { updatedAt: at });
   return { status: 'updated', updatedAt: at, listingCount: result.listings.length,
     total: result.total, sampleLimit: result.sampleLimit };
 }
@@ -278,8 +291,8 @@ async function refreshDirectRentals(bucket, source, result, at) {
           !source.listingUrl(link.url)) || !Number.isFinite(Date.parse(listing.seenAt)))) {
     throw new Error(source.name + ' did not return a valid live sample.');
   }
-  const listings = result.listings.map((listing) => ({ ...listing, checkedAt: at }));
-  await bucket.put('rentals/' + source.id + '.json.gz', compressed({ ...result, listings }));
+  const listings = result.listings.map((listing) => ({ ...withoutCommuteEstimate(listing), checkedAt: at }));
+  await saveObservedSnapshot(bucket, 'rentals/' + source.id + '.json.gz', result, listings, source.id, at);
   return { status: 'updated', updatedAt: at, listingCount: result.listings.length, pages: result.pages, total: result.total,
     ...(verifiedStreetEasy ? { transport: STREETEASY_TRANSPORT } : {}) };
 }
@@ -344,8 +357,8 @@ export async function refreshSources(env, { fetcher = fetch, now = new Date(), i
     })),
     ...feedChecks.map((feed) => ({ id: feed.id, name: feed.name, work: async () => {
       const result = await loadFeed(feed, sourceFetch);
-      const listings = result.listings.map((listing) => ({ ...listing, checkedAt: at }));
-      await bucket.put(FEED_PREFIX + feed.id + '.json.gz', compressed({ ...result, listings }));
+      const listings = result.listings.map((listing) => ({ ...withoutCommuteEstimate(listing), checkedAt: at }));
+      await saveObservedSnapshot(bucket, FEED_PREFIX + feed.id + '.json.gz', result, listings, feed.id, at);
       return { status: 'updated', updatedAt: at, listingCount: listings.length, pages: result.pages };
     } })),
   ];

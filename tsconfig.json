@@ -4,7 +4,18 @@
     "allowImportingTsExtensions": true,
     "allowJs": false,
     "noEmit": true,
-    "types": ["node", "react"]
+    "types": [
+      "bun",
+      "react"
+    ]
   },
-  "include": ["index.ts", "App.tsx", "src/**/*.ts", "src/**/*.tsx", "server/**/*.ts", "scripts/**/*.ts", "test/**/*.ts"]
+  "include": [
+    "index.ts",
+    "App.tsx",
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "server/**/*.ts",
+    "scripts/**/*.ts",
+    "test/**/*.ts"
+  ]
 }

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import { test } from 'bun:test';
 import { createListingSourceClient } from '../server/relay-client.ts';
 import { appConfig, handleApi } from '../server/api.ts';
 import { createMemoryBucket } from '../server/memory-bucket.ts';

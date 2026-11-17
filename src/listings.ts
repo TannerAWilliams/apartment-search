@@ -1,3 +1,4 @@
+import { discoveryFacts, mergeDiscoveryFacts } from './discovery.ts';
 import { MARKETPLACE_NAMES, marketplaceIdForUrl, safeListingUrl } from './marketplaces.ts';
 import { regionOf } from './regions.ts';
 import { isPoint } from './search.ts';
@@ -84,7 +85,7 @@ export function normalizeListing(row, source) {
   const listing = {
     id: `${source.id}:${clean(row.id ?? row.listingId, 140) ||
       [address, unit, city, state, zip, safeListingUrl(originalUrl) || rent, bedrooms].join('|')}`,
-    address, unit, city, state, zip, county, rent, bedrooms, ...point,
+    address, unit, city, state, zip, county, rent, bedrooms, ...point, ...discoveryFacts(row),
     region: row.region,
     neighborhood: clean(row.neighborhood, 80),
     company: clean(row.company ?? row.brokerage),
@@ -137,6 +138,7 @@ export function mergeListings(listings, { preferFirst = false } = {}) {
     const factsDiffer = preferred.rent !== alternate.rent || preferred.bedrooms !== alternate.bedrooms;
     merged.set(key, {
       ...preferred,
+      ...mergeDiscoveryFacts(preferred, alternate),
       // A provider updating its own saved observation is history, not a disagreement between sources.
       detailsConflict: Boolean(preferred.detailsConflict || alternate.detailsConflict ||
         (factsDiffer && hasIndependentSources(preferred, alternate))),
@@ -162,6 +164,7 @@ export function listingPresentation(listing) {
   if (!bedsKnown) notices.push('Bedroom count not provided. Check the listing.');
   if (!priceKnown) notices.push('Monthly price not provided. Check the listing.');
   else if (listing.rent < 500) notices.push('Unusually low price. Verify the monthly rent and whether this is a room or a full apartment.');
+  if (listing.discoveryConflicts?.length) notices.push('Sources disagree on apartment features. Conflicting features are treated as unknown; verify with the landlord.');
   if (listing.detailsConflict) notices.push('Sources report different prices or bedroom counts. Verify details before comparing.');
   return { priceKnown, bedsLabel: !bedsKnown ? 'Beds unknown' : listing.bedrooms === 0 ? 'Studio' : `${listing.bedrooms} ${listing.bedrooms === 1 ? 'bedroom' : 'bedrooms'}`, notices };
 }

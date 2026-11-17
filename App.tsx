@@ -22,6 +22,9 @@ import { ImportListings } from './src/ImportListings.tsx';
 import { ListingMap } from './src/ListingMap';
 import { SourcesPage } from './src/SourcesPage.tsx';
 import { refreshSummary } from './src/source-status.ts';
+import { LAUNDRY_LABELS } from './src/discovery.ts';
+import { ObservedChanges } from './src/ObservedChanges.tsx';
+import { SavedComparison } from './src/SavedComparison.tsx';
 import { Listing } from './src/Listing.tsx';
 import { RentChart } from './src/RentChart.tsx';
 
@@ -107,6 +110,16 @@ function Filters({ draft, setDraft, submit, busy, serverState, token, setToken, 
       </View>
     </>}
     {panel === 'more' && <>
+
+    <Text style={styles.fieldLabel}>Reported apartment features</Text>
+    <Text style={styles.smallMuted}>Filters require explicit source data. Unknown details are excluded when a feature is required; verify with the landlord.</Text>
+    <Field label="Minimum bathrooms" value={draft.minBathrooms == null ? '' : String(draft.minBathrooms)} onChangeText={set('minBathrooms')} placeholder="Any / unknown allowed" keyboardType="decimal-pad" />
+    <Field label="Minimum square feet" value={draft.minSquareFeet == null ? '' : String(draft.minSquareFeet)} onChangeText={set('minSquareFeet')} placeholder="Any / unknown allowed" keyboardType="number-pad" />
+    <View style={styles.chipRow}>
+      <Chip selected={draft.petsRequired === true} onPress={() => set('petsRequired')(!draft.petsRequired)}>Require pets allowed</Chip>
+      <Chip selected={!draft.laundry} onPress={() => set('laundry')('')}>Any laundry / unknown allowed</Chip>
+      {Object.entries(LAUNDRY_LABELS).map(([value, label]) => <Chip key={value} selected={draft.laundry === value} onPress={() => set('laundry')(value)}>{label}</Chip>)}
+    </View>
 
     <Field label="Listing company (optional)" placeholder="Compass, SERHANT., Corcoran…" value={draft.company}
       onChangeText={set('company')} maxLength={80} />
@@ -607,6 +620,8 @@ function ApartmentSearch() {
         <View style={styles.results}>
             {error !== '' && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
             {(tab === 'results' || tab === 'saved') && <>
+              {tab === 'saved' && <SavedComparison listings={saved} />}
+              {tab === 'results' && <ObservedChanges listings={result.matches} />}
               {tab === 'results' && <Pressable accessibilityRole="button" accessibilityLabel="View source freshness and coverage" onPress={() => navigateTab('sources')}>
                 <Text style={mobileStyles.freshness}>{refreshing ? 'Refreshing sources…' : failedSources.length ? 'Partial coverage · Some sources unavailable' : refresh?.lastCheckedAt ? 'Saved results · ' + CHECK_TIME.format(new Date(refresh.lastCheckedAt)) : 'Saved results · Not yet refreshed'} · Details</Text>
               </Pressable>}

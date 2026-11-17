@@ -10,5 +10,5 @@ export default defineConfig({
     { name: 'desktop-chromium', use: { ...devices['Desktop Chrome'] } },
     { name: 'mobile-chromium', use: { ...devices['Pixel 7'] } },
   ],
-  webServer: { command: 'node e2e/serve.mjs', url: 'http://127.0.0.1:4173', reuseExistingServer: false },
+  webServer: { command: 'bun e2e/serve.mjs', url: 'http://127.0.0.1:4173', reuseExistingServer: false },
 });

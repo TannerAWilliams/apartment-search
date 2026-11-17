@@ -1,3 +1,4 @@
+import type { FetchTransport } from '../src/fetch-type.ts';
 import { parse } from 'csv-parse/browser/esm/sync';
 
 const REPOSITORY_PATH = 'benfwalla/firstmover-open-data-project';
@@ -86,7 +87,7 @@ export function parseFirstMoverCsv(csv, month) {
   return listings;
 }
 
-export async function checkFirstMover(previous, fetcher = fetch) {
+export async function checkFirstMover(previous, fetcher: FetchTransport = fetch) {
   const headers = { Accept: 'application/vnd.github+json' };
   if (previous?.catalogEtag) headers['If-None-Match'] = previous.catalogEtag;
   const response = await fetcher(CATALOG_URL, { headers, redirect: 'error', signal: AbortSignal.timeout(12000) });

@@ -1,9 +1,8 @@
-import test from 'node:test';
+import { test, spyOn } from 'bun:test';
 import assert from 'node:assert/strict';
-import { build } from 'esbuild';
 import { parseFirstMoverCsv } from '../server/firstmover.ts';
 import { housingDate } from '../server/housing.ts';
-import { refreshSources, refreshStatus, sourceRecent, storedDirectRentals, storedFeed, storedHousing, storedMarket } from '../server/refresh.ts';
+import { refreshSources, saveObservedSnapshot, refreshStatus, sourceRecent, storedDirectRentals, storedFeed, storedHousing, storedMarket } from '../server/refresh.ts';
 import { handleApi, search } from '../server/api.ts';
 import { APARTMENTS_LIVE } from '../server/apartments-com.ts';
 import { parseStreetEasyPage, STREETEASY_LIVE } from '../server/streeteasy.ts';
@@ -48,23 +47,25 @@ class TestBucket {
 
 let testWorker;
 function loadWorker() {
-  testWorker ??= build({
-    entryPoints: [new URL('../server/worker.ts', import.meta.url).pathname],
-    bundle: true, format: 'esm', platform: 'browser', write: false,
+  testWorker ??= Bun.build({
+    entrypoints: [new URL('../server/worker.ts', import.meta.url).pathname],
+    format: 'esm', target: 'browser',
     plugins: [{
       name: 'test-assets',
       setup(builder) {
         builder.onResolve({ filter: /^virtual:web-assets$/ }, () => ({ path: 'web', namespace: 'test' }));
         builder.onLoad({ filter: /.*/, namespace: 'test' }, () => ({
-          contents: `export default ${JSON.stringify({
+          loader: 'js', contents: `export default ${JSON.stringify({
             '/index.html': { type: 'text/html; charset=utf-8', content: '<script src="/_expo/static/test.js"></script>' },
             '/_expo/static/test.js': { type: 'text/javascript; charset=utf-8', content: 'void 0;' },
           })}`,
         }));
       },
     }],
-  }).then(async ({ outputFiles }) => (await import('data:text/javascript;base64,' +
-    Buffer.from(outputFiles[0].text).toString('base64'))).default);
+  }).then(async ({ success, outputs }) => {
+    if (!success || outputs.length !== 1) throw new Error('Fixture bundle failed.');
+    return (await import('data:text/javascript;base64,' + Buffer.from(await outputs[0].text()).toString('base64'))).default;
+  });
   return testWorker;
 }
 
@@ -85,7 +86,7 @@ test('worker integration serves the page and referenced asset with distinct cach
   assert.equal((await get('/api/unknown')).status, 404);
 });
 
-test('worker integration refreshes active rentals, scopes cards and pins, and removes a rented unit', async (t) => {
+test('worker integration refreshes active rentals, scopes cards and pins, and removes a rented unit', async () => {
   const worker = await loadWorker();
   const url = 'https://feed.example.test/fixtures';
   const env = { BUCKET: new TestBucket(), FREE_PARTNER_FEEDS_JSON: JSON.stringify([{ id: 'zillow', url }]) };
@@ -97,8 +98,9 @@ test('worker integration refreshes active rentals, scopes cards and pins, and re
     { ...apartment, id: 'unlinked', unit: '2B', listingUrl: null },
     { ...apartment, id: 'queens', city: 'Queens', county: 'Queens', zipCode: '11375' },
   ];
-  t.mock.method(globalThis, 'fetch', async (input) =>
-    String(input) === url ? Response.json({ listings: rows }) : new Response(null, { status: 404 }));
+  const fetchMock = spyOn(globalThis, 'fetch').mockImplementation((async (input) =>
+    String(input) === url ? Response.json({ listings: rows }) : new Response(null, { status: 404 })) as typeof fetch);
+  try {
   const waits = [];
   const request = (path: string, body?: object) => worker.fetch(new Request('https://site.test/api/' + path, body ? {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
@@ -123,6 +125,7 @@ test('worker integration refreshes active rentals, scopes cards and pins, and re
   assert.deepEqual(after.matches, []);
   assert.deepEqual(after.mapPoints, []);
   await Promise.all(waits);
+  } finally { fetchMock.mockRestore(); }
 });
 
 const at = new Date('2026-11-10T00:25:00Z');
@@ -238,7 +241,7 @@ test('the Openigloo connector uses its published limit and preserves only exact 
   const areas = [];
   const checked = await loadOpenigloo(async (url, options) => {
     if (url.includes('addressbatch')) return new Response('"openigloo:sample",address,Match,Exact,normalized,"-73.99,40.67"\n');
-    const message = JSON.parse(options.body);
+    const message = JSON.parse(String(options.body));
     if (message.method === 'notifications/initialized') return new Response(null, { status: 202 });
     if (message.method === 'initialize') return Response.json({ id: message.id, result: { protocolVersion: '2025-11-25' } });
     assert.equal(message.params.arguments.limit, 10);
@@ -736,3 +739,50 @@ test('partner feed pagination duplicates cannot replace a complete cached snapsh
   assert.deepEqual(await storedFeed(env.BUCKET, feed), before);
 });
 
+
+test('price observations persist atomically with successful source snapshots, not failed refreshes', async () => {
+  const env = { BUCKET: new TestBucket() };
+  const [listing] = parseStreetEasyPage(streetEasyHtml([publicRental]), 'NY', 1, at.toISOString());
+  const run = (date, rent) => refreshSources(env, { now: date, sourceId: STREETEASY_LIVE.id,
+    imports: { [STREETEASY_LIVE.id]: { listings: [{ ...listing, rent }], pages: 10 } } });
+  await run(at, 2500);
+  await run(next, 2400);
+  const stored = await storedDirectRentals(env.BUCKET, STREETEASY_LIVE);
+  assert.deepEqual(stored.listings[0].priceHistory.observations.map(o => o.rent), [2500, 2400]);
+  assert.equal(stored.observationHistory.entries.length, 1);
+  const originalPut = env.BUCKET.put.bind(env.BUCKET);
+  env.BUCKET.put = async (key, value, options) => {
+    if (key === 'rentals/streeteasy-live.json.gz') throw new Error('Synthetic storage full');
+    return originalPut(key, value, options);
+  };
+  const later = new Date(next.getTime() + 86400000);
+  const failed = await run(later, 2200);
+  assert.equal(failed.sources.find(s => s.id === STREETEASY_LIVE.id).status, 'failed');
+  assert.deepEqual(await storedDirectRentals(env.BUCKET, STREETEASY_LIVE), stored);
+});
+
+test('overlapping source snapshot writes reject stale history instead of overwriting the winner', async () => {
+  const bucket = new TestBucket();
+  const [listing] = parseStreetEasyPage(streetEasyHtml([publicRental]), 'NY', 1, at.toISOString());
+  const key = 'rentals/streeteasy-live.json.gz';
+  await saveObservedSnapshot(bucket, key, {}, [listing], STREETEASY_LIVE.id, at.toISOString());
+  const get = bucket.get.bind(bucket);
+  let release;
+  let hasRead;
+  const read = new Promise<void>(resolve => { hasRead = resolve; });
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  let blocked = false;
+  bucket.get = async name => {
+    const result = await get(name);
+    if (name === key && !blocked) { blocked = true; hasRead(); await gate; }
+    return result;
+  };
+  const old = saveObservedSnapshot(bucket, key, {}, [{ ...listing, rent: 2400 }], STREETEASY_LIVE.id, next.toISOString());
+  await read;
+  await saveObservedSnapshot(bucket, key, {}, [{ ...listing, rent: 2300 }], STREETEASY_LIVE.id, new Date(next.getTime() + 1000).toISOString());
+  release();
+  await assert.rejects(old, /changed during refresh/);
+  const winner = await storedDirectRentals(bucket, STREETEASY_LIVE);
+  assert.equal(winner.listings[0].rent, 2300);
+  assert.equal(winner.listings[0].priceHistory.observations.some(o => o.rent === 2400), false);
+});

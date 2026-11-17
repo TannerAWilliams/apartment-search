@@ -38,7 +38,7 @@ The private hosted app checks FirstMover’s published monthly exports, the city
 
 Opening the app reads saved inventory without starting a source refresh. **More → Sources & sync** holds manual per-source and all-source resync controls, import, freshness and coverage details. Sources that rate-limit the app wait until their retry time. The browser can retry failed public exports when the source permits another check. The **Available rentals** view shows only active inventory from successful checks in the last two hours. Dated snapshots are used for rent charts. If a check fails or expires, its older inventory is excluded from the search and map. Openigloo uses the free U.S. Census batch geocoder for its public addresses.
 
-The private app also serves a manual Node.js refresh runner at `/_refresh-runner.mjs`. Download it through owner-only service access and pass the service credential on stdin. Keep the credential out of files, command arguments, and logs.
+The private app also serves a manual Bun refresh runner at `/_refresh-runner.mjs`. Download it through owner-only service access and pass the service credential on stdin. Keep the credential out of files, command arguments, and logs.
 
 ## Rent chart
 
@@ -51,26 +51,26 @@ The market chart uses the dated public snapshot so a small live sample cannot sk
 Download a monthly CSV from [FirstMover Open Data](https://www.firstmovernyc.com/open-data). Use Python 3 to regenerate the compressed offline dataset, then rebuild the app.
 
 ```sh
-node --experimental-strip-types scripts/update-market.ts /path/to/2026-10.csv 2026-10
-npm test
-npm run build
+bun scripts/update-market.ts /path/to/2026-10.csv 2026-10
+bun run test
+bun run build
 ```
 
 The data comes from the [FirstMover Open Data Project](https://github.com/benfwalla/firstmover-open-data-project). Its license is included at `src/data/FIRSTMOVER-LICENSE.txt`. The bundled data contains addresses, unit identifiers, asking rents, neighborhoods, coordinates, posting dates, and source URLs. Photos and listing descriptions are excluded.
 
-Run `node --experimental-strip-types scripts/update-rent-history.ts /path/to/months/20*.csv` with dated FirstMover CSVs to rebuild the offline trend data. Hosted refreshes retain the previous month’s medians when a new monthly release arrives.
+Run `bun scripts/update-rent-history.ts /path/to/months/20*.csv` with dated FirstMover CSVs to rebuild the offline trend data. Hosted refreshes retain the previous month’s medians when a new monthly release arrives.
 
 ## Run locally
 
-Use Node.js 22.13 or newer.
+Use Bun 1.4.4.
 
 ```sh
-npm ci
-npm run build:web
-npm run dev
+bun install --frozen-lockfile
+bun run build:web
+bun run dev
 ```
 
-Open http://127.0.0.1:3000. Run `npm start` to open the app in a compatible Expo Go build. Use `npm run ios` or `npm run android` for a simulator or emulator. The public snapshot, chart, and saved list work offline. A signed App Store or Play Store build uses the owner's store and signing setup.
+Open http://127.0.0.1:3000. Run `bun run start` to open the app in a compatible Expo Go build. Use `bun run ios` or `bun run android` for a simulator or emulator. The public snapshot, chart, and saved list work offline. A signed App Store or Play Store build uses the owner's store and signing setup.
 
 A custom address is sent to the [free U.S. Census Geocoder](https://geocoding.geo.census.gov/geocoder/Geocoding_Services_API.html) when submitted to the server. Addresses are not persisted by the server. Native builds can use a preset or coordinates offline. To connect a native build to your own geocoding server or authorized free feeds, set `EXPO_PUBLIC_API_URL` to your server origin. For a LAN test set `HOST=0.0.0.0`, use the computer's LAN IP and port, and configure a random `APP_ACCESS_TOKEN` of at least 24 characters if serving free partner feeds. Enter that token in the app when prompted. Use HTTPS on a remote server.
 
@@ -83,13 +83,13 @@ Each row supplies an ID, `status: "Active"`, `addressLine1`, a unit if known, `c
 ## Verify
 
 ```sh
-npm test
-npm run typecheck
-npm run build:web
-npx expo export --platform ios --platform android
+bun run test
+bun run typecheck
+bun run build:web
+bun ./node_modules/expo/bin/cli export --platform ios --platform android
 ```
 
-`npm run build` also packages the web bundle and server into the private hosted Worker.
+`bun run build` also packages the web bundle and server into the private hosted Worker.
 
 
 ### StreetEasy access and completeness
@@ -110,7 +110,7 @@ spoofed headers, or a successful first page do not establish complete coverage.
 
 ### External StreetEasy recovery runner
 
-The owner-only Site serves `/_streeteasy-sync.mjs`. On an authorized Node.js
+The owner-only Site serves `/_streeteasy-sync.mjs`. On an authorized Bun 1.4.4
 host with StreetEasy access, this runner downloads complete partitioned inventory
 and submits it through the authenticated import endpoint, then verifies saved
 counts. Pass a current owner service credential through stdin, not a command
@@ -129,8 +129,8 @@ Trulia and Zumper now include bounded Jersey City and Stamford samples alongside
 
 ### Optional free listing relay
 
-`server/relay-service.ts` runs on a Render Free web service using only Node built-ins:
-`node --experimental-strip-types server/relay-service.ts` (Node 24). It keeps no data.
+`server/relay-service.ts` runs on a Render Free web service using Bun-compatible built-in APIs:
+`bun server/relay-service.ts` (Bun 1.4.4). It keeps no data.
 Configure a random `LISTING_RELAY_TOKEN` secret of at least 32 characters on Render.
 Configure the same secret and `LISTING_RELAY_URL` on the private Site. The Site then
 routes only StreetEasy search pages and the three supported HotPads pages through
@@ -147,9 +147,9 @@ sources other than the count-reconciled StreetEasy API. No scheduled job is adde
 
 ## Full app on Render Free
 
-The Node entrypoint can serve the complete web UI and API with a temporary,
-single-process listing cache. Build with `npm ci && npm run build:web`, then run
-`node --experimental-strip-types server/node.ts` with `HOST=0.0.0.0` and a random
+The Bun entrypoint can serve the complete web UI and API with a temporary,
+single-process listing cache. Build with `bun install --frozen-lockfile && bun run build:web`, then run
+`bun server/main.ts` with `HOST=0.0.0.0` and a random
 `APP_ACCESS_TOKEN` of at least 32 characters in Render's secret environment.
 Render supplies `PORT` and `RENDER_EXTERNAL_URL`. Do not put the access password
 in source, URLs or logs. Reveal it from your own Render Environment dashboard to
@@ -194,3 +194,90 @@ This is a design preference, not a requirement to run every build or automated t
 ## Mobile browsing
 
 Search opens saved inventory in a list, with compact cards and optional Map view. Filters open in a dismissible sheet; Search, Saved, and More stay reachable at the bottom. More → Sources & sync contains explicit resync controls and CSV/manual import. Opening the application does not start a provider refresh. Sources retains detailed last-attempt, last-success, partial-coverage and error information. Card Details expands directions and provenance; missing or conflicting data is not guessed.
+
+### Durable PostgreSQL inventory (optional)
+
+Set `DATABASE_URL` in the Bun service's secret environment to use an existing
+PostgreSQL database instead of the temporary memory bucket. The app creates the
+`apartment_objects` table if needed. Source payloads, metadata and conditional-write
+ETags survive server restarts; competing writers serialize quota checks and publish
+whole objects atomically. A database connection/schema failure stops startup rather
+than silently switching to an empty temporary cache. `/api/config.storageMode`
+reports `persistent`, `temporary`, or `none`.
+
+Use a provider connection string with verified TLS according to its documentation;
+do not disable certificate verification. No database, account, paid plan or secret
+is provisioned by this code. Enabling this does not migrate the old in-memory inventory: a new database starts
+empty. Export/import any authorized inventory before switching, or perform a fresh
+manual sync; never imply old data was transferred. Render's existing service remains temporary until an
+operator supplies a durable database connection. Backups and restore verification
+remain the database operator's responsibility. This does not fix provider 403s,
+make stale listings fresh, or change manual-only refresh behavior.
+
+`test/postgres-bucket.test.ts` exercises real embedded PostgreSQL through PGlite,
+including on-disk reopen, conditional writes, quota rollback, immutable input and
+connection failures. This is not verification of a hosted PostgreSQL server, TLS,
+network failures or multi-process production load. Run the full suite and a hosted
+database recovery check before production rollout.
+
+Saved apartments now include explicit-save notes and viewing status in Details. These are device-local, not cross-device sync. Notes are retained when an apartment is removed and become visible if the same apartment is saved again; clearing the notes and saving removes their text. Failed reads do not overwrite existing notes. Unsaved edits are lost when details close. Browser storage can still be cleared by the user or browser. The notes Playwright scenario is authored but browser execution is pending in a browser-capable runner.
+
+#### Observed listing price history
+Successful manual refreshes of direct rentals, Openigloo samples, and configured feeds now record source-specific price observations in the **same stored snapshot** as the inventory. Failed validation, provider failures, or failed snapshot writes do not replace either inventory or history. This begins with future successful refreshes; it is not retroactive market data. The history tracks first/last observed checks and price or fee-basis changes. Missing units remain unknown, never automatically marked rented or delisted, because sources can be incomplete. There are no automatic notifications or scheduled fetches.
+
+Retention is bounded to the 24 most recent price changes per source/unit identity and 20,000 most recently observed identities per source; truncation is labeled in stored data. Units absent from a later sample retain their observation records until retention evicts them. Listing Details displays the recorded observation timeline, first/last checks, fee basis, and retention warning. Listings without valid recorded history show an explicit empty state. It survives restarts only with durable storage configured; the default temporary bucket does not provide durability. Existing snapshots without history start clean. Historical snapshot feeds (FirstMover) and affordable-housing opportunities are not mixed into these observed asking-price histories.
+
+Source snapshots use etag compare-and-swap: an overlapping refresh whose source object changed cannot overwrite the winning inventory/history, even after the global refresh lease expires. Older observation timestamps are rejected, including empty snapshots. Duplicate source/unit observations are rejected rather than recording contradictory same-check prices. The 20,000-unit retention bound applies to the archived history map; current inventory still includes each current listing's bounded history. This is conservative observation tracking, not an authoritative listing-availability ledger.
+
+#### Optional structured discovery facts
+Configured feeds can supply `bathrooms` (positive half-step count through 20), `squareFeet` (positive through 100,000), `petsAllowed` (strict boolean), and `laundry` (`in_unit`, `in_building`, or `none`). Missing or invalid values remain unknown, not false or zero. No amenities are inferred from descriptions, addresses, or photos. Listing Details shows reported facts and unknown labels; Filters can require minimum bathrooms/area, explicitly allowed pets, and a reported laundry category. All selected requirements must match, excluding units with unknown required facts. Restrictions and measurement accuracy still need landlord verification. This does not imply existing providers supply these fields; many current results will remain unknown. Photo collection/display is not added because there is no established licensed media input. Existing source links remain the way to inspect provider photos.
+
+When independent sources disagree on a known feature, that feature becomes unknown, does not satisfy a requirement, and a conflict notice is shown. Unknown preferred-source facts are not filled from an alternate source without field-level provenance. Newer observations from the same source can replace older facts without inventing an independent-source disagreement. Minimum bathrooms is a threshold, not an exact-bathroom match.
+Discovery merging treats overlapping multi-source records as ambiguous: without field-level provenance, only matching single-source identities are considered definite same-source updates. Conflicting known facts in every other merge become unknown rather than silently selecting one source's claim.
+
+#### Private cross-device shortlist foundation (NOT enabled)
+`server/private-shortlist.ts` provides an **unmounted** service boundary, not working end-user sync. It refuses requests without a configured verifier and store. The existing public mode and app-wide access password/session do not identify individual people and MUST NOT be used as the verifier. No production routes, permissions, accounts, credentials, or data migrations were changed.
+
+Before wiring it, provide an identity adapter that cryptographically verifies bearer tokens against an explicitly trusted issuer, expected audience, signing keys/algorithm, expiration and applicable token constraints. Return the verified issuer and subject only, never an unverified decoded claim or caller-provided ID. Add the actual login/token lifecycle on web/native clients, revocation/logout behavior, and issuer integration tests. Provide a dedicated durable private-data store and deployment-specific per-user rate limits/quotas; review data retention, backups, and operational access before storing real notes. The current factory's injected test verifier is a synthetic fixture, not that production adapter.
+
+The foundation scopes keys by verified issuer+subject, ignores caller identity, returns private/no-store responses, uses revision-conditional writes to reject stale-device overwrites with 409, and does not use cookies. Payloads are limited to 256 KiB and 100 explicitly shaped entries with 2,000-character notes. Unknown rent/bedroom values can remain null. It does not auto-upload existing device data or send notifications. Before enabling sync, present the destination and obtain the user's chosen migration action; preserve unsynced local data on conflict or failure. The `compare` field is a stored selection flag only; cross-device comparison UI is not implemented.
+
+#### Device-local comparison
+The Saved tab includes **Compare saved apartments**. Select up to four, search saved addresses/units/cities/ZIPs, and scroll the comparison horizontally on small screens. Columns show recorded price and fee basis, bedrooms, reported features, check date, unknown values and conflicts. Selection is temporary and clearing it does not remove saved apartments. It makes no provider requests and does not upload notes or saved data. This is a comparison of saved observations, not live availability or guaranteed all-in lease costs; use the separate cost estimator with confirmed fees. Cross-device comparison remains disabled pending real individual authentication and private storage.
+
+#### Commute context and safe comparison
+When the existing configured TravelTime integration returns estimates, they now carry the actual destination coordinates/label, weekday-morning arrival period, provider and query timestamp. Details and saved comparison show that context; legacy raw durations without destination metadata remain unknown in those views. Different destinations are not comparable, and saved estimates are not live traffic guarantees. Missing/invalid origins have stale route fields cleared and never inherit another unit's route. Provider snapshot refreshes discard supplied route metadata so inventory cannot manufacture user-specific route estimates.
+
+No routing account, paid plan or credentials were created and no provider requests were made while implementing this change. Route tests and the new Playwright case use explicitly synthetic fixtures. Automatic estimates still require the existing routing configuration; directions links remain available when disconnected.
+
+Latest combined Node validation (commute-context batch): 200 passing tests; loaded-module coverage 95.95% lines, 90.36% branches, 92.90% functions. This is **not whole-app coverage**: unimported TSX UI and browser/native execution are outside this instrumentation. Forty-eight desktop/mobile Playwright cases are authored/discoverable, but execution in this workspace remains blocked before assertions by Chromium socket restrictions. Physical-device and cross-browser verification remain outstanding. Do not describe these figures as 90% integration/mobile/interaction scenario coverage.
+
+#### Opt-in local observed-change check
+Search now has a **Local price and discovery changes** panel. Pressing its check button explicitly creates or updates a device-local baseline for eligible observations on the current result page. It never refreshes providers, polls in the background, requests browser notifications, or sends email/push. The first check establishes a baseline; later checks show newer same-source price changes, changed fee bases, and units newly encountered by this device. Newly encountered does not mean newly listed or available; missing results are never labeled rented/delisted. Fee-basis changes are not called savings. Unknown, mismatched and older observations are excluded.
+
+The baseline retains up to 2,000 source/unit identities and labels truncation; evicted units can later be newly encountered again. Failed reads/writes show an error rather than confirmed changes. This is a manual local comparison, not a reliable cross-tab/cross-device monitoring system or notification subscription; device storage can be cleared, and concurrent tabs can overwrite local baselines. Use one tab for a sequence of checks. The UI examines only the loaded result page, not all inventory.
+
+The local-change panel batch supersedes the preceding test count: 207 Node tests pass; loaded-module coverage is 96.00% lines, 90.66% branches and 92.97% functions. Fifty desktop/mobile Playwright cases are discoverable but remain execution-blocked. The same whole-app/UI/native coverage limitations apply.
+
+### Real PostgreSQL verification (disposable local instance)
+Run `TEST_POSTGRES_URL='postgresql://test_runner@127.0.0.1:55432/postgres' bun run test:postgres` against a disposable local PostgreSQL instance. The harness refuses missing URLs, remote hosts, query overrides and fragments, creates a random test-owned schema, and removes only that schema. It never targets existing application tables. Do not supply production credentials or point this at a production database. This separate command is not silently skipped by the default Bun suite.
+
+Verified locally on real PostgreSQL 18.6 using pinned `@embedded-postgres/linux-x64@18.6.0-beta.19` binaries obtained from npm in a disposable workspace (not added as a project dependency): all three integration tests passed, including independent connection pools, 20 competing conditional updates, conditional creation, concurrent quota enforcement and rollback. A separate process stop/start probe verified snapshot bytes, ETag and metadata survived PostgreSQL restart. Synthetic test schemas were removed and the disposable server stopped. This validates the adapter against a real PostgreSQL server, not hosted deployment configuration, backups, remote TLS or production migration. No hosted database was provisioned and no unrelated production data or credentials were used.
+
+### Bun 1.4.4 runtime migration
+
+Install official Bun 1.4.4; `.bun-version`, `packageManager`, and the server/test runtime checks pin that exact release. Use `bun install --frozen-lockfile`. `bun.lock` replaces the npm lockfile. All first-party build, serve, test and Playwright commands explicitly use Bun, including child HTTP servers; no Node executable is required by the verified web workflow. Compatibility imports such as `node:fs`, `node:crypto` and their types refer to APIs implemented by Bun, not a Node process. Auxiliary runner bundles use `Bun.build` with target `bun`; the hosted Worker and its integration fixture use target `browser`. Expo Metro remains responsible for React Native/web application bundles.
+
+Verification on Bun 1.4.4: 212 unit/integration tests passed; typecheck, Expo web export and Worker bundle passed with a failing `node` executable trap (no invocation). Three additional tests passed against disposable real PostgreSQL 18.6. Playwright discovered 50 desktop/mobile-web cases via Bun; discovery is not execution and does not establish native iOS/Android coverage.
+
+`bun run test:coverage` records Bun LCOV and checks at least 90% lines and functions **in loaded authored server/src/scripts modules**. This run measured 2,861/3,052 lines (93.74%) and 464/504 functions (92.06%). The report explicitly excludes the generated data-URL Worker fixture bundle and test preload, not authored modules. Unloaded React UI and entrypoints remain outside this scope. Bun does not emit a branch metric here; older Node branch percentages elsewhere in this document are historical, not evidence for this runtime. Full-app 90% coverage is not claimed.
+
+Expo's upstream native project creation/prebuild still documents a Node requirement for template extraction. Those workflows are not part of this verified Bun-only web pipeline, and native builds/device tests have not been completed. Do not silently install or fall back to Node to run them. Existing hosted services remain unchanged: configure their future build as `bun install --frozen-lockfile && bun run build:web`, start as `bun server/main.ts`, and pin `BUN_VERSION=1.4.4` before a separately verified deployment. No deployment or production permissions were changed by this migration.
+
+The default test preload blocks external HTTP fetch before transport and prevents redirect following. Provider tests use explicit synthetic transports; tests never authorize a live provider refresh. Test HTTP subprocesses preload the same guard.
+
+PostgreSQL now uses Bun’s native `SQL` pool, not `pg`. A reserved connection keeps each explicit transaction, table lock, CAS check and quota check together; release is awaited even after rollback. Values remain bound parameters, including text-to-jsonb metadata conversion. Connection acquisition and server statements are bounded. URL TLS settings are honored, never overridden to disable verification; configure certificate-verified TLS for any hosted deployment. Real-server tests verify independent pools, immutable byte/metadata recovery, 20 competing conditional writers and quota rollback with this native driver.
+
+Native Bun features used: `Bun.serve` for HTTP, `Bun.file` for static responses and coverage input, `Bun.Glob` and `Bun.write` for packaging, `Bun.build` for auxiliary runners/Worker and test fixture, `Bun.SQL` for PostgreSQL, `bun:test` and Bun coverage, and Bun package/lock management. The HTTP port retains per-route incremental byte caps, secure headers, origin checks and cookie authentication. Body reads keep a 30-second idle timeout; authorized API responses receive a bounded 180-second allowance for the existing 120-second source budget. Static GET/HEAD/traversal and method behavior are regression-tested.
+
+No redundant Worker threads, Redis, SQLite mirror or extra response cache were added: there is no measured CPU bottleneck, cross-device SQLite would be the wrong storage model, and private responses intentionally remain no-store. `Bun.password` is not a substitute for constant-time bearer-secret comparison or signed session verification; the existing security primitives remain. Native iOS/Android platform toolchains and browser binaries are external requirements, not JavaScript runtime replacements. Native SQL also passed an actual PostgreSQL stop/start persistence probe, including bytes, ETag and metadata; the isolated schema was removed and server stopped.

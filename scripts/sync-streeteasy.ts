@@ -1,19 +1,13 @@
+import type { FetchTransport } from '../src/fetch-type.ts';
 import { createInterface } from 'node:readline';
 import { loadStreetEasy, STREETEASY_LIVE } from '../server/streeteasy.ts';
 import { encodeSourceImport } from '../src/pull-sources.ts';
 
-// Run outside the hosted Worker on an authorized host that can reach StreetEasy.
-// Supply the current owner service credential through stdin, never arguments.
-const origin = 'https://apartment-search-metro-nyc.adepthen22.chatgpt.site';
-const input = createInterface({ input: process.stdin });
-const token = await new Promise<string>((resolve, reject) => {
-  input.once('line', resolve);
-  input.once('close', () => reject(new Error('An owner service credential is required on stdin.')));
-});
-input.close(); process.stdin.pause();
+
+export async function syncStreetEasy({ token, manual = false, origin = 'https://apartment-search-metro-nyc.adepthen22.chatgpt.site', fetcher = fetch }: { token: string; manual?: boolean; origin?: string; fetcher?: FetchTransport }) {
 if (!token || /[\r\n]/.test(token)) throw new Error('An owner service credential is required.');
 async function request(path: string, body?: object) {
-  const response = await fetch(origin + path, {
+  const response = await fetcher(origin + path, {
     method: body ? 'POST' : 'GET',
     headers: { 'OAI-Sites-Authorization': 'Bearer ' + token, ...(body ? { 'Content-Type': 'application/json' } : {}) },
     body: body ? JSON.stringify(body) : undefined, redirect: 'error', signal: AbortSignal.timeout(30000),
@@ -23,15 +17,15 @@ async function request(path: string, body?: object) {
 }
 const config = await request('/api/config');
 const status = config.refresh?.sources.find(({id}) => id === STREETEASY_LIVE.id);
-const manual = process.argv.includes('--manual');
+
 if (!manual && status?.transport === 'v6-daily' && ['updated','current'].includes(status.status) &&
     Date.now() - Date.parse(status.updatedAt) < 24 * 60 * 60_000) {
-  console.log(JSON.stringify({state:'already_current',listingCount:status.listingCount}));
+  return {state:'already_current',listingCount:status.listingCount};
 } else {
   if (Date.parse(status?.retryAt) > Date.now()) throw new Error('StreetEasy recovery is waiting for its source retry time.');
   let data;
   for (let attempt=0; attempt<2; attempt++) {
-    try { data=await loadStreetEasy(); break; }
+    try { data=await loadStreetEasy(fetcher); break; }
     catch(error) {
       if(attempt || !(error instanceof Error) || !/inventory changed|incomplete inventory/.test(error.message)) throw error;
     }
@@ -43,5 +37,17 @@ if (!manual && status?.transport === 'v6-daily' && ['updated','current'].include
       saved.listingCount!==data.listings.length || Date.parse(saved.updatedAt)<Date.parse(data.checkedAt)) {
     throw new Error('The imported inventory was not verified in the hosted app.');
   }
-  console.log(JSON.stringify({state:'updated',total:data.total,listingCount:saved.listingCount,requests:data.pages,updatedAt:saved.updatedAt}));
+  return {state:'updated',total:data.total,listingCount:saved.listingCount,requests:data.pages,updatedAt:saved.updatedAt};
+}
+
+}
+
+if (import.meta.main) {
+  const input = createInterface({ input: process.stdin });
+  const token = await new Promise<string>((resolve, reject) => {
+    input.once('line', resolve);
+    input.once('close', () => reject(new Error('An owner service credential is required on stdin.')));
+  });
+  input.close(); process.stdin.pause();
+  console.log(JSON.stringify(await syncStreetEasy({ token, manual: process.argv.includes('--manual') })));
 }
