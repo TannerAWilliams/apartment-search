@@ -39,3 +39,14 @@ test('best-fit recomputes after route enrichment, sorts before pagination, and a
 test('equal fit scores use deterministic rent/id fallback', () => {
   expect(compareResults({ id: 'a', rent: 2000, bestFit: { score: 1 } }, { id: 'b', rent: 2000, bestFit: { score: 1 } }, 'best')).toBeLessThan(0);
 });
+
+test('custom weights are validated and complement to100 including endpoints', () => {
+  const listing = { rent: 2000, transitSeconds: 1800, commuteEstimate: route };
+  for (const weight of [0, 25, 50, 75, 100]) {
+    const filters = parseFilters({ bestFitRentWeight: String(weight), maxRent: 4000 });
+    const score = bestFit(listing, filters, workplace);
+    expect(score.rentWeight).toBe(weight); expect(score.commuteWeight).toBe(100 - weight); expect(score.score).toBe(50);
+  }
+  for (const value of [-1, 101, 1.5, 'NaN', {}]) expect(() => parseFilters({ bestFitRentWeight: value })).toThrow();
+  expect(parseFilters({}).bestFitRentWeight).toBe(60);
+});

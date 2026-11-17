@@ -11,6 +11,7 @@ export const DEFAULT_FILTERS = {
   maxDrivingMinutes: null,
   liveOnly: false,
   sort: 'rent',
+  bestFitRentWeight: 60,
   source: '',
   company: '',
   minBathrooms: null,
@@ -73,6 +74,7 @@ export function parseFilters(input: Record<string, unknown> = {}) {
   if (input.laundry != null && input.laundry !== '' && !LAUNDRY_OPTIONS.includes(input.laundry as any)) throw new SearchInputError('Choose a supported laundry option.');
   if (input.petsRequired != null && typeof input.petsRequired !== 'boolean') throw new SearchInputError('Choose whether pets must be allowed.');
   return {
+    bestFitRentWeight: optionalNumber(input.bestFitRentWeight, 'rent ranking weight', 0, 100) ?? 60,
     minBathrooms: optionalNumber(input.minBathrooms, 'minimum bathrooms', 0.5, 20, false),
     minSquareFeet: optionalNumber(input.minSquareFeet, 'minimum square feet', 1, 100000),
     petsRequired: input.petsRequired === true,

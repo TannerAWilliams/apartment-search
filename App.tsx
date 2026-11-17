@@ -113,6 +113,12 @@ function Filters({ draft, setDraft, submit, busy, serverState, token, setToken, 
     </>}
     {panel === 'more' && <>
 
+    <Text style={styles.fieldLabel}>Best-fit priorities</Text>
+    <Field label="Rent ranking weight (0–100)" value={String(draft.bestFitRentWeight ?? 60)} onChangeText={set('bestFitRentWeight')} keyboardType="number-pad" maxLength={3} />
+    <Text style={styles.smallMuted}>Commute receives the remaining weight out of 100. Applies to Best fit sorting only. Missing estimates earn no points; changing weights does not request a route.</Text>
+    <View style={styles.chipRow}>
+      {[0, 25, 50, 60, 75, 100].map(weight => <Chip key={weight} selected={Number(draft.bestFitRentWeight ?? 60) === weight} onPress={() => set('bestFitRentWeight')(weight)}>Rent {weight} / commute {100 - weight}</Chip>)}
+    </View>
     <Text style={styles.fieldLabel}>Reported apartment features</Text>
     <Text style={styles.smallMuted}>Filters require explicit source data. Unknown details are excluded when a feature is required; verify with the landlord.</Text>
     <Field label="Minimum bathrooms" value={draft.minBathrooms == null ? '' : String(draft.minBathrooms)} onChangeText={set('minBathrooms')} placeholder="Any / unknown allowed" keyboardType="decimal-pad" />
@@ -235,7 +241,7 @@ function ResultNotices({ notices = [] }) {
   </View>;
 }
 
-function Results({ visible, setVisible, result, applied, sort, onSort, onPage, paging, openCommute, commuteConfigured, checkingInventory, columns, savedByKey, showMarkets, onSave, onSaveLink, onRemove, onError }) {
+function Results({ visible, setVisible, result, applied, sort, onSort, onPage, paging, openCommute, commuteConfigured, checkingInventory, columns, savedByKey, showMarkets, onSave, onSaveLink, onRemove, onError, onCheckBuilding }) {
   const { matches } = result;
   const savedView = result.mode === 'saved';
   const summary = savedView ? 'Saved on this device · All apartment sizes' : [
@@ -277,7 +283,7 @@ function Results({ visible, setVisible, result, applied, sort, onSort, onPage, p
       const saved = savedByKey.get(listingKey(listing));
       const withLinks = saved ? { ...listing, sources: mergeSourceLinks(listing.sources, saved.sources) } : listing;
       return <View key={listing.id} style={columns ? styles.gridCard : styles.fullCard}><Listing listing={withLinks} selectedSource={savedView ? '' : applied.source} workplace={result.workplace} commute={result.commute}
-        onSave={onSave} onSaveLink={onSaveLink} onError={onError} onRemove={savedView ? onRemove : null} saved={Boolean(saved)} /></View>;
+        onCheckBuilding={onCheckBuilding} onSave={onSave} onSaveLink={onSaveLink} onError={onError} onRemove={savedView ? onRemove : null} saved={Boolean(saved)} /></View>;
     })}
     </View>
     {!savedView && onPage && <View style={styles.chipRow}>
@@ -631,7 +637,7 @@ function ApartmentSearch() {
               </Pressable>}
               <View style={[styles.resultLayout, split && styles.resultLayoutWide]}>
                 {listVisible && <View style={styles.results}>
-                  <Results visible={visible} setVisible={setVisible} result={displayed} applied={applied} sort={scope === 'saved' ? SAVED_FILTERS.sort : applied.sort} onSort={selectSort}
+                  <Results onCheckBuilding={serverState === 'ready' ? listing => api('building-report', { token: activeToken, body: { address: listing.address, city: listing.city, county: listing.county, state: listing.state, zip: listing.zip } }) : undefined} visible={visible} setVisible={setVisible} result={displayed} applied={applied} sort={scope === 'saved' ? SAVED_FILTERS.sort : applied.sort} onSort={selectSort}
                     onPage={fetchPage} paging={busy}
                     openCommute={() => setExpanded('commute')}
                     commuteConfigured={commuteConfigured}

@@ -1,3 +1,4 @@
+import { retrieveBuildingRecords } from './building-records.ts';
 import { wholeSearchCheck } from './whole-search-check.ts';
 import { relayConfig, type ListingTransports } from './relay-client.ts';
 import { companyCounts } from '../src/companies.ts';
@@ -15,7 +16,7 @@ import { type SourceFetch, refreshCatalog, refreshPlan, refreshSources, refreshS
 
 const REQUEST_LIMIT = 4096;
 const IMPORT_LIMIT = 2 * 1024 * 1024;
-const API_PATHS = new Set(['/api/config', '/api/search', '/api/search-check', '/api/geocode', '/api/market', '/api/housing', '/api/refresh']);
+const API_PATHS = new Set(['/api/building-report', '/api/config', '/api/search', '/api/search-check', '/api/geocode', '/api/market', '/api/housing', '/api/refresh']);
 
 export function appConfig(env) {
   const feeds = configuredFeeds(env);
@@ -253,6 +254,7 @@ export async function handleApi(request, env, { requireToken = false, fetcher = 
         status === 'failed' || status === 'feed_required');
       return json(result, unavailable ? 502 : 200);
     }
+    if (path === '/api/building-report') return json(await retrieveBuildingRecords(body, async (url, options) => fetcher(url, options)));
     if (path === '/api/search-check') return json(await wholeSearchCheck(body, env, filters => search(filters, env, () => { throw new Error('External requests are disabled for saved search checks.'); }, true)));
     if (path === '/api/geocode') return json(await geocodeAddress(body?.address, fetcher));
     if ((body?.includeCommute || needsCommute(body ?? {})) && !request.headers.get('Content-Type')?.startsWith('application/json')) {
