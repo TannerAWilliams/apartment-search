@@ -62,3 +62,15 @@ The attempted 36-case run (before adding the cost scenario) could not launch Chr
 `process_singleton_posix.cc: socket() failed: Operation not permitted`.
 Zero browser scenarios were verified in that run. Chromium sandbox remains enabled.
 Use a runner that supports sandboxed Chromium before accepting the new tests.
+
+
+## Optional iPhone 17 portrait regression
+
+The `iphone17-portrait-chromium` project uses Playwright 1.65's iPhone 17 descriptor
+(402×681 CSS viewport, 402×874 screen, DPR 3) with Chromium explicitly selected.
+It repeats the current interaction suite and adds overflow/navigation/control checks
+for Search, the filter modal and dismissal, Sources, add-listing, and Platforms.
+Screenshots are saved locally during execution. Run `bun run test:e2e -- --project=iphone17-portrait-chromium`.
+This is optional layout emulation, not physical iPhone, Safari, native safe-area or
+keyboard qualification. Discovery/typechecking do not establish a browser pass.
+Browser execution remains blocked here by OS socket restrictions; sandboxing stays enabled.

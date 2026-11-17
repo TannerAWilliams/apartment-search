@@ -465,3 +465,49 @@ test('historical dashboard loads privately and a failed series does not trap the
   await page.getByRole('button',{name:'Back to rent trends',exact:true}).click();
   await expect(page.getByText('StreetEasy historical dashboard',{exact:true})).toHaveCount(0);
 });
+
+
+test('iPhone 17 portrait keeps primary controls inside the screen', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'iphone17-portrait-chromium', 'Portrait-specific layout qualification');
+  await mockApp(page, { failed: true });
+  expect(page.viewportSize()).toEqual({ width: 402, height: 681 });
+  async function checkLayout(label: string, checkNavigation = true) {
+    const dimensions = await page.evaluate(() => ({ width: document.documentElement.clientWidth, contentWidth: document.documentElement.scrollWidth }));
+    expect(dimensions.contentWidth, label + ' must not overflow horizontally').toBeLessThanOrEqual(dimensions.width + 1);
+    if (checkNavigation) {
+      const controls = page.getByRole('tab');
+      await expect(controls).toHaveCount(3);
+      for (const control of await controls.all()) {
+        const box = await control.boundingBox();
+        expect(box, label + ': navigation remains rendered').not.toBeNull();
+        expect(box!.x).toBeGreaterThanOrEqual(-1);
+        expect(box!.x + box!.width).toBeLessThanOrEqual(403);
+      }
+    }
+    await page.screenshot({ path: testInfo.outputPath(label + '.png'), fullPage: true });
+  }
+  await checkLayout('search');
+  await page.getByRole('button', { name: 'Filters', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Search filters', exact: true })).toBeVisible();
+  await checkLayout('filters', false); // Modal hides background navigation from accessibility tree.
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Search filters', exact: true })).toBeHidden();
+  await checkLayout('filters-dismissed');
+  await page.getByRole('tab', { name: 'More', exact: true }).click();
+  await page.getByRole('button', { name: 'Sources & sync', exact: true }).click();
+  await checkLayout('sources');
+  const resync = page.getByRole('button', { name: 'Resync all connected providers', exact: true });
+  await expect(resync).toBeVisible();
+  const box = await resync.boundingBox();
+  expect(box).not.toBeNull();
+  expect(box!.x).toBeGreaterThanOrEqual(0);
+  expect(box!.x + box!.width).toBeLessThanOrEqual(402);
+  await page.getByRole('button', { name: '+ Add listing', exact: true }).click();
+  await checkLayout('add-listing');
+  await page.getByRole('tab', { name: 'More', exact: true }).click();
+  await page.getByRole('button', { name: 'Rental platforms', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Browse rental platforms', exact: true })).toBeVisible();
+  await checkLayout('platforms');
+  await page.getByRole('tab', { name: 'Search', exact: true }).click();
+  await checkLayout('search-return');
+});
