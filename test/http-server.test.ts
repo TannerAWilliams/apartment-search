@@ -11,6 +11,7 @@ test('private Bun server rejects anonymous API, supports cookie login and reject
  try {
   await Promise.race([once(child.stdout, 'data'), once(child, 'exit').then(() => { throw new Error('Server failed to start'); }), new Promise((_, reject) => setTimeout(() => reject(new Error('startup timeout')), 10000).unref())]);
   assert.equal((await fetch(origin + '/api/config')).status, 401);
+  assert.equal((await fetch(origin + '/api/dashboard')).status, 401);
   assert.match(await (await fetch(origin)).text(), /This app is private/);
   assert.equal((await fetch(origin + '/health')).status, 200);
   assert.equal((await fetch(origin + '/login', { method: 'POST', headers: { Origin: 'https://evil.example' }, body: 'password=' + secret, redirect: 'manual' })).status, 403);
@@ -21,6 +22,8 @@ test('private Bun server rejects anonymous API, supports cookie login and reject
   assert.equal((await fetch(origin + '/api/config', { headers })).status, 200);
   assert.equal((await fetch(origin + '/api/search', { method: 'POST', headers: { ...headers, Origin: 'https://evil.example', 'Content-Type': 'application/json' }, body: '{}' })).status, 403);
   assert.equal((await fetch(origin + '/api/search', { method: 'POST', headers: { ...headers, Origin: origin, 'Content-Type': 'application/json' }, body: 'x'.repeat(5000) })).status, 413);
+  const dashboard = await fetch(origin + '/api/dashboard', { headers });
+  assert.equal(dashboard.status, 200); assert.equal((await dashboard.json()).files.length, 45);
   const page = await fetch(origin + '/', { headers });
   assert.equal(page.status, 200); assert.match(await page.text(), /<html/i);
   assert.equal(page.headers.get('cache-control'), 'no-store');

@@ -11,6 +11,7 @@ export const DEFAULT_FILTERS = {
   maxDrivingMinutes: null,
   liveOnly: false,
   sort: 'rent',
+  bestFitRentWeight: 60,
   source: '',
   company: '',
   minBathrooms: null,
@@ -25,7 +26,7 @@ export const DEFAULT_FILTERS = {
 export const bedroomLabel = (count) => count === null ? 'Any beds' :
   count === 0 ? 'Studio' : `${count} bedroom${count === 1 ? '' : 's'}`;
 export const formatRent = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 2 }).format;
-export const RESULT_SORTS = { recent: 'Recently checked', rent: 'Lowest rent', transit: 'Fastest transit', driving: 'Fastest drive' };
+export const RESULT_SORTS = { best: 'Best fit: rent + commute', recent: 'Recently checked', rent: 'Lowest rent', transit: 'Fastest transit', driving: 'Fastest drive' };
 const SORT_METRICS = { distance: 'miles', transit: 'transitSeconds', driving: 'drivingSeconds' };
 
 export const needsCommute = (filters) => filters.maxTransitMinutes != null || filters.maxDrivingMinutes != null ||
@@ -73,6 +74,7 @@ export function parseFilters(input: Record<string, unknown> = {}) {
   if (input.laundry != null && input.laundry !== '' && !LAUNDRY_OPTIONS.includes(input.laundry as any)) throw new SearchInputError('Choose a supported laundry option.');
   if (input.petsRequired != null && typeof input.petsRequired !== 'boolean') throw new SearchInputError('Choose whether pets must be allowed.');
   return {
+    bestFitRentWeight: optionalNumber(input.bestFitRentWeight, 'rent ranking weight', 0, 100) ?? 60,
     minBathrooms: optionalNumber(input.minBathrooms, 'minimum bathrooms', 0.5, 20, false),
     minSquareFeet: optionalNumber(input.minSquareFeet, 'minimum square feet', 1, 100000),
     petsRequired: input.petsRequired === true,
@@ -121,6 +123,10 @@ export function distanceMiles(from, to) {
 }
 
 export function compareResults(a, b, sort = 'rent') {
+  if (sort === 'best') {
+    const difference = (b.bestFit?.score ?? -1) - (a.bestFit?.score ?? -1);
+    if (difference) return difference;
+  }
   if (sort === 'recent') {
     if ((a.kind === 'feed') !== (b.kind === 'feed')) return a.kind === 'feed' ? -1 : 1;
     const firstSeen = Date.parse(a.seenAt);
@@ -147,7 +153,7 @@ export function matchListings(listings, filters, workplace) {
     const miles = distanceMiles(listing, workplace);
     if (filters.maxMiles != null && (miles === null || miles > filters.maxMiles)) return [];
 
-    return [{ ...listing, region, miles }];
+    return [{ ...listing, region, miles, bestFit: undefined }];
   });
 }
 
