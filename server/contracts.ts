@@ -12,7 +12,7 @@ export type AppEnv = {
   RENTCAST_API_KEY?: string;
   GOOGLE_ROUTES_API_KEY?: string;
   PARTNER_FEEDS_JSON?: string;
-  TEMPORARY_CACHE?: string;
+  TEMPORARY_CACHE?: string; STARTUP_OPENIGLOO?: string;
   PUBLIC_APP?: string;
   APP_ACCESS_TOKEN?: string;
   FREE_PARTNER_FEEDS_JSON?: string;

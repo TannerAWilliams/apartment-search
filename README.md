@@ -36,7 +36,7 @@ Set `TRAVELTIME_APP_ID` and `TRAVELTIME_API_KEY` on the server to enable automat
 
 The private hosted app checks FirstMover’s published monthly exports, the city’s Housing Connect export, and the active rental sources above. The FirstMover check uses the publisher’s release links and conditional requests for the CSV. Housing Connect listings reflect the city’s published export and application dates. The Affordable tab also links to official Mitchell-Lama and Section 8 resources. Settled.nyc feed access is unverified.
 
-Opening the app reads saved inventory without starting a source refresh. **More → Sources & sync** holds manual per-source and all-source resync controls, import, freshness and coverage details. Sources that rate-limit the app wait until their retry time. The browser can retry failed public exports when the source permits another check. The **Available rentals** view shows only active inventory from successful checks in the last two hours. Dated snapshots are used for rent charts. If a check fails or expires, its older inventory is excluded from the search and map. Openigloo uses the free U.S. Census batch geocoder for its public addresses.
+Opening the browser reads saved inventory. A fresh server process with no saved inventory first attempts the limited Openigloo startup check described below. **More → Sources & sync** holds manual per-source and all-source resync controls, import, freshness and coverage details. Sources that rate-limit the app wait until their retry time. The browser can retry failed public exports when the source permits another check. The **Available rentals** view shows only active inventory from successful checks in the last two hours. Dated snapshots are used for rent charts. If a check fails or expires, its older inventory is excluded from the search and map. Openigloo uses the free U.S. Census batch geocoder for its public addresses.
 
 The private app also serves a manual Bun refresh runner at `/_refresh-runner.mjs`. Download it through owner-only service access and pass the service credential on stdin. Keep the credential out of files, command arguments, and logs.
 
@@ -161,7 +161,7 @@ all sessions.
 **Temporary means temporary:** cached listings, refresh timestamps and rent
 chart refreshes reset on service restart, redeployment or free-service sleep.
 Saved apartments remain device-local. The homepage reads saved inventory without
-refreshing providers; source refreshes start only from More → Sources & sync.
+refreshing providers from the browser; an empty server process makes one Openigloo startup attempt. Further checks start from More → Sources & sync.
 Failed providers are reported rather than fabricated. Render does not
 remove provider CAPTCHAs or guarantee StreetEasy/HotPads access. The previous
 Sites deployment and its saved data are not deleted by this deployment.
@@ -193,7 +193,7 @@ This is a design preference, not a requirement to run every build or automated t
 
 ## Mobile browsing
 
-Search opens saved inventory in a list, with compact cards and optional Map view. Filters open in a dismissible sheet; Search, Saved, and More stay reachable at the bottom. More → Sources & sync contains explicit resync controls and CSV/manual import. Opening the application does not start a provider refresh. Sources retains detailed last-attempt, last-success, partial-coverage and error information. Card Details expands directions and provenance; missing or conflicting data is not guessed.
+Search opens saved inventory in a list, with compact cards and optional Map view. Filters open in a dismissible sheet; Search, Saved, and More stay reachable at the bottom. More → Sources & sync contains explicit resync controls and CSV/manual import. Browser navigation does not refresh providers; an empty server startup makes one Openigloo attempt. Sources retains detailed last-attempt, last-success, partial-coverage and error information. Card Details expands directions and provenance; missing or conflicting data is not guessed.
 
 ### Durable PostgreSQL inventory (optional)
 
@@ -212,7 +212,7 @@ empty. Export/import any authorized inventory before switching, or perform a fre
 manual sync; never imply old data was transferred. Render's existing service remains temporary until an
 operator supplies a durable database connection. Backups and restore verification
 remain the database operator's responsibility. This does not fix provider 403s,
-make stale listings fresh, or change manual-only refresh behavior.
+make stale listings fresh, or add scheduled refresh behavior.
 
 `test/postgres-bucket.test.ts` exercises real embedded PostgreSQL through PGlite,
 including on-disk reopen, conditional writes, quota rollback, immutable input and
@@ -364,3 +364,9 @@ The local migration checks include frozen-lockfile installation, TypeScript 7 co
 ### Compact historical dashboard controls
 
 The full 45-series catalog is grouped into Market → Metric → Bedrooms/Property type rather than 45 simultaneous buttons. Changing metrics keeps a compatible segment, falling back to an actually available file (indices have only All); failed data requests leave the selectors usable. No series or area history is removed. Offline FirstMover maintenance scripts now use Bun.file, Bun.write and Bun.gzipSync; generated outputs remain browser-compatible gzip/base64. StreetEasy ZIP parsing is unchanged and is not replaced with gzip.
+
+### Empty-startup inventory recovery
+
+The Bun server makes one bounded Openigloo-only check on startup if stored source status has no previously saved listings. It uses the existing validation, source freshness, cooldown and conditional-write path; it does not call StreetEasy, a paid routing service, or a refresh schedule. A shared 45-second deadline bounds network operations, not database status/read/write waits. Startup preserves existing inventory and its original observation times, including stale inventory; it never labels a historical snapshot active. Set `STARTUP_OPENIGLOO=false` to disable the startup attempt. Tests disable production startup networking and separately inject offline responses.
+
+This recovers a limited Manhattan/Brooklyn one-/two-bedroom sample after an empty free-host restart when that provider is available. It is not durable storage, complete inventory, or a guarantee of matches; an outage leaves an explicit unavailable state. PostgreSQL remains the supported durable path when an authorized database is connected. Temporary storage and unavailable inventory are now labeled in Search, with a direct source-status link rather than suggesting that a different budget is necessarily the solution.

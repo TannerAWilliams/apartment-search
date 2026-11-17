@@ -1,3 +1,4 @@
+import { inventoryUnavailable } from './src/inventory-state.ts';
 import type { ListingData, SourceLink, SearchFilters, SearchResult } from './src/domain.ts';
 import type { SourceDefinition, SourceStatus } from './src/source-status.ts';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -38,7 +39,7 @@ type DraftFilters = Omit<SearchFilters, 'maxRent' | 'maxTransitMinutes' | 'maxDr
 };
 type RefreshInfo = { sources: (SourceStatus & { month?: string; transport?: string })[]; checking?: boolean; state?: string; lastCheckedAt?: string; refreshRetryAt?: number; market?: { revision?: string; catalogEtag?: string; csvEtag?: string } | null };
 type ConfigSource = { id: string; name: string; sample?: boolean };
-type ApiConfig = { sources: ConfigSource[]; sourceCatalog?: SourceDefinition[]; commuteConfigured?: boolean; companies?: Record<string, number>; refresh?: RefreshInfo; refreshRetryAt?: number; browserImportAllowed?: boolean; dashboardAvailable?: boolean };
+type ApiConfig = { sources: ConfigSource[]; sourceCatalog?: SourceDefinition[]; commuteConfigured?: boolean; companies?: Record<string, number>; refresh?: RefreshInfo; refreshRetryAt?: number; browserImportAllowed?: boolean; dashboardAvailable?: boolean; storageMode?: string };
 type ApiOptions = { body?: object; token?: string; signal?: AbortSignal };
 const failureInfo = (value: unknown) => ({
   message: value instanceof Error ? value.message : '',
@@ -155,8 +156,9 @@ function Filters({ draft, setDraft, submit, busy, serverState, token, setToken, 
     <View style={styles.divider} />
     </>}
     {(panel === 'more' || panel === 'commute') && <>
-    <SectionTitle index="02">Work commute</SectionTitle>
-    <Text style={styles.fieldLabel}>Workplace</Text>
+    <SectionTitle index="02">Commute destination</SectionTitle>
+    <Text style={styles.smallMuted}>Choose a preset or enter a custom destination. Editing stays on this device until you apply. Applying an address sends it to the U.S. Census geocoder; when estimates are enabled, apartment and destination coordinates are sent to TravelTime. Directions links open only when you tap them.</Text>
+    <Text style={styles.fieldLabel}>Destination</Text>
     <View style={styles.chipRow}>
       {Object.entries(WORKPLACES).map(([key, workplace]) => <Chip key={key}
         selected={draft.workplace === key} onPress={() => set('workplace')(key)}>{workplace.label}</Chip>)}
@@ -171,7 +173,11 @@ function Filters({ draft, setDraft, submit, busy, serverState, token, setToken, 
     <Field label="Max driving time (minutes)" placeholder="Any driving time" value={String(draft.maxDrivingMinutes ?? '')}
       onChangeText={set('maxDrivingMinutes')} keyboardType="number-pad" maxLength={3} />
     <Text style={styles.smallMuted}>Estimates are for arriving at your workplace on a weekday morning. Set both limits to require both.</Text>
-    </> : <Text style={styles.smallMuted}>Automatic transit and driving estimates are currently unavailable.</Text>}
+    </> : <>
+      <Text style={styles.smallMuted}>Automatic transit and driving estimates are unavailable. You can still change your destination and use directions links; no travel times will be invented.</Text>
+      {(draft.maxTransitMinutes != null && draft.maxTransitMinutes !== '' || draft.maxDrivingMinutes != null && draft.maxDrivingMinutes !== '' || draft.sort === 'transit' || draft.sort === 'driving') && <Button secondary onPress={() => setDraft(previous => ({ ...previous, maxTransitMinutes: '', maxDrivingMinutes: '', sort: previous.sort === 'transit' || previous.sort === 'driving' ? 'rent' : previous.sort }))}>Clear unavailable commute filters</Button>}
+    </>}
+    {serverState !== 'ready' && <Text style={styles.smallMuted}>The search server is unavailable. Use a preset or latitude, longitude while offline; street addresses need the online geocoder.</Text>}
     </>}
     {serverState === 'locked' && <View style={styles.tokenForm}>
       <Field label="Server access token" placeholder="Enter your server token" value={token}
@@ -179,9 +185,9 @@ function Filters({ draft, setDraft, submit, busy, serverState, token, setToken, 
       <Button secondary onPress={connect}>Connect to server</Button>
     </View>}
     <View style={styles.submit}>
-      <Button onPress={submit} disabled={busy}>{busy ? 'Searching…' : 'Search apartments →'}</Button>
-      <Pressable accessibilityRole="button" onPress={() => setDraft(formDefaults())} style={styles.reset}>
-        <Text style={styles.linkText}>Reset filters</Text>
+      <Button onPress={submit} disabled={busy}>{busy ? 'Searching…' : panel === 'commute' ? 'Apply destination' : 'Search apartments →'}</Button>
+      <Pressable accessibilityRole="button" onPress={() => panel === 'commute' ? setDraft(previous => ({ ...previous, workplace: SEARCH_DEFAULTS.workplace, customWorkplace: '' })) : setDraft(formDefaults())} style={styles.reset}>
+        <Text style={styles.linkText}>{panel === 'commute' ? 'Reset destination' : 'Reset filters'}</Text>
       </Pressable>
     </View>
   </View>;
@@ -261,15 +267,16 @@ function ResultNotices({ notices = [] }: { notices?: string[] }) {
   </View>;
 }
 
-function Results({ visible, setVisible, result, applied, sort, onSort, onPage, paging, openCommute, commuteConfigured, checkingInventory, columns, savedByKey, showMarkets, onSave, onSaveLink, onRemove, onError, onCheckBuilding }: {
+function Results({ visible, setVisible, result, applied, sort, onSort, onPage, paging, openCommute, commuteConfigured, checkingInventory, columns, savedByKey, showMarkets, showSources, onSave, onSaveLink, onRemove, onError, onCheckBuilding }: {
   visible: number; setVisible: (value: number) => void; result: SearchResult; applied: SearchFilters; sort: string; onSort: (sort: string) => void;
   onPage?: (offset: number) => void; paging: boolean; openCommute: () => void; commuteConfigured: boolean; checkingInventory: boolean;
-  columns: boolean; savedByKey: Map<string, ListingData>; showMarkets: () => void; onSave: (listing: ListingData) => void;
+  columns: boolean; savedByKey: Map<string, ListingData>; showMarkets: () => void; showSources: () => void; onSave: (listing: ListingData) => void;
   onSaveLink: (listing: ListingData, link: SourceLink) => void; onRemove: (listing: ListingData) => void; onError: (message: string) => void;
   onCheckBuilding?: React.ComponentProps<typeof Listing>['onCheckBuilding'];
 }) {
   const { matches } = result;
   const savedView = result.mode === 'saved';
+  const unavailable = inventoryUnavailable(result);
   const summary = savedView ? 'Saved on this device · All apartment sizes' : [
     (Object.entries(REGIONS).find(([key]) => key === applied.region)?.[1].label ?? applied.region), bedroomLabel(applied.bedrooms), applied.zip, applied.company, MARKETPLACE_NAMES[applied.source],
     applied.maxRent === null ? null : `Up to ${formatRent(applied.maxRent)}`,
@@ -281,7 +288,7 @@ function Results({ visible, setVisible, result, applied, sort, onSort, onPage, p
     <View style={styles.resultHeading}>
       <View style={styles.headingCopy}>
         <Text accessibilityRole="header" style={styles.panelTitle}>{!savedView && checkingInventory && result.total === 0 ?
-          'Checking availability…' : `${result.total.toLocaleString('en-US')} ${savedView ? 'saved' : 'matching'} ${result.total === 1 ? 'apartment' : 'apartments'}`}</Text>
+          'Checking availability…' : unavailable ? 'Active inventory unavailable' : `${result.total.toLocaleString('en-US')} ${savedView ? 'saved' : 'matching'} ${result.total === 1 ? 'apartment' : 'apartments'}`}</Text>
         <Text style={styles.smallMuted}>{summary}</Text>
         <Text style={styles.smallMuted}>To {result.workplace.label}</Text>
       </View>
@@ -296,12 +303,13 @@ function Results({ visible, setVisible, result, applied, sort, onSort, onPage, p
     <ResultNotices notices={result.notices} />
     {result.total > matches.length && <Text style={styles.smallMuted}>Showing records {(result.offset ?? 0) + (matches.length ? 1 : 0)}–{(result.offset ?? 0) + matches.length} of {result.total}.</Text>}
     {matches.length === 0 && (savedView || !checkingInventory) && <View style={styles.empty}>
-      <Text accessibilityRole="header" style={styles.panelTitle}>{savedView ? 'Your saved list is empty' : 'No recently checked matches'}</Text>
-      <Text style={styles.bodyText}>{savedView ? 'Save a result or add an apartment you found on a rental platform.' :
+      <Text accessibilityRole="header" style={styles.panelTitle}>{savedView ? 'Your saved list is empty' : unavailable ? 'No recent inventory to search' : 'No recently checked matches'}</Text>
+      <Text style={styles.bodyText}>{savedView ? 'Save a result or add an apartment you found on a rental platform.' : unavailable ? 'No sources have supplied recently checked active inventory. This is not a finding that no apartments match your budget or area. Check source status or browse the rental platforms directly.' :
         applied.source ? 'This website has no recently checked matches. Check its website for current availability.' :
           needsCommute(applied) ? 'Try a longer commute limit, or change the area or budget.' :
             'Try another area, website, bedroom count, or budget.'}</Text>
-      {!savedView && needsCommute(applied) && <Button secondary onPress={openCommute}>Edit commute filters</Button>}
+      {unavailable && <Button secondary onPress={showSources}>Check source status</Button>}
+      {!savedView && !unavailable && needsCommute(applied) && <Button secondary onPress={openCommute}>Edit commute filters</Button>}
       <Button secondary onPress={showMarkets}>Browse rental platforms</Button>
     </View>}
     <View style={styles.listingGrid}>
@@ -384,6 +392,7 @@ function ApartmentSearch() {
   const [activeToken, setActiveToken] = useState('');
   const [commuteConfigured, setCommuteConfigured] = useState(false);
   const [dashboardAvailable, setDashboardAvailable] = useState(false);
+  const [temporaryStorage, setTemporaryStorage] = useState(false);
   const [tab, setTab] = useState('results');
   useEffect(() => {
     if (Platform.OS !== 'web') return;
@@ -443,6 +452,7 @@ function ApartmentSearch() {
     setSourceCatalog(config.sourceCatalog ?? []);
     setCommuteConfigured(config.commuteConfigured === true);
     setDashboardAvailable(config.dashboardAvailable === true);
+    setTemporaryStorage(config.storageMode === 'temporary');
     setCompanies(config.companies ?? {});
     setRefresh(config.refresh ?? null);
     setRefreshClock(Date.now());
@@ -547,6 +557,7 @@ function ApartmentSearch() {
     searchVersion.current += 1;
     setError('');
     setBusy(true);
+    const changingDestination = nextDraft.workplace !== applied.workplace || nextDraft.customWorkplace !== applied.customWorkplace;
     try {
       const filters = parseFilters({ ...nextDraft, liveOnly: true, includeCommute: commuteConfigured });
       if (needsCommute(filters) && serverState !== 'ready') {
@@ -569,7 +580,7 @@ function ApartmentSearch() {
     } catch (caught) {
       const failure = failureInfo(caught);
       if (failure.commuteError) setExpanded('commute');
-      setError(failure.message || 'Search could not be completed.');
+      setError((failure.message || 'Search could not be completed.') + (changingDestination ? ' Destination was not changed; previous results are still shown.' : ''));
     } finally {
       setBusy(false);
     }
@@ -649,13 +660,18 @@ function ApartmentSearch() {
       {tab === 'results' && <Button secondary onPress={() => toggleFilter('more')}>Filters</Button>}
       {WEB_MAP && <Button secondary onPress={() => setMapView(!mapView)}>{mapView ? 'List' : 'Map'}</Button>}
     </View>}
+    {(tab === 'results' || tab === 'saved') && <View style={{ paddingHorizontal: 12, paddingVertical: 8, gap: 6, borderBottomWidth: 1, borderColor: colors.border }}>
+      <Text style={styles.fieldLabel}>Commute to: {result.workplace.label}</Text>
+      <Text style={styles.smallMuted}>{tab === 'saved' ? 'Directions use this destination. Automatic travel times are not recalculated on your saved list.' : busy ? 'Updating search. Previous destination and results remain until it succeeds.' : result.commute ? 'Weekday-morning provider estimates; missing routes stay unavailable.' : result.commuteNotice || 'Automatic travel times unavailable. Open a listing’s directions link to check a route.'}</Text>
+      <Button secondary disabled={busy} onPress={() => { setError(''); toggleFilter('commute'); }}>Change destination</Button>
+    </View>}
     <Modal visible={Boolean(expanded)} transparent animationType="slide" onRequestClose={() => setExpanded('')}>
       <View style={mobileStyles.overlay}><View style={[mobileStyles.sheet, wide && mobileStyles.wideSheet]} accessibilityViewIsModal>
-        <View style={mobileStyles.sheetHeader}><Text accessibilityRole="header" style={styles.panelTitle}>Search filters</Text><Button secondary onPress={() => setExpanded('')}>Cancel</Button></View>
+        <View style={mobileStyles.sheetHeader}><Text accessibilityRole="header" style={[styles.panelTitle, { flex: 1, minWidth: 0 }]}>{expanded === 'commute' ? 'Change commute destination' : 'Search filters'}</Text><Button secondary onPress={() => setExpanded('')}>Cancel</Button></View>
         <ScrollView keyboardShouldPersistTaps="handled">
           {error !== '' && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
-          <Filters panel="more" draft={draft} setDraft={setDraft} submit={() => submit()} busy={busy} serverState={serverState} token={token} setToken={setToken} commuteConfigured={commuteConfigured} connect={() => setActiveToken(token.trim())} />
-          <WebsiteFilter result={result} applied={draft} onSelect={(source) => setDraft((current) => ({ ...current, source }))} onError={setError} />
+          <Filters panel={expanded} draft={draft} setDraft={setDraft} submit={() => submit()} busy={busy} serverState={serverState} token={token} setToken={setToken} commuteConfigured={commuteConfigured} connect={() => setActiveToken(token.trim())} />
+          {expanded !== 'commute' && <WebsiteFilter result={result} applied={draft} onSelect={(source) => setDraft((current) => ({ ...current, source }))} onError={setError} />}
         </ScrollView>
       </View></View>
     </Modal>
@@ -667,6 +683,7 @@ function ApartmentSearch() {
               {tab === 'saved' && <SavedComparison listings={saved} />}
               {tab === 'saved' && <TourPlanner listings={saved} />}
               {tab === 'results' && <SavedSearches filters={applied} disabled={busy} apply={filters => { const next = { ...filters, includeMap: WEB_MAP }; setDraft({ ...formDefaults(), ...next }); submit(next); }} check={filters => { if (serverState !== 'ready') return Promise.reject(new Error('Connect to the inventory server before checking a saved search.')); return api('search-check', { body: filters, token: activeToken }); }} />}
+              {tab === 'results' && temporaryStorage && <Text style={styles.noticeLine}>Temporary listing storage: source checks are lost when the server restarts or redeploys. Your device-saved apartments are separate.</Text>}
               {tab === 'results' && <ObservedChanges listings={result.matches} />}
               {tab === 'results' && <Pressable accessibilityRole="button" accessibilityLabel="View source freshness and coverage" onPress={() => navigateTab('sources')}>
                 <Text style={mobileStyles.freshness}>{refreshing ? 'Refreshing sources…' : failedSources.length ? 'Partial coverage · Some sources unavailable' : refresh?.lastCheckedAt ? 'Saved results · ' + CHECK_TIME.format(new Date(refresh.lastCheckedAt)) : 'Saved results · Not yet refreshed'} · Details</Text>
@@ -679,7 +696,7 @@ function ApartmentSearch() {
                     commuteConfigured={commuteConfigured}
                     checkingInventory={refreshing || serverState === 'checking' || busy}
                     columns={wide} savedByKey={savedByKey}
-                    showMarkets={() => navigateTab('marketplaces')} onSave={saveListing} onSaveLink={saveLink}
+                    showMarkets={() => navigateTab('marketplaces')} showSources={() => navigateTab('sources')} onSave={saveListing} onSaveLink={saveLink}
                     onRemove={(listing) => setSaved((current) => current.filter((item) => listingKey(item) !== listingKey(listing)))}
                     onError={setError} />
                 </View>}

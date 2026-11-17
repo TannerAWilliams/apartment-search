@@ -9,7 +9,7 @@ const fixtures = (count = 1) => Array.from({ length: count }, (_, index) => norm
   status: 'Active', url: `https://streeteasy.com/building/test/${index + 1}`,
 }, { id: 'streeteasy', name: 'StreetEasy', kind: 'feed' }));
 const now = '2026-11-13T12:00:00Z';
-async function mockApp(page: Page, options: { initialRefresh?: boolean; failed?: boolean; searchError?: boolean; listingCount?: number; notices?: string[]; priceHistory?: boolean; discovery?: boolean; commute?: boolean; nyc?: boolean; dashboardAvailable?: boolean } = {}) {
+async function mockApp(page: Page, options: { initialRefresh?: boolean; failed?: boolean; searchError?: boolean; listingCount?: number; notices?: string[]; priceHistory?: boolean; discovery?: boolean; commute?: boolean; nyc?: boolean; dashboardAvailable?: boolean; temporaryStorage?: boolean } = {}) {
   const requests: { path: string; method: string; body: any }[] = [];
   const unexpected: string[] = [];
   const listings = fixtures(options.listingCount);
@@ -28,7 +28,7 @@ async function mockApp(page: Page, options: { initialRefresh?: boolean; failed?:
     const body = request.postDataJSON();
     requests.push({ path: url.pathname, method: request.method(), body });
     let data: unknown;
-    if (url.pathname === '/api/config') data = { mode: 'live', dashboardAvailable: options.dashboardAvailable === true, browserImportAllowed: false, commuteConfigured: false, sources: [{ id: 'streeteasy', name: 'StreetEasy' }], sourceCatalog: [{ id: 'streeteasy-live', marketplace: 'streeteasy', name: 'StreetEasy', coverage: 'Synthetic test feed', resyncable: true }], refresh };
+    if (url.pathname === '/api/config') data = { mode: 'live', storageMode: options.temporaryStorage ? 'temporary' : 'persistent', dashboardAvailable: options.dashboardAvailable === true, browserImportAllowed: false, commuteConfigured: false, sources: [{ id: 'streeteasy', name: 'StreetEasy' }], sourceCatalog: [{ id: 'streeteasy-live', marketplace: 'streeteasy', name: 'StreetEasy', coverage: 'Synthetic test feed', resyncable: true }], refresh };
     else if (url.pathname === '/api/refresh') data = refresh;
     else if (url.pathname === '/api/building-report' && options.nyc) data = { status: 'matched', checkedAt: now, identity: { address: '12 Grove Street, 11201', borough: 'BROOKLYN', buildingId: '123', bin: '3000001' }, openViolations: 2, complaintsLast365Days: 3, since: '2025-11-14', bedbugs: null, dob: null, flood: null, errors: [] };
     else if (url.pathname === '/api/search') {
@@ -550,3 +550,13 @@ for (const width of [320, 375, 390]) {
     await expect(page.getByRole('button', { name: 'Filters', exact: true })).toBeVisible();
   });
 }
+
+
+test('empty active inventory is not presented as no apartments matching the filters', async ({ page }) => {
+  await mockApp(page, { listingCount: 0, temporaryStorage: true });
+  await expect(page.getByRole('heading', { name: 'Active inventory unavailable', exact: true })).toBeVisible();
+  await expect(page.getByText('Temporary listing storage: source checks are lost when the server restarts or redeploys. Your device-saved apartments are separate.', { exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '0 matching apartments', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Check source status', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Sources & sync', exact: true })).toBeVisible();
+});

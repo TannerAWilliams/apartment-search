@@ -8,7 +8,7 @@ test('private Bun server rejects anonymous API, supports cookie login and reject
  const secret = 'test-only-not-a-real-credential-1234567890';
  const port = 32000 + Math.floor(Math.random() * 10000);
  const origin = `http://127.0.0.1:${port}`;
- const child = spawn(process.execPath, ['--preload', './test/fixtures/offline-network.ts', 'server/main.ts'], { cwd: process.cwd(), env: { ...process.env,DATABASE_URL:'', HOST: '127.0.0.1', PORT: String(port), APP_ACCESS_TOKEN: secret, RENDER_EXTERNAL_URL: origin }, stdio: ['ignore', 'pipe', 'pipe'] });
+ const child = spawn(process.execPath, ['--preload', './test/fixtures/offline-network.ts', 'server/main.ts'], { cwd: process.cwd(), env: { ...process.env,DATABASE_URL:'',STARTUP_OPENIGLOO:'false', HOST: '127.0.0.1', PORT: String(port), APP_ACCESS_TOKEN: secret, RENDER_EXTERNAL_URL: origin }, stdio: ['ignore', 'pipe', 'pipe'] });
  try {
   await Promise.race([once(child.stdout, 'data'), once(child, 'exit').then(() => { throw new Error('Server failed to start'); }), new Promise((_, reject) => setTimeout(() => reject(new Error('startup timeout')), 10000).unref())]);
   assert.equal((await fetch(origin + '/api/config')).status, 401);
