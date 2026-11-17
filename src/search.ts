@@ -25,7 +25,7 @@ export const DEFAULT_FILTERS = {
 export const bedroomLabel = (count) => count === null ? 'Any beds' :
   count === 0 ? 'Studio' : `${count} bedroom${count === 1 ? '' : 's'}`;
 export const formatRent = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 2 }).format;
-export const RESULT_SORTS = { recent: 'Recently checked', rent: 'Lowest rent', transit: 'Fastest transit', driving: 'Fastest drive' };
+export const RESULT_SORTS = { best: 'Best fit: rent + commute', recent: 'Recently checked', rent: 'Lowest rent', transit: 'Fastest transit', driving: 'Fastest drive' };
 const SORT_METRICS = { distance: 'miles', transit: 'transitSeconds', driving: 'drivingSeconds' };
 
 export const needsCommute = (filters) => filters.maxTransitMinutes != null || filters.maxDrivingMinutes != null ||
@@ -121,6 +121,10 @@ export function distanceMiles(from, to) {
 }
 
 export function compareResults(a, b, sort = 'rent') {
+  if (sort === 'best') {
+    const difference = (b.bestFit?.score ?? -1) - (a.bestFit?.score ?? -1);
+    if (difference) return difference;
+  }
   if (sort === 'recent') {
     if ((a.kind === 'feed') !== (b.kind === 'feed')) return a.kind === 'feed' ? -1 : 1;
     const firstSeen = Date.parse(a.seenAt);
@@ -147,7 +151,7 @@ export function matchListings(listings, filters, workplace) {
     const miles = distanceMiles(listing, workplace);
     if (filters.maxMiles != null && (miles === null || miles > filters.maxMiles)) return [];
 
-    return [{ ...listing, region, miles }];
+    return [{ ...listing, region, miles, bestFit: undefined }];
   });
 }
 

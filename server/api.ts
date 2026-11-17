@@ -1,6 +1,7 @@
+import { wholeSearchCheck } from './whole-search-check.ts';
 import { relayConfig, type ListingTransports } from './relay-client.ts';
 import { companyCounts } from '../src/companies.ts';
-import { matchListings, needsCommute, parseFilters, SearchInputError } from '../src/search.ts';
+import { localWorkplace, matchListings, needsCommute, parseFilters, SearchInputError } from '../src/search.ts';
 import { formatSearch, RENT_GROUPINGS, rentAreas, SNAPSHOT_MONTH } from '../src/market.ts';
 import { NYC_SEARCH_AREAS, REGIONS } from '../src/regions.ts';
 import { buildingKey, mergeListings } from '../src/listings.ts';
@@ -14,7 +15,7 @@ import { type SourceFetch, refreshCatalog, refreshPlan, refreshSources, refreshS
 
 const REQUEST_LIMIT = 4096;
 const IMPORT_LIMIT = 2 * 1024 * 1024;
-const API_PATHS = new Set(['/api/config', '/api/search', '/api/geocode', '/api/market', '/api/housing', '/api/refresh']);
+const API_PATHS = new Set(['/api/config', '/api/search', '/api/search-check', '/api/geocode', '/api/market', '/api/housing', '/api/refresh']);
 
 export function appConfig(env) {
   const feeds = configuredFeeds(env);
@@ -51,23 +52,23 @@ async function withHousingLinks(result, bucket) {
   }) };
 }
 
-async function storedSample(status, id, liveOnly, load) {
+async function storedSample(status, id, liveOnly, load, strict = false) {
   const sourceStatus = status?.sources.find((source) => source.id === id);
   const recent = sourceRecent(status, id);
-  const data = recent || (!liveOnly && sourceStatus?.updatedAt) ? await load().catch(() => null) : null;
+  const data = recent || (!liveOnly && sourceStatus?.updatedAt) ? await load().catch(error => { if (strict) throw error; return null; }) : null;
   const listings = data?.listings.map((listing) => recent ? listing : {
     ...listing, kind: 'cached', sources: listing.sources.map((source) => ({ ...source, kind: 'cached' })),
   }) ?? [];
   return { sourceStatus, recent, data, listings };
 }
 
-export async function search(rawFilters, env, fetcher: SourceFetch = fetch) {
+export async function search(rawFilters, env, fetcher: SourceFetch = fetch, observationsOnly = false) {
   const filters = parseFilters(rawFilters);
   const requireCommute = needsCommute(filters);
   const credentials = routingCredentials(env);
   if (requireCommute && !credentials) throw new CommuteError('Automatic commute estimates are unavailable because the routing service is disconnected.');
   const feeds = configuredFeeds(env);
-  const workplace = await resolveWorkplace(filters, fetcher);
+  const workplace = observationsOnly ? localWorkplace(filters) : await resolveWorkplace(filters, fetcher);
   const bucket = env.BUCKET;
   async function finish(listings, mode, sources, notices, snapshotMonth?: string) {
     const matched = matchListings(listings, filters, workplace);
@@ -82,6 +83,7 @@ export async function search(rawFilters, env, fetcher: SourceFetch = fetch) {
         commute.commuteNotice = error.message;
       }
     }
+    if (observationsOnly) return { matches: filters.source ? routed.filter(listing => listing.sources.some(source => source.id === filters.source && source.url)) : routed, sources, notices };
     const result = formatSearch(routed, filters, workplace, mode, sources, notices);
     return withHousingLinks({ ...result, ...(snapshotMonth ? { snapshotMonth } : {}), ...commute }, bucket);
   }
@@ -89,13 +91,13 @@ export async function search(rawFilters, env, fetcher: SourceFetch = fetch) {
   const sourceRegion = Object.hasOwn(NYC_SEARCH_AREAS, filters.region) ? 'nyc' : filters.region;
   const directSources = DIRECT_RENTAL_SOURCES.filter(({ regions }) => sourceRegion === 'all' || regions.includes(sourceRegion));
   const [openigloo, direct, results] = await Promise.all([
-    storedSample(status, OPENIGLOO.id, filters.liveOnly, () => storedOpenigloo(bucket)),
+    storedSample(status, OPENIGLOO.id, filters.liveOnly, () => storedOpenigloo(bucket), observationsOnly),
     Promise.all(directSources.map(async (source) => ({
       source,
-      ...await storedSample(status, source.id, filters.liveOnly, () => storedDirectRentals(bucket, source)),
+      ...await storedSample(status, source.id, filters.liveOnly, () => storedDirectRentals(bucket, source), observationsOnly),
     }))),
     Promise.allSettled(feeds.map(async (feed) => {
-      if (bucket) return storedSample(status, feed.id, filters.liveOnly, () => storedFeed(bucket, feed));
+      if (bucket) return storedSample(status, feed.id, filters.liveOnly, () => storedFeed(bucket, feed), observationsOnly);
       const data = await loadFeed(feed, fetcher);
       return { data, listings: data.listings, recent: true };
     })),
@@ -117,6 +119,7 @@ export async function search(rawFilters, env, fetcher: SourceFetch = fetch) {
   }
 
   for (const [index, result] of results.entries()) {
+    if (observationsOnly && result.status === 'rejected') throw result.reason;
     const { id, name } = feeds[index];
     const value = result.status === 'fulfilled' ? result.value : null;
     if (!value?.data) {
@@ -250,6 +253,7 @@ export async function handleApi(request, env, { requireToken = false, fetcher = 
         status === 'failed' || status === 'feed_required');
       return json(result, unavailable ? 502 : 200);
     }
+    if (path === '/api/search-check') return json(await wholeSearchCheck(body, env, filters => search(filters, env, () => { throw new Error('External requests are disabled for saved search checks.'); }, true)));
     if (path === '/api/geocode') return json(await geocodeAddress(body?.address, fetcher));
     if ((body?.includeCommute || needsCommute(body ?? {})) && !request.headers.get('Content-Type')?.startsWith('application/json')) {
       return json({ error: 'Send commute searches as JSON.' }, 400);

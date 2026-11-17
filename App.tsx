@@ -23,8 +23,10 @@ import { ListingMap } from './src/ListingMap';
 import { SourcesPage } from './src/SourcesPage.tsx';
 import { refreshSummary } from './src/source-status.ts';
 import { LAUNDRY_LABELS } from './src/discovery.ts';
+import { SavedSearches } from './src/SavedSearches.tsx';
 import { ObservedChanges } from './src/ObservedChanges.tsx';
 import { SavedComparison } from './src/SavedComparison.tsx';
+import { TourPlanner } from './src/TourPlanner.tsx';
 import { Listing } from './src/Listing.tsx';
 import { RentChart } from './src/RentChart.tsx';
 
@@ -252,7 +254,7 @@ function Results({ visible, setVisible, result, applied, sort, onSort, onPage, p
         <Text style={styles.smallMuted}>To {result.workplace.label}</Text>
       </View>
       <View style={styles.chipRow}>
-        {Object.entries(RESULT_SORTS).filter(([id]) => id === 'rent' ||
+        {Object.entries(RESULT_SORTS).filter(([id]) => id === 'rent' || (!savedView && id === 'best') ||
           (!savedView && commuteConfigured && id !== 'recent')).map(([id, label]) =>
           <Chip key={id} selected={sort === id} onPress={() => onSort(id)}>{label}</Chip>)}
       </View>
@@ -621,6 +623,8 @@ function ApartmentSearch() {
             {error !== '' && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
             {(tab === 'results' || tab === 'saved') && <>
               {tab === 'saved' && <SavedComparison listings={saved} />}
+              {tab === 'saved' && <TourPlanner listings={saved} />}
+              {tab === 'results' && <SavedSearches filters={applied} disabled={busy} apply={filters => { const next = { ...filters, includeMap: WEB_MAP }; setDraft({ ...formDefaults(), ...next }); submit(next); }} check={filters => { if (serverState !== 'ready') return Promise.reject(new Error('Connect to the inventory server before checking a saved search.')); return api('search-check', { body: filters, token: activeToken }); }} />}
               {tab === 'results' && <ObservedChanges listings={result.matches} />}
               {tab === 'results' && <Pressable accessibilityRole="button" accessibilityLabel="View source freshness and coverage" onPress={() => navigateTab('sources')}>
                 <Text style={mobileStyles.freshness}>{refreshing ? 'Refreshing sources…' : failedSources.length ? 'Partial coverage · Some sources unavailable' : refresh?.lastCheckedAt ? 'Saved results · ' + CHECK_TIME.format(new Date(refresh.lastCheckedAt)) : 'Saved results · Not yet refreshed'} · Details</Text>

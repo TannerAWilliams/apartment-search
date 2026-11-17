@@ -1,3 +1,4 @@
+import { bestFit } from './best-fit.ts';
 import base64 from 'base64-js';
 import { gunzipSync, strFromU8 } from 'fflate';
 import { SNAPSHOT_GZIP, SNAPSHOT_MONTH } from './data/snapshot.ts';
@@ -44,7 +45,8 @@ export function formatSearch(listings, filters, workplace, mode, sources, notice
   const eligible = listings.filter(({ transitSeconds, drivingSeconds }) =>
     (filters.maxTransitMinutes == null || (transitSeconds ?? Infinity) <= filters.maxTransitMinutes * 60) &&
     (filters.maxDrivingMinutes == null || (drivingSeconds ?? Infinity) <= filters.maxDrivingMinutes * 60))
-    .map(listingWithVerifiedLinks);
+    .map(listingWithVerifiedLinks)
+    .map(listing => ({ ...listing, bestFit: filters.sort === 'best' ? bestFit(listing, filters, workplace) : undefined }));
   const bySource = new Map();
   for (const listing of eligible) {
     const links = listing.sources.filter(({ url }) => url);

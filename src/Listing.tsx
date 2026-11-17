@@ -1,3 +1,4 @@
+import { BuildingReport } from './BuildingReport.tsx';
 import { discoveryFacts, LAUNDRY_LABELS } from './discovery.ts';
 import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
@@ -61,6 +62,11 @@ export function Listing({ listing, selectedSource, workplace, commute, onSave, o
         <Text style={styles.listingAddress}>{title}</Text>
       </ExternalLink> : <Text accessibilityRole="header" style={styles.listingTitle}>{title}</Text>}
       <Text style={styles.smallMuted}>{subtitle}</Text>
+      {listing.bestFit && <View style={{ gap: 3 }}>
+        <Text style={styles.fieldLabel}>Best fit {listing.bestFit.score}/100 · rent savings {listing.bestFit.affordability}/60 · commute {listing.bestFit.commute}/40</Text>
+        <Text style={styles.smallMuted}>{listing.bestFit.explanation}</Text>
+        <Text style={styles.smallMuted}>Uses asking/recorded rent, not total move-in cost. Uses a matching TravelTime weekday-morning estimate when available, not live traffic or straight-line distance. No building safety or quality score. {listing.bestFit.unknowns.join(' · ')} {listing.bestFit.checkedAt ? 'Commute estimate checked ' + CHECK_TIME.format(new Date(listing.bestFit.checkedAt)) : ''}</Text>
+      </View>}
       {presentation.notices.map(notice => <Text key={notice} style={card.notice}>{notice}</Text>)}
       <View style={card.actions}>
         {original?.url && <Link label={listingLinkLabel(original)} url={original.url} onError={onError} />}
@@ -82,6 +88,7 @@ export function Listing({ listing, selectedSource, workplace, commute, onSave, o
         <CommuteDetails listing={listing} />
         <PriceHistory value={listing.priceHistory} />
         <HousingCost />
+        <BuildingReport listing={listing} onError={onError} />
       </View>}
     </View>
   </View>;
