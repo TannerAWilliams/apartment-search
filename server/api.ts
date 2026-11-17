@@ -10,7 +10,7 @@ import { localWorkplace, matchListings, needsCommute, parseFilters, SearchInputE
 import { formatSearch, RENT_GROUPINGS, rentAreas, SNAPSHOT_MONTH } from '../src/market.ts';
 import { NYC_SEARCH_AREAS, REGIONS } from '../src/regions.ts';
 import { buildingKey, listingWithVerifiedLinks, mergeListings } from '../src/listings.ts';
-import { configuredFeeds, loadFeed } from './listings.ts';
+import { configuredFeeds, loadFeed, loadStreetEasyExport, STREETEASY_EXPORT_COVERAGE, STREETEASY_EXPORT_FORMAT } from './listings.ts';
 import { CommuteError, geocodeAddress, resolveWorkplace, routeCommutes, routingCredentials } from './commute.ts';
 import { OPENIGLOO } from './openigloo.ts';
 import { DIRECT_RENTAL_SOURCES } from './direct-rentals.ts';
@@ -132,7 +132,8 @@ export async function search(rawFilters: Record<string, unknown>, env: AppEnv, f
     }))),
     Promise.allSettled(feeds.map(async (feed) => {
       if (bucket) return storedSample(status, feed.id, filters.liveOnly, () => storedFeed(bucket, feed), observationsOnly, filters.includeCached);
-      const data = await loadFeed(feed, fetcher);
+      const data = feed.format === STREETEASY_EXPORT_FORMAT ? await loadStreetEasyExport(feed, fetcher, observedAt) :
+        await loadFeed(feed, fetcher);
       return { data, listings: data.listings, recent: true };
     })),
   ]);
@@ -144,8 +145,10 @@ export async function search(rawFilters: Record<string, unknown>, env: AppEnv, f
   for (const { source, sourceStatus, recent, data, listings: rows } of direct) {
     if (data) {
       listings.push(...rows);
-      sources.push({ id: source.marketplace, name: source.name, status: recent ? 'searched' : 'cached', sample: true });
-      const coverage = data.transport === STREETEASY_PUBLIC_TRANSPORT ? STREETEASY_PUBLIC_COVERAGE :
+      sources.push({ id: source.marketplace, name: source.name, status: recent ? 'searched' : 'cached',
+        sample: data.transport !== STREETEASY_EXPORT_FORMAT });
+      const coverage = data.transport === STREETEASY_EXPORT_FORMAT ? STREETEASY_EXPORT_COVERAGE :
+        data.transport === STREETEASY_PUBLIC_TRANSPORT ? STREETEASY_PUBLIC_COVERAGE :
         source.id === STREETEASY_LIVE.id && data.transport === 'partner-feed' ? 'the configured StreetEasy partner feed' : source.coverage;
       notices.push(source.name + ' · ' + rows.length + (recent ? ' apartments checked in ' : ' saved apartments in ') + coverage + '.');
     }
@@ -215,15 +218,17 @@ export async function handleApi(request: Request, env: AppEnv, { privateAuthenti
       const config = appConfig(env);
       if (!env.BUCKET) return json(config);
       const refresh = await refreshStatus(env.BUCKET);
+      const sourceCatalog = refreshCatalog(env);
+      const coverageById = new Map(sourceCatalog.map((source) => [source.id, source.coverage]));
       const liveSources = [
-        ...DIRECT_RENTAL_SOURCES.map(({ marketplace: id, name, coverage }) => ({ id, name, sample: true,
-          coverage: id === STREETEASY_LIVE.marketplace && config.sources.some((source) => source.id === id)
-            ? 'configured StreetEasy partner feed' : id === STREETEASY_LIVE.marketplace && env.STREETEASY_PUBLIC_SEARCH === 'true'
-              ? STREETEASY_PUBLIC_COVERAGE : coverage })),
+        ...DIRECT_RENTAL_SOURCES.map(({ marketplace, id, name }) => {
+          const coverage = coverageById.get(id);
+          return { id: marketplace, name, coverage, sample: coverage !== STREETEASY_EXPORT_COVERAGE };
+        }),
         { id: OPENIGLOO.id, name: OPENIGLOO.name, sample: true, coverage: 'NYC' },
       ];
       const companies = companyCounts((await storedMarket(env.BUCKET)).listings);
-      return json({ ...config, refresh, companies, sourceCatalog: refreshCatalog(env),
+      return json({ ...config, refresh, companies, sourceCatalog,
         mode: refresh.sources.some(({ id }) => sourceRecent(refresh, id)) ? 'live' : config.mode,
         sources: [...liveSources, ...config.sources.filter(({ id }) => !liveSources.some((item) => item.id === id))],
         snapshotMonth: refresh.sources.find(({ id }) => id === 'firstmover')?.month ?? SNAPSHOT_MONTH,

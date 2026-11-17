@@ -3,6 +3,11 @@ import { MARKETPLACE_NAMES, safeListingUrl } from '../src/marketplaces.ts';
 import { normalizeListing } from '../src/listings.ts';
 import { DIRECT_RENTAL_SOURCES } from './direct-rentals.ts';
 import { HDC_RERENTALS } from './hdc-rerentals.ts';
+import { STREETEASY_LIVE, streetEasyListingUrl } from './streeteasy.ts';
+
+export const STREETEASY_EXPORT_FORMAT = 'streeteasy-complete-export-v1';
+export const STREETEASY_EXPORT_COVERAGE = 'provider-supplied complete active StreetEasy export';
+export const STREETEASY_EXPORT_MAX_AGE = 12 * 60 * 60_000;
 
 const RESERVED_FEEDS = new Set(['firstmover', 'housingconnect', 'openigloo', HDC_RERENTALS.id,
   ...DIRECT_RENTAL_SOURCES.map(({ id }) => id)]);
@@ -64,8 +69,12 @@ export function configuredFeeds(env: { FREE_PARTNER_FEEDS_JSON?: string }) {
     if (typeof id !== 'string' || !/^[a-z][a-z0-9_-]{0,47}$/.test(id) || RESERVED_FEEDS.has(id) || ids.has(id) || !name || !url) {
       throw new Error('A free feed is missing a unique ID, name, or HTTPS URL.');
     }
+    if (feed.format !== undefined && (id !== STREETEASY_LIVE.marketplace || feed.format !== STREETEASY_EXPORT_FORMAT)) {
+      throw new Error('The listing feed has an unsupported export format.');
+    }
     ids.add(id);
-    return { id, name: name.slice(0, 48), url, token: feed.token, kind: 'feed' };
+    return { id, name: name.slice(0, 48), url, token: feed.token, kind: 'feed', format: feed.format };
+
   });
 }
 
@@ -128,3 +137,42 @@ export async function loadFeed(feed: { id: string; name: string; url: string; to
 
 
 
+
+/** A complete export is a single, current snapshot covering every StreetEasy market. */
+export async function loadStreetEasyExport(feed: { url: string; token?: string }, fetcher: FetchTransport, now: Date) {
+  const headers = new Headers({ Accept: 'application/json' });
+  if (feed.token) headers.set('Authorization', 'Bearer ' + feed.token);
+  const response = await fetcher(feed.url, { headers, redirect: 'error', signal: AbortSignal.timeout(30_000) });
+  if (!response.ok) throw new Error('StreetEasy export returned HTTP ' + response.status + '.');
+  const body = await readFeedPage(response);
+  const rows = body?.listings;
+  const generatedAt = typeof body?.generatedAt === 'string' && /Z$/.test(body.generatedAt) ? Date.parse(body.generatedAt) : NaN;
+  const age = now.getTime() - generatedAt;
+  if (!Number.isFinite(age) || age < 0 || age >= STREETEASY_EXPORT_MAX_AGE) {
+    throw new Error('StreetEasy export must have an observation time less than 12 hours old.');
+  }
+  if (body.schema !== STREETEASY_EXPORT_FORMAT || body.scope !== 'all-markets' || body.complete !== true ||
+      body.next != null || body.limited === true || body.partial === true ||
+      !Number.isSafeInteger(body.total) || body.total < 0 || body.total > MAX_ROWS ||
+      !Array.isArray(rows) || rows.length !== body.total) {
+    throw new Error('StreetEasy export did not contain a complete, count-verified inventory.');
+  }
+  const checkedAt = new Date(generatedAt).toISOString();
+  const ids = new Set<string>();
+  const source = { ...STREETEASY_LIVE, id: STREETEASY_LIVE.marketplace };
+  const listings = rows.map((row: Record<string, unknown> | null) => {
+    const id = row?.id;
+    const url = streetEasyListingUrl(row?.listingUrl);
+    if (typeof id !== 'string' || !/^\d{1,30}$/.test(id) || ids.has(id) || !url ||
+        typeof row?.listingUrl !== 'string' || !row.listingUrl.startsWith('https://streeteasy.com/')) {
+      throw new Error('StreetEasy export returned a repeated ID or invalid original link.');
+    }
+    ids.add(id);
+    const listing = normalizeListing({ ...row, listingUrl: url, lastSeenDate: checkedAt }, source);
+    if (!listing || !STREETEASY_LIVE.regions.includes(listing.region ?? '')) {
+      throw new Error('StreetEasy export contains an invalid or inactive rental.');
+    }
+    return listing;
+  });
+  return { listings, total: body.total as number, pages: 1, checkedAt, transport: STREETEASY_EXPORT_FORMAT };
+}

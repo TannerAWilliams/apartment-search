@@ -211,3 +211,66 @@ test('StreetEasy resync can read the public active search as a bounded sample', 
   assert.equal(results.matches[0]?.sources[0].url, 'https://streeteasy.com/rental/12');
   assert.ok(results.notices.some(notice => notice.includes('first page of the public NYC and New Jersey rental search')));
 });
+
+test('a complete StreetEasy export syncs all rows in one request and preserves the previous export on invalid input', async () => {
+  const url = 'https://feed.example.test/complete.json';
+  const env = { BUCKET: createMemoryBucket(), FREE_PARTNER_FEEDS_JSON: JSON.stringify([
+    { id: 'streeteasy', format: 'streeteasy-complete-export-v1', url, token: 'export-test-secret' },
+  ]) };
+  const source = { id: 'streeteasy-live' };
+  const generatedAt = new Date(at.getTime() - 60_000).toISOString();
+  const listings = Array.from({ length: 601 }, (_, i) => ({
+    id: String(i + 1), status: 'Active', listingUrl: 'https://streeteasy.com/rental/' + (i + 1),
+    address: '10 Example Street', unit: String(i + 1), city: 'Manhattan', state: 'NY',
+    zip: '10001', bedrooms: 1, rent: 2500,
+  }));
+  const complete = {
+    schema: 'streeteasy-complete-export-v1', scope: 'all-markets', complete: true,
+    generatedAt, total: listings.length, listings,
+  };
+  let called = 0;
+  const run = (overrides: Record<string, unknown> = {}, now = at) => refreshSources(env, {
+    sourceId: source.id, now, onDemand: true,
+    fetcher: (requested, options) => {
+      called++;
+      assert.equal(requested, url);
+      assert.equal(options?.redirect, 'error');
+      assert.equal(new Headers(options?.headers).get('Authorization'), 'Bearer export-test-secret');
+      return Response.json({ ...complete, ...overrides });
+    },
+    prepareListingSources: async () => { throw new Error('Export must not use the StreetEasy relay.'); },
+  });
+  const first = await run();
+  assert.equal(called, 1);
+  assert.equal(first.sources[0].status, 'updated');
+  assert.equal(first.sources[0].updatedAt, generatedAt);
+  assert.equal(first.sources[0].listingCount, 601);
+  assert.equal(first.sources[0].requestTransport, complete.schema);
+  const result = await search({ liveOnly: true, source: 'streeteasy' }, env);
+  assert.equal(result.total, 601);
+  const config = await (await handleApi(new Request('https://app.test/api/config'), env)).text();
+  const streetEasy = JSON.parse(config).sources.find(({ id }: { id: string }) => id === 'streeteasy');
+  assert.equal(streetEasy?.coverage, 'provider-supplied complete active StreetEasy export');
+  assert.equal(streetEasy?.sample, false);
+  assert.ok(!config.includes('export-test-secret'));
+  assert.ok(!config.includes(url));
+  for (const invalid of [
+    { total: 602 },
+    { next: '/page/2' },
+    { scope: 'nyc-only' },
+    { complete: false },
+    { generatedAt: new Date(at.getTime() + 10_000).toISOString() },
+    { generatedAt: new Date(at.getTime() - 13 * 60 * 60_000).toISOString() },
+    { generatedAt: new Date(at.getTime() - 120_000).toISOString() },
+    { listings: [listings[0], listings[0]], total: 2 },
+    { listings: [{ ...listings[0], status: 'Rented' }], total: 1 },
+  ]) {
+    const failed = await run(invalid);
+    assert.equal(failed.sources[0].status, 'failed');
+    assert.equal(failed.sources[0].updatedAt, generatedAt);
+    assert.equal((await storedDirectRentals(env.BUCKET, source))?.listings.length, 601);
+  }
+  const second = await run({ generatedAt: at.toISOString(), total: 1, listings: [listings[600]] });
+  assert.equal(second.sources[0].listingCount, 1);
+  assert.equal((await storedDirectRentals(env.BUCKET, source))?.listings[0].unit, '601');
+});

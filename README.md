@@ -116,6 +116,20 @@ spoofed headers, or a successful first page do not establish complete coverage.
 
 Set `STREETEASY_PUBLIC_SEARCH=true` to check the first page of the public NYC and New Jersey rental search when no StreetEasy partner feed is configured. This checks one page with ordinary HTTP and serves only supported rows marked active. The source shows the page count and provider-reported total separately, and keeps older observations as cached if they were not confirmed in the sample. An error or access denial is surfaced normally.
 
+### Complete StreetEasy export
+
+If a provider gives you a current, authorized export of the entire active StreetEasy inventory, add one entry to `FREE_PARTNER_FEEDS_JSON`:
+
+```json
+[{"id":"streeteasy","format":"streeteasy-complete-export-v1","url":"https://provider.example/active-rentals.json","token":"optional-provider-bearer-token"}]
+```
+
+Configure the real URL and optional token as server settings, not in source control. With this format the StreetEasy resync button makes one HTTPS request without redirects or pagination. App open checks the export when the saved data reaches 12 hours old. The provider must generate an export at least twice a day; the app measures age from the provider timestamp, even when a file is downloaded again.
+
+The response must be one JSON object with `schema: "streeteasy-complete-export-v1"`, `scope: "all-markets"`, `complete: true`, a UTC ISO timestamp `generatedAt`, an exact integer `total`, and `listings`. Use the listing fields from the partner-feed contract above, a unique numeric string `id`, active status, and an absolute original StreetEasy `listingUrl` for every row. No pagination, duplicate IDs, inactive rows, or partial exports are allowed. A genuine complete zero-row export is valid. Limits are 25,000 rows and 16 MiB of decoded JSON. A file 12 hours old, future-dated, older than the saved export, or failing validation cannot replace saved inventory. An HTTP response compressed via standard `Content-Encoding` is supported by the HTTP client.
+
+This is the app's input contract for an authorized provider. Matching the count verifies delivery of the declared snapshot. Confirm the provider's actual coverage and display permission when setting up the connection.
+
 ### External StreetEasy recovery runner
 
 The owner-only Site serves `/_streeteasy-sync.mjs`. On an authorized Bun 1.4.4

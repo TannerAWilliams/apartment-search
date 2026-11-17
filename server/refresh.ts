@@ -8,7 +8,7 @@ import { gzipSync, gunzipSync, strFromU8, strToU8 } from 'fflate';
 import { decodeMarketRows, marketSnapshot, packRentMonth, SNAPSHOT_MONTH } from '../src/market.ts';
 import { bundledRentAreas, priorRentMonths } from '../src/rent-history.ts';
 import { checkFirstMover, checkPublishedFirstMover } from './firstmover.ts';
-import { configuredFeeds, loadFeed } from './listings.ts';
+import { configuredFeeds, loadFeed, loadStreetEasyExport, STREETEASY_EXPORT_COVERAGE, STREETEASY_EXPORT_FORMAT, STREETEASY_EXPORT_MAX_AGE } from './listings.ts';
 import { housingDate, loadHousingConnect } from './housing.ts';
 import { HDC_RERENTALS, loadHdcRerentals } from './hdc-rerentals.ts';
 import { AUTO_RENTAL_SOURCES, DIRECT_RENTAL_SOURCES } from './direct-rentals.ts';
@@ -59,7 +59,7 @@ type CheckResult = {
 };
 
 export type SourceStatus = CheckResult & {
-  requestTransport?: 'direct' | 'relay' | 'import' | 'partner-feed' | 'public-search' | 'not-recorded';
+  requestTransport?: 'direct' | 'relay' | 'import' | 'partner-feed' | 'public-search' | typeof STREETEASY_EXPORT_FORMAT | 'not-recorded';
   id: string;
   name: string;
   checkedAt: string | null;
@@ -95,14 +95,15 @@ type RefreshOptions = {
 
 export function refreshCatalog(env: AppEnv) {
   const feeds = configuredFeeds(env);
-  const streetEasyPartner = feeds.some(({ id }) => id === STREETEASY_LIVE.marketplace);
+  const streetEasyPartner = feeds.find(({ id }) => id === STREETEASY_LIVE.marketplace);
   return [
     { id: 'firstmover', name: 'FirstMover rent history', coverage: 'Historical rent charts, not active inventory', resyncable: true },
     { id: 'housingconnect', name: 'NYC Housing Connect', coverage: 'NYC affordable housing opportunities', resyncable: true },
     { ...HDC_RERENTALS, coverage: 'NYC affordable re-rentals', resyncable: true },
     { id: 'openigloo', name: 'Openigloo', coverage: 'Limited NYC sample', resyncable: true },
     ...DIRECT_RENTAL_SOURCES.map(({ id, name, marketplace, coverage }) => ({ id, name, marketplace,
-      coverage: id !== STREETEASY_LIVE.id ? coverage : streetEasyPartner ? 'Configured StreetEasy partner feed' :
+      coverage: id !== STREETEASY_LIVE.id ? coverage : streetEasyPartner?.format === STREETEASY_EXPORT_FORMAT ? STREETEASY_EXPORT_COVERAGE :
+        streetEasyPartner ? 'Configured StreetEasy partner feed' :
         env.STREETEASY_PUBLIC_SEARCH === 'true' ? STREETEASY_PUBLIC_COVERAGE : coverage,
       resyncable: AUTO_IDS.includes(id) })),
     ...feeds.filter(({ id }) => id !== STREETEASY_LIVE.marketplace).map(({ id, name }) => ({ id, name, coverage: 'Configured feed', resyncable: true })),
@@ -142,6 +143,7 @@ function checkedDuring(sources: SourceStatus[] | undefined, ids: string[], hour:
 const coolingDown = (source: SourceStatus | undefined, now: Date) => Date.parse(source?.retryAt ?? '') > now.getTime();
 
 const sourceLifetime = (id: string, transport: string | undefined) =>
+  id === STREETEASY_LIVE.id && transport === STREETEASY_EXPORT_FORMAT ? STREETEASY_EXPORT_MAX_AGE :
   id === STREETEASY_LIVE.id && (transport === STREETEASY_TRANSPORT || transport === STREETEASY_PARTNER_TRANSPORT || transport === STREETEASY_PUBLIC_TRANSPORT)
     ? STREETEASY_SYNC_INTERVAL : LIVE_MAX_AGE;
 
@@ -349,7 +351,8 @@ export async function refreshSources(env: AppEnv, { fetcher = fetch, now = new D
   const previousById = new Map((previous.sources ?? []).map((source) => [source.id, source]));
   const feeds = configuredFeeds(env);
   const streetEasyPartner = feeds.find(({ id }) => id === STREETEASY_LIVE.marketplace);
-  const streetEasyTransport = streetEasyPartner ? STREETEASY_PARTNER_TRANSPORT :
+  const streetEasyTransport = streetEasyPartner?.format === STREETEASY_EXPORT_FORMAT ? STREETEASY_EXPORT_FORMAT :
+    streetEasyPartner ? STREETEASY_PARTNER_TRANSPORT :
     env.STREETEASY_PUBLIC_SEARCH === 'true' ? STREETEASY_PUBLIC_TRANSPORT : STREETEASY_TRANSPORT;
   const ready = (id: string) => {
     const prior = previousById.get(id);
@@ -357,6 +360,9 @@ export async function refreshSources(env: AppEnv, { fetcher = fetch, now = new D
     if (onDemand && prior?.transport && prior.transport !== streetEasyTransport) return true;
     if (coolingDown(prior, now)) return false;
     if (selected === id || forceRefresh || prior?.transport !== streetEasyTransport || prior.status === 'failed') return true;
+    if (streetEasyTransport === STREETEASY_EXPORT_FORMAT) {
+      return now.getTime() - Date.parse(prior.updatedAt ?? '') >= STREETEASY_EXPORT_MAX_AGE;
+    }
     return now.getTime() - Date.parse(prior.checkedAt ?? '') >= STREETEASY_SYNC_INTERVAL;
   };
   const feedChecks = onlyStreetEasy || fallback ? [] : feeds.filter(({ id }) => id !== STREETEASY_LIVE.marketplace && (!onDemand || ready(id)));
@@ -399,6 +405,15 @@ export async function refreshSources(env: AppEnv, { fetcher = fetch, now = new D
     ...DIRECT_RENTAL_SOURCES.filter(({ id }) => liveChecks.includes(id)).map((source) => ({
       id: source.id, name: source.name, work: async () => {
         if (onDemand && source.id === STREETEASY_LIVE.id && streetEasyPartner) {
+          if (streetEasyTransport === STREETEASY_EXPORT_FORMAT) {
+            const result = await loadStreetEasyExport(streetEasyPartner, sourceFetch, now);
+            const stored = await storedDirectRentals(bucket, source);
+            if (stored?.transport === STREETEASY_EXPORT_FORMAT &&
+                Date.parse(stored.checkedAt ?? '') > Date.parse(result.checkedAt)) {
+              throw new Error('StreetEasy export was older than the saved export.');
+            }
+            return refreshDirectRentals(bucket, source, result, result.checkedAt, true);
+          }
           const result = await loadFeed({ ...streetEasyPartner, maxBedrooms: STREETEASY_LIVE.maxBedrooms }, sourceFetch, { requireTotal: true });
           if (result.total === undefined || (result.total > 0 && result.listings.length === 0)) {
             throw new Error('StreetEasy partner feed did not return a verifiable rental inventory.');
@@ -430,8 +445,7 @@ export async function refreshSources(env: AppEnv, { fetcher = fetch, now = new D
     if (id === STREETEASY_LIVE.id || id === 'hotpads-live') item.requestTransport = onDemand ? listingTransports?.[id] ?? 'not-recorded' : 'import';
     if (id === STREETEASY_LIVE.id && (onDemand || next?.transport === STREETEASY_TRANSPORT)) {
       item.transport = onDemand ? streetEasyTransport : STREETEASY_TRANSPORT;
-      if (onDemand && streetEasyPartner) item.requestTransport = 'partner-feed';
-      if (onDemand && streetEasyTransport === STREETEASY_PUBLIC_TRANSPORT) item.requestTransport = 'public-search';
+      if (onDemand && streetEasyTransport !== STREETEASY_TRANSPORT) item.requestTransport = streetEasyTransport;
     }
     if (id === HDC_RERENTALS.id) item.listingCount = next?.listingCount ?? older?.listingCount;
     if (id === 'firstmover') {
