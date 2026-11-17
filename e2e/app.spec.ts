@@ -9,7 +9,7 @@ const fixtures = (count = 1) => Array.from({ length: count }, (_, index) => norm
   status: 'Active', url: `https://streeteasy.com/building/test/${index + 1}`,
 }, { id: 'streeteasy', name: 'StreetEasy', kind: 'feed' }));
 const now = '2026-11-13T12:00:00Z';
-async function mockApp(page: Page, options: { initialRefresh?: boolean; failed?: boolean; searchError?: boolean; listingCount?: number; notices?: string[]; priceHistory?: boolean; discovery?: boolean; commute?: boolean; nyc?: boolean; dashboardAvailable?: boolean; temporaryStorage?: boolean } = {}) {
+async function mockApp(page: Page, options: { initialRefresh?: boolean; failed?: boolean; searchError?: boolean; listingCount?: number; notices?: string[]; priceHistory?: boolean; discovery?: boolean; commute?: boolean; nyc?: boolean; dashboardAvailable?: boolean; temporaryStorage?: boolean; inventoryExpiresAt?: string } = {}) {
   const requests: { path: string; method: string; body: any }[] = [];
   const unexpected: string[] = [];
   const listings = fixtures(options.listingCount);
@@ -33,7 +33,7 @@ async function mockApp(page: Page, options: { initialRefresh?: boolean; failed?:
     else if (url.pathname === '/api/building-report' && options.nyc) data = { status: 'matched', checkedAt: now, identity: { address: '12 Grove Street, 11201', borough: 'BROOKLYN', buildingId: '123', bin: '3000001' }, openViolations: 2, complaintsLast365Days: 3, since: '2025-11-14', bedbugs: null, dob: null, flood: null, errors: [] };
     else if (url.pathname === '/api/search') {
       if (options.searchError && requests.filter(r => r.path === '/api/search').length > 1) return route.fulfill({ status: 503, json: { error: 'Synthetic search unavailable' } });
-      const filters = parseFilters(body); data = localSearch(listings, filters, localWorkplace(filters), 'live', [], options.notices ?? []);
+      const filters = parseFilters(body); data = { ...localSearch(listings, filters, localWorkplace(filters), 'live', [], options.notices ?? []), ...(options.inventoryExpiresAt ? { inventoryExpiresAt: options.inventoryExpiresAt } : {}) };
     } else { unexpected.push(url.pathname); return route.fulfill({ status: 500, json: { error: 'Unexpected test endpoint' } }); }
     await route.fulfill({ json: data });
   });
@@ -559,4 +559,20 @@ test('empty active inventory is not presented as no apartments matching the filt
   await expect(page.getByRole('heading', { name: '0 matching apartments', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Check source status', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Sources & sync', exact: true })).toBeVisible();
+});
+
+
+test('an open result expires without a provider request and saved apartments remain available', async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-11-17T11:59:00Z') });
+  const { requests } = await mockApp(page, { inventoryExpiresAt: '2026-11-17T12:00:00Z' });
+  await expect(page.getByText('12 Grove Street', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Save apartment', exact: true }).first().click();
+  const count = requests.length;
+  await page.clock.fastForward(60_001);
+  await expect(page.getByRole('heading', { name: 'These results need a fresh check', exact: true })).toBeVisible();
+  await expect(page.getByText('12 Grove Street', { exact: true })).toHaveCount(0);
+  expect(requests).toHaveLength(count);
+  await page.getByRole('tab', { name: 'Saved (1)', exact: true }).click();
+  await expect(page.getByText('12 Grove Street', { exact: true }).first()).toBeVisible();
+  expect(requests.filter(request => request.path === '/api/refresh')).toHaveLength(0);
 });

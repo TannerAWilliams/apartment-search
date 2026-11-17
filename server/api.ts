@@ -9,13 +9,13 @@ import { companyCounts } from '../src/companies.ts';
 import { localWorkplace, matchListings, needsCommute, parseFilters, SearchInputError } from '../src/search.ts';
 import { formatSearch, RENT_GROUPINGS, rentAreas, SNAPSHOT_MONTH } from '../src/market.ts';
 import { NYC_SEARCH_AREAS, REGIONS } from '../src/regions.ts';
-import { buildingKey, mergeListings } from '../src/listings.ts';
+import { buildingKey, listingWithVerifiedLinks, mergeListings } from '../src/listings.ts';
 import { configuredFeeds, loadFeed } from './listings.ts';
 import { CommuteError, geocodeAddress, resolveWorkplace, routeCommutes, routingCredentials } from './commute.ts';
 import { OPENIGLOO } from './openigloo.ts';
 import { DIRECT_RENTAL_SOURCES } from './direct-rentals.ts';
 import { decodeSourceImport } from '../src/pull-sources.ts';
-import { type SourceFetch, refreshCatalog, refreshPlan, refreshSources, refreshStatus, sourceRecent, storedDirectRentals, storedFeed, storedHdcRerentals, storedHousing, storedMarket,
+import { type SourceFetch, refreshCatalog, refreshPlan, refreshSources, refreshStatus, sourceExpiresAt, sourceRecent, storedDirectRentals, storedFeed, storedHdcRerentals, storedHousing, storedMarket,
   storedOpenigloo, storedRentHistory } from './refresh.ts';
 
 const REQUEST_LIMIT = 4096;
@@ -81,12 +81,23 @@ export async function search(rawFilters: Record<string, unknown>, env: AppEnv, f
   const workplace = observationsOnly ? localWorkplace(filters) : await resolveWorkplace(filters, fetcher);
   const bucket = env.BUCKET;
   async function finish(listings: ListingData[], mode: string, sources: SearchSource[], notices: string[], snapshotMonth?: string) {
-    const matched = matchListings(listings, filters, workplace);
+    const matched = matchListings(listings, filters, workplace).map(listingWithVerifiedLinks);
     let routed = matched;
     const commute: { commute?: boolean; commuteNotice?: string } = {};
     if (credentials && (requireCommute || filters.includeCommute)) {
       try {
-        routed = await routeCommutes(matched, workplace, credentials, fetcher);
+        // Source selection is a privacy boundary: do not transmit origins for
+        // apartments the user excluded. Preserve the full inventory for counts.
+        const selectedIndexes = matched.flatMap((listing, index) => !filters.source ||
+          listing.sources.some(source => source.id === filters.source && source.url) ? [index] : []);
+        const selected = await routeCommutes(selectedIndexes.map(index => matched[index]), workplace, credentials, fetcher);
+        const byIndex = new Map(selectedIndexes.map((index, position) => [index, selected[position]]));
+        routed = matched.map((listing, index) => byIndex.get(index) ?? {
+          ...listing, transitSeconds: null, drivingSeconds: null, commuteEstimate: undefined,
+        });
+        if (filters.source && (filters.maxTransitMinutes != null || filters.maxDrivingMinutes != null)) {
+          notices = [...notices, 'Commute limits and eligible counts use only routes for the selected website. Other websites were not routed; their unknown travel times are excluded.'];
+        }
         commute.commute = true;
       } catch (error) {
         if (requireCommute || !(error instanceof CommuteError)) throw error;
@@ -95,9 +106,20 @@ export async function search(rawFilters: Record<string, unknown>, env: AppEnv, f
     }
     if (observationsOnly) return { matches: filters.source ? routed.filter(listing => listing.sources.some(source => source.id === filters.source && source.url)) : routed, sources, notices };
     const result = formatSearch(routed, filters, workplace!, mode, sources, notices);
-    return withHousingLinks({ ...result, ...(snapshotMonth ? { snapshotMonth } : {}), ...commute }, bucket);
+    // The client may warn when any contributing live inventory ages out, without
+    // initiating another search or transmitting a destination in the background.
+    const searched = new Set(sources.filter(source => source.status === 'searched').map(source => source.id));
+    const expires = refreshCatalog(env).flatMap(definition => {
+      if (!searched.has(definition.marketplace ?? definition.id) && !searched.has(definition.id)) return [];
+      const at = sourceExpiresAt(status, definition.id, observedAt);
+      return at ? [at] : [];
+    }).sort();
+    const inventoryExpiresAt = filters.liveOnly ? expires[0] : undefined;
+    return withHousingLinks({ ...result, ...(snapshotMonth ? { snapshotMonth } : {}), ...commute,
+      ...(inventoryExpiresAt ? { inventoryExpiresAt } : {}) }, bucket);
   }
   const status = bucket ? await refreshStatus(bucket) : null;
+  const observedAt = new Date();
   const sourceRegion = Object.hasOwn(NYC_SEARCH_AREAS, filters.region) ? 'nyc' : filters.region;
   const directSources = DIRECT_RENTAL_SOURCES.filter(({ regions }) => sourceRegion === 'all' || regions.includes(sourceRegion));
   const [openigloo, direct, results] = await Promise.all([

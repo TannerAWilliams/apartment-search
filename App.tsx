@@ -1,9 +1,10 @@
+import { inventoryExpired } from './src/inventory-freshness.ts';
 import { inventoryUnavailable } from './src/inventory-state.ts';
 import type { ListingData, SourceLink, SearchFilters, SearchResult } from './src/domain.ts';
 import type { SourceDefinition, SourceStatus } from './src/source-status.ts';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Modal, Platform, Pressable, ScrollView, StatusBar, Text, View, useWindowDimensions,
+  AppState, Modal, Platform, Pressable, ScrollView, StatusBar, Text, View, useWindowDimensions,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
@@ -361,6 +362,23 @@ function ApartmentSearch() {
   const [draft, setDraft] = useState(formDefaults);
   const [applied, setApplied] = useState(SEARCH_DEFAULTS);
   const [result, setResult] = useState<SearchResult>(() => localSearch([], SEARCH_DEFAULTS, localWorkplace(SEARCH_DEFAULTS), 'live'));
+  const [inventoryClock, setInventoryClock] = useState(Date.now);
+  useEffect(() => {
+    if (result.mode !== 'live' || result.inventoryExpiresAt === undefined) return;
+    const check = () => setInventoryClock(Date.now());
+    check();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const schedule = () => {
+      const remaining = Date.parse(result.inventoryExpiresAt!) - Date.now();
+      if (!Number.isFinite(remaining) || remaining < 0) { check(); return; }
+      timer = setTimeout(() => { check(); schedule(); }, Math.min(2_147_483_647, remaining + 1));
+    };
+    schedule();
+    const subscription = AppState.addEventListener('change', state => { if (state === 'active') check(); });
+    if (Platform.OS === 'web') window.addEventListener('focus', check);
+    return () => { if (timer !== undefined) clearTimeout(timer); subscription.remove(); if (Platform.OS === 'web') window.removeEventListener('focus', check); };
+  }, [result]);
+  const staleInventory = inventoryExpired(result, inventoryClock);
   const [saved, setSaved] = useState<ListingData[]>([]);
   const [visible, setVisible] = useState(PAGE_SIZE);
   useEffect(() => { setVisible(PAGE_SIZE); }, [result]);
@@ -684,11 +702,16 @@ function ApartmentSearch() {
               {tab === 'saved' && <TourPlanner listings={saved} />}
               {tab === 'results' && <SavedSearches filters={applied} disabled={busy} apply={filters => { const next = { ...filters, includeMap: WEB_MAP }; setDraft({ ...formDefaults(), ...next }); submit(next); }} check={filters => { if (serverState !== 'ready') return Promise.reject(new Error('Connect to the inventory server before checking a saved search.')); return api('search-check', { body: filters, token: activeToken }); }} />}
               {tab === 'results' && temporaryStorage && <Text style={styles.noticeLine}>Temporary listing storage: source checks are lost when the server restarts or redeploys. Your device-saved apartments are separate.</Text>}
-              {tab === 'results' && <ObservedChanges listings={result.matches} />}
+              {tab === 'results' && !staleInventory && <ObservedChanges listings={result.matches} />}
               {tab === 'results' && <Pressable accessibilityRole="button" accessibilityLabel="View source freshness and coverage" onPress={() => navigateTab('sources')}>
                 <Text style={mobileStyles.freshness}>{refreshing ? 'Refreshing sources…' : failedSources.length ? 'Partial coverage · Some sources unavailable' : refresh?.lastCheckedAt ? 'Saved results · ' + CHECK_TIME.format(new Date(refresh.lastCheckedAt)) : 'Saved results · Not yet refreshed'} · Details</Text>
               </Pressable>}
-              <View style={[styles.resultLayout, split && styles.resultLayoutWide]}>
+              {tab === 'results' && staleInventory && <View style={styles.empty}>
+                <Text accessibilityRole="header" style={styles.panelTitle}>These results need a fresh check</Text>
+                <Text style={styles.bodyText}>Their source freshness window has expired. The old results and map are hidden rather than presented as current availability. Search again to read the server’s cached inventory, or review source status. No provider refresh runs automatically from this notice.</Text>
+                <Button secondary onPress={() => navigateTab('sources')}>Review source status</Button>
+              </View>}
+              {(tab === 'saved' || !staleInventory) && <View style={[styles.resultLayout, split && styles.resultLayoutWide]}>
                 {listVisible && <View style={styles.results}>
                   <Results onCheckBuilding={serverState === 'ready' ? checkBuilding : undefined} visible={visible} setVisible={setVisible} result={displayed} applied={applied} sort={scope === 'saved' ? SAVED_FILTERS.sort : applied.sort} onSort={selectSort}
                     onPage={fetchPage} paging={busy}
@@ -703,7 +726,7 @@ function ApartmentSearch() {
                 {WEB_MAP && mapView && <View style={[styles.mapPanel, split && styles.mapPanelWide]}>
                   <ListingMap points={points} total={displayed.total} visible />
                 </View>}
-              </View>
+              </View>}
             </>}
             {tab === 'more' && <View style={styles.filters}><Text accessibilityRole="header" style={styles.panelTitle}>More</Text>
               {[['sources', 'Sources & sync'], ['chart', 'Rent chart'], ['marketplaces', 'Rental platforms'], ['affordable', 'Affordable housing']].map(([key, label]) => <Button key={key} secondary onPress={() => navigateTab(key)}>{label}</Button>)}
