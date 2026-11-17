@@ -4,15 +4,15 @@ These tests operate the real exported React Native Web UI with synthetic API res
 
 ## Run
 
-Use Node 22.13+ and a browser-capable machine:
+Use Bun 1.4.4 and a browser-capable machine:
 
 ```
-npm ci
-npx playwright install chromium
-npm run test:e2e
+bun install --frozen-lockfile
+bun ./node_modules/playwright/cli.js install chromium
+bun run test:e2e
 ```
 
-`npm run test:e2e:list` lists cases without launching a browser. Optional `PLAYWRIGHT_CHROMIUM_EXECUTABLE=/path/to/chromium` selects an installed Chromium. Chromium sandbox stays enabled; do not disable it to work around a constrained runner. No hosted paid testing service is used.
+`bun run test:e2e:list` lists cases without launching a browser. Optional `PLAYWRIGHT_CHROMIUM_EXECUTABLE=/path/to/chromium` selects an installed Chromium. Chromium sandbox stays enabled; do not disable it to work around a constrained runner. No hosted paid testing service is used.
 
 The suite builds the actual Expo web bundle, serves it on loopback, blocks external browser requests and mocks every supported `/api` route before navigation. It cannot target production via a baseURL environment override. Unexpected API endpoints get an explicit test failure response. Refresh buttons exercise mocked request handling, not real StreetEasy traffic. Each test has an isolated browser context; saved-listing reload checks only synthetic local storage. Portrait screenshots and failure traces/screenshots are local under ignored output directories.
 

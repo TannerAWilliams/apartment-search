@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import { test } from 'bun:test';
 import { relayRequest } from '../server/relay-policy.ts';
 import { createRelay } from '../server/relay-service.ts';
 

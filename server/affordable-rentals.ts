@@ -1,3 +1,4 @@
+import type { FetchTransport } from '../src/fetch-type.ts';
 import { normalizeListing } from '../src/listings.ts';
 import { searchBorough } from '../src/regions.ts';
 import { geocodeRentalAddresses } from './geocode-rentals.ts';
@@ -45,7 +46,7 @@ export function parseAffordableRentals(html, market, checkedAt) {
   });
 }
 
-async function loadAffordableRentals(fetcher = fetch, now = new Date()) {
+async function loadAffordableRentals(fetcher: FetchTransport = fetch, now = new Date()) {
   const sample = await loadPublicPages(SOURCE, PAGES, parseAffordableRentals, fetcher, now);
   const listings = await geocodeRentalAddresses(sample.listings, fetcher).catch(() => sample.listings);
   return { ...sample, listings };

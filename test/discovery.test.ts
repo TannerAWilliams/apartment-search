@@ -1,4 +1,4 @@
-import test from 'node:test';
+import { test } from 'bun:test';
 import assert from 'node:assert/strict';
 import { discoveryFacts, matchesDiscovery, LAUNDRY_OPTIONS } from '../src/discovery.ts';
 import { normalizeListing, mergeListings, listingPresentation } from '../src/listings.ts';

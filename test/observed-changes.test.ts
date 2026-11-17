@@ -1,4 +1,4 @@
-import test from 'node:test';
+import { test } from 'bun:test';
 import assert from 'node:assert/strict';
 import { checkObservedChanges, parseChangeBaseline, MAX_BASELINE_UNITS } from '../src/observed-changes.ts';
 const unit = (rent = 2000, day = 1, id = '1', includesFees = false, sourceId = 'feed') => {

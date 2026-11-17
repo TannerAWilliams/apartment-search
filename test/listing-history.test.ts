@@ -1,4 +1,4 @@
-import test from 'node:test';
+import { test } from 'bun:test';
 import assert from 'node:assert/strict';
 import { recordListingHistory, MAX_HISTORY_UNITS } from '../server/listing-history.ts';
 const unit = (rent = 2000, id = 'feed:1') => ({ id, address: '12 Grove Street', unit: '2', city: 'Jersey City', state: 'NJ', zip: '07302', rent });

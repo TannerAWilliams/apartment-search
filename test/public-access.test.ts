@@ -1,4 +1,4 @@
-import test from 'node:test';
+import { test } from 'bun:test';
 import assert from 'node:assert/strict';
 import { createPublicRequestLimits, isPublicRefresh } from '../server/public-access.ts';
 test('public refresh allows fetching but rejects anonymous imports and extra properties', () => {

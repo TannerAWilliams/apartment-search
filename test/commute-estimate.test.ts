@@ -1,4 +1,4 @@
-import test from 'node:test';
+import { test } from 'bun:test';
 import assert from 'node:assert/strict';
 import { savedCommuteEstimate, withoutCommuteEstimate } from '../src/commute-estimate.ts';
 import { routeCommutes } from '../server/commute.ts';

@@ -1,4 +1,4 @@
-import test from 'node:test';
+import { test } from 'bun:test';
 import assert from 'node:assert/strict';
 import { displayPriceHistory } from '../src/price-history.ts';
 const history = () => ({ sourceId: 'feed', firstObservedAt: '2026-01-01T00:00:00Z', lastObservedAt: '2026-01-03T00:00:00Z', truncated: false,

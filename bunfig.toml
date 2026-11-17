@@ -1,0 +1,5 @@
+[test]
+preload = ["./test/fixtures/offline-network.ts"]
+timeout = 30000
+coverageSkipTestFiles = true
+coverageReporter = ["lcov"]

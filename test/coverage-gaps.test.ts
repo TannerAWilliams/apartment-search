@@ -1,4 +1,4 @@
-import test from 'node:test';
+import { test } from 'bun:test';
 import assert from 'node:assert/strict';
 import { loadHdcRerentals } from '../server/hdc-rerentals.ts';
 import { parseZillowPage, ZILLOW_LIVE } from '../server/zillow.ts';

@@ -1,3 +1,4 @@
+import type { FetchTransport } from '../src/fetch-type.ts';
 import { normalizeListing } from '../src/listings.ts';
 import { NJ_ZIPS, nycBorough } from './firstmover.ts';
 import { deduplicatePublicRentals, jsonLd, publicListingUrl } from './public-rentals.ts';
@@ -95,7 +96,7 @@ type SearchRental = {
   geoPoint?: { latitude?: number; longitude?: number };
 };
 
-async function fetchPage(fetcher: typeof fetch, page: number, range?: PriceRange, signal?: AbortSignal) {
+async function fetchPage(fetcher: FetchTransport, page: number, range?: PriceRange, signal?: AbortSignal) {
   const response = await fetcher(SEARCH_URL, {
     method: 'POST',
     headers: { Accept: 'application/json', 'Content-Type': 'application/json',
@@ -118,7 +119,7 @@ async function fetchPage(fetcher: typeof fetch, page: number, range?: PriceRange
   return result;
 }
 
-export async function loadStreetEasy(fetcher = fetch, now = new Date()) {
+export async function loadStreetEasy(fetcher: FetchTransport = fetch, now = new Date()) {
   const controller = new AbortController();
   let failure: unknown;
   let pages = 0;

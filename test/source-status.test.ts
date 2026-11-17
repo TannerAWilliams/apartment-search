@@ -1,4 +1,4 @@
-import test from 'node:test';
+import { test } from 'bun:test';
 import assert from 'node:assert/strict';
 import { sourceRows } from '../src/source-status.ts';
 test('source rows distinguish failed attempts, retained data and browse-only providers', () => {

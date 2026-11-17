@@ -1,9 +1,9 @@
-import test from 'node:test';
+import { test } from 'bun:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { Pool } from 'pg';
+import { createBunDatabase } from '../server/bun-database.ts';
+type Pool = ReturnType<typeof createBunDatabase>;
 import { createPostgresBucket } from '../server/postgres-bucket.ts';
-import { monitorDatabaseErrors } from '../server/database-errors.ts';
 
 const connectionString = process.env.TEST_POSTGRES_URL;
 if (!connectionString) throw new Error('Set TEST_POSTGRES_URL to a disposable local PostgreSQL instance. No test was run.');
@@ -12,13 +12,12 @@ if (target.search || target.hash || !['postgres:', 'postgresql:'].includes(targe
   throw new Error('Real PostgreSQL tests are restricted to disposable loopback instances; production/remote targets are not allowed.');
 }
 async function isolated(work: (pool: Pool, connect: () => Pool) => Promise<void>) {
-  const admin = new Pool({ connectionString, connectionTimeoutMillis: 5000 });
-  monitorDatabaseErrors(admin);
+  const admin = createBunDatabase(connectionString);
   const schema = 'apartment_test_' + randomUUID().replaceAll('-', '');
   const pools: Pool[] = [];
   const connect = () => {
-    const pool = new Pool({ connectionString, max: 12, connectionTimeoutMillis: 5000, statement_timeout: 10000, options: '-c search_path=' + schema });
-    monitorDatabaseErrors(pool); pools.push(pool); return pool;
+    const pool = createBunDatabase(connectionString, { max: 12, schema });
+    pools.push(pool); return pool;
   };
   try {
     await admin.query(`CREATE SCHEMA "${schema}"`);

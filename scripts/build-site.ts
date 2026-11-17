@@ -1,58 +1,30 @@
-import { readdir, readFile, mkdir, copyFile } from 'node:fs/promises';
-import { extname, join } from 'node:path';
-import { build } from 'esbuild';
+import '../scripts/check-runtime.ts';
+import { extname } from 'node:path';
 import { MIME } from '../server/mime.ts';
 
-async function loadAssets(directory, prefix = '') {
-  const assets = {};
-  for (const entry of await readdir(directory, { withFileTypes: true })) {
-    const path = join(directory, entry.name);
-    const key = `${prefix}/${entry.name}`;
-    if (entry.isDirectory()) {
-      Object.assign(assets, await loadAssets(path, key));
-    } else if (!key.endsWith('.map') && key !== '/metadata.json') {
-      const type = MIME[extname(entry.name)] || 'application/octet-stream';
-      const binary = !/charset=utf-8|image\/svg\+xml/.test(type);
-      assets[key] = { type, binary, content: await readFile(path, binary ? 'base64' : 'utf8') };
-    }
-  }
-  return assets;
+const assets: Record<string, { type: string; binary: boolean; content: string }> = {};
+for await (const relative of new Bun.Glob('**/*').scan({ cwd: 'web-build', onlyFiles: true, dot: true })) {
+  if (relative.endsWith('.map') || relative === 'metadata.json') continue;
+  const type = MIME[extname(relative)] || 'application/octet-stream';
+  const binary = !/charset=utf-8|image\/svg\+xml/.test(type);
+  const file = Bun.file('web-build/' + relative);
+  assets['/' + relative] = { type, binary, content: binary ? Buffer.from(await file.arrayBuffer()).toString('base64') : await file.text() };
 }
-
-const assets = await loadAssets('web-build');
-const runner = await build({
-  entryPoints: ['scripts/refresh-runner.ts'], bundle: true, platform: 'node',
-  format: 'esm', target: 'node22', write: false, minify: true,
-});
-assets['/_refresh-runner.mjs'] = { type: 'text/javascript; charset=utf-8', binary: false,
-  content: runner.outputFiles[0].text };
-
-const streetEasyRunner = await build({
-  entryPoints: ['scripts/sync-streeteasy.ts'], bundle: true, platform: 'node',
-  format: 'esm', target: 'node22', write: false, minify: true,
-});
-assets['/_streeteasy-sync.mjs'] = { type: 'text/javascript; charset=utf-8', binary: false,
-  content: streetEasyRunner.outputFiles[0].text };
-
+async function bundleRunner(path: string) {
+  const result = await Bun.build({ entrypoints: [path], target: 'bun', format: 'esm', minify: true });
+  if (!result.success || result.outputs.length !== 1) throw new Error('Runner bundle failed.');
+  return result.outputs[0].text();
+}
+assets['/_refresh-runner.mjs'] = { type: 'text/javascript; charset=utf-8', binary: false, content: await bundleRunner('scripts/refresh-runner.ts') };
+assets['/_streeteasy-sync.mjs'] = { type: 'text/javascript; charset=utf-8', binary: false, content: await bundleRunner('scripts/sync-streeteasy.ts') };
 if (!assets['/index.html']) throw new Error('The Expo web build is missing index.html.');
-await build({
-  entryPoints: ['server/worker.ts'],
-  outfile: 'dist/server/index.js',
-  bundle: true,
-  format: 'esm',
-  platform: 'browser',
-  target: 'es2022',
-  minify: true,
-  plugins: [{
-    name: 'expo-web-assets',
-    setup(builder) {
-      builder.onResolve({ filter: /^virtual:web-assets$/ }, (args) => ({ path: args.path, namespace: 'assets' }));
-      builder.onLoad({ filter: /.*/, namespace: 'assets' }, () => ({
-        contents: `export default ${JSON.stringify(assets)};`,
-        loader: 'js',
-      }));
-    },
-  }],
+const worker = await Bun.build({
+  entrypoints: ['server/worker.ts'], target: 'browser', format: 'esm', minify: true,
+  plugins: [{ name: 'expo-web-assets', setup(builder) {
+    builder.onResolve({ filter: /^virtual:web-assets$/ }, args => ({ path: args.path, namespace: 'assets' }));
+    builder.onLoad({ filter: /.*/, namespace: 'assets' }, () => ({ contents: `export default ${JSON.stringify(assets)};`, loader: 'js' }));
+  } }],
 });
-await mkdir('dist/.openai', { recursive: true });
-await copyFile('.openai/hosting.json', 'dist/.openai/hosting.json');
+if (!worker.success || worker.outputs.length !== 1) throw new Error('Worker bundle failed.');
+await Bun.write('dist/server/index.js', worker.outputs[0]);
+await Bun.write('dist/.openai/hosting.json', Bun.file('.openai/hosting.json'));

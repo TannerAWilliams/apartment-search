@@ -1,4 +1,4 @@
-import test from 'node:test';
+import { test } from 'bun:test';
 import assert from 'node:assert/strict';
 import { mergeListings, normalizeListing } from '../src/listings.ts';
 import { distanceMiles, isPoint } from '../src/search.ts';

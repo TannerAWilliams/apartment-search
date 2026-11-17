@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
+import { test } from 'bun:test';
 import { calculateHousingCost, emptyHousingCosts, HOUSING_COST_FIELDS } from '../src/housing-cost.ts';
 const example = () => ({ grossMonthlyRent: '3000', leaseMonths: '12', totalConcessions: '3000', monthlyFees: '50', nonrefundableUpfrontFees: '200', refundableDeposit: '3000', rentDueAtSigning: '3000', recurringFeesDueAtSigning: '50' });
 test('separates recurring rent, average cost, total cost and cash including refundable deposit', () => {

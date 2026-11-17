@@ -1,4 +1,4 @@
-import test from 'node:test';
+import { test } from 'bun:test';
 import assert from 'node:assert/strict';
 import { comparisonOptions, comparisonRows, comparisonTitle, toggleComparison } from '../src/comparison.ts';
 const unit = (id = '1') => ({ id, address: '12 Grove Street', unit: id, zip: '07302', city: 'Jersey City', state: 'NJ' });

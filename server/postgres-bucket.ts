@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { Buffer } from 'node:buffer';
-import type { Pool } from 'pg';
 
-export type BucketDatabase = Pick<Pool, 'query' | 'connect'>;
+
+type Query = (text: string, parameters?: any[]) => Promise<{ rows: any[] }>;
+export type BucketDatabase = { query: Query; connect(): Promise<{ query: Query; release(): void | Promise<void> }> }; 
 type Options = { customMetadata?: Record<string, string>; onlyIf?: { etagMatches?: string; etagDoesNotMatch?: string } };
 
 // One row is one complete source snapshot. Conditional writes use a transaction
@@ -46,14 +47,14 @@ export async function createPostgresBucket(database: BucketDatabase, maxBytes = 
         const total = (await client.query('SELECT COALESCE(SUM(octet_length(body)), 0)::text AS bytes FROM apartment_objects WHERE key <> $1', [key])).rows[0];
         if (Number(total.bytes) + length > maxBytes) throw new Error('Listing storage capacity exceeded.');
         const etag = randomUUID();
-        await client.query(`INSERT INTO apartment_objects (key, body, etag, metadata) VALUES ($1, $2, $3, $4::jsonb)
+        await client.query(`INSERT INTO apartment_objects (key, body, etag, metadata) VALUES ($1, $2, $3, $4::text::jsonb)
           ON CONFLICT (key) DO UPDATE SET body = EXCLUDED.body, etag = EXCLUDED.etag, metadata = EXCLUDED.metadata, updated_at = now()`, [key, bytes, etag, metadata]);
         await client.query('COMMIT');
         return { etag };
       } catch (error) {
         await client.query('ROLLBACK').catch(() => undefined);
         throw error;
-      } finally { client.release(); }
+      } finally { await client.release(); }
     },
   };
 }

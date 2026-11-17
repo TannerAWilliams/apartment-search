@@ -1,4 +1,4 @@
-import test from 'node:test';
+import { test } from 'bun:test';
 import assert from 'node:assert/strict';
 import { emptySavedNote, NOTE_LIMIT, parseSavedNote, savedNoteKey, VIEWING_STATUSES } from '../src/saved-notes.ts';
 test('notes default independently and round-trip all viewing statuses', () => {

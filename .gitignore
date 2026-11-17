@@ -9,3 +9,5 @@ web-build/
 
 playwright-report/
 test-results/
+
+coverage/
