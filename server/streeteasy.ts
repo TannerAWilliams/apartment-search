@@ -40,27 +40,28 @@ export const STREETEASY_LIVE = {
 };
 const MULTIFAMILY = new Set(['TWOFAMILY', 'THREEFAMILY', 'MULTIFAMILY']);
 
-export function streetEasyListingUrl(value) {
+export function streetEasyListingUrl(value: unknown) {
   return publicListingUrl(value, ORIGIN, /^\/(?:rental\/\d+|building\/[^/]+\/(?:[^/]+|rental\/\d+))$/);
 }
 
-function normalizeRental(row, state, bedrooms, checkedAt) {
+type LegacyRental = { address?: { streetAddress?: string; addressLocality?: string; addressRegion?: string; postalCode?: string }; url?: string; name?: string; additionalProperty?: { name?: string; value?: string }[]; '@type'?: string; offers?: { availability?: string }; numberOfBedrooms?: number; geo?: { latitude?: number; longitude?: number } };
+function normalizeRental(row: LegacyRental, state: string, bedrooms: number, checkedAt: string) {
   const { streetAddress, addressLocality, addressRegion, postalCode } = row.address ?? {};
   const url = streetEasyListingUrl(row.url);
   const unit = typeof row.name === 'string' ? row.name.match(/\s#\s*([^#]+)$/)?.[1] : '';
   const properties = Array.isArray(row.additionalProperty) ? row.additionalProperty : [];
-  const property = (name) => properties.find((entry) => entry?.name === name)?.value;
+  const property = (name: string) => properties.find((entry) => entry?.name === name)?.value;
   const buildingType = property('Building Type');
-  const isApartment = row['@type'] === 'Apartment' || (unit && MULTIFAMILY.has(buildingType));
+  const isApartment = row['@type'] === 'Apartment' || (unit && MULTIFAMILY.has(buildingType ?? ''));
   const availability = row.offers?.availability ?? property('Status');
   if (!isApartment || !url || typeof streetAddress !== 'string' ||
-      addressRegion !== state || !/^\d{5}$/.test(postalCode) || row.numberOfBedrooms !== bedrooms ||
+      addressRegion !== state || typeof postalCode !== 'string' || !/^\d{5}$/.test(postalCode) || row.numberOfBedrooms !== bedrooms ||
       (availability && !/^(?:active|available|(?:https?:\/\/schema\.org\/)?instock)$/i.test(availability))) return null;
 
   const rentText = property('Monthly Rent');
   const rent = typeof rentText === 'string' ? rentText.match(/^\$([\d,]+(?:\.\d{2})?)\/mo$/)?.[1] : null;
   const { latitude, longitude } = row.geo ?? {};
-  if (!rent || !Number.isFinite(latitude) || !Number.isFinite(longitude) ||
+  if (!rent || typeof latitude !== 'number' || typeof longitude !== 'number' || !Number.isFinite(latitude) || !Number.isFinite(longitude) ||
       latitude < 40 || latitude > 42 || longitude < -75 || longitude > -72) return null;
 
   const [njCity, county] = NJ_ZIPS[postalCode] ?? [];
@@ -75,11 +76,11 @@ function normalizeRental(row, state, bedrooms, checkedAt) {
   }, SOURCE);
 }
 
-export function parseStreetEasyPage(html, state, bedrooms, checkedAt) {
+export function parseStreetEasyPage(html: string, state: string, bedrooms: number, checkedAt: string) {
   const rentals = jsonLd(html).flatMap((schema) => Array.isArray(schema?.['@graph']) ?
-    schema['@graph'].filter((row) => row?.address?.postalCode && row.url) : []);
+    (schema['@graph'] as LegacyRental[]).filter((row) => row?.address?.postalCode && row.url) : []);
   if (!rentals.length) throw new Error('StreetEasy did not return a recognized rental page.');
-  return rentals.map((row) => normalizeRental(row, state, bedrooms, checkedAt)).filter(Boolean);
+  return rentals.map((row) => normalizeRental(row, state, bedrooms, checkedAt)).filter((listing) => listing !== null);
 }
 
 type SearchRental = {
@@ -112,7 +113,7 @@ async function fetchPage(fetcher: FetchTransport, page: number, range?: PriceRan
     data?: { searchRentals?: { totalCount: number; edges: { node?: SearchRental }[] } };
   };
   const result = payload?.data?.searchRentals;
-  if (payload?.errors?.length || !Number.isSafeInteger(result?.totalCount) || result.totalCount < 0 ||
+  if (!result || payload?.errors?.length || !Number.isSafeInteger(result?.totalCount) || result.totalCount < 0 ||
       !Array.isArray(result?.edges) || result.edges.length > PAGE_SIZE) {
     throw new Error('StreetEasy v6 did not return rental results.');
   }

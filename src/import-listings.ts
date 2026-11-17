@@ -7,11 +7,18 @@ export const MAX_IMPORT_SIZE = 256_000;
 export const IMPORT_COLUMNS = 'url,address,unit,city,state,zip,bedrooms,rent';
 const required = IMPORT_COLUMNS.split(',').filter((column) => column !== 'unit');
 
-export function parseListingImport(csv) {
+export function parseListingImport(csv: string) {
   if (csv.length > MAX_IMPORT_SIZE) throw new Error('Choose a CSV under 256 KB.');
-  let rows;
+  let rows: { record: string[]; info: { lines: number } }[];
   try {
-    rows = parse(csv, { bom: true, skip_empty_lines: true, trim: true, info: true });
+    const parsed: unknown = parse(csv, { bom: true, skip_empty_lines: true, trim: true, info: true });
+    if (!Array.isArray(parsed)) throw new Error('Invalid CSV output.');
+    rows = parsed.map((entry: unknown) => {
+      if (!entry || typeof entry !== 'object' || !('record' in entry) || !('info' in entry) ||
+          !Array.isArray(entry.record) || !entry.record.every((cell: unknown) => typeof cell === 'string') ||
+          !entry.info || typeof entry.info !== 'object' || !('lines' in entry.info) || typeof entry.info.lines !== 'number') throw new Error('Invalid CSV output.');
+      return { record: entry.record as string[], info: { lines: entry.info.lines } };
+    });
   } catch {
     throw new Error('The CSV has a malformed row. Check the commas and quotation marks.');
   }
@@ -33,7 +40,7 @@ export function parseListingImport(csv) {
         (!row.latitude || !row.longitude || !isPoint({ latitude: Number(row.latitude), longitude: Number(row.longitude) }))) {
       throw new Error(`Enter both valid coordinates on line ${info.lines}, or leave them blank.`);
     }
-    const region = { NJ: 'nj', CT: 'ct' }[state];
+    const region = state === 'NJ' ? 'nj' : state === 'CT' ? 'ct' : undefined;
     const listing = normalizeListing({ ...row, state, region, updatedAt }, { id: 'saved', name: 'Saved listing', kind: 'saved' });
     if (!listing) throw new Error(`Check the street, city, region, and monthly rent on line ${info.lines}.`);
     return listing;

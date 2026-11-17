@@ -1,3 +1,6 @@
+import type { ListingData } from './domain.ts';
+import type { RentArea, RentMarket, RentHistory } from './rent-history.ts';
+import type { LoadDashboard } from './DashboardExplorer.tsx';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { formatSnapshotMonth, marketSnapshot, RENT_GROUPINGS, rentAreas, SNAPSHOT_MONTH, SNAPSHOT_SOURCE } from './market.ts';
@@ -14,7 +17,7 @@ const BAR_COLORS = ['#6a9e85', '#4f846a', '#45789b', '#745c9a', '#936425'];
 const GROUPINGS = Object.entries(RENT_GROUPINGS);
 const PAGE_SIZE = 15;
 
-function MedianBars({ area }) {
+function MedianBars({ area }: { area: RentArea }) {
   const largest = Math.max(1, ...area.sizes.map(({ median }) => median ?? 0));
   return <View style={styles.chartCard}>
     <Text accessibilityRole="header" style={styles.panelTitle}>{area.label}</Text>
@@ -34,7 +37,7 @@ function MedianBars({ area }) {
   </View>;
 }
 
-function RentTable({ areas, selection, choose }) {
+function RentTable({ areas, selection, choose }: { areas: RentArea[]; selection: string; choose: (id: string) => void }) {
   return <ScrollView horizontal showsHorizontalScrollIndicator keyboardShouldPersistTaps="handled"
     accessibilityLabel="Median asking rent table, swipe horizontally for more bedroom sizes">
     <View style={styles.chartTable}>
@@ -58,17 +61,20 @@ function RentTable({ areas, selection, choose }) {
   </ScrollView>;
 }
 
-export function RentChart({ initialRegion, saved, onError, showSaved, loadMarket, loadDashboard }) {
+export function RentChart({ initialRegion, saved, onError, showSaved, loadMarket, loadDashboard }: {
+  initialRegion: string; saved: ListingData[]; onError: (message: string) => void; showSaved: () => void;
+  loadMarket?: (region: string, grouping: string, signal: AbortSignal) => Promise<RentMarket>; loadDashboard?: LoadDashboard;
+}) {
   const [dataset, setDataset] = useState('market');
   const [region, setRegion] = useState(initialRegion);
   const [grouping, setGrouping] = useState('neighborhood');
   const [selection, setSelection] = useState('overall');
   const [view, setView] = useState('trend');
   const [bedrooms, setBedrooms] = useState(1);
-  const [pinned, setPinned] = useState([]);
+  const [pinned, setPinned] = useState<string[]>([]);
   const [query, setQuery] = useState('');
   const [visible, setVisible] = useState(PAGE_SIZE);
-  const [remote, setRemote] = useState(null);
+  const [remote, setRemote] = useState<(RentMarket & { region: string; grouping: string }) | null>(null);
 
   useEffect(() => {
     if (dataset !== 'market' || !loadMarket) return;
@@ -83,16 +89,16 @@ export function RentChart({ initialRegion, saved, onError, showSaved, loadMarket
   const month = published?.month ?? SNAPSHOT_MONTH;
   const areas = useMemo(() => published?.areas ?? rentAreas(dataset === 'market' ? marketSnapshot() : saved, { region, grouping }),
     [published, dataset, saved, region, grouping]);
-  const history = useMemo(() => published?.history ?? bundledRentHistory(month, 'nyc', grouping)
+  const history = useMemo<RentHistory>(() => published?.history ?? bundledRentHistory(month, 'nyc', grouping)
     .map(([period, rows]) => [period, rows.filter(([id]) => id !== 'overall')]), [published, month, grouping]);
   const search = query.trim().toLowerCase();
   const areaChoices = search ? areas.filter(({ id, label, detail }) =>
     id !== 'overall' && `${label} ${detail}`.toLowerCase().includes(search)) : areas;
   const selected = areaChoices.find(({ id }) => id === selection) ?? areaChoices[0];
-  const pinnedAreas = pinned.map((id) => areas.find((area) => area.id === id)).filter(Boolean);
+  const pinnedAreas = pinned.map((id) => areas.find((area) => area.id === id)).filter((area): area is RentArea => Boolean(area));
   const trend = dataset === 'market' && view === 'trend';
 
-  function resetAreas(setter, value) {
+  function resetAreas(setter: (value: string) => void, value: string) {
     setter(value);
     setSelection('overall');
     setQuery('');

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createPrivateShortlistHandler } from '../server/private-shortlist.ts';
 import { createMemoryBucket } from '../server/memory-bucket.ts';
 const entry = (key = 'unit:1') => ({ key, label: 'Test apartment', url: 'https://example.com/rental/1', rent: 2000, bedrooms: 1, notes: 'Private note', status: 'Considering', compare: false });
-const identities = { alice: { issuer: 'https://issuer.example', subject: 'alice' }, bob: { issuer: 'https://issuer.example', subject: 'bob' }, otherIssuer: { issuer: 'https://other.example', subject: 'alice' } };
+const identities: Record<string, { issuer: string; subject: string }> = { alice: { issuer: 'https://issuer.example', subject: 'alice' }, bob: { issuer: 'https://issuer.example', subject: 'bob' }, otherIssuer: { issuer: 'https://other.example', subject: 'alice' } };
 const setup = () => createPrivateShortlistHandler({ bucket: createMemoryBucket(), verifyBearer: async token => identities[token] ?? null });
 const request = (token = 'alice', payload?: unknown, method = payload === undefined ? 'GET' : 'PUT') => new Request('https://app.example/private/shortlist?subject=bob', {
   method, headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, ...(payload === undefined ? {} : { body: JSON.stringify(payload) }),

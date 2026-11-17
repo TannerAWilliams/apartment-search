@@ -17,7 +17,7 @@ export function dashboardSnapshot(name?: string) {
       archives ??= unzipSync(base64.toByteArray(DASHBOARD_SNAPSHOT));
       const extracted = unzipSync(archives[name.replace(/\.csv$/, '.zip')]);
       file = parseDashboardCsv(name, strFromU8(extracted[name]));
-      if (cache.size >= 3) cache.delete(cache.keys().next().value);
+      if (cache.size >= 3) { const oldest = cache.keys().next(); if (!oldest.done) cache.delete(oldest.value); }
       cache.set(name, file);
     }
     return { provenance, file };

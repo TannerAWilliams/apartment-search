@@ -1,9 +1,10 @@
+import type { ListingData } from '../src/domain.ts';
 import type { FetchTransport } from '../src/fetch-type.ts';
 import { mergeListings } from '../src/listings.ts';
 
 const MAX_HTML_BYTES = 5 * 1024 * 1024;
 
-export function publicListingUrl(value, origin, pathPattern) {
+export function publicListingUrl(value: unknown, origin: string, pathPattern: RegExp) {
   if (typeof value !== 'string' || value.length === 0) return null;
   try {
     const url = new URL(value, origin);
@@ -14,7 +15,7 @@ export function publicListingUrl(value, origin, pathPattern) {
   }
 }
 
-export async function fetchPublicHtml(fetcher, url, name) {
+export async function fetchPublicHtml(fetcher: FetchTransport, url: string, name: string) {
   const response = await fetcher(url, {
     headers: { Accept: 'text/html' }, redirect: 'error', signal: AbortSignal.timeout(9000),
   });
@@ -39,13 +40,13 @@ export async function fetchPublicHtml(fetcher, url, name) {
   }
 }
 
-export function jsonLd(html) {
+export function jsonLd(html: string) {
   return [...html.matchAll(/<script\b[^>]*\btype=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script\s*>/gi)]
     .map(([, json]) => JSON.parse(json));
 }
 
-export async function loadPublicPages(source, pages, parser, fetcher: FetchTransport = fetch, now = new Date()) {
-  const listings = [];
+export async function loadPublicPages<P extends { url: string }>(source: { name: string }, pages: P[], parser: (html: string, page: P, checkedAt: string) => ListingData[], fetcher: FetchTransport = fetch, now = new Date()) {
+  const listings: ListingData[] = [];
   const checkedAt = now.toISOString();
   for (let index = 0; index < pages.length; index += 3) {
     const batch = await Promise.all(pages.slice(index, index + 3).map(async (page) => {
@@ -59,6 +60,6 @@ export async function loadPublicPages(source, pages, parser, fetcher: FetchTrans
   return { listings: unique, pages: pages.length };
 }
 
-export function deduplicatePublicRentals(rows) {
+export function deduplicatePublicRentals(rows: ListingData[]) {
   return mergeListings([...new Map(rows.map((listing) => [listing.sources[0].url, listing])).values()]);
 }

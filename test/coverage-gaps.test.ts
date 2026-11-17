@@ -1,3 +1,4 @@
+import { required } from './test-values.ts';
 import { test } from 'bun:test';
 import assert from 'node:assert/strict';
 import { loadHdcRerentals } from '../server/hdc-rerentals.ts';
@@ -24,9 +25,9 @@ test('HDC follows offsets, deduplicates IDs and preserves safe PDF and CTA fallb
   });
   assert.equal(result.results.length,2); assert.equal(result.limited,true);
   assert.match(urls[1], /current-page=2&offset=2/);
-  assert.equal(result.results[0].url,'https://www.nychdc.com/sites/default/files/example.pdf');
-  assert.equal(result.results[1].url,'https://example.com/apply');
-  assert.equal(result.results[1].rent,'');
+  assert.equal(required(result.results[0]).url,'https://www.nychdc.com/sites/default/files/example.pdf');
+  assert.equal(required(result.results[1]).url,'https://example.com/apply');
+  assert.equal(required(result.results[1]).rent,'');
 });
 const zmarket = {city:'Jersey City',state:'NJ',region:'nj'};
 const zrow = {detailUrl:'/homedetails/12-Grove-St/123_zpid/', statusType:'FOR_RENT', hdpData:{homeInfo:{homeType:'APARTMENT',zpid:123}},latLong:{latitude:40.72,longitude:-74.04},addressState:'NJ',addressCity:'Jersey City',addressZipcode:'07302',addressStreet:'12 Grove Street',beds:1,unformattedPrice:2400};
@@ -63,7 +64,7 @@ test('source retry policy excludes future retries, successful and unsupported pr
 test('bundled history preserves absent months and missing bedroom observations', () => {
   const history = bundledRentHistory('1900-06','missing','zip');
   assert.equal(history.length,5); assert.deepEqual(history[0],['1900-01',[]]);
-  assert.deepEqual(rentSeries({id:'x',sizes:[{median:2000,count:1}]},0,'1900-06',history)[0], {month:'1900-01',median:null,count:0});
+  assert.deepEqual(rentSeries({id:'x',label:'X',detail:'',count:1,sizes:[{median:2000,count:1}]},0,'1900-06',history)[0], {month:'1900-01',median:null,count:0});
 });
 
 import { parseListingImport } from '../src/import-listings.ts';
@@ -99,11 +100,13 @@ import { geocodeRentalAddresses } from '../server/geocode-rentals.ts';
 import { fetchPublicHtml, publicListingUrl } from '../server/public-rentals.ts';
 test('geocoding retains source facts on failure and accepts only exact in-region coordinates', async () => {
   let calls=0;
-  assert.deepEqual(await geocodeRentalAddresses([],async () => {calls++;}),[]); assert.equal(calls,0);
+  assert.deepEqual(await geocodeRentalAddresses([],async () => {calls++; throw new Error('Unexpected fixture fetch');}),[]); assert.equal(calls,0);
   const listings=[{id:'a',address:'1 "Test" Street',city:'Manhattan',state:'NY',zip:'10001'}, {id:'b',address:'2 Test Street',city:'Brooklyn',state:'NY',zip:'11201'}];
   assert.deepEqual(await geocodeRentalAddresses(listings,async () => new Response('',{status:503})),listings);
-  const result=await geocodeRentalAddresses(listings,async (_url, options) => {
-    assert.match(await options.body.get('addressFile').text(), /New York/);
+  const result=await geocodeRentalAddresses(listings,async (_url: string, options?: RequestInit) => {
+    const body = required(options).body; assert.ok(body instanceof FormData);
+    const addressFile = body.get('addressFile'); assert.ok(addressFile instanceof Blob);
+    assert.match(await addressFile.text(), /New York/);
     return new Response('a,,Match,Exact,,"-73.9,40.7"\nb,,No_Match,Exact\nb,,Match,Non_Exact\nb,,Match,Exact,,"-90,40"\nb,,Match,Exact\n');
   });
   assert.equal(result[0].latitude,40.7); assert.equal(result[1].latitude,undefined);

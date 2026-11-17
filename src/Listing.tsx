@@ -1,3 +1,5 @@
+import type { ListingData, SourceLink, Workplace } from './domain.ts';
+import type { CheckBuilding } from './BuildingReport.tsx';
 import { BuildingReport } from './BuildingReport.tsx';
 import { discoveryFacts, LAUNDRY_LABELS } from './discovery.ts';
 import React, { useState } from 'react';
@@ -26,17 +28,20 @@ const card = StyleSheet.create({
   details: { borderTopWidth: 1, borderColor: colors.border, paddingTop: 10, gap: 8 },
 });
 
-export function Listing({ listing, selectedSource, workplace, commute, onSave, onSaveLink, onRemove, onError, saved, onCheckBuilding }) {
+export function Listing({ listing, selectedSource, workplace, commute, onSave, onSaveLink, onRemove, onError, saved, onCheckBuilding }: { listing: ListingData; selectedSource?: string; workplace: Workplace; commute?: boolean;
+ onSave: (listing: ListingData) => void; onSaveLink: (listing: ListingData, link: SourceLink) => void;
+ onRemove?: (listing: ListingData) => void; onError: (message: string) => void; saved: boolean; onCheckBuilding?: CheckBuilding }) {
   const [expanded, setExpanded] = useState(false);
   const { region, address, unit, city, state, zip, rent, transitSeconds, drivingSeconds, neighborhood } = listing;
-  const regionInfo = REGIONS[searchBorough(listing) ?? region];
+  const regionKey = searchBorough(listing) ?? region ?? 'all';
+  const regionInfo = Object.hasOwn(REGIONS, regionKey) ? REGIONS[regionKey as keyof typeof REGIONS] : undefined;
   const title = unit ? `${address}, ${unit.startsWith('#') ? unit : 'Unit ' + unit}` : address;
   const subtitle = [neighborhood === city ? '' : neighborhood, `${city}, ${state} ${zip}`].filter(Boolean).join(' · ');
   const [original] = orderedListingLinks(listing.sources, selectedSource);
   const presentation = listingPresentation(listing);
   const facts = discoveryFacts(listing);
   const checkedAt = listing.checkedAt ?? listing.seenAt;
-  const checked = Number.isFinite(Date.parse(checkedAt)) ? 'Checked ' + CHECK_TIME.format(new Date(checkedAt)) : 'Check date unavailable';
+  const checked = Number.isFinite(Date.parse(checkedAt ?? '')) ? 'Checked ' + CHECK_TIME.format(new Date(checkedAt ?? '')) : 'Check date unavailable';
   return <View style={styles.rentalCard}>
     <View style={styles.rentalCardBody}>
       <View style={card.headline}>

@@ -1,3 +1,4 @@
+import type { FetchTransport } from '../src/fetch-type.ts';
 import { normalizeListing } from '../src/listings.ts';
 import { nycBorough } from './firstmover.ts';
 import { loadPublicPages, publicListingUrl } from './public-rentals.ts';
@@ -12,15 +13,15 @@ const PAGES = [
   url: ORIGIN + '/apartments/' + slug + '/price-na-2800', city, region,
 }));
 const APARTMENTS = new Set(['apartment', 'condos', 'coop']);
-const listingUrl = (url) => publicListingUrl(url, ORIGIN, /^\/rentals\/details\/[^/]+_M\d+-\d+\/?$/);
+const listingUrl = (url: unknown) => publicListingUrl(url, ORIGIN, /^\/rentals\/details\/[^/]+_M\d+-\d+\/?$/);
 
 export const REALTOR_LIVE = {
   ...SOURCE, id: 'realtor-live', marketplace: SOURCE.id, coverage: 'Queens, Hicksville and White Plains',
   regions: ['nyc', 'li', 'metroNorth'], minPages: PAGES.length, maxPages: PAGES.length, rowsPerPage: 50,
-  listingUrl, load: (fetcher, now) => loadPublicPages(SOURCE, PAGES, parseRealtorPage, fetcher, now),
+  listingUrl, load: (fetcher: FetchTransport, now: Date) => loadPublicPages(SOURCE, PAGES, parseRealtorPage, fetcher, now),
 };
 
-export function parseRealtorPage(html, market, checkedAt) {
+export function parseRealtorPage(html: string, market: {city:string; region:string}, checkedAt: string) {
   const script = html.match(/<script\b[^>]*\bid=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script\s*>/i);
   const rows = script && JSON.parse(script[1])?.props?.pageProps?.properties;
   if (!Array.isArray(rows)) throw new Error('Realtor.com did not return a recognized rental page.');

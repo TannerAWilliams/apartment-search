@@ -1,3 +1,4 @@
+import type { SourceFetch } from './refresh.ts';
 const TRANSIENT = new Set([502, 503, 504]);
 const MINUTE = 60_000;
 
@@ -5,12 +6,12 @@ class SourceResponseError extends Error {
   declare httpStatus: number;
   declare receivedAt: number;
   declare retryAfter: number;
-  constructor(response, receivedAt) {
+  constructor(response: Response, receivedAt: number) {
     super('HTTP ' + response.status);
     this.httpStatus = response.status;
     this.receivedAt = receivedAt;
     const retryAfter = response.headers.get('Retry-After')?.trim();
-    const retryTime = /^\d{1,9}$/.test(retryAfter ?? '') ? receivedAt + Number(retryAfter) * 1000 : Date.parse(retryAfter);
+    const retryTime = /^\d{1,9}$/.test(retryAfter ?? '') ? receivedAt + Number(retryAfter) * 1000 : Date.parse(retryAfter ?? '');
     const reset = response.headers.get('X-RateLimit-Reset');
     const resetTime = response.headers.get('X-RateLimit-Remaining')?.trim() === '0' && /^\d{1,12}$/.test(reset ?? '') ?
       Number(reset) * 1000 : 0;
@@ -18,8 +19,8 @@ class SourceResponseError extends Error {
   }
 }
 
-export function requestForRefresh(fetcher, deadline) {
-  return async (url, options) => {
+export function requestForRefresh(fetcher: SourceFetch, deadline: AbortSignal) {
+  return async (url: string, options?: RequestInit) => {
     const headers = new Headers(options?.headers);
     headers.set('Cache-Control', 'no-cache');
     const signal = options?.signal && typeof AbortSignal.any === 'function' ?
@@ -42,15 +43,15 @@ export function requestForRefresh(fetcher, deadline) {
   };
 }
 
-export function retrySchedule(error, previous, startedAt) {
+export function retrySchedule(error: { httpStatus?: number; retryAfter?: unknown; receivedAt?: unknown } | null | undefined, previous: { retryAttempts?: number } | undefined, startedAt: number) {
   const status = error?.httpStatus;
-  if (![401, 403, 429].includes(status) && !error?.retryAfter) return {};
+  if (![401, 403, 429].includes(status ?? 0) && !error?.retryAfter) return {};
 
   const attempts = Math.min((previous?.retryAttempts ?? 0) + 1, 7);
   const base = status === 401 || status === 403 ? 15 * MINUTE : MINUTE;
   const backoff = Math.min(base * 2 ** (attempts - 1), 60 * MINUTE);
-  const receivedAt = Number.isFinite(error.receivedAt) ? error.receivedAt : startedAt;
-  const serverRetryAt = Number.isFinite(error.retryAfter) ? error.retryAfter : 0;
+  const receivedAt = typeof error?.receivedAt === 'number' && Number.isFinite(error.receivedAt) ? error.receivedAt : startedAt;
+  const serverRetryAt = typeof error?.retryAfter === 'number' && Number.isFinite(error.retryAfter) ? error.retryAfter : 0;
   const retryAt = Math.max(serverRetryAt, Math.max(receivedAt, startedAt) + backoff);
   return { retryAt: new Date(retryAt).toISOString(), retryAttempts: attempts };
 }

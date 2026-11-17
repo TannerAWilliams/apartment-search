@@ -1,17 +1,18 @@
+import type { SourceFetch } from './refresh.ts';
 import { buildingKey } from '../src/listings.ts';
 
 const NYC_OPEN_DATA = 'https://data.cityofnewyork.us';
 const LOTTERY_DATASET = 'vy5i-a666';
 const BUILDING_DATASET = 'nibs-na6y';
-const BOROUGHS = { BK: 'Brooklyn', BX: 'Bronx', MN: 'Manhattan', QN: 'Queens', SI: 'Staten Island' };
+const BOROUGHS: Record<string, string> = { BK: 'Brooklyn', BX: 'Bronx', MN: 'Manhattan', QN: 'Queens', SI: 'Staten Island' };
 const DATE = new Intl.DateTimeFormat('en-CA', {
   timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit',
 });
 const SIZE_FIELDS = ['studio', '1bed', '2bed', '3bed', '4bed'];
 
-export const housingDate = (now) => DATE.format(now);
+export const housingDate = (now: Date) => DATE.format(now);
 
-async function readJson(path, fetcher) {
+async function readJson(path: string, fetcher: SourceFetch) {
   const response = await fetcher(NYC_OPEN_DATA + path, {
     redirect: 'error', headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(12000),
   });
@@ -19,11 +20,11 @@ async function readJson(path, fetcher) {
   return response.json();
 }
 
-function query(id, params, fetcher) {
+function query(id: string, params: Record<string, string>, fetcher: SourceFetch) {
   return readJson('/resource/' + id + '.json?' + new URLSearchParams(params), fetcher);
 }
 
-export async function loadHousingConnect(fetcher, now) {
+export async function loadHousingConnect(fetcher: SourceFetch, now: Date) {
   const today = housingDate(now);
   const date = `'${today}T00:00:00'`;
   const [meta, rows] = await Promise.all([
@@ -46,13 +47,13 @@ export async function loadHousingConnect(fetcher, now) {
   }, fetcher) : [];
   if (!Array.isArray(buildings)) throw new Error('The Housing Connect building data was invalid.');
 
-  const byId = new Map();
+  const byId = new Map<string, { addresses: Set<string>; keys: Set<string> }>();
   for (const row of buildings) {
     if (!row.house_number || !row.street_name) continue;
     const address = `${row.house_number} ${row.street_name}`;
     const place = [BOROUGHS[row.borough], row.address_zipcode].filter(Boolean).join(' ');
-    if (!byId.has(row.lottery_id)) byId.set(row.lottery_id, { addresses: new Set(), keys: new Set() });
-    const building = byId.get(row.lottery_id);
+    if (!byId.has(row.lottery_id)) byId.set(row.lottery_id, { addresses: new Set<string>(), keys: new Set<string>() });
+    const building = byId.get(row.lottery_id)!;
     building.addresses.add([address, place].filter(Boolean).join(', '));
     if (/^\d{5}$/.test(row.address_zipcode)) {
       const key = buildingKey({ address, zip: row.address_zipcode, state: 'NY' });

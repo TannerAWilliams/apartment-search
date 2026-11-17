@@ -1,3 +1,4 @@
+import { required } from './test-values.ts';
 import { test } from 'bun:test';
 import assert from 'node:assert/strict';
 import { discoveryFacts, matchesDiscovery, LAUNDRY_OPTIONS } from '../src/discovery.ts';
@@ -26,9 +27,9 @@ test('feature requirements exclude unknowns and apply all conditions', () => {
   assert.equal(matchesDiscovery({ laundry: 'none' }, { laundry: 'none' }), true);
 });
 test('normalization and actual search preserve facts without inferring them for other units', () => {
-  const known = normalizeListing({ ...base, bathrooms: 1.5, squareFeet: 800, petsAllowed: true, laundry: 'in_building' }, source);
-  const unknown = normalizeListing({ ...base, id: 'two', unit: '3' }, source);
-  assert.equal(known.bathrooms, 1.5);
+  const known = required(normalizeListing({ ...base, bathrooms: 1.5, squareFeet: 800, petsAllowed: true, laundry: 'in_building' }, source));
+  const unknown = required(normalizeListing({ ...base, id: 'two', unit: '3' }, source));
+  assert.equal(required(known).bathrooms, 1.5);
   const filters = parseFilters({ minBathrooms: '1.5', minSquareFeet: '800', petsRequired: true, laundry: 'in_building' });
   assert.deepEqual(matchListings([known, unknown], filters, null).map(l => l.id), ['test:one']);
   assert.equal(matchListings([known, unknown], parseFilters(), null).length, 2);
@@ -40,19 +41,19 @@ test('invalid discovery filters reject rather than silently broaden search', () 
 });
 
 test('independent feature disagreements become unknown and fail required filters', () => {
-  const first = normalizeListing({ ...base, petsAllowed: true, bathrooms: 2, squareFeet: 900, laundry: 'in_unit', updatedAt: '2026-01-03' }, source);
-  const second = normalizeListing({ ...base, petsAllowed: false, bathrooms: 1, squareFeet: 800, laundry: 'none', updatedAt: '2026-01-02', url: 'https://other.example/unit/2' }, { ...source, id: 'other' });
+  const first = required(normalizeListing({ ...base, petsAllowed: true, bathrooms: 2, squareFeet: 900, laundry: 'in_unit', updatedAt: '2026-01-03' }, source));
+  const second = required(normalizeListing({ ...base, petsAllowed: false, bathrooms: 1, squareFeet: 800, laundry: 'none', updatedAt: '2026-01-02', url: 'https://other.example/unit/2' }, { ...source, id: 'other' }));
   const [merged] = mergeListings([first, second]);
   assert.deepEqual(discoveryFacts(merged), { bathrooms: null, squareFeet: null, petsAllowed: null, laundry: null });
-  assert.equal(merged.discoveryConflicts.length, 4);
+  assert.equal(required(merged.discoveryConflicts).length, 4);
   assert.equal(matchesDiscovery(merged, { petsRequired: true }), false);
   assert.ok(listingPresentation(merged).notices.some(notice => notice.includes('Sources disagree on apartment features')));
   const [again] = mergeListings([merged, first]);
   assert.equal(again.petsAllowed, null);
 });
 test('unknown preferred facts are not filled from alternates; same-source updates are not conflicts', () => {
-  const first = normalizeListing({ ...base, updatedAt: '2026-01-03' }, source);
-  const older = normalizeListing({ ...base, petsAllowed: true, updatedAt: '2026-01-02', url: 'https://other.example/unit/2' }, { ...source, id: 'other' });
+  const first = required(normalizeListing({ ...base, updatedAt: '2026-01-03' }, source));
+  const older = required(normalizeListing({ ...base, petsAllowed: true, updatedAt: '2026-01-02', url: 'https://other.example/unit/2' }, { ...source, id: 'other' }));
   const [unknown] = mergeListings([first, older]);
   assert.equal(unknown.petsAllowed, null); assert.deepEqual(unknown.discoveryConflicts, []);
   const [updated] = mergeListings([{ ...first, petsAllowed: false }, { ...first, petsAllowed: true, seenAt: '2026-01-01' }]);
@@ -60,12 +61,12 @@ test('unknown preferred facts are not filled from alternates; same-source update
 });
 
 test('overlapping merged source sets cannot silently replace contradictory feature facts', () => {
-  const a = normalizeListing({ ...base, petsAllowed: true, updatedAt: '2026-01-03' }, source);
-  const b = normalizeListing({ ...base, updatedAt: '2026-01-02', url: 'https://other.example/unit/2' }, { ...source, id: 'other' });
+  const a = required(normalizeListing({ ...base, petsAllowed: true, updatedAt: '2026-01-03' }, source));
+  const b = required(normalizeListing({ ...base, updatedAt: '2026-01-02', url: 'https://other.example/unit/2' }, { ...source, id: 'other' }));
   const [combined] = mergeListings([a, b]);
   assert.equal(combined.petsAllowed, true);
   const [overlap] = mergeListings([combined, { ...b, petsAllowed: false, seenAt: '2026-01-04' }]);
   assert.equal(overlap.petsAllowed, null);
-  assert.ok(overlap.discoveryConflicts.includes('petsAllowed'));
+  assert.ok(required(overlap.discoveryConflicts).includes('petsAllowed'));
   assert.equal(matchesDiscovery(overlap, { petsRequired: true }), false);
 });

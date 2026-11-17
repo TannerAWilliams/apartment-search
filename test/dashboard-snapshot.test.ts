@@ -1,18 +1,19 @@
+import { required } from './test-values.ts';
 import { test, expect } from 'bun:test';
 import { dashboardSnapshot } from '../server/dashboard-snapshot.ts';
 import { handleApi } from '../server/api.ts';
 import { formatDashboardValue } from '../src/dashboard-data.ts';
 test('official frozen master includes45files and every historic cell; anomalies explicitly retained', () => {
   const result = dashboardSnapshot();
-  expect(result.files).toHaveLength(45);
+  expect(required(result).files).toHaveLength(45);
   let cells = 0, blank = 0, negative = 0;
-  for (const item of result.files) {
-    const { file } = dashboardSnapshot(item.name);
-    expect(item.firstMonth).toBe(file.months[0]); expect(item.lastMonth).toBe(file.months.at(-1)); expect(item.areaCount).toBe(file.areas.length);
+  for (const item of required(required(result).files)) {
+    const file = required(required(dashboardSnapshot(item.name)).file);
+    expect(item.firstMonth).toBe(file.months[0]); expect(item.lastMonth).toBe(required(file.months.at(-1))); expect(item.areaCount).toBe(file.areas.length);
     cells += file.months.length * file.areas.length;
     for (const area of file.areas) for (const value of area.values) {
       if (value === null) blank++;
-      if (value < 0) { negative++; expect(file.metric).toBe('daysOnMarket'); expect(formatDashboardValue(value,file.metric)).toContain('source anomaly'); }
+      if (value !== null && value < 0) { negative++; expect(file.metric).toBe('daysOnMarket'); expect(formatDashboardValue(value,file.metric)).toContain('source anomaly'); }
     }
   }
   expect(cells).toBe(1582852); expect(blank).toBe(337240); expect(negative).toBe(15);

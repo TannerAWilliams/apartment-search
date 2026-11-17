@@ -5,11 +5,18 @@ import { DASHBOARD_FILES, DASHBOARD_URL, METRICS, formatDashboardValue, type Das
 import { Chip, Field, Link } from './ui.tsx';
 import { styles } from './styles.ts';
 
-export function DashboardExplorer({ loadDashboard }) {
-  const [catalog, setCatalog] = useState<any[]>([]);
+export type DashboardResponse = {
+  files?: { name: string; metric: DashboardFile['metric']; segment: string }[];
+  file?: DashboardFile;
+  provenance?: { downloadedAt: string };
+};
+export type LoadDashboard = (file: string, signal: AbortSignal) => Promise<DashboardResponse>;
+
+export function DashboardExplorer({ loadDashboard }: { loadDashboard?: LoadDashboard }) {
+  const [catalog, setCatalog] = useState<NonNullable<DashboardResponse['files']>>([]);
   const [selected, setSelected] = useState('medianAskingRent_All.csv');
   const [file, setFile] = useState<DashboardFile | null>(null);
-  const [provenance, setProvenance] = useState<any>(null);
+  const [provenance, setProvenance] = useState<DashboardResponse['provenance'] | null>(null);
   const [area, setArea] = useState(0);
   const [query, setQuery] = useState('');
   const [error, setError] = useState('');
@@ -19,7 +26,7 @@ export function DashboardExplorer({ loadDashboard }) {
     setCatalog([]); setProvenance(null);
     if (!loadDashboard) return;
     const controller = new AbortController();
-    loadDashboard('', controller.signal).then(result => { if (!controller.signal.aborted) { setCatalog(result.files); setProvenance(result.provenance); } })
+    loadDashboard('', controller.signal).then(result => { if (!controller.signal.aborted) { setCatalog(result.files ?? []); setProvenance(result.provenance ?? null); } })
       .catch(() => { if (!controller.signal.aborted) setError('The private dashboard snapshot could not be loaded.'); });
     return () => controller.abort();
   }, [loadDashboard]);
@@ -27,7 +34,7 @@ export function DashboardExplorer({ loadDashboard }) {
     setFile(null); setArea(0); setError(''); setBusy(false);
     if (!loadDashboard) return;
     const controller = new AbortController(); setBusy(true);
-    loadDashboard(selected, controller.signal).then(result => { if (!controller.signal.aborted) setFile(result.file); })
+    loadDashboard(selected, controller.signal).then(result => { if (!controller.signal.aborted) setFile(result.file ?? null); })
       .catch(() => { if (!controller.signal.aborted) setError('This historical series could not be loaded. No values have been substituted.'); })
       .finally(() => { if (!controller.signal.aborted) setBusy(false); });
     return () => controller.abort();

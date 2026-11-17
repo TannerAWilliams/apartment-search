@@ -1,3 +1,4 @@
+import { required } from './test-values.ts';
 import { test } from 'bun:test';
 import assert from 'node:assert/strict';
 import { requestForRefresh, retrySchedule } from '../server/source-requests.ts';
@@ -13,7 +14,7 @@ test('a transient response with exhausted quota is not immediately retried', asy
   }, new AbortController().signal);
   await assert.rejects(request('https://example.test', {}), (error: any) => {
     assert.equal(error.httpStatus, 503);
-    assert.equal(Date.parse(retrySchedule(error, undefined, Date.now()).retryAt), reset * 1000);
+    assert.equal(Date.parse(required(retrySchedule(error, undefined, Date.now()).retryAt)), reset * 1000);
     return true;
   });
   assert.equal(calls, 1);
@@ -61,6 +62,6 @@ test('malformed optional timestamps do not break failure status persistence', ()
   for (const timestamp of [undefined, null, NaN, Infinity, 'invalid']) {
     const result = retrySchedule({ httpStatus: 403, receivedAt: timestamp, retryAfter: timestamp },
       { retryAttempts: 1 }, startedAt);
-    assert.equal(Date.parse(result.retryAt), startedAt + 30 * 60_000);
+    assert.equal(Date.parse(required(result.retryAt)), startedAt + 30 * 60_000);
   }
 });

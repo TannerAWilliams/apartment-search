@@ -7,7 +7,9 @@
     "types": [
       "bun",
       "react"
-    ]
+    ],
+    "strict": true,
+    "noUncheckedSideEffectImports": true
   },
   "include": [
     "index.ts",

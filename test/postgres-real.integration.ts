@@ -1,3 +1,4 @@
+import { required } from './test-values.ts';
 import { test } from 'bun:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -37,20 +38,20 @@ test('real PostgreSQL persists snapshot metadata across independent connection p
   const saved = await first.put("unit');DROP TABLE apartment_objects;--", '{"rent":2000}', { customMetadata: { source: 'synthetic' } });
   const other = await createPostgresBucket(connect());
   const restored = await other.get("unit');DROP TABLE apartment_objects;--");
-  assert.equal(restored.etag, saved.etag);
-  assert.deepEqual(await restored.json(), { rent: 2000 });
-  assert.deepEqual(restored.customMetadata, { source: 'synthetic' });
-  const bytes = new Uint8Array(await restored.arrayBuffer()); bytes[0] = 0;
-  assert.equal(await (await other.get("unit');DROP TABLE apartment_objects;--")).text(), '{"rent":2000}');
+  assert.equal(required(restored).etag, required(saved).etag);
+  assert.deepEqual(await required(restored).json(), { rent: 2000 });
+  assert.deepEqual(required(restored).customMetadata, { source: 'synthetic' });
+  const bytes = new Uint8Array(await required(restored).arrayBuffer()); bytes[0] = 0;
+  assert.equal(await required((await other.get("unit');DROP TABLE apartment_objects;--"))).text(), '{"rent":2000}');
 }));
 
 test('real PostgreSQL serializes competing CAS writers across pools', async () => isolated(async (pool, connect) => {
   const first = await createPostgresBucket(pool), second = await createPostgresBucket(connect());
   const seed = await first.put('shared', 'seed');
-  const results = await Promise.all(Array.from({ length: 20 }, (_, index) => (index % 2 ? first : second).put('shared', String(index), { onlyIf: { etagMatches: seed.etag } })));
+  const results = await Promise.all(Array.from({ length: 20 }, (_, index) => (index % 2 ? first : second).put('shared', String(index), { onlyIf: { etagMatches: required(seed).etag } })));
   assert.equal(results.filter(Boolean).length, 1);
   const winner = results.findIndex(Boolean);
-  assert.equal(await (await first.get('shared')).text(), String(winner));
+  assert.equal(await required((await first.get('shared'))).text(), String(winner));
   const creates = await Promise.all([first.put('new', 'one', { onlyIf: { etagDoesNotMatch: '*' } }), second.put('new', 'two', { onlyIf: { etagDoesNotMatch: '*' } })]);
   assert.equal(creates.filter(Boolean).length, 1);
 }));
@@ -64,8 +65,8 @@ test('real PostgreSQL quota races and rollback preserve committed snapshots', as
   const before = await first.get(existing);
   await first.put('small', 'xx');
   await assert.rejects(first.put(existing, '123456'), /capacity/i);
-  assert.equal((await first.get(existing)).etag, before.etag);
-  assert.equal(await (await first.get(existing)).text(), await before.text());
+  assert.equal(required((await first.get(existing))).etag, required(before).etag);
+  assert.equal(await required((await first.get(existing))).text(), await required(before).text());
   await first.put(existing, 'abc'); // transaction rollback released its lock/connection
-  assert.equal(await (await second.get(existing)).text(), 'abc');
+  assert.equal(await required((await second.get(existing))).text(), 'abc');
 }));

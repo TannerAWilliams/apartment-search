@@ -1,8 +1,10 @@
+import type { ListingData } from '../src/domain.ts';
+import type { SourceFetch } from './refresh.ts';
 import { parse } from 'csv-parse/browser/esm/sync';
 
-const csvField = (value) => '"' + String(value).replaceAll('"', '""') + '"';
+const csvField = (value: unknown) => '"' + String(value).replaceAll('"', '""') + '"';
 
-export async function geocodeRentalAddresses(listings, fetcher) {
+export async function geocodeRentalAddresses<T extends Pick<ListingData, 'id' | 'address' | 'city' | 'state' | 'zip'>>(listings: T[], fetcher: SourceFetch) {
   if (!listings.length) return listings;
   const data = listings.map(({ id, address, city, state, zip }) =>
     [id, address, city === 'Manhattan' ? 'New York' : city, state, zip].map(csvField).join(',')).join('\n');

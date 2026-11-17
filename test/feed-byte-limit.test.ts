@@ -1,3 +1,4 @@
+import { required } from './test-values.ts';
 import { test } from 'bun:test';
 import assert from 'node:assert/strict';
 import { loadFeed } from '../server/listings.ts';
@@ -16,7 +17,7 @@ test('oversized declared feed body is canceled before reading or parsing', async
 });
 
 test('missing or understated content length cannot bypass the decoded-byte cap', async () => {
-  for (const headers of [{}, { 'Content-Length': '2' }]) {
+  for (const headers of [new Headers(), new Headers({ 'Content-Length': '2' })]) {
     let canceled = false;
     const response = new Response(new ReadableStream({
       start(controller) { controller.enqueue(new Uint8Array(limit + 1)); },
@@ -35,17 +36,17 @@ test('an oversized refresh preserves the prior saved partner inventory', async (
   const row = { id: 'one', address: '12 Grove Street', unit: '3', city: 'Jersey City', state: 'NJ',
     zip: '07302', county: 'Hudson', status: 'active', bedrooms: 2, rent: 2400 };
   const first = await refreshSources(env, { sourceId: feed.id, onDemand: true,
-    now: new Date('2026-11-13T12:00:00Z'), fetcher: async (url) => {
+    now: new Date('2026-11-13T12:00:00Z'), fetcher: async (url: string) => {
       assert.equal(String(url), feed.url); return Response.json([row]);
     } });
-  assert.equal(first.sources.find((source) => source.id === feed.id).status, 'updated');
+  assert.equal(required(first.sources.find((source) => source.id === feed.id)).status, 'updated');
   const saved = await storedFeed(env.BUCKET, feed);
   const second = await refreshSources(env, { sourceId: feed.id, onDemand: true,
-    now: new Date('2026-11-13T13:00:00Z'), fetcher: async (url) => {
+    now: new Date('2026-11-13T13:00:00Z'), fetcher: async (url: string) => {
       assert.equal(String(url), feed.url);
       return new Response('[]', { headers: { 'Content-Length': String(limit + 1) } });
     } });
-  assert.equal(second.sources.find((source) => source.id === feed.id).status, 'failed');
+  assert.equal(required(second.sources.find((source) => source.id === feed.id)).status, 'failed');
   assert.deepEqual(await storedFeed(env.BUCKET, feed), saved);
 });
 
@@ -63,7 +64,7 @@ test('exact byte limit remains accepted and multibyte text spans chunks correctl
 
 test('oversized later page rejects the entire feed instead of returning a partial result', async () => {
   const urls: string[] = [];
-  await assert.rejects(loadFeed(feed, async (url) => {
+  await assert.rejects(loadFeed(feed, async (url: string) => {
     urls.push(url);
     return urls.length === 1 ? Response.json({ listings: [], next: '/page2' }) :
       new Response('[]', { headers: { 'Content-Length': String(limit + 1) } });

@@ -1,8 +1,9 @@
+import type { ListingData, Point, SearchFilters } from './domain.ts';
 import { LAUNDRY_OPTIONS, matchesDiscovery } from './discovery.ts';
 import { companyMatches } from './companies.ts';
 import { REGIONS, WORKPLACES, matchesRegion, regionOf } from './regions.ts';
 
-export const DEFAULT_FILTERS = {
+export const DEFAULT_FILTERS: SearchFilters = {
   region: 'all',
   bedrooms: 1,
   maxRent: 5000,
@@ -23,18 +24,18 @@ export const DEFAULT_FILTERS = {
   zip: '',
 };
 
-export const bedroomLabel = (count) => count === null ? 'Any beds' :
+export const bedroomLabel = (count: number | null) => count === null ? 'Any beds' :
   count === 0 ? 'Studio' : `${count} bedroom${count === 1 ? '' : 's'}`;
 export const formatRent = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 2 }).format;
 export const RESULT_SORTS = { best: 'Best fit: rent + commute', recent: 'Recently checked', rent: 'Lowest rent', transit: 'Fastest transit', driving: 'Fastest drive' };
-const SORT_METRICS = { distance: 'miles', transit: 'transitSeconds', driving: 'drivingSeconds' };
+const SORT_METRICS: Record<string, 'miles' | 'transitSeconds' | 'drivingSeconds'> = { distance: 'miles', transit: 'transitSeconds', driving: 'drivingSeconds' };
 
-export const needsCommute = (filters) => filters.maxTransitMinutes != null || filters.maxDrivingMinutes != null ||
+export const needsCommute = (filters: Partial<SearchFilters>) => filters.maxTransitMinutes != null || filters.maxDrivingMinutes != null ||
   filters.sort === 'transit' || filters.sort === 'driving';
 
 export class SearchInputError extends Error {}
 
-function optionalNumber(value, label, min, max, whole = true) {
+function optionalNumber(value: unknown, label: string, min: number, max: number, whole = true) {
   if (value === null || value === undefined || value === '') return null;
   if (!['number', 'string'].includes(typeof value) ||
       (typeof value === 'string' && !/^\d+(\.\d+)?$/.test(value.trim()))) {
@@ -47,10 +48,11 @@ function optionalNumber(value, label, min, max, whole = true) {
   return number;
 }
 
-export function parseFilters(input: Record<string, unknown> = {}) {
-  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+export function parseFilters(rawInput: unknown = {}): SearchFilters {
+  if (!rawInput || typeof rawInput !== 'object' || Array.isArray(rawInput)) {
     throw new SearchInputError('Enter a valid set of search filters.');
   }
+  const input = rawInput as Record<string, unknown>;
   const region = input.region ?? DEFAULT_FILTERS.region;
   if (typeof region !== 'string' || !Object.hasOwn(REGIONS, region)) throw new SearchInputError('Choose a supported region.');
   const workplace = input.workplace ?? DEFAULT_FILTERS.workplace;
@@ -98,12 +100,13 @@ export function parseFilters(input: Record<string, unknown> = {}) {
   };
 }
 
-export function isPoint(point) {
-  return Number.isFinite(point?.latitude) && Number.isFinite(point?.longitude) &&
+export function isPoint(point: unknown): point is Point {
+  if (!point || typeof point !== 'object' || !('latitude' in point) || !('longitude' in point) || typeof point.latitude !== 'number' || typeof point.longitude !== 'number') return false;
+  return Number.isFinite(point.latitude) && Number.isFinite(point?.longitude) &&
     Math.abs(point.latitude) <= 90 && Math.abs(point.longitude) <= 180;
 }
 
-export function localWorkplace(filters) {
+export function localWorkplace(filters: Pick<SearchFilters, 'workplace' | 'customWorkplace'>) {
   if (filters.workplace !== 'custom') return WORKPLACES[filters.workplace];
   const pieces = filters.customWorkplace.match(/^([+-]?\d+(?:\.\d+)?),\s*([+-]?\d+(?:\.\d+)?)$/);
   if (!pieces) return null;
@@ -112,9 +115,9 @@ export function localWorkplace(filters) {
   return point;
 }
 
-export function distanceMiles(from, to) {
+export function distanceMiles(from: unknown, to: unknown) {
   if (!isPoint(from) || !isPoint(to)) return null;
-  const radians = (degrees) => degrees * Math.PI / 180;
+  const radians = (degrees: number) => degrees * Math.PI / 180;
   const latDelta = radians(to.latitude - from.latitude);
   const lonDelta = radians(to.longitude - from.longitude);
   const haversine = Math.sin(latDelta / 2) ** 2 +
@@ -122,15 +125,15 @@ export function distanceMiles(from, to) {
   return 3958.76 * 2 * Math.asin(Math.sqrt(Math.min(1, haversine)));
 }
 
-export function compareResults(a, b, sort = 'rent') {
+export function compareResults(a: Pick<ListingData, 'id' | 'rent' | 'seenAt' | 'miles' | 'transitSeconds' | 'drivingSeconds'> & { kind?: string; bestFit?: { score: number } }, b: Pick<ListingData, 'id' | 'rent' | 'seenAt' | 'miles' | 'transitSeconds' | 'drivingSeconds'> & { kind?: string; bestFit?: { score: number } }, sort = 'rent') {
   if (sort === 'best') {
     const difference = (b.bestFit?.score ?? -1) - (a.bestFit?.score ?? -1);
     if (difference) return difference;
   }
   if (sort === 'recent') {
     if ((a.kind === 'feed') !== (b.kind === 'feed')) return a.kind === 'feed' ? -1 : 1;
-    const firstSeen = Date.parse(a.seenAt);
-    const secondSeen = Date.parse(b.seenAt);
+    const firstSeen = Date.parse(a.seenAt ?? '');
+    const secondSeen = Date.parse(b.seenAt ?? '');
     const firstHasDate = Number.isFinite(firstSeen);
     const secondHasDate = Number.isFinite(secondSeen);
     if (firstHasDate !== secondHasDate) return firstHasDate ? -1 : 1;
@@ -141,7 +144,7 @@ export function compareResults(a, b, sort = 'rent') {
     a.rent - b.rent || a.id.localeCompare(b.id);
 }
 
-export function matchListings(listings, filters, workplace) {
+export function matchListings(listings: ListingData[], filters: SearchFilters, workplace: Point | null | undefined) {
   return listings.flatMap((listing) => {
     const region = regionOf(listing);
     const hasActiveLink = listing.kind === 'feed' && listing.sources.some(({ kind, url }) => kind === 'feed' && url);
@@ -157,7 +160,7 @@ export function matchListings(listings, filters, workplace) {
   });
 }
 
-export function directionsLink(listing, workplace, mode = 'transit') {
+export function directionsLink(listing: Partial<Pick<ListingData, 'address' | 'city' | 'state' | 'zip' | 'latitude' | 'longitude'>>, workplace: Point, mode = 'transit') {
   const home = isPoint(listing) ? `${listing.latitude},${listing.longitude}` :
     [listing.address, listing.city, listing.state, listing.zip].filter(Boolean).join(', ');
   const work = `${workplace.latitude},${workplace.longitude}`;

@@ -1,3 +1,5 @@
+import type { ListingData, SourceLink, SearchFilters, SearchResult } from './src/domain.ts';
+import type { SourceDefinition, SourceStatus } from './src/source-status.ts';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Modal, Platform, Pressable, ScrollView, StatusBar, Text, View, useWindowDimensions,
@@ -30,13 +32,27 @@ import { TourPlanner } from './src/TourPlanner.tsx';
 import { Listing } from './src/Listing.tsx';
 import { RentChart } from './src/RentChart.tsx';
 
+type DraftFilters = Omit<SearchFilters, 'maxRent' | 'maxTransitMinutes' | 'maxDrivingMinutes' | 'minBathrooms' | 'minSquareFeet' | 'bestFitRentWeight'> & {
+  maxRent: string | number | null; maxTransitMinutes: string | number | null; maxDrivingMinutes: string | number | null;
+  minBathrooms: string | number | null; minSquareFeet: string | number | null; bestFitRentWeight: string | number;
+};
+type RefreshInfo = { sources: (SourceStatus & { month?: string; transport?: string })[]; checking?: boolean; state?: string; lastCheckedAt?: string; refreshRetryAt?: number; market?: { revision?: string; catalogEtag?: string; csvEtag?: string } | null };
+type ConfigSource = { id: string; name: string; sample?: boolean };
+type ApiConfig = { sources: ConfigSource[]; sourceCatalog?: SourceDefinition[]; commuteConfigured?: boolean; companies?: Record<string, number>; refresh?: RefreshInfo; refreshRetryAt?: number; browserImportAllowed?: boolean };
+type ApiOptions = { body?: object; token?: string; signal?: AbortSignal };
+const failureInfo = (value: unknown) => ({
+  message: value instanceof Error ? value.message : '',
+  commuteError: typeof value === 'object' && value !== null && 'commuteError' in value && value.commuteError === true,
+  refreshRetryAt: typeof value === 'object' && value !== null && 'refreshRetryAt' in value && typeof value.refreshRetryAt === 'number' ? value.refreshRetryAt : 0,
+});
+
 const API_ORIGIN = Platform.OS === 'web' ? '' :
   (process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, '') || null);
 const WEB_MAP = Platform.OS === 'web';
-const SEARCH_DEFAULTS = { ...DEFAULT_FILTERS, region: 'all', bedrooms: null, maxRent: null, source: '', includeMap: WEB_MAP, liveOnly: true };
+const SEARCH_DEFAULTS: SearchFilters = { ...DEFAULT_FILTERS, region: 'all', bedrooms: null, maxRent: null, source: '', includeMap: WEB_MAP, liveOnly: true };
 const BEDROOMS = [null, 0, 1, 2, 3, 4];
 const PAGE_SIZE = 12;
-const EMPTY_POINTS = [];
+const EMPTY_POINTS: NonNullable<SearchResult['mapPoints']> = [];
 const SAVED_KEY = 'apartment-search:saved-listings:v1';
 const SAVED_FILTERS = { ...SEARCH_DEFAULTS, bedrooms: null, maxRent: null, liveOnly: false };
 const CHECK_TIME = new Intl.DateTimeFormat('en-US', {
@@ -44,14 +60,18 @@ const CHECK_TIME = new Intl.DateTimeFormat('en-US', {
   hour: 'numeric', minute: '2-digit', timeZoneName: 'short',
 });
 
-const formDefaults = () => ({
+const formDefaults = (): DraftFilters => ({
   ...SEARCH_DEFAULTS,
   maxRent: SEARCH_DEFAULTS.maxRent == null ? '' : String(SEARCH_DEFAULTS.maxRent),
   maxTransitMinutes: '',
   maxDrivingMinutes: '',
 });
 
-async function api(path: string, { body, token, signal }: { body?: object; token?: string; signal?: AbortSignal } = {}) {
+function api(path: 'config', options?: ApiOptions): Promise<ApiConfig>;
+function api(path: 'refresh', options?: ApiOptions): Promise<RefreshInfo>;
+function api(path: 'search', options?: ApiOptions): Promise<SearchResult>;
+function api<T = unknown>(path: string, options?: ApiOptions): Promise<T>;
+async function api<T>(path: string, { body, token, signal }: ApiOptions = {}): Promise<T> {
   const headers: Record<string, string> = {};
   if (token) headers.Authorization = `Bearer ${token}`;
   if (body) headers['Content-Type'] = 'application/json';
@@ -69,10 +89,10 @@ async function api(path: string, { body, token, signal }: { body?: object; token
     });
     throw error;
   }
-  return data;
+  return data as T;
 }
 
-async function finishSourceCheck(check, token, signal) {
+async function finishSourceCheck(check: RefreshInfo, token: string, signal?: AbortSignal) {
   for (let attempt = 0; check.checking && attempt < 125; attempt += 1) {
     await new Promise((resolve) => setTimeout(resolve, 1200));
     if (signal?.aborted) return check;
@@ -82,8 +102,8 @@ async function finishSourceCheck(check, token, signal) {
   return check;
 }
 
-function Filters({ draft, setDraft, submit, busy, serverState, token, setToken, connect, panel, commuteConfigured }) {
-  const set = (field) => (value) => setDraft((previous) => ({ ...previous, [field]: value }));
+function Filters({ draft, setDraft, submit, busy, serverState, token, setToken, connect, panel, commuteConfigured }: { draft: DraftFilters; setDraft: React.Dispatch<React.SetStateAction<DraftFilters>>; submit: () => void; busy: boolean; serverState: string; token: string; setToken: (value: string) => void; connect: () => void; panel: string; commuteConfigured: boolean }) {
+  const set = <K extends keyof DraftFilters>(field: K) => (value: DraftFilters[K]) => setDraft((previous) => ({ ...previous, [field]: value }));
 
   return <View style={styles.filters}>
     {(panel === 'more' || panel === 'beds') && <>
@@ -103,12 +123,12 @@ function Filters({ draft, setDraft, submit, busy, serverState, token, setToken, 
       onChangeText={set('zip')} keyboardType="number-pad" maxLength={5} />
     </>}
     {(panel === 'more' || panel === 'price') && <>
-      <Field label="Max rent per month ($)" placeholder="Any rent" value={draft.maxRent}
+      <Field label="Max rent per month ($)" placeholder="Any rent" value={String(draft.maxRent ?? '')}
         onChangeText={set('maxRent')} keyboardType="number-pad" maxLength={6} />
       <View style={styles.chipRow}>
         <Chip selected={draft.maxRent === ''} onPress={() => set('maxRent')('')}>Any price</Chip>
         <Chip selected={draft.maxRent === String(DEFAULT_FILTERS.maxRent)}
-          onPress={() => set('maxRent')(String(DEFAULT_FILTERS.maxRent))}>Up to {formatRent(DEFAULT_FILTERS.maxRent)}</Chip>
+          onPress={() => set('maxRent')(String(DEFAULT_FILTERS.maxRent))}>Up to {formatRent(DEFAULT_FILTERS.maxRent ?? 5000)}</Chip>
       </View>
     </>}
     {panel === 'more' && <>
@@ -146,9 +166,9 @@ function Filters({ draft, setDraft, submit, busy, serverState, token, setToken, 
       placeholder={serverState === 'ready' ? 'Street, city, state, ZIP' : '40.75874, -73.97867'}
       value={draft.customWorkplace} onChangeText={set('customWorkplace')} maxLength={160} />}
     {commuteConfigured ? <>
-    <Field label="Max transit time (minutes)" placeholder="Any transit time" value={draft.maxTransitMinutes ?? ''}
+    <Field label="Max transit time (minutes)" placeholder="Any transit time" value={String(draft.maxTransitMinutes ?? '')}
       onChangeText={set('maxTransitMinutes')} keyboardType="number-pad" maxLength={3} />
-    <Field label="Max driving time (minutes)" placeholder="Any driving time" value={draft.maxDrivingMinutes ?? ''}
+    <Field label="Max driving time (minutes)" placeholder="Any driving time" value={String(draft.maxDrivingMinutes ?? '')}
       onChangeText={set('maxDrivingMinutes')} keyboardType="number-pad" maxLength={3} />
     <Text style={styles.smallMuted}>Estimates are for arriving at your workplace on a weekday morning. Set both limits to require both.</Text>
     </> : <Text style={styles.smallMuted}>Automatic transit and driving estimates are currently unavailable.</Text>}
@@ -167,7 +187,7 @@ function Filters({ draft, setDraft, submit, busy, serverState, token, setToken, 
   </View>;
 }
 
-function Marketplaces({ filters, sources, configuredSources, companies, onCompany, refresh, refreshing, cooldownSeconds, onRefresh, onError }) {
+function Marketplaces({ filters, sources, configuredSources, companies, onCompany, refresh, refreshing, cooldownSeconds, onRefresh, onError }: { filters: SearchFilters; sources: SearchResult['sources']; configuredSources: ConfigSource[]; companies: Record<string, number>; onCompany: (name: string) => void; refresh: RefreshInfo | null; refreshing: boolean; cooldownSeconds: number; onRefresh: () => void; onError: (message: string) => void }) {
   const markets = marketsForSearch(filters);
   const [marketLabel, setMarketLabel] = useState('');
   const market = markets.find((item) => item.label === marketLabel) ??
@@ -228,7 +248,7 @@ function Marketplaces({ filters, sources, configuredSources, companies, onCompan
   </View>;
 }
 
-function ResultNotices({ notices = [] }) {
+function ResultNotices({ notices = [] }: { notices?: string[] }) {
   const [expanded, setExpanded] = useState(false);
   if (!notices.length) return null;
   return <View style={styles.noticePanel}>
@@ -241,11 +261,17 @@ function ResultNotices({ notices = [] }) {
   </View>;
 }
 
-function Results({ visible, setVisible, result, applied, sort, onSort, onPage, paging, openCommute, commuteConfigured, checkingInventory, columns, savedByKey, showMarkets, onSave, onSaveLink, onRemove, onError, onCheckBuilding }) {
+function Results({ visible, setVisible, result, applied, sort, onSort, onPage, paging, openCommute, commuteConfigured, checkingInventory, columns, savedByKey, showMarkets, onSave, onSaveLink, onRemove, onError, onCheckBuilding }: {
+  visible: number; setVisible: (value: number) => void; result: SearchResult; applied: SearchFilters; sort: string; onSort: (sort: string) => void;
+  onPage?: (offset: number) => void; paging: boolean; openCommute: () => void; commuteConfigured: boolean; checkingInventory: boolean;
+  columns: boolean; savedByKey: Map<string, ListingData>; showMarkets: () => void; onSave: (listing: ListingData) => void;
+  onSaveLink: (listing: ListingData, link: SourceLink) => void; onRemove: (listing: ListingData) => void; onError: (message: string) => void;
+  onCheckBuilding?: React.ComponentProps<typeof Listing>['onCheckBuilding'];
+}) {
   const { matches } = result;
   const savedView = result.mode === 'saved';
   const summary = savedView ? 'Saved on this device · All apartment sizes' : [
-    REGIONS[applied.region].label, bedroomLabel(applied.bedrooms), applied.zip, applied.company, MARKETPLACE_NAMES[applied.source],
+    (Object.entries(REGIONS).find(([key]) => key === applied.region)?.[1].label ?? applied.region), bedroomLabel(applied.bedrooms), applied.zip, applied.company, MARKETPLACE_NAMES[applied.source],
     applied.maxRent === null ? null : `Up to ${formatRent(applied.maxRent)}`,
     applied.maxTransitMinutes == null ? null : `Transit ≤ ${applied.maxTransitMinutes} min`,
     applied.maxDrivingMinutes == null ? null : `Drive ≤ ${applied.maxDrivingMinutes} min`,
@@ -282,13 +308,13 @@ function Results({ visible, setVisible, result, applied, sort, onSort, onPage, p
     {matches.slice(0, visible).map((listing) => {
       const saved = savedByKey.get(listingKey(listing));
       const withLinks = saved ? { ...listing, sources: mergeSourceLinks(listing.sources, saved.sources) } : listing;
-      return <View key={listing.id} style={columns ? styles.gridCard : styles.fullCard}><Listing listing={withLinks} selectedSource={savedView ? '' : applied.source} workplace={result.workplace} commute={result.commute}
-        onCheckBuilding={onCheckBuilding} onSave={onSave} onSaveLink={onSaveLink} onError={onError} onRemove={savedView ? onRemove : null} saved={Boolean(saved)} /></View>;
+      return <View key={listing.id} style={columns ? styles.gridCard : styles.fullCard}><Listing listing={withLinks} selectedSource={savedView ? '' : applied.source} workplace={result.workplace} commute={result.commute === true}
+        onCheckBuilding={onCheckBuilding} onSave={onSave} onSaveLink={onSaveLink} onError={onError} onRemove={savedView ? onRemove : undefined} saved={Boolean(saved)} /></View>;
     })}
     </View>
     {!savedView && onPage && <View style={styles.chipRow}>
       {(result.offset ?? 0) > 0 && <Button secondary disabled={paging} onPress={() => onPage(Math.max(0, result.offset - result.pageSize))}>Previous 100</Button>}
-      {result.nextOffset != null && <Button secondary disabled={paging} onPress={() => onPage(result.nextOffset)}>Next 100</Button>}
+      {result.nextOffset != null && <Button secondary disabled={paging} onPress={() => onPage(result.nextOffset ?? 0)}>Next 100</Button>}
     </View>}
     {visible < matches.length && <Button secondary onPress={() => setVisible(visible + PAGE_SIZE)}>
       Show more ({Math.min(visible, matches.length)} of {matches.length})
@@ -296,7 +322,7 @@ function Results({ visible, setVisible, result, applied, sort, onSort, onPage, p
   </>;
 }
 
-function WebsiteFilter({ result, applied, onSelect, onError }) {
+function WebsiteFilter({ result, applied, onSelect, onError }: { result: SearchResult; applied: SearchFilters | DraftFilters; onSelect: (source: string) => void; onError: (message: string) => void }) {
   const counts = result.sourceCounts ?? [];
   const streetEasy = counts.find(({ id }) => id === 'streeteasy');
   const areas = marketsForSearch(applied);
@@ -313,8 +339,10 @@ function WebsiteFilter({ result, applied, onSelect, onError }) {
     </ScrollView>
     {applied.source === 'streeteasy' && <View style={styles.actionLinks}>
       {(!streetEasy || !streetEasy.checkedCount) && <Text style={styles.smallMuted}>StreetEasy’s dated export supplies rent charts. Browse StreetEasy for its current listings.</Text>}
-      {areas.map((area) => <Link key={area.label} label={`Browse ${area.label} on StreetEasy`}
-        url={marketplaceLinks(area, applied).find(({ id }) => id === 'streeteasy').url} onError={onError} />)}
+      {areas.map((area) => {
+        const link = marketplaceLinks(area, { ...applied, maxRent: applied.maxRent === '' || applied.maxRent === null ? null : Number(applied.maxRent) }).find(({ id }) => id === 'streeteasy');
+        return link ? <Link key={area.label} label={`Browse ${area.label} on StreetEasy`} url={link.url} onError={onError} /> : null;
+      })}
     </View>}
   </View>;
 }
@@ -324,16 +352,16 @@ function ApartmentSearch() {
   const wide = width >= 980;
   const [draft, setDraft] = useState(formDefaults);
   const [applied, setApplied] = useState(SEARCH_DEFAULTS);
-  const [result, setResult] = useState(() => localSearch([], SEARCH_DEFAULTS, localWorkplace(SEARCH_DEFAULTS), 'live'));
-  const [saved, setSaved] = useState([]);
+  const [result, setResult] = useState<SearchResult>(() => localSearch([], SEARCH_DEFAULTS, localWorkplace(SEARCH_DEFAULTS), 'live'));
+  const [saved, setSaved] = useState<ListingData[]>([]);
   const [visible, setVisible] = useState(PAGE_SIZE);
   useEffect(() => { setVisible(PAGE_SIZE); }, [result]);
   const [storageReady, setStorageReady] = useState(false);
   const [serverState, setServerState] = useState(API_ORIGIN === null ? 'offline' : 'checking');
-  const [configuredSources, setConfiguredSources] = useState([]);
-  const [companies, setCompanies] = useState({});
-  const [sourceCatalog, setSourceCatalog] = useState([]);
-  const [refresh, setRefresh] = useState(null);
+  const [configuredSources, setConfiguredSources] = useState<ConfigSource[]>([]);
+  const [companies, setCompanies] = useState<Record<string, number>>({});
+  const [sourceCatalog, setSourceCatalog] = useState<SourceDefinition[]>([]);
+  const [refresh, setRefresh] = useState<RefreshInfo | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshRetryAt, setRefreshRetryAt] = useState(0);
   const refreshRetryAtRef = useRef(0);
@@ -347,8 +375,8 @@ function ApartmentSearch() {
   }, [refreshRetryAt]);
   const [refreshError, setRefreshError] = useState('');
   const browserImportAllowed = useRef(false);
-  const checking = useRef(null);
-  const sourceSession = useRef(null);
+  const checking = useRef<AbortSignal | null>(null);
+  const sourceSession = useRef<AbortSignal | null>(null);
   const submitted = useRef(false);
   const searchVersion = useRef(0);
   const appliedFilters = useRef(SEARCH_DEFAULTS);
@@ -369,7 +397,7 @@ function ApartmentSearch() {
     window.addEventListener('hashchange', restore);
     return () => { window.removeEventListener('popstate', restore); window.removeEventListener('hashchange', restore); };
   }, []);
-  const navigateTab = (next) => {
+  const navigateTab = (next: string) => {
     if (Platform.OS === 'web' && window.location.hash !== '#' + next) window.history.pushState(null, '', '#' + next);
     setScope(next === 'saved' ? 'saved' : 'market');
     setExpanded('');
@@ -409,7 +437,7 @@ function ApartmentSearch() {
       .catch(() => setError('This device could not store the saved listings.'));
   }, [saved, storageReady]);
 
-  const updateConfig = useCallback((config) => {
+  const updateConfig = useCallback((config: ApiConfig) => {
     setConfiguredSources(config.sources);
     setSourceCatalog(config.sourceCatalog ?? []);
     setCommuteConfigured(config.commuteConfigured === true);
@@ -463,7 +491,8 @@ function ApartmentSearch() {
         searchVersion.current += 1;
         setResult(fresh);
       }
-    } catch (failure) {
+    } catch (caught) {
+      const failure = failureInfo(caught);
       if (failure.refreshRetryAt) { setRefreshClock(Date.now()); setRefreshRetryAt(failure.refreshRetryAt); }
       if (!signal?.aborted) setRefreshError(failure.message || 'The listing sources could not be checked.');
     } finally {
@@ -502,13 +531,13 @@ function ApartmentSearch() {
   }, [activeToken, checkSources, updateConfig]);
 
   const lastCheckedAt = refresh?.lastCheckedAt;
-  const loadMarket = useCallback((region, grouping, signal) =>
-    api('market?' + new URLSearchParams({ region, grouping }), { token: activeToken, signal }),
+  const loadMarket = useCallback((region: string, grouping: string, signal?: AbortSignal) =>
+    api<Awaited<ReturnType<NonNullable<React.ComponentProps<typeof RentChart>['loadMarket']>>>>('market?' + new URLSearchParams({ region, grouping }), { token: activeToken, signal }),
   [activeToken, lastCheckedAt]);
 
-  const loadDashboard = useCallback((file, signal) => api('dashboard' + (file ? '?file=' + encodeURIComponent(file) : ''), { token: activeToken, signal }), [activeToken]);
+  const loadDashboard = useCallback((file: string | undefined, signal?: AbortSignal) => api<Awaited<ReturnType<NonNullable<React.ComponentProps<typeof RentChart>['loadDashboard']>>>>('dashboard' + (file ? '?file=' + encodeURIComponent(file) : ''), { token: activeToken, signal }), [activeToken]);
 
-  const loadHousing = useCallback((signal) => api('housing', { token: activeToken, signal }), [activeToken, lastCheckedAt]);
+  const loadHousing = useCallback((signal?: AbortSignal) => api<Awaited<ReturnType<NonNullable<React.ComponentProps<typeof AffordableHousing>['loadHousing']>>>>('housing', { token: activeToken, signal }), [activeToken, lastCheckedAt]);
 
   async function submit(nextDraft: typeof draft | typeof applied = draft) {
     if (busy) return;
@@ -535,7 +564,8 @@ function ApartmentSearch() {
       setAdding(false);
       navigateTab('results');
       setExpanded('');
-    } catch (failure) {
+    } catch (caught) {
+      const failure = failureInfo(caught);
       if (failure.commuteError) setExpanded('commute');
       setError(failure.message || 'Search could not be completed.');
     } finally {
@@ -551,11 +581,12 @@ function ApartmentSearch() {
     try {
       const page = await api('search', { body: { ...filters, offset }, token: activeToken });
       if (searchVersion.current === version && appliedFilters.current === filters) setResult(page);
-    } catch (failure) { setError(failure.message || 'Could not load the next page.'); }
+    } catch (caught) {
+      const failure = failureInfo(caught); setError(failure.message || 'Could not load the next page.'); }
     finally { setBusy(false); }
   }
 
-  function searchCompany(company) {
+  function searchCompany(company: string) {
     const nextDraft = { ...formDefaults(), company, bedrooms: null, maxRent: '' };
     setDraft(nextDraft);
     submit(nextDraft);
@@ -566,23 +597,23 @@ function ApartmentSearch() {
     setAdding(false);
   }
 
-  function selectSource(source) {
+  function selectSource(source: string) {
     if (busy) return;
     setDraft((current) => ({ ...current, source }));
     submit({ ...applied, source });
   }
 
-  function selectSort(sort) {
+  function selectSort(sort: string) {
     if (busy || sort === applied.sort) return;
     setDraft((current) => ({ ...current, sort }));
     submit({ ...applied, sort });
   }
 
-  function saveListing(listing) {
+  function saveListing(listing: ListingData) {
     setSaved((current) => mergeListings([...current, { ...listing, buildingLinks: undefined }]));
   }
 
-  function saveLink(listing, link) {
+  function saveLink(listing: ListingData, link: SourceLink) {
     saveListing({ ...listing, sources: mergeSourceLinks(listing.sources, [link]) });
   }
 
@@ -591,13 +622,13 @@ function ApartmentSearch() {
     navigateTab('saved');
   }
 
-  const toggleFilter = (panel) => { setDraft({ ...formDefaults(), ...applied, maxRent: applied.maxRent == null ? '' : String(applied.maxRent), maxTransitMinutes: applied.maxTransitMinutes == null ? '' : String(applied.maxTransitMinutes), maxDrivingMinutes: applied.maxDrivingMinutes == null ? '' : String(applied.maxDrivingMinutes) }); setExpanded((current) => current === panel ? '' : panel); };
-  const checkBuilding = useCallback((listing, signal) => api('building-report', { token: activeToken, signal, body: { address: listing.address, city: listing.city, county: listing.county, state: listing.state, zip: listing.zip } }), [activeToken]);
+  const toggleFilter = (panel: string) => { setDraft({ ...formDefaults(), ...applied, maxRent: applied.maxRent == null ? '' : String(applied.maxRent), maxTransitMinutes: applied.maxTransitMinutes == null ? '' : String(applied.maxTransitMinutes), maxDrivingMinutes: applied.maxDrivingMinutes == null ? '' : String(applied.maxDrivingMinutes) }); setExpanded((current) => current === panel ? '' : panel); };
+  const checkBuilding = useCallback((listing: ListingData, signal?: AbortSignal) => api<Awaited<ReturnType<NonNullable<React.ComponentProps<typeof Listing>['onCheckBuilding']>>>>('building-report', { token: activeToken, signal, body: { address: listing.address, city: listing.city, county: listing.county, state: listing.state, zip: listing.zip } }), [activeToken]);
   const displayed = scope === 'saved' ? savedResults : result;
   const points = displayed.mapPoints ?? EMPTY_POINTS;
   const split = WEB_MAP && wide && mapView;
   const listVisible = !WEB_MAP || !mapView || wide;
-  const marketArea = REGIONS[applied.region].label;
+  const marketArea = (Object.entries(REGIONS).find(([key]) => key === applied.region)?.[1].label ?? applied.region);
   const commuteLabel = [
     applied.maxTransitMinutes != null && `Transit ≤ ${applied.maxTransitMinutes} min`,
     applied.maxDrivingMinutes != null && `Drive ≤ ${applied.maxDrivingMinutes} min`,
@@ -667,7 +698,7 @@ function ApartmentSearch() {
               {adding === 'single' && <AddListing initialRegion={applied.region}
                 onSave={(listing) => { saveListing(listing); setAdding(false); }}
                 onCancel={() => setAdding(false)}
-                geocode={serverState === 'ready' ? (address) => api('geocode', { body: { address }, token: activeToken }) : null} />}
+                geocode={serverState === 'ready' ? (address) => api('geocode', { body: { address }, token: activeToken }) : undefined} />}
               {adding === 'import' && <ImportListings
                 onImport={(listings) => {
                   if (listings.some((listing) => !matchesRegion(listing, NYC_SEARCH_DEFAULT))) {

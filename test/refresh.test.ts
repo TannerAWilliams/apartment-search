@@ -1,3 +1,4 @@
+import { required } from './test-values.ts';
 import { test, spyOn } from 'bun:test';
 import assert from 'node:assert/strict';
 import { parseFirstMoverCsv } from '../server/firstmover.ts';
@@ -17,12 +18,12 @@ const CSV = [
 ].join('\r\n');
 
 class TestBucket {
-  records = new Map();
+  records = new Map<string, { bytes: Uint8Array; meta: { etag: string; customMetadata: Record<string, string> } }>();
   version = 0;
 
-  async head(key) { return this.records.get(key)?.meta ?? null; }
+  async head(key: string) { return this.records.get(key)?.meta ?? null; }
 
-  async get(key) {
+  async get(key: string) {
     const record = this.records.get(key);
     if (!record) return null;
     const bytes = record.bytes;
@@ -34,7 +35,7 @@ class TestBucket {
     };
   }
 
-  async put(key, value, options: { onlyIf?: { etagMatches?: string; etagDoesNotMatch?: string }; customMetadata?: Record<string, string> } = {}) {
+  async put(key: string, value: string | Uint8Array, options: { onlyIf?: { etagMatches?: string; etagDoesNotMatch?: string }; customMetadata?: Record<string, string> } = {}) {
     const previous = this.records.get(key);
     if (options.onlyIf?.etagDoesNotMatch === '*' && previous) return null;
     if (options.onlyIf?.etagMatches && options.onlyIf.etagMatches !== previous?.meta.etag) return null;
@@ -71,7 +72,7 @@ function loadWorker() {
 
 test('worker integration serves the page and referenced asset with distinct cache policies', async () => {
   const worker = await loadWorker();
-  const get = (path, method = 'GET') => worker.fetch(new Request('https://site.test' + path, { method }), {});
+  const get = (path: string, method = 'GET') => worker.fetch(new Request('https://site.test' + path, { method }), {});
   const home = await get('/');
   assert.equal(home.status, 200);
   assert.equal(home.headers.get('cache-control'), 'no-cache');
@@ -101,14 +102,14 @@ test('worker integration refreshes active rentals, scopes cards and pins, and re
   const fetchMock = spyOn(globalThis, 'fetch').mockImplementation((async (input) =>
     String(input) === url ? Response.json({ listings: rows }) : new Response(null, { status: 404 })) as typeof fetch);
   try {
-  const waits = [];
+  const waits: Promise<unknown>[] = [];
   const request = (path: string, body?: object) => worker.fetch(new Request('https://site.test/api/' + path, body ? {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
-  } : {}), env, { waitUntil: (promise) => waits.push(promise) });
+  } : {}), env, { waitUntil: (promise: Promise<unknown>) => waits.push(promise) });
   const filters = { region: 'manhattan-brooklyn', bedrooms: 1, maxRent: 5000, liveOnly: true, includeMap: true };
   const refresh = await request('refresh', { check: 'now' });
   assert.equal(refresh.status, 200);
-  assert.equal((await refresh.json()).sources.find(({ id }) => id === 'zillow').status, 'updated');
+  assert.equal((await refresh.json()).sources.find(({ id }: { id: string }) => id === 'zillow').status, 'updated');
   const result = await request('search', filters);
   assert.equal(result.headers.get('cache-control'), 'no-store');
   const { total, matches, mapPoints } = await result.json();
@@ -116,7 +117,7 @@ test('worker integration refreshes active rentals, scopes cards and pins, and re
   assert.equal(matches[0].id, 'zillow:brooklyn');
   assert.equal(mapPoints[0].url, apartment.listingUrl);
   const market = await (await request('market?region=manhattan-brooklyn&grouping=city')).json();
-  assert.deepEqual(market.areas.slice(1).map(({ label }) => label), ['Brooklyn, NY', 'Manhattan, NY']);
+  assert.deepEqual(market.areas.slice(1).map(({ label }: { label: string }) => label), ['Brooklyn, NY', 'Manhattan, NY']);
   assert.equal((await request('search', { ...filters, maxTransitMinutes: 30 })).status, 503);
 
   rows = [{ ...apartment, status: 'Rented' }];
@@ -154,7 +155,7 @@ function sources({ failure = false, conditional = false } = {}) {
     if (path.endsWith('/2026-10.csv') && !conditional) return new Response(CSV);
     if (path === '/api/views/vy5i-a666') return Response.json({ rowsUpdatedAt: 1793635221 });
     if (path === '/resource/vy5i-a666.json') {
-      assert.match(new URL(url).searchParams.get('$where'), /2026-11-09/);
+      assert.match(required(new URL(url).searchParams.get('$where')), /2026-11-09/);
       return Response.json([active, { ...active, lottery_id: '1', lottery_status: 'Tenant Selection' }]);
     }
     if (path === '/resource/nibs-na6y.json') return Response.json([
@@ -238,8 +239,8 @@ test('the private writer imports a completed public check without publisher acce
 
 test('the Openigloo connector uses its published limit and preserves only exact source links', async () => {
   const { loadOpenigloo } = await import('../server/openigloo.ts');
-  const areas = [];
-  const checked = await loadOpenigloo(async (url, options) => {
+  const areas: string[] = [];
+  const checked = await loadOpenigloo(async (url: string, options: RequestInit = {}) => {
     if (url.includes('addressbatch')) return new Response('"openigloo:sample",address,Match,Exact,normalized,"-73.99,40.67"\n');
     const message = JSON.parse(String(options.body));
     if (message.method === 'notifications/initialized') return new Response(null, { status: 202 });
@@ -266,10 +267,10 @@ test('the Openigloo connector uses its published limit and preserves only exact 
 
 test('Trulia collects bounded one- and two-bedroom searches across NY, NJ and CT', async () => {
   const { TRULIA_LIVE } = await import('../server/trulia.ts');
-  const urls = [];
-  const result = await TRULIA_LIVE.load(async (url) => {
+  const urls: string[] = [];
+  const result = await TRULIA_LIVE.load(async (url: string) => {
     urls.push(url);
-    const [rawCity, state, beds] = new URL(url).pathname.match(/(Manhattan|Brooklyn|Jersey_City|Stamford),(NY|NJ|CT)\/(\d)_beds\//).slice(1);
+    const [rawCity, state, beds] = required(new URL(url).pathname.match(/(Manhattan|Brooklyn|Jersey_City|Stamford),(NY|NJ|CT)\/(\d)_beds\//)).slice(1);
     const city = rawCity.replaceAll('_', ' ');
     const id = urls.length;
     const zipCode = { Manhattan: '10019', Brooklyn: '11215', 'Jersey City': '07302', Stamford: '06901' }[city];
@@ -299,17 +300,17 @@ const publicRental = {
   geo: { latitude: 40.67, longitude: -73.99 },
   additionalProperty: [{ name: 'Monthly Rent', value: '$2,500/mo' }],
 };
-const streetEasyHtml = (rows) => '<script type="application/ld+json">' + JSON.stringify({ '@graph': rows }) + '</script>';
+const streetEasyHtml = (rows: unknown[]) => '<script type="application/ld+json">' + JSON.stringify({ '@graph': rows }) + '</script>';
 const csvUrl = 'https://raw.githubusercontent.com/benfwalla/firstmover-open-data-project/main/public/data/2026-10.csv';
 
-function publishedCatalog(url, options) {
+function publishedCatalog(url: string, options: RequestInit = {}) {
   if (url === 'https://www.firstmovernyc.com/open-data') return new Response(`<a href="${csvUrl}">Download</a>`);
   if (url === csvUrl) return new Headers(options.headers).get('If-None-Match') === '"csv"' ?
     new Response(null, { status: 304 }) : new Response(CSV, { headers: { ETag: '"csv"' } });
   return sources({ conditional: true })(url, options);
 }
 
-function zumperPage(rent) {
+function zumperPage(rent: number) {
   const rental = { url: 'https://www.zumper.com/listings/222p/28-example-street', listing_id: 222,
     listing_status: 1, listing_type: 1, property_type: 4, state: 'NY', city: 'Brooklyn', zipcode: '11215',
     address: '28 Example Street #2', lat: 40.67, lng: -73.99, min_price: rent, max_price: rent, min_bedrooms: 1, max_bedrooms: 1 };
@@ -324,8 +325,8 @@ test('opening or reloading the app fetches new source data even within the same 
   const env = { BUCKET: new TestBucket() };
   await refreshSources(env, { fetcher: sources(), now: at });
   let price = 2500;
-  const requests = [];
-  const fetcher = async (url, options) => {
+  const requests: string[] = [];
+  const fetcher = async (url: string, options: RequestInit = {}) => {
     const host = new URL(url).hostname;
     requests.push(url);
     assert.equal(new Headers(options.headers).get('Cache-Control'), 'no-cache');
@@ -336,9 +337,9 @@ test('opening or reloading the app fetches new source data even within the same 
   for (const minute of [26, 27]) {
     const now = new Date('2026-11-10T00:' + minute + ':00Z');
     const check = await refreshSources(env, { fetcher, now, onDemand: true });
-    assert.equal(check.sources.find(({ id }) => id === ZUMPER_LIVE.id).checkedAt, now.toISOString());
-    assert.equal(check.sources.find(({ id }) => id === 'firstmover').status, minute === 26 ? 'updated' : 'current');
-    const listings = (await storedDirectRentals(env.BUCKET, ZUMPER_LIVE)).listings;
+    assert.equal(required(check.sources.find(({ id }: { id: string }) => id === ZUMPER_LIVE.id)).checkedAt, now.toISOString());
+    assert.equal(required(check.sources.find(({ id }: { id: string }) => id === 'firstmover')).status, minute === 26 ? 'updated' : 'current');
+    const listings = required((await storedDirectRentals(env.BUCKET, ZUMPER_LIVE))).listings;
     assert.deepEqual(listings.map(({ rent, city }) => [rent, city]), [[price, 'Brooklyn']]);
     assert.equal(listings[0].sources.length, 2);
     price -= 100;
@@ -360,7 +361,7 @@ test('a rate-limited feed retains cached data and waits until its Retry-After ti
   await refreshSources(env, { fetcher: sources(), now: at });
   let rateLimited = true;
   let feedRequests = 0;
-  const fetcher = (url, options) => {
+  const fetcher = (url: string, options: RequestInit = {}) => {
     if (url !== feed.url) {
       if (url === csvUrl || url === 'https://www.firstmovernyc.com/open-data') return publishedCatalog(url, options);
       return new Response(null, { status: 404 });
@@ -369,22 +370,22 @@ test('a rate-limited feed retains cached data and waits until its Retry-After ti
     return rateLimited ? new Response(null, { status: 429, headers: { 'Retry-After': '600' } }) : Response.json([listing]);
   };
   const throttled = await refreshSources(env, { fetcher, now: new Date(now.getTime() + 1000), onDemand: true });
-  const status = throttled.sources.find(({ id }) => id === feed.id);
-  assert.equal(status.status, 'failed');
-  assert.equal(status.updatedAt, at.toISOString());
-  const due = Date.parse(status.retryAt);
+  const status = throttled.sources.find(({ id }: { id: string }) => id === feed.id);
+  assert.equal(required(status).status, 'failed');
+  assert.equal(required(status).updatedAt, at.toISOString());
+  const due = Date.parse(required(required(status).retryAt));
   assert.ok(due >= now.getTime() + 600_000);
   const filters = { bedrooms: 2, zip: '07302' };
   assert.equal((await search(filters, env)).matches[0].kind, 'cached');
   assert.equal((await search({ ...filters, liveOnly: true }, env)).total, 0);
 
   const deferred = await refreshSources(env, { fetcher, now: new Date(due - 1), onDemand: true });
-  assert.deepEqual(deferred.sources.find(({ id }) => id === feed.id), status);
+  assert.deepEqual(deferred.sources.find(({ id }: { id: string }) => id === feed.id), status);
   assert.equal(feedRequests, 1);
 
   rateLimited = false;
   const retried = await refreshSources(env, { fetcher, now: new Date(due), onDemand: true });
-  assert.equal(retried.sources.find(({ id }) => id === feed.id).status, 'updated');
+  assert.equal(required(retried.sources.find(({ id }: { id: string }) => id === feed.id)).status, 'updated');
   assert.equal(feedRequests, 2);
 });
 
@@ -395,8 +396,8 @@ test('an approved marketplace feed syncs every page before replacing its saved i
     state: 'NY', county: 'Kings', bedrooms: 1, price: 6200,
     listingUrl: 'https://www.apartments.com/example-brooklyn-ny/fixture/' };
   const initialRows = Array.from({ length: 5000 }, (_, index) => ({ ...home, id: String(index), unit: String(index) }));
-  let first = { listings: initialRows, next: '?page=2', total: 5002 };
-  const fetcher = async (url, options) => {
+  let first: { listings: typeof initialRows; next: string | null; total: number } = { listings: initialRows, next: '?page=2', total: 5002 };
+  const fetcher = async (url: string, options: RequestInit = {}) => {
     if (new URL(url).hostname !== 'feed.example.test') return sources()(url, options);
     assert.equal(new Headers(options.headers).get('Authorization'), 'Bearer fixture-token');
     assert.equal(options.redirect, 'error');
@@ -409,21 +410,21 @@ test('an approved marketplace feed syncs every page before replacing its saved i
   };
   const now = new Date();
   const result = await refreshSources(env, { now, fetcher });
-  const status = result.sources.find(({ id }) => id === partner.id);
-  assert.equal(status.status, 'updated');
-  assert.equal(status.pages, 2);
-  assert.equal(status.listingCount, 5001);
+  const status = result.sources.find(({ id }: { id: string }) => id === partner.id);
+  assert.equal(required(status).status, 'updated');
+  assert.equal(required(status).pages, 2);
+  assert.equal(required(status).listingCount, 5001);
   assert.equal((await search({ bedrooms: 1, region: 'brooklyn', maxRent: null, liveOnly: true }, env)).total, 5001);
   assert.equal((await search({ bedrooms: 1, region: 'brooklyn', maxRent: 5000, liveOnly: true }, env)).total, 0);
   const base = { listings: [home], total: 2 };
   for (const [index, next] of ['https://different.example/rentals', '/rentals', null].entries()) {
     first = { ...base, next };
     const fail = await refreshSources(env, { now: new Date(now.getTime() + (index + 1) * 3_600_000), fetcher });
-    const check = fail.sources.find(({ id }) => id === partner.id);
-    assert.equal(check.status, 'failed');
-    assert.match(check.error, /incomplete inventory/);
-    assert.equal(check.updatedAt, now.toISOString());
-    assert.equal((await storedFeed(env.BUCKET, partner)).listings.at(-1).id, 'apartments:late');
+    const check = fail.sources.find(({ id }: { id: string }) => id === partner.id);
+    assert.equal(required(check).status, 'failed');
+    assert.match(required(required(check).error), /incomplete inventory/);
+    assert.equal(required(check).updatedAt, now.toISOString());
+    assert.equal(required(required(await storedFeed(env.BUCKET, partner)).listings.at(-1)).id, 'apartments:late');
   }
 });
 
@@ -435,7 +436,7 @@ test('a browser export retry updates only the failed public source it recovered'
   const retry = await refreshSources(env, { now: new Date(at.getTime() + 1000), fallback: true, imports: {
     housingconnect: { publishedAt: null, opportunities: [] },
   } });
-  assert.equal(retry.sources.find(({ id }) => id === 'housingconnect').status, 'updated');
+  assert.equal(required(retry.sources.find(({ id }: { id: string }) => id === 'housingconnect')).status, 'updated');
   for (const id of ['firstmover', STREETEASY_LIVE.id]) {
     assert.deepEqual(retry.sources.find((source) => source.id === id), initial.sources.find((source) => source.id === id));
   }
@@ -450,10 +451,10 @@ test('StreetEasy parses public apartment metadata and skips other sizes, houses,
   ]);
   const [listing, ...others] = parseStreetEasyPage(html, 'NY', 1, at.toISOString());
   assert.deepEqual(others, []);
-  assert.equal(listing.rent, 2500);
-  assert.equal(listing.city, 'Brooklyn');
-  assert.equal(listing.unit, '2');
-  assert.equal(listing.sources[0].url, 'https://streeteasy.com/rental/222');
+  assert.equal(required(listing).rent, 2500);
+  assert.equal(required(listing).city, 'Brooklyn');
+  assert.equal(required(listing).unit, '2');
+  assert.equal(required(listing).sources[0].url, 'https://streeteasy.com/rental/222');
   assert.throws(() => parseStreetEasyPage('<h1>Sign in</h1>', 'NY', 1, at.toISOString()), /recognized rental page/);
 });
 
@@ -479,17 +480,17 @@ test('a failed StreetEasy refresh retains its previous listing as cached', async
   assert.equal(matches[0].sources[0].kind, 'cached');
   assert.equal((await search({ bedrooms: 1, zip: '11215', liveOnly: true }, env)).total, 0);
 
-  const status = failed.sources.find(({ id }) => id === STREETEASY_LIVE.id);
-  assert.equal(status.status, 'failed');
-  assert.equal(status.updatedAt, now.toISOString());
-  assert.equal((await storedDirectRentals(env.BUCKET, STREETEASY_LIVE)).listings[0].rent, 2500);
+  const status = failed.sources.find(({ id }: { id: string }) => id === STREETEASY_LIVE.id);
+  assert.equal(required(status).status, 'failed');
+  assert.equal(required(status).updatedAt, now.toISOString());
+  assert.equal(required((await storedDirectRentals(env.BUCKET, STREETEASY_LIVE))).listings[0].rent, 2500);
   assert.ok(!sourceRecent(failed, STREETEASY_LIVE.id, new Date(now.getTime() + 3 * 60 * 60_000)));
 });
 
 test('session refresh ingests StreetEasy v6 at most daily and checks Apartments.com in both boroughs', async () => {
   const env = { BUCKET: new TestBucket() };
-  const requested = [];
-  const fetcher = (url, options) => {
+  const requested: string[] = [];
+  const fetcher = (url: string, options: RequestInit = {}) => {
     const parsed = new URL(url);
     if (parsed.hostname === 'api-v6.streeteasy.com') {
       requested.push(url);
@@ -540,13 +541,13 @@ test('session refresh ingests StreetEasy v6 at most daily and checks Apartments.
   };
   const result = await refreshSources(env, { onDemand: true, fetcher });
   for (const source of [STREETEASY_LIVE, APARTMENTS_LIVE]) {
-    const status = result.sources.find(({ id }) => id === source.id);
-    assert.equal(status.status, 'updated', source.name);
-    assert.equal(status.pages, source === STREETEASY_LIVE ? 2 : 8);
-    assert.equal(status.listingCount, source === STREETEASY_LIVE ? 501 : 8);
+    const status = result.sources.find(({ id }: { id: string }) => id === source.id);
+    assert.equal(required(status).status, 'updated', source.name);
+    assert.equal(required(status).pages, source === STREETEASY_LIVE ? 2 : 8);
+    assert.equal(required(status).listingCount, source === STREETEASY_LIVE ? 501 : 8);
   }
   assert.equal(new Set(requested).size, 9);
-  assert.equal(result.sources.find(({ id }) => id === STREETEASY_LIVE.id).total, 501);
+  assert.equal(required(result.sources.find(({ id }: { id: string }) => id === STREETEASY_LIVE.id)).total, 501);
   const v6Requests = () => requested.filter((url) => url === 'https://api-v6.streeteasy.com/').length;
   assert.equal(v6Requests(), 2);
   await refreshSources(env, { onDemand: true, fetcher });
@@ -595,12 +596,12 @@ test('external StreetEasy recovery updates only failed inventory and keeps it da
   const initial = await refreshSources(env, { now: at, imports: {
     firstmover: null, housingconnect: null, [STREETEASY_LIVE.id]: null,
   } });
-  const [listing] = parseStreetEasyPage(streetEasyHtml([publicRental]), 'NY', 1, at.toISOString());
+  const listing = required(parseStreetEasyPage(streetEasyHtml([publicRental]), 'NY', 1, at.toISOString())[0]);
   const recovered = { listings: [listing], pages: 41, total: 1, rawCount: 1, checkedAt: at.toISOString(), transport: 'v6-daily' };
   const retryAt = new Date(at.getTime() + 1000);
   const result = await refreshSources(env, { now: retryAt, fallback: true, imports: { [STREETEASY_LIVE.id]: recovered } });
   const status = result.sources.find(({id})=>id===STREETEASY_LIVE.id);
-  assert.equal(status.status,'updated'); assert.equal(status.pages,41); assert.equal(status.transport,'v6-daily');
+  assert.equal(required(status).status,'updated'); assert.equal(required(status).pages,41); assert.equal(required(status).transport,'v6-daily');
   for(const id of ['firstmover','housingconnect'])assert.deepEqual(result.sources.find(s=>s.id===id),initial.sources.find(s=>s.id===id));
   assert.equal(sourceRecent(result,STREETEASY_LIVE.id,new Date(at.getTime()+3*60*60_000)),true);
 });
@@ -612,19 +613,19 @@ test('external StreetEasy recovery rejects stale or incomplete receipt without o
    const result=await refreshSources(env,{now:at,fallback:true,imports:{[STREETEASY_LIVE.id]:{
     listings:[listing],pages:1,total:1,rawCount:1,checkedAt:at.toISOString(),transport:'v6-daily',...changes,
    }}});
-   assert.equal(result.sources.find(s=>s.id===STREETEASY_LIVE.id).status,'failed');
+   assert.equal(required(result.sources.find(s=>s.id===STREETEASY_LIVE.id)).status,'failed');
    assert.equal(await storedDirectRentals(env.BUCKET,STREETEASY_LIVE),null);
  }
 });
 test('external daily StreetEasy sync continues without anyone opening the app',async()=>{
  const env={BUCKET:new TestBucket()};
  const [listing]=parseStreetEasyPage(streetEasyHtml([publicRental]),'NY',1,at.toISOString());
- const receipt=(now)=>({listings:[listing],pages:1,total:1,rawCount:1,checkedAt:now.toISOString(),transport:'v6-daily'});
+ const receipt=(now: Date)=>({listings:[listing],pages:1,total:1,rawCount:1,checkedAt:now.toISOString(),transport:'v6-daily'});
  const first=await refreshSources(env,{now:at,fallback:true,imports:{[STREETEASY_LIVE.id]:receipt(at)}});
- assert.equal(first.sources.find(s=>s.id===STREETEASY_LIVE.id).status,'updated');
+ assert.equal(required(first.sources.find(s=>s.id===STREETEASY_LIVE.id)).status,'updated');
  const later=new Date(at.getTime()+24*60*60_000+1);
  const second=await refreshSources(env,{now:later,fallback:true,imports:{[STREETEASY_LIVE.id]:receipt(later)}});
- assert.equal(second.sources.find(s=>s.id===STREETEASY_LIVE.id).updatedAt,later.toISOString());
+ assert.equal(required(second.sources.find(s=>s.id===STREETEASY_LIVE.id)).updatedAt,later.toISOString());
 });
 
 test('manual StreetEasy refresh bypasses daily cache, preserves other sources and respects retry cooldown',async()=>{
@@ -634,13 +635,13 @@ test('manual StreetEasy refresh bypasses daily cache, preserves other sources an
  const initial=await refreshSources(env,{now:at,imports:{firstmover:null,'streeteasy-live':receipt}});
  const later=new Date(at.getTime()+1000);
  const refreshed=await refreshSources(env,{now:later,onlyStreetEasy:true,imports:{'streeteasy-live':{...receipt,checkedAt:later.toISOString()}}});
- assert.equal(refreshed.sources.find(s=>s.id==='streeteasy-live').updatedAt,later.toISOString());
+ assert.equal(required(refreshed.sources.find(s=>s.id==='streeteasy-live')).updatedAt,later.toISOString());
  assert.deepEqual(refreshed.sources.find(s=>s.id==='firstmover'),initial.sources.find(s=>s.id==='firstmover'));
  const failed=await refreshSources(env,{now:new Date(at.getTime()+2000),onDemand:true,onlyStreetEasy:true,fetcher:async(url)=>{
   assert.equal(url,'https://api-v6.streeteasy.com/'); return new Response(null,{status:403});
  }});
- assert.equal(failed.sources.find(s=>s.id==='streeteasy-live').status,'failed');
- assert.equal((await storedDirectRentals(env.BUCKET,STREETEASY_LIVE)).listings.length,1);
+ assert.equal(required(failed.sources.find(s=>s.id==='streeteasy-live')).status,'failed');
+ assert.equal(required((await storedDirectRentals(env.BUCKET,STREETEASY_LIVE))).listings.length,1);
  const skipped=await refreshSources(env,{now:new Date(at.getTime()+3000),onDemand:true,onlyStreetEasy:true,fetcher:async()=>{throw new Error('must not fetch during cooldown');}});
  assert.equal(skipped.state,'already_checked');
  assert.deepEqual(failed.sources.find(s=>s.id==='firstmover'),initial.sources.find(s=>s.id==='firstmover'));
@@ -651,13 +652,13 @@ test('targeted provider resync only attempts selected provider and preserves oth
   const prior = { id: 'streeteasy-live', name: 'StreetEasy', status: 'updated', updatedAt: '2026-11-10T00:00:00Z', checkedAt: '2026-11-10T00:00:00Z', listingCount: 8000 };
   await bucket.put('rentals/refresh.json', JSON.stringify({ sources: [prior] }));
   const requests: string[] = [];
-  const result = await refreshSources({ BUCKET: bucket }, { onDemand: true, sourceId: 'zumper-live', now: new Date('2026-11-12T00:00:00Z'), fetcher: async (url) => {
+  const result = await refreshSources({ BUCKET: bucket }, { onDemand: true, sourceId: 'zumper-live', now: new Date('2026-11-12T00:00:00Z'), fetcher: async (url: string) => {
     requests.push(String(url)); return new Response('', { status: 403 });
   } });
   assert.ok(requests.length > 0);
   assert.ok(requests.every((url) => url.includes('zumper')));
-  assert.deepEqual(result.sources.find(({ id }) => id === 'streeteasy-live'), prior);
-  assert.equal(result.sources.find(({ id }) => id === 'zumper-live')?.status, 'failed');
+  assert.deepEqual(result.sources.find(({ id }: { id: string }) => id === 'streeteasy-live'), prior);
+  assert.equal(result.sources.find(({ id }: { id: string }) => id === 'zumper-live')?.status, 'failed');
 });
 test('unknown or disconnected targeted provider is rejected before acquiring refresh lease', async () => {
   const bucket = new TestBucket();
@@ -671,7 +672,7 @@ test('relay preparation is isolated to listing requests, not imports or unrelate
   const env = { BUCKET: new TestBucket() };
   let prepared = 0;
   const prepareListingSources = async () => { prepared++; throw new Error('relay unavailable'); };
-  const call = (body) => handleApi(new Request('https://private.test/api/refresh', {
+  const call = (body: unknown) => handleApi(new Request('https://private.test/api/refresh', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
   }), env, { prepareListingSources, fetcher: async () => new Response('blocked', { status: 403 }) });
   await call({ source: 'streeteasy-live', imports: {} });
@@ -686,35 +687,35 @@ test('relay preparation is isolated to listing requests, not imports or unrelate
 
 test('provider 403 without wrapper metadata saves failure, releases lock and preserves inventory', async () => {
   const env = { BUCKET: new TestBucket() };
-  const [listing] = parseStreetEasyPage(streetEasyHtml([publicRental]), 'NY', 1, at.toISOString());
+  const listing = required(parseStreetEasyPage(streetEasyHtml([publicRental]), 'NY', 1, at.toISOString())[0]);
   await refreshSources(env, { now: at, sourceId: STREETEASY_LIVE.id,
     imports: { [STREETEASY_LIVE.id]: { listings: [listing], pages: 10 } } });
   const before = await storedDirectRentals(env.BUCKET, STREETEASY_LIVE);
-  assert.equal(before.listings.length, 1);
+  assert.equal(required(before).listings.length, 1);
   const result = await refreshSources(env, { now: next, sourceId: STREETEASY_LIVE.id, onDemand: true,
     fetcher: async () => { throw Object.assign(new Error('Provider denied request'), { httpStatus: 403 }); } });
-  const status = result.sources.find(({ id }) => id === STREETEASY_LIVE.id);
+  const status = result.sources.find(({ id }: { id: string }) => id === STREETEASY_LIVE.id);
   assert.equal(result.state, 'partial');
-  assert.equal(status.status, 'failed');
-  assert.equal(status.updatedAt, at.toISOString());
-  assert.equal(Date.parse(status.retryAt), next.getTime() + 15 * 60_000);
+  assert.equal(required(status).status, 'failed');
+  assert.equal(required(status).updatedAt, at.toISOString());
+  assert.equal(Date.parse(required(required(status).retryAt)), next.getTime() + 15 * 60_000);
   assert.deepEqual(await storedDirectRentals(env.BUCKET, STREETEASY_LIVE), before);
-  assert.equal((await (await env.BUCKET.get('rentals/refresh.json')).json()).running, false);
+  assert.equal((await required((await env.BUCKET.get('rentals/refresh.json'))).json()).running, false);
 });
 
 test('duplicate imported listing IDs fail without replacing the last valid source snapshot', async () => {
   const env = { BUCKET: new TestBucket() };
-  const [listing] = parseStreetEasyPage(streetEasyHtml([publicRental]), 'NY', 1, at.toISOString());
+  const listing = required(parseStreetEasyPage(streetEasyHtml([publicRental]), 'NY', 1, at.toISOString())[0]);
   await refreshSources(env, { now: at, sourceId: STREETEASY_LIVE.id,
     imports: { [STREETEASY_LIVE.id]: { listings: [listing], pages: 10 } } });
   const before = await storedDirectRentals(env.BUCKET, STREETEASY_LIVE);
-  for (const duplicate of [listing, { ...listing, rent: listing.rent + 100 }]) {
+  for (const duplicate of [listing, { ...listing, rent: required(listing).rent + 100 }]) {
     const result = await refreshSources(env, { now: next, sourceId: STREETEASY_LIVE.id,
       imports: { [STREETEASY_LIVE.id]: { listings: [listing, duplicate], pages: 10 } } });
-    const status = result.sources.find(({ id }) => id === STREETEASY_LIVE.id);
-    assert.equal(status.status, 'failed');
-    assert.equal(status.listingCount, 1);
-    assert.equal(status.updatedAt, at.toISOString());
+    const status = result.sources.find(({ id }: { id: string }) => id === STREETEASY_LIVE.id);
+    assert.equal(required(status).status, 'failed');
+    assert.equal(required(status).listingCount, 1);
+    assert.equal(required(status).updatedAt, at.toISOString());
     assert.deepEqual(await storedDirectRentals(env.BUCKET, STREETEASY_LIVE), before);
   }
 });
@@ -726,30 +727,30 @@ test('partner feed pagination duplicates cannot replace a complete cached snapsh
   assert.equal(before.listings.length, 1);
   let calls = 0;
   const result = await refreshSources(env, { now: next, sourceId: feed.id, onDemand: true,
-    fetcher: async (url) => {
+    fetcher: async (url: string) => {
       calls++;
       assert.ok(url === feed.url || url === feed.url + '?page=2');
       return Response.json({ listings: [{ ...listing, price: calls === 1 ? 3000 : 3100 }],
         total: 2, next: calls === 1 ? '?page=2' : null });
     } });
   assert.equal(calls, 2);
-  const status = result.sources.find(({ id }) => id === feed.id);
-  assert.equal(status.status, 'failed');
-  assert.equal(status.updatedAt, at.toISOString());
+  const status = result.sources.find(({ id }: { id: string }) => id === feed.id);
+  assert.equal(required(status).status, 'failed');
+  assert.equal(required(status).updatedAt, at.toISOString());
   assert.deepEqual(await storedFeed(env.BUCKET, feed), before);
 });
 
 
 test('price observations persist atomically with successful source snapshots, not failed refreshes', async () => {
   const env = { BUCKET: new TestBucket() };
-  const [listing] = parseStreetEasyPage(streetEasyHtml([publicRental]), 'NY', 1, at.toISOString());
-  const run = (date, rent) => refreshSources(env, { now: date, sourceId: STREETEASY_LIVE.id,
+  const listing = required(parseStreetEasyPage(streetEasyHtml([publicRental]), 'NY', 1, at.toISOString())[0]);
+  const run = (date: Date, rent: number) => refreshSources(env, { now: date, sourceId: STREETEASY_LIVE.id,
     imports: { [STREETEASY_LIVE.id]: { listings: [{ ...listing, rent }], pages: 10 } } });
   await run(at, 2500);
   await run(next, 2400);
   const stored = await storedDirectRentals(env.BUCKET, STREETEASY_LIVE);
-  assert.deepEqual(stored.listings[0].priceHistory.observations.map(o => o.rent), [2500, 2400]);
-  assert.equal(stored.observationHistory.entries.length, 1);
+  assert.deepEqual(required(required(stored).listings[0].priceHistory).observations.map(o => o.rent), [2500, 2400]);
+  assert.equal(required(required(stored).observationHistory).entries.length, 1);
   const originalPut = env.BUCKET.put.bind(env.BUCKET);
   env.BUCKET.put = async (key, value, options) => {
     if (key === 'rentals/streeteasy-live.json.gz') throw new Error('Synthetic storage full');
@@ -757,18 +758,18 @@ test('price observations persist atomically with successful source snapshots, no
   };
   const later = new Date(next.getTime() + 86400000);
   const failed = await run(later, 2200);
-  assert.equal(failed.sources.find(s => s.id === STREETEASY_LIVE.id).status, 'failed');
+  assert.equal(required(failed.sources.find(s => s.id === STREETEASY_LIVE.id)).status, 'failed');
   assert.deepEqual(await storedDirectRentals(env.BUCKET, STREETEASY_LIVE), stored);
 });
 
 test('overlapping source snapshot writes reject stale history instead of overwriting the winner', async () => {
   const bucket = new TestBucket();
-  const [listing] = parseStreetEasyPage(streetEasyHtml([publicRental]), 'NY', 1, at.toISOString());
+  const listing = required(parseStreetEasyPage(streetEasyHtml([publicRental]), 'NY', 1, at.toISOString())[0]);
   const key = 'rentals/streeteasy-live.json.gz';
   await saveObservedSnapshot(bucket, key, {}, [listing], STREETEASY_LIVE.id, at.toISOString());
   const get = bucket.get.bind(bucket);
-  let release;
-  let hasRead;
+  let release: () => void = () => { throw new Error('Fixture gate not initialized'); };
+  let hasRead: () => void = () => { throw new Error('Fixture signal not initialized'); };
   const read = new Promise<void>(resolve => { hasRead = resolve; });
   const gate = new Promise<void>(resolve => { release = resolve; });
   let blocked = false;
@@ -783,6 +784,6 @@ test('overlapping source snapshot writes reject stale history instead of overwri
   release();
   await assert.rejects(old, /changed during refresh/);
   const winner = await storedDirectRentals(bucket, STREETEASY_LIVE);
-  assert.equal(winner.listings[0].rent, 2300);
-  assert.equal(winner.listings[0].priceHistory.observations.some(o => o.rent === 2400), false);
+  assert.equal(required(winner).listings[0].rent, 2300);
+  assert.equal(required(required(winner).listings[0].priceHistory).observations.some(o => o.rent === 2400), false);
 });

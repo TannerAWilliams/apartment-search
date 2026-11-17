@@ -1,3 +1,5 @@
+import type { ListingData, SearchFilters, SourceStatus, Workplace } from './domain.ts';
+import type { RentArea, PackedRentRow } from './rent-history.ts';
 import { bestFit } from './best-fit.ts';
 import base64 from 'base64-js';
 import { gunzipSync, strFromU8 } from 'fflate';
@@ -15,10 +17,11 @@ const MONTH_FORMAT = new Intl.DateTimeFormat('en-US', {
 export const formatSnapshotMonth = (month = SNAPSHOT_MONTH) => MONTH_FORMAT.format(new Date(month + '-01T00:00:00Z'));
 export const SNAPSHOT_LABEL = formatSnapshotMonth();
 
-let snapshot;
+let snapshot: ListingData[] | undefined;
+export type MarketRow = [string | number, string, string, string, string, string, string, string, number, number, number, number, string, string, string?];
 
-export function decodeMarketRows(rows) {
-  const listings = rows.map(([
+export function decodeMarketRows(rows: MarketRow[]) {
+  const listings: ListingData[] = rows.map(([
     id, address, unit, city, county, state, zip, neighborhood,
     latitude, longitude, bedrooms, rent, path, seenAt, company = '',
   ]) => ({
@@ -36,12 +39,12 @@ export function marketSnapshot() {
   return snapshot;
 }
 
-export function localSearch(listings, filters, workplace, mode, sources = [], notices = []) {
+export function localSearch(listings: ListingData[], filters: SearchFilters, workplace: Workplace | null | undefined, mode: string, sources: SourceStatus[] = [], notices: string[] = []) {
   if (!workplace) throw new SearchInputError('Use a workplace preset or enter latitude, longitude when offline.');
   return formatSearch(matchListings(listings, filters, workplace), filters, workplace, mode, sources, notices);
 }
 
-export function formatSearch(listings, filters, workplace, mode, sources, notices) {
+export function formatSearch(listings: ListingData[], filters: SearchFilters, workplace: Workplace, mode: string, sources: SourceStatus[], notices: string[]) {
   const eligible = listings.filter(({ transitSeconds, drivingSeconds }) =>
     (filters.maxTransitMinutes == null || (transitSeconds ?? Infinity) <= filters.maxTransitMinutes * 60) &&
     (filters.maxDrivingMinutes == null || (drivingSeconds ?? Infinity) <= filters.maxDrivingMinutes * 60))
@@ -77,21 +80,21 @@ export function formatSearch(listings, filters, workplace, mode, sources, notice
     sources, notices, ...(mapPoints ? { mapPoints } : {}) };
 }
 
-export function snapshotSearch(filters, workplace = localWorkplace(filters), market = { month: SNAPSHOT_MONTH, listings: marketSnapshot() }) {
+export function snapshotSearch(filters: SearchFilters, workplace = localWorkplace(filters), market = { month: SNAPSHOT_MONTH, listings: marketSnapshot() }) {
   const result = localSearch(market.listings, filters, workplace, 'snapshot', [
     { id: 'streeteasy', name: 'StreetEasy', status: 'snapshot' },
   ]);
   return { ...result, snapshotMonth: market.month };
 }
 
-export function median(values) {
+export function median(values: number[]) {
   if (values.length === 0) return null;
   const ordered = [...values].sort((first, second) => first - second);
   const middle = Math.floor(ordered.length / 2);
   return ordered.length % 2 === 0 ? (ordered[middle - 1] + ordered[middle]) / 2 : ordered[middle];
 }
 
-function areaOf(listing, grouping) {
+function areaOf(listing: ListingData, grouping: string) {
   const city = `${listing.city}, ${listing.state}`;
   if (grouping === 'zip') return { id: listing.zip, label: listing.zip, detail: listing.state };
   if (grouping === 'city') return { id: city, label: city, detail: '' };
@@ -99,7 +102,7 @@ function areaOf(listing, grouping) {
   return { id: `${city}|${listing.neighborhood}`, label: listing.neighborhood, detail: city };
 }
 
-function summarize(area) {
+function summarize(area: { id: string; label: string; detail: string; values: number[][] }): RentArea {
   return {
     id: area.id, label: area.label, detail: area.detail,
     count: area.values.reduce((total, prices) => total + prices.length, 0),
@@ -107,10 +110,10 @@ function summarize(area) {
   };
 }
 
-const sizeGroups = () => [[], [], [], [], []];
+const sizeGroups = (): number[][] => [[], [], [], [], []];
 
-export function rentAreas(listings, { region = 'all', zip = '', grouping = 'neighborhood' } = {}) {
-  const areas = new Map();
+export function rentAreas(listings: ListingData[], { region = 'all', zip = '', grouping = 'neighborhood' } = {}) {
+  const areas = new Map<string, { id: string; label: string; detail: string; values: number[][] }>();
   const overall = { id: 'overall', label: 'All covered areas', detail: '', values: sizeGroups() };
   for (const listing of listings) {
     if (!matchesRegion(listing, region) || (zip && listing.zip !== zip) ||
@@ -118,7 +121,7 @@ export function rentAreas(listings, { region = 'all', zip = '', grouping = 'neig
         !Number.isFinite(listing.rent) || listing.rent <= 0) continue;
     const area = areaOf(listing, grouping);
     if (!areas.has(area.id)) areas.set(area.id, { ...area, values: sizeGroups() });
-    areas.get(area.id).values[listing.bedrooms].push(listing.rent);
+    areas.get(area.id)!.values[listing.bedrooms].push(listing.rent);
     overall.values[listing.bedrooms].push(listing.rent);
   }
   if (areas.size === 0) return [];
@@ -127,7 +130,7 @@ export function rentAreas(listings, { region = 'all', zip = '', grouping = 'neig
   return [summarize(overall), ...sorted];
 }
 
-export function packRentMonth(listings) {
+export function packRentMonth(listings: ListingData[]): Record<string, Record<string, PackedRentRow[]>> {
   return Object.fromEntries(['all', 'nyc', 'nj'].map((region) => [
     region,
     Object.fromEntries(Object.keys(RENT_GROUPINGS).map((grouping) => [

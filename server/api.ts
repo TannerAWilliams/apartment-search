@@ -1,3 +1,6 @@
+import type { AppEnv, Bucket } from './contracts.ts';
+import type { ListingData, SourceStatus as SearchSource, SearchResult } from '../src/domain.ts';
+import type { SourceStatus } from './refresh.ts';
 import { dashboardSnapshot } from './dashboard-snapshot.ts';
 import { retrieveBuildingRecords } from './building-records.ts';
 import { wholeSearchCheck } from './whole-search-check.ts';
@@ -19,7 +22,7 @@ const REQUEST_LIMIT = 4096;
 const IMPORT_LIMIT = 2 * 1024 * 1024;
 const API_PATHS = new Set(['/api/dashboard', '/api/building-report', '/api/config', '/api/search', '/api/search-check', '/api/geocode', '/api/market', '/api/housing', '/api/refresh']);
 
-export function appConfig(env) {
+export function appConfig(env: AppEnv) {
   const feeds = configuredFeeds(env);
   return {
     mode: feeds.length > 0 ? 'live' : 'snapshot',
@@ -32,7 +35,7 @@ export function appConfig(env) {
   };
 }
 
-async function withHousingLinks(result, bucket) {
+async function withHousingLinks<T extends { matches: ListingData[] }>(result: T, bucket: Bucket | undefined) {
   if (!bucket || !result.matches.some(({ region }) => region === 'nyc')) return result;
 
   let housing;
@@ -41,11 +44,11 @@ async function withHousingLinks(result, bucket) {
   } catch {
     return result;
   }
-  const byAddress = new Map();
+  const byAddress = new Map<string | null, { name: string; url: string }[]>();
   for (const { name, url, buildingKeys } of housing.opportunities) {
     for (const key of buildingKeys ?? []) {
       if (!byAddress.has(key)) byAddress.set(key, []);
-      byAddress.get(key).push({ name, url });
+      byAddress.get(key)!.push({ name, url });
     }
   }
   return { ...result, matches: result.matches.map((listing) => {
@@ -54,7 +57,7 @@ async function withHousingLinks(result, bucket) {
   }) };
 }
 
-async function storedSample(status, id, liveOnly, load, strict = false) {
+async function storedSample(status: { sources: SourceStatus[] } | null, id: string, liveOnly: boolean, load: () => ReturnType<typeof storedOpenigloo>, strict = false) {
   const sourceStatus = status?.sources.find((source) => source.id === id);
   const recent = sourceRecent(status, id);
   const data = recent || (!liveOnly && sourceStatus?.updatedAt) ? await load().catch(error => { if (strict) throw error; return null; }) : null;
@@ -64,7 +67,11 @@ async function storedSample(status, id, liveOnly, load, strict = false) {
   return { sourceStatus, recent, data, listings };
 }
 
-export async function search(rawFilters, env, fetcher: SourceFetch = fetch, observationsOnly = false) {
+type SearchResponse = SearchResult & { snapshotMonth?: string; commute?: boolean; commuteNotice?: string };
+type ObservationResponse = { matches: ListingData[]; sources: SearchSource[]; notices: string[] };
+export function search(rawFilters: Record<string, unknown>, env: AppEnv, fetcher?: SourceFetch, observationsOnly?: false): Promise<SearchResponse>;
+export function search(rawFilters: Record<string, unknown>, env: AppEnv, fetcher: SourceFetch | undefined, observationsOnly: true): Promise<ObservationResponse>;
+export async function search(rawFilters: Record<string, unknown>, env: AppEnv, fetcher: SourceFetch = fetch, observationsOnly = false) {
   const filters = parseFilters(rawFilters);
   const requireCommute = needsCommute(filters);
   const credentials = routingCredentials(env);
@@ -72,7 +79,7 @@ export async function search(rawFilters, env, fetcher: SourceFetch = fetch, obse
   const feeds = configuredFeeds(env);
   const workplace = observationsOnly ? localWorkplace(filters) : await resolveWorkplace(filters, fetcher);
   const bucket = env.BUCKET;
-  async function finish(listings, mode, sources, notices, snapshotMonth?: string) {
+  async function finish(listings: ListingData[], mode: string, sources: SearchSource[], notices: string[], snapshotMonth?: string) {
     const matched = matchListings(listings, filters, workplace);
     let routed = matched;
     const commute: { commute?: boolean; commuteNotice?: string } = {};
@@ -86,7 +93,7 @@ export async function search(rawFilters, env, fetcher: SourceFetch = fetch, obse
       }
     }
     if (observationsOnly) return { matches: filters.source ? routed.filter(listing => listing.sources.some(source => source.id === filters.source && source.url)) : routed, sources, notices };
-    const result = formatSearch(routed, filters, workplace, mode, sources, notices);
+    const result = formatSearch(routed, filters, workplace!, mode, sources, notices);
     return withHousingLinks({ ...result, ...(snapshotMonth ? { snapshotMonth } : {}), ...commute }, bucket);
   }
   const status = bucket ? await refreshStatus(bucket) : null;
@@ -104,7 +111,7 @@ export async function search(rawFilters, env, fetcher: SourceFetch = fetch, obse
       return { data, listings: data.listings, recent: true };
     })),
   ]);
-  const listings = [...openigloo.listings];
+  const listings: ListingData[] = [...openigloo.listings];
   const sources: { id: string; name: string; status: string; sample?: boolean }[] = openigloo.data ? [{ id: OPENIGLOO.id, name: OPENIGLOO.name, status: openigloo.recent ? 'searched' : 'cached' }] : [];
   const notices = openigloo.data ? [
     'Openigloo · ' + openigloo.listings.length + ' apartments from ' + (openigloo.recent ? 'its recent check.' : 'its last saved check.'),
@@ -130,7 +137,7 @@ export async function search(rawFilters, env, fetcher: SourceFetch = fetch, obse
     } else {
       sources.push({ id, name, status: value.recent ? 'searched' : 'cached' });
       listings.push(...value.listings);
-      if (value.data.limited) notices.push(`${name} returned partial inventory.`);
+      if ('limited' in value.data && value.data.limited) notices.push(`${name} returned partial inventory.`);
       if (!value.recent) notices.push(`${name} · showing its last saved listings.`);
     }
   }
@@ -146,7 +153,7 @@ export async function search(rawFilters, env, fetcher: SourceFetch = fetch, obse
   }
   if (!filters.liveOnly && (bucket || hasSavedSamples)) {
     const market = await storedMarket(bucket);
-    const historical = new Map<string, { id: string; company?: string }>(market.listings.map((listing) => [listing.sources[0].url, listing]));
+    const historical = new Map<string | null | undefined, { id: string; company?: string }>(market.listings.map((listing) => [listing.sources[0].url, listing]));
     const live = mergeListings(listings.filter(({ kind }) => kind === 'feed'));
     const cached = mergeListings(listings.filter(({ kind }) => kind === 'cached'));
     const current = mergeListings([...live, ...cached], { preferFirst: true }).map((listing) => {
@@ -159,11 +166,11 @@ export async function search(rawFilters, env, fetcher: SourceFetch = fetch, obse
   return finish(mergeListings(listings), 'live', sources, notices);
 }
 
-function json(value, status = 200) {
+function json(value: unknown, status = 200) {
   return Response.json(value, { status, headers: { 'Cache-Control': 'no-store' } });
 }
 
-export async function handleApi(request, env, { privateAuthenticated = false, requireToken = false, fetcher = (url, options) => globalThis.fetch(url, options), waitUntil, prepareListingSources, listingTransports }: { privateAuthenticated?: boolean; requireToken?: boolean; fetcher?: SourceFetch; waitUntil?: (work: Promise<unknown>) => void; prepareListingSources?: () => Promise<void>; listingTransports?: ListingTransports } = {}) {
+export async function handleApi(request: Request, env: AppEnv, { privateAuthenticated = false, requireToken = false, fetcher = (url, options) => globalThis.fetch(url, options), waitUntil, prepareListingSources, listingTransports }: { privateAuthenticated?: boolean; requireToken?: boolean; fetcher?: SourceFetch; waitUntil?: (work: Promise<unknown>) => void; prepareListingSources?: () => Promise<void>; listingTransports?: ListingTransports } = {}) {
   const { pathname: path, searchParams } = new URL(request.url);
   if (!API_PATHS.has(path)) return json({ error: 'Endpoint not found.' }, 404);
   if (requireToken && request.headers.get('Authorization') !== `Bearer ${env.APP_ACCESS_TOKEN}`) {
@@ -172,7 +179,7 @@ export async function handleApi(request, env, { privateAuthenticated = false, re
   if (path === '/api/dashboard') {
     if (env.PUBLIC_APP === 'true' || !env.APP_ACCESS_TOKEN || (!privateAuthenticated && request.headers.get('Authorization') !== `Bearer ${env.APP_ACCESS_TOKEN}`)) return json({ error: 'Private authenticated access is required for this research snapshot.' }, 403);
     if (request.method !== 'GET') return json({ error: 'Use GET for dashboard data.' }, 405);
-    const result = dashboardSnapshot(searchParams.has('file') ? searchParams.get('file') : undefined);
+    const result = dashboardSnapshot(searchParams.get('file') ?? undefined);
     return result ? json(result) : json({ error: 'Unknown dashboard file.' }, 404);
   }
   if (path === '/api/config') {

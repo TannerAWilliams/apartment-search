@@ -1,3 +1,4 @@
+import { required } from './test-values.ts';
 import { test } from 'bun:test';
 import assert from 'node:assert/strict';
 import { mergeListings, normalizeListing } from '../src/listings.ts';
@@ -8,7 +9,7 @@ const row = {
   latitude: 40.72, longitude: -74.04, bedrooms: 1, rent: 1800, status: 'active',
   updatedAt: '2026-11-12T12:00:00Z',
 };
-const listing = (changes = {}) => normalizeListing({ ...row, ...changes }, { id: 'partner', name: 'Partner', kind: 'feed' });
+const listing = (changes = {}) => required(normalizeListing({ ...row, ...changes }, { id: 'partner', name: 'Partner', kind: 'feed' }));
 
 test('newer malformed coordinates cannot discard a valid location from another observation', () => {
   for (const point of [

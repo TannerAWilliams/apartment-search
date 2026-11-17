@@ -9,8 +9,8 @@ test('completed report cache expires after five minutes and returns isolated cop
   now = 300001; await load(listing, request, signal); expect(calls).toBe(2);
 });
 test('canceled late response cannot populate cache; different counties isolate identities', async () => {
-  const load = createBuildingReportCache(); const controller = new AbortController(); let finish;
-  const pending = load(listing, () => new Promise(resolve => { finish = resolve; }), controller.signal);
+  const load = createBuildingReportCache(); const controller = new AbortController(); let finish: (value: typeof report) => void = () => { throw new Error('Fixture promise not initialized'); };
+  const pending = load(listing, () => new Promise<typeof report>(resolve => { finish = resolve; }), controller.signal);
   controller.abort(); finish(report); await expect(pending).rejects.toThrow();
   let calls = 0; await load(listing, async () => { calls++; return report; }, new AbortController().signal); expect(calls).toBe(1);
   expect(buildingRequestIdentity(listing)).not.toBe(buildingRequestIdentity({ ...listing, county: 'Queens' }));

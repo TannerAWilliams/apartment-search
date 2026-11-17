@@ -26,13 +26,13 @@ const companies = [
   ['udr', 'UDR', 'udr.com', '/', 'Owner or manager'],
 ];
 
-const companyText = (name) => String(name ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().replace(/^the /, '');
+const companyText = (name: unknown) => String(name ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().replace(/^the /, '');
 
 export const NYC_COMPANIES = companies.map(([id, name, domain, path, type]) => ({
   id, name, domain, type, url: 'https://' + domain + path,
 }));
 
-export function matchCompany(name) {
+export function matchCompany(name: unknown) {
   const value = companyText(name);
   return NYC_COMPANIES.find((company) => {
     const base = companyText(company.name);
@@ -40,17 +40,17 @@ export function matchCompany(name) {
   });
 }
 
-export function companyMatches(company, query) {
+export function companyMatches(company: unknown, query: unknown) {
   const requested = companyText(query);
   return !requested || companyText(company).includes(requested);
 }
 
-export function companyCounts(listings) {
-  const groups = new Map();
+export function companyCounts(listings: { company?: string }[]) {
+  const groups = new Map<string, number>();
   for (const { company } of listings) {
     if (company) groups.set(company, (groups.get(company) ?? 0) + 1);
   }
-  const counts = {};
+  const counts: Record<string, number> = {};
   for (const [name, count] of groups) {
     const company = matchCompany(name);
     if (company) counts[company.id] = (counts[company.id] ?? 0) + count;

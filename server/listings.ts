@@ -1,3 +1,4 @@
+import type { FetchTransport } from '../src/fetch-type.ts';
 import { MARKETPLACE_NAMES, safeListingUrl } from '../src/marketplaces.ts';
 import { normalizeListing } from '../src/listings.ts';
 import { AUTO_RENTAL_SOURCES, FEED_ONLY_SOURCES } from './direct-rentals.ts';
@@ -43,7 +44,7 @@ async function readFeedPage(response: Response) {
   }
 }
 
-export function configuredFeeds(env) {
+export function configuredFeeds(env: { FREE_PARTNER_FEEDS_JSON?: string }) {
   if (!env.FREE_PARTNER_FEEDS_JSON) return [];
   let configured;
   try {
@@ -68,7 +69,7 @@ export function configuredFeeds(env) {
   });
 }
 
-export async function loadFeed(feed, fetcher) {
+export async function loadFeed(feed: { id: string; name: string; url: string; token?: string; kind: string }, fetcher: FetchTransport) {
   const headers: Record<string, string> = { Accept: 'application/json' };
   if (feed.token) headers.Authorization = `Bearer ${feed.token}`;
   const start = new URL(feed.url);
@@ -79,7 +80,7 @@ export async function loadFeed(feed, fetcher) {
   const listingIds = new Set<string>();
   let rowCount = 0;
   let reportedTotal;
-  let url = start.href;
+  let url: string | null = start.href;
   while (url) {
     if (visited.has(url) || visited.size >= MAX_PAGES) throw new IncompleteFeedError('Pagination did not finish');
     visited.add(url);

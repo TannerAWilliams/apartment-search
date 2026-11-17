@@ -1,3 +1,4 @@
+import { required } from './test-values.ts';
 import { test } from 'bun:test';
 import assert from 'node:assert/strict';
 import { loadStreetEasy } from '../server/streeteasy.ts';
@@ -5,18 +6,20 @@ import { loadStreetEasy } from '../server/streeteasy.ts';
 const rental = (id: number, price: number) => ({ id: String(id), price, street: '1 Test Street', unit: String(id),
   zipCode: '10001', status: 'ACTIVE', bedroomCount: 1, urlPath: '/rental/' + (1000000 + id),
   areaName: 'Chelsea', buildingType: 'RENTAL', geoPoint: { latitude: 40.75, longitude: -73.99 } });
-function server(rows, mutate = (result, _page, _range) => result) {
+type Rental = Omit<ReturnType<typeof rental>, 'id'> & { id?: string; discounted?: number };
+type RentalResult = { totalCount: number; edges: { node: Rental }[] };
+function server(rows: Rental[], mutate: (result: RentalResult, page: number, range: number[] | null) => RentalResult = result => result) {
   let requests = 0, active = 0, maxActive = 0;
-  const fetcher = async (_url, options) => {
+  const fetcher = async (_url: string, options?: RequestInit) => {
     requests++; active++; maxActive = Math.max(maxActive, active);
     await Promise.resolve();
     try {
-      const query = JSON.parse(options.body).query;
+      const query = JSON.parse(String(required(options).body)).query;
       const page = Number(query.match(/page: (\d+)/)[1]);
       const match = query.match(/lowerBound: (\d+), upperBound: (\d+)/);
       const range = match ? [Number(match[1]), Number(match[2])] : null;
       const selected = rows.filter((row) => !range || (row.price >= range[0] && row.price <= range[1]) ||
-        (row.discounted >= range[0] && row.discounted <= range[1]));
+        (row.discounted !== undefined && row.discounted >= range[0] && row.discounted <= range[1]));
       const edges = page > 2 ? [] : selected.slice((page-1)*500, page*500).map(({discounted, ...node})=>({node}));
       return Response.json({data:{searchRentals:mutate({totalCount:selected.length,edges}, page, range)}});
     } finally {active--;}
@@ -49,13 +52,13 @@ test('refuses more than maximum inventory before partitioning',async()=>{
 test('cancels sibling requests after a partition failure', async()=>{
  let calls=0, cancelled=false;
  const rows=Array.from({length:1200},(_,id)=>rental(id,2000+id));
- const fetcher=async(_url,options)=>{
+ const fetcher=async(_url: string,options: RequestInit = {})=>{
    calls++;
-   const query=JSON.parse(options.body).query;
+   const query=JSON.parse(String(options.body)).query;
    if(!query.includes('lowerBound'))return Response.json({data:{searchRentals:{totalCount:1200,edges:rows.slice(0,500).map(node=>({node}))}}});
    if(query.includes('lowerBound: 0'))return new Response(null,{status:429});
-   await new Promise<void>((resolve)=>options.signal.addEventListener('abort',()=>{cancelled=true;resolve();},{once:true}));
-   throw options.signal.reason;
+   await new Promise<void>((resolve)=>required(options.signal).addEventListener('abort',()=>{cancelled=true;resolve();},{once:true}));
+   throw required(options.signal).reason;
  };
  await assert.rejects(()=>loadStreetEasy(fetcher),/HTTP 429/);
  await new Promise(resolve=>setTimeout(resolve,10));
@@ -80,7 +83,7 @@ test('queries all markets and retains all five boroughs and New Jersey',async()=
  const zips=['10001','11215','11375','10451','10301','07302','07030'];
  const mock=server(zips.map((zipCode,i)=>({...rental(i,2500),zipCode})));
  const result=await loadStreetEasy(async(url,options)=>{
-  assert.doesNotMatch(JSON.parse(String(options.body)).query,/areas:/);
+  assert.doesNotMatch(JSON.parse(String(required(options).body)).query,/areas:/);
   return mock.fetcher(url,options);
  });
  assert.deepEqual(result.listings.map(x=>x.city),['Manhattan','Brooklyn','Queens','Bronx','Staten Island','Jersey City','Hoboken']);

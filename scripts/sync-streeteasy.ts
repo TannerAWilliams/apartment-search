@@ -13,16 +13,16 @@ async function request(path: string, body?: object) {
     body: body ? JSON.stringify(body) : undefined, redirect: 'error', signal: AbortSignal.timeout(30000),
   });
   if (!response.ok) throw new Error('Apartment Search returned HTTP ' + response.status);
-  return response.json();
+  return await response.json() as { state?: string; refresh?: { sources: { id: string; transport?: string; status?: string; updatedAt?: string; retryAt?: string; listingCount?: number; total?: number }[] } };
 }
 const config = await request('/api/config');
 const status = config.refresh?.sources.find(({id}) => id === STREETEASY_LIVE.id);
 
-if (!manual && status?.transport === 'v6-daily' && ['updated','current'].includes(status.status) &&
-    Date.now() - Date.parse(status.updatedAt) < 24 * 60 * 60_000) {
+if (!manual && status?.transport === 'v6-daily' && ['updated','current'].includes(status.status ?? '') &&
+    Date.now() - Date.parse(status.updatedAt ?? '') < 24 * 60 * 60_000) {
   return {state:'already_current',listingCount:status.listingCount};
 } else {
-  if (Date.parse(status?.retryAt) > Date.now()) throw new Error('StreetEasy recovery is waiting for its source retry time.');
+  if (Date.parse(status?.retryAt ?? '') > Date.now()) throw new Error('StreetEasy recovery is waiting for its source retry time.');
   let data;
   for (let attempt=0; attempt<2; attempt++) {
     try { data=await loadStreetEasy(fetcher); break; }
@@ -30,11 +30,14 @@ if (!manual && status?.transport === 'v6-daily' && ['updated','current'].include
       if(attempt || !(error instanceof Error) || !/inventory changed|incomplete inventory/.test(error.message)) throw error;
     }
   }
+  if (!data) throw new Error('StreetEasy did not return an inventory.');
   const outcome=await request('/api/refresh',{...encodeSourceImport({[STREETEASY_LIVE.id]:data}),fallback:true,...(manual ? {source:STREETEASY_LIVE.id} : {})});
   if(outcome.state==='running')throw new Error('Another refresh owns the lock; retry after it finishes.');
   const saved=(await request('/api/config')).refresh?.sources.find(({id})=>id===STREETEASY_LIVE.id);
+  const savedAt = Date.parse(saved?.updatedAt ?? '');
+  const checkedAt = Date.parse(data.checkedAt);
   if(saved?.status!=='updated' || saved.transport!=='v6-daily' || saved.total!==data.total ||
-      saved.listingCount!==data.listings.length || Date.parse(saved.updatedAt)<Date.parse(data.checkedAt)) {
+      saved.listingCount!==data.listings.length || !Number.isFinite(savedAt) || !Number.isFinite(checkedAt) || savedAt < checkedAt) {
     throw new Error('The imported inventory was not verified in the hosted app.');
   }
   return {state:'updated',total:data.total,listingCount:saved.listingCount,requests:data.pages,updatedAt:saved.updatedAt};

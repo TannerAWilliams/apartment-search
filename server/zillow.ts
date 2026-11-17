@@ -1,3 +1,4 @@
+import type { FetchTransport } from '../src/fetch-type.ts';
 import { normalizeListing } from '../src/listings.ts';
 import { loadPublicPages, publicListingUrl } from './public-rentals.ts';
 
@@ -14,15 +15,15 @@ const MARKETS = [
   ['norwalk-ct', 'Norwalk', 'CT', 'ct'],
 ].map(([path, city, state, region]) => ({ url: ORIGIN + '/' + path + '/cheap-apartments/', city, state, region }));
 const APARTMENTS = new Set(['APARTMENT', 'CONDO', 'COOP', 'CO_OP']);
-const listingUrl = (url) => publicListingUrl(url, ORIGIN, /^\/homedetails\/[^/]+\/\d+_zpid\/?$/);
+const listingUrl = (url: unknown) => publicListingUrl(url, ORIGIN, /^\/homedetails\/[^/]+\/\d+_zpid\/?$/);
 
 export const ZILLOW_LIVE = {
   ...SOURCE, id: 'zillow-live', marketplace: SOURCE.id, coverage: 'selected NJ, Long Island, Westchester and Connecticut cities',
   regions: ['nj', 'li', 'metroNorth', 'ct'], minPages: MARKETS.length, maxPages: MARKETS.length, rowsPerPage: 60,
-  listingUrl, load: (fetcher, now) => loadPublicPages(SOURCE, MARKETS, parseZillowPage, fetcher, now),
+  listingUrl, load: (fetcher: FetchTransport, now: Date) => loadPublicPages(SOURCE, MARKETS, parseZillowPage, fetcher, now),
 };
 
-export function parseZillowPage(html, market, checkedAt) {
+export function parseZillowPage(html: string, market: {city:string; state:string; region:string}, checkedAt: string) {
   const script = html.match(/<script\b[^>]*\bid=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script\s*>/i);
   const rows = script && JSON.parse(script[1])?.props?.pageProps?.searchPageState?.cat1?.searchResults?.listResults;
   if (!Array.isArray(rows)) throw new Error('Zillow did not return a recognized rental page.');

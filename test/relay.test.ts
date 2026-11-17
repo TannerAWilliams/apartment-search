@@ -19,7 +19,7 @@ test('relay accepts bounded public query and rejects arbitrary destinations', ()
 test('relay HTTP requires auth and preserves source status without forwarding credentials', async () => {
   const token = 'test-only-key-that-is-long-enough-123456789';
   let calls = 0;
-  const server = createRelay(token, async (url, options) => {
+  const server = createRelay(token, async (url: string, options?: RequestInit) => {
     calls++;
     assert.equal(url, 'https://api-v6.streeteasy.com/');
     assert.equal(new Headers(options?.headers).get('Authorization'), null);
@@ -54,7 +54,7 @@ test('Worker relay maps only known source requests and keeps auth server-side', 
   assert.ok(config);
   assert.deepEqual(sourceRelayPayload('https://api-v6.streeteasy.com/', { method: 'POST', body: JSON.stringify({ query: 'page: 1 price: { lowerBound: 0, upperBound: 2147483647 }' }) }), { source: 'streeteasy', page: 1, lower: 0, upper: 2147483647 });
   let calls = 0;
-  const fetcher = withListingRelay(async (url, options) => {
+  const fetcher = withListingRelay(async (url: string, options?: RequestInit) => {
     calls++;
     if (calls === 1) {
       assert.equal(url, 'https://test.onrender.com/fetch');
@@ -65,7 +65,7 @@ test('Worker relay maps only known source requests and keeps auth server-side', 
   }, config);
   await fetcher('https://hotpads.com/stamford-ct/condos-for-rent');
   await fetcher('https://example.com');
-  await wakeListingRelay(async (url) => { assert.equal(url, 'https://test.onrender.com/health'); return new Response('ok'); }, config);
+  await wakeListingRelay(async (url: string) => { assert.equal(url, 'https://test.onrender.com/health'); return new Response('ok'); }, config);
 });
 
 test('separate app credential preserves legacy auth and denies invalid keys', async () => {
@@ -78,7 +78,7 @@ test('separate app credential preserves legacy auth and denies invalid keys', as
  const addr=server.address();assert.ok(addr && typeof addr!=='string');
  try {
  for(const [key,status] of [[legacy,200],[app,200],['c'.repeat(64),401],['short',401]] as const){
- const result=await fetch('http://127.0.0.1:'+addr.port+'/fetch',{method:'POST',headers:{Authorization:'Bearer '+key},body:JSON.stringify({source:'streeteasy',page:1})});
+ const result: Response=await fetch('http://127.0.0.1:'+addr.port+'/fetch',{method:'POST',headers:{Authorization:'Bearer '+key},body:JSON.stringify({source:'streeteasy',page:1})});
  assert.equal(result.status,status);
  }
  assert.equal(calls,2);

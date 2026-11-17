@@ -1,9 +1,10 @@
+import type { AppEnv } from './contracts.ts';
 import type { SourceFetch } from './refresh.ts';
 
 type RelayConfig = { origin: string; token: string };
-export function relayConfig(env): RelayConfig | null {
+export function relayConfig(env: AppEnv): RelayConfig | null {
   if (!env.LISTING_RELAY_URL && !env.LISTING_RELAY_TOKEN) return null;
-  const url = new URL(env.LISTING_RELAY_URL);
+  const url = new URL(env.LISTING_RELAY_URL ?? '');
   if (url.protocol !== 'https:' || !url.hostname.endsWith('.onrender.com') || url.username || url.password ||
       url.pathname !== '/' || url.search || url.hash || typeof env.LISTING_RELAY_TOKEN !== 'string' ||
       env.LISTING_RELAY_TOKEN.length < 32) throw new Error('Invalid listing relay configuration.');
@@ -51,7 +52,7 @@ export async function wakeListingRelay(fetcher: SourceFetch, config: RelayConfig
 
 // Per-request diagnostics contain route labels only, never URLs or credentials.
 export type ListingTransports = Partial<Record<string, 'direct' | 'relay'>>;
-export function createListingSourceClient(env, fetcher: SourceFetch = fetch) {
+export function createListingSourceClient(env: AppEnv, fetcher: SourceFetch = fetch) {
   const config = relayConfig(env);
   const listingTransports: ListingTransports = {};
   const routed = config ? withListingRelay(fetcher, config) : fetcher;

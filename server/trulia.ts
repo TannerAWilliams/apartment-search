@@ -1,3 +1,4 @@
+import type { FetchTransport } from '../src/fetch-type.ts';
 import { normalizeListing } from '../src/listings.ts';
 import { searchBorough } from '../src/regions.ts';
 import { loadPublicPages, publicListingUrl } from './public-rentals.ts';
@@ -15,15 +16,15 @@ const MARKETS = TRULIA_MARKETS.flatMap((market) => [1, 2].flatMap((bedrooms) =>
     ...market, bedrooms,
     url: `${ORIGIN}/for_rent/${market.city.replaceAll(' ', '_')},${market.state}/${bedrooms}_beds/${page}`,
   }))));
-const listingUrl = (url) => publicListingUrl(url, ORIGIN, /^\/(?:home|building)\/[^/]+-\d+\/?$/);
+const listingUrl = (url: unknown) => publicListingUrl(url, ORIGIN, /^\/(?:home|building)\/[^/]+-\d+\/?$/);
 
 export const TRULIA_LIVE = {
   ...SOURCE, id: 'trulia-live', marketplace: SOURCE.id, coverage: 'first two one- and two-bedroom pages in Manhattan, Brooklyn, Jersey City and Stamford',
   regions: ['nyc', 'nj', 'ct'], minPages: MARKETS.length, maxPages: MARKETS.length, rowsPerPage: 50,
-  listingUrl, load: (fetcher, now) => loadPublicPages(SOURCE, MARKETS, parseTruliaPage, fetcher, now),
+  listingUrl, load: (fetcher: FetchTransport, now: Date) => loadPublicPages(SOURCE, MARKETS, parseTruliaPage, fetcher, now),
 };
 
-export function parseTruliaPage(html, market, checkedAt) {
+export function parseTruliaPage(html: string, market: {city:string; state:string; region:string; bedrooms:number}, checkedAt: string) {
   const script = html.match(/<script\b[^>]*\bid=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script\s*>/i);
   const rows = script && JSON.parse(script[1])?.props?.searchData?.homes;
   if (!Array.isArray(rows)) throw new Error('Trulia did not return a recognized rental page.');

@@ -1,3 +1,4 @@
+import { required } from './test-values.ts';
 import { test } from 'bun:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -7,7 +8,7 @@ import { PGlite } from '@electric-sql/pglite';
 import { createPostgresBucket, type BucketDatabase } from '../server/postgres-bucket.ts';
 
 function adapter(db: PGlite): BucketDatabase {
-  return { query: (sql, params) => db.query(sql, params), connect: async () => ({ query: (sql, params) => db.query(sql, params), release() {} }) } as unknown as BucketDatabase;
+  return { query: (sql: string, params?: unknown[]) => db.query(sql, params), connect: async () => ({ query: (sql: string, params?: unknown[]) => db.query(sql, params), release() {} }) } as unknown as BucketDatabase;
 }
 test('PostgreSQL bucket persists source bytes, metadata and etags across process-like reopen', async () => {
   const path = await mkdtemp(join(tmpdir(), 'apartment-pg-'));
@@ -18,21 +19,21 @@ test('PostgreSQL bucket persists source bytes, metadata and etags across process
     const first = await bucket.put('source', '{"count":1}', { customMetadata: { version: '1' }, onlyIf: { etagDoesNotMatch: '*' } });
     await db.close(); db = new PGlite(path); bucket = await createPostgresBucket(adapter(db), 30);
     const restored = await bucket.head('source');
-    assert.equal(restored.etag, first.etag); assert.deepEqual(restored.customMetadata, { version: '1' });
-    assert.deepEqual(await restored.json(), { count: 1 });
-    new Uint8Array(await restored.arrayBuffer())[0] = 0;
-    assert.equal(await restored.text(), '{"count":1}');
+    assert.equal(required(restored).etag, required(first).etag); assert.deepEqual(required(restored).customMetadata, { version: '1' });
+    assert.deepEqual(await required(restored).json(), { count: 1 });
+    new Uint8Array(await required(restored).arrayBuffer())[0] = 0;
+    assert.equal(await required(restored).text(), '{"count":1}');
     assert.equal(await bucket.put('source', 'bad', { onlyIf: { etagDoesNotMatch: '*' } }), null);
     assert.equal(await bucket.put('source', 'bad', { onlyIf: { etagMatches: 'wrong' } }), null);
     assert.equal(await bucket.put('absent', 'bad', { onlyIf: { etagMatches: 'wrong' } }), null);
-    const next = await bucket.put('source', new TextEncoder().encode('new'), { onlyIf: { etagMatches: first.etag } });
-    assert.notEqual(next.etag, first.etag); assert.equal(await (await bucket.get('source')).text(), 'new');
+    const next = await bucket.put('source', new TextEncoder().encode('new'), { onlyIf: { etagMatches: required(first).etag } });
+    assert.notEqual(required(next).etag, required(first).etag); assert.equal(await required((await bucket.get('source'))).text(), 'new');
     await bucket.put('other', 'x'.repeat(25));
     await assert.rejects(bucket.put('source', 'x'.repeat(6)), /capacity/);
     await assert.rejects(bucket.put('oversize', 'x'.repeat(31)), /capacity/);
-    assert.equal(await (await bucket.get('source')).text(), 'new');
+    assert.equal(await required((await bucket.get('source'))).text(), 'new');
     await bucket.put('source', 'ok');
-    assert.equal(await (await bucket.get('source')).text(), 'ok');
+    assert.equal(await required((await bucket.get('source'))).text(), 'ok');
   } finally { await db.close(); await rm(path, { recursive: true, force: true }); }
 });
 test('validation, unavailable database and rollback failures fail closed and release clients', async () => {
@@ -53,14 +54,14 @@ test('captures caller bytes and metadata before waiting for the database connect
   const db = new PGlite();
   try {
     const base = adapter(db);
-    let proceed: () => void;
+    let proceed: (() => void) | undefined;
     const gate = new Promise<void>(resolve => { proceed = resolve; });
     const delayed = { ...base, connect: async () => { await gate; return base.connect(); } } as BucketDatabase;
     const bucket = await createPostgresBucket(delayed);
     const input = new TextEncoder().encode('old'); const metadata = { version: 'old' };
     const pending = bucket.put('key', input, { customMetadata: metadata });
-    input[0] = 120; metadata.version = 'new'; proceed(); await pending;
-    assert.equal(await (await bucket.get('key')).text(), 'old');
-    assert.deepEqual((await bucket.get('key')).customMetadata, { version: 'old' });
+    input[0] = 120; metadata.version = 'new'; required(proceed)(); await pending;
+    assert.equal(await required((await bucket.get('key'))).text(), 'old');
+    assert.deepEqual(required((await bucket.get('key'))).customMetadata, { version: 'old' });
   } finally { await db.close(); }
 });

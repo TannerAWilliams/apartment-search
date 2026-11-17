@@ -18,7 +18,7 @@ export function createBuildingReportCache(clock = Date.now) {
     if (!value || typeof value.checkedAt !== 'string' || !Number.isFinite(Date.parse(value.checkedAt)) || !['matched', 'partial', 'unmatched', 'ambiguous', 'unavailable'].includes(value.status)) throw new Error('Invalid building report response.');
     const duration = value.status === 'matched' ? TTL : 30_000;
     records.set(key, { until: clock() + duration, value: clone(value) });
-    while (records.size > MAX) records.delete(records.keys().next().value);
+    while (records.size > MAX) { const oldest = records.keys().next().value; if (oldest === undefined) break; records.delete(oldest); }
     return clone(value);
   };
 }

@@ -6,7 +6,7 @@ import { Buffer } from 'node:buffer';
 export function createMemoryBucket(maxBytes = 96 * 1024 * 1024) {
   const objects = new Map<string, { bytes: Uint8Array; etag: string; customMetadata: Record<string, string> }>();
   let used = 0;
-  const snapshot = (value) => value && ({
+  const snapshot = (value: { bytes: Uint8Array; etag: string; customMetadata: Record<string, string> } | undefined) => value && ({
     etag: value.etag, customMetadata: { ...value.customMetadata },
     arrayBuffer: async () => value.bytes.slice().buffer,
     text: async () => new TextDecoder().decode(value.bytes),

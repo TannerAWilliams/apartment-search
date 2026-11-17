@@ -3,14 +3,14 @@ import type { TextInputProps, ViewProps } from 'react-native';
 import { Linking, Platform, Pressable, Text, TextInput, View } from 'react-native';
 import { colors, styles } from './styles.ts';
 
-export function Chip({ children, selected = false, onPress }) {
+export function Chip({ children, selected = false, onPress }: { children: ReactNode; selected?: boolean; onPress: () => void }) {
   return <Pressable accessibilityRole="button" accessibilityState={{ selected }}
     onPress={onPress} style={({ pressed }) => [styles.chip, selected && styles.chipActive, pressed && styles.pressed]}>
     <Text style={[styles.chipText, selected && styles.chipTextActive]}>{children}</Text>
   </Pressable>;
 }
 
-export function Button({ children, onPress, secondary = false, disabled = false }) {
+export function Button({ children, onPress, secondary = false, disabled = false }: { children: ReactNode; onPress: () => void; secondary?: boolean; disabled?: boolean }) {
   return <Pressable accessibilityRole="button" accessibilityState={{ disabled }}
     onPress={onPress} disabled={disabled}
     style={({ pressed }) => [styles.button, secondary && styles.buttonSecondary,
@@ -35,13 +35,13 @@ export function ExternalLink({ url, onError, children, style, ...props }: {
   </Pressable>;
 }
 
-export function Link({ label, url, onError }) {
+export function Link({ label, url, onError }: { label: string; url: string; onError?: (message: string) => void }) {
   return <ExternalLink url={url} onError={onError} style={({ pressed }) => [styles.link, pressed && styles.pressed]}>
     <Text style={styles.linkText}>{label} ↗</Text>
   </ExternalLink>;
 }
 
-export function SectionTitle({ index, children }) {
+export function SectionTitle({ index, children }: { index: string | number; children: ReactNode }) {
   return <View style={styles.sectionTitle}>
     <Text style={styles.sectionIndex}>{index}</Text>
     <Text accessibilityRole="header" style={styles.sectionHeading}>{children}</Text>

@@ -12,9 +12,9 @@ const SEARCHES = BOROUGHS.flatMap((area) => [1, 2].map((bedrooms) => ({ area, be
 export const OPENIGLOO_SAMPLE_LIMIT = SAMPLE_LIMIT * SEARCHES.length;
 const PROTOCOL = '2025-11-25';
 
-async function searchMcp(fetcher) {
-  const headers = { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' };
-  async function request(payload) {
+async function searchMcp(fetcher: FetchTransport) {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' };
+  async function request(payload: { id?: number; method: string; params?: object }) {
     const response = await fetcher(ENDPOINT, {
       method: 'POST', headers, body: JSON.stringify({ jsonrpc: '2.0', ...payload }),
       redirect: 'error', signal: AbortSignal.timeout(12000),
@@ -49,11 +49,11 @@ async function searchMcp(fetcher) {
 
 export async function loadOpenigloo(fetcher: FetchTransport = fetch, now = new Date()) {
   const results = await searchMcp(fetcher);
-  const listings = results.flatMap(({ area, bedrooms, apartments }) => apartments.slice(0, SAMPLE_LIMIT).flatMap((row) => {
+  const listings = results.flatMap(({ area, bedrooms, apartments }) => apartments.slice(0, SAMPLE_LIMIT).flatMap((row: { address?: string; status?: string; url?: string; bedrooms?: number; id?: string; neighborhood?: string; rent_per_month?: number }) => {
     if (typeof row?.address !== 'string') return [];
     const parts = row.address.match(/^(.+),\s*([^,]+),\s*NY\s+(\d{5})$/i);
     if (!parts || row.status !== 'for_rent' || marketplaceIdForUrl(row.url) !== OPENIGLOO.id ||
-        !row.url.includes('/unit/nyc/') || searchBorough({ state: 'NY', zip: parts[3] }) !== area.toLowerCase() ||
+        !row.url?.includes('/unit/nyc/') || searchBorough({ state: 'NY', zip: parts[3] }) !== area.toLowerCase() ||
         row.bedrooms !== bedrooms) return [];
     const listing = normalizeListing({
       id: row.id, address: parts[1].trim().replace(/\s+/g, ' '), city: area,

@@ -1,3 +1,5 @@
+import type { AppEnv } from './contracts.ts';
+import type { ListingData, Point, Workplace, SearchFilters } from '../src/domain.ts';
 import type { SourceFetch } from "./refresh.ts";
 import { SearchInputError, isPoint, localWorkplace } from '../src/search.ts';
 
@@ -6,24 +8,23 @@ const MODES = { transit: 'public_transport', driving: 'driving+ferry' };
 
 export class CommuteError extends Error {
   declare status: number;
-  constructor(message, status = 503) {
+  constructor(message: string, status = 503) {
     super(message);
     this.status = status;
   }
 }
 
-export function routingCredentials(env) {
+export function routingCredentials(env: AppEnv) {
   const values = { appId: env.TRAVELTIME_APP_ID, apiKey: env.TRAVELTIME_API_KEY };
-  return [values.appId, values.apiKey].every((value) =>
-    typeof value === 'string' && /^[\x21-\x7e]{1,256}$/.test(value)) ? values : null;
+  return typeof values.appId === 'string' && typeof values.apiKey === 'string' && [values.appId, values.apiKey].every((value) => /^[\x21-\x7e]{1,256}$/.test(value)) ? { appId: values.appId, apiKey: values.apiKey } : null;
 }
 
-const coords = ({ latitude: lat, longitude: lng }) => ({ lat, lng });
-const pointKey = ({ latitude, longitude }) => `${latitude},${longitude}`;
+const coords = ({ latitude: lat, longitude: lng }: Point) => ({ lat, lng });
+const pointKey = ({ latitude, longitude }: Point) => `${latitude},${longitude}`;
 
-export async function routeCommutes(listings, workplace, credentials, fetcher, now = new Date()) {
+export async function routeCommutes<T extends { latitude?: unknown; longitude?: unknown }>(listings: T[], workplace: unknown, credentials: ReturnType<typeof routingCredentials>, fetcher: SourceFetch, now = new Date()) {
   if (!credentials) throw new CommuteError('Automatic commute estimates are unavailable because the routing service is disconnected.');
-  if (!isPoint(workplace) || typeof workplace.label !== 'string' || !workplace.label || workplace.label.length > 200 || !Number.isFinite(now.getTime())) throw new CommuteError('Choose a valid workplace before calculating commute times.', 422);
+  if (!isPoint(workplace) || !('label' in workplace) || typeof workplace.label !== 'string' || !workplace.label || workplace.label.length > 200 || !Number.isFinite(now.getTime())) throw new CommuteError('Choose a valid workplace before calculating commute times.', 422);
   const origins = new Map();
   for (const listing of listings) {
     if (isPoint(listing) && !origins.has(pointKey(listing))) {
@@ -41,7 +42,7 @@ export async function routeCommutes(listings, workplace, credentials, fetcher, n
   const body = { locations: [...locations, { id: 'workplace', coords: coords(workplace) }],
     arrival_searches: { many_to_one: searches } };
 
-  let results;
+  let results: { search_id?: string; locations?: { id: string; properties?: { travel_time?: number } }[] }[];
   try {
     const response = await fetcher(TRAVELTIME_URL, {
       method: 'POST', redirect: 'error', signal: AbortSignal.timeout(20000),
@@ -62,7 +63,7 @@ export async function routeCommutes(listings, workplace, credentials, fetcher, n
     if (!Array.isArray(result?.locations)) throw new CommuteError('TravelTime returned incomplete commute estimates. Try again.');
     return [id, new Map(result.locations.flatMap((location) => {
       const seconds = location?.properties?.travel_time;
-      return Number.isFinite(seconds) && seconds >= 0 && seconds <= 10800 ? [[location.id, seconds]] : [];
+      return typeof seconds === 'number' && Number.isFinite(seconds) && seconds >= 0 && seconds <= 10800 ? [[location.id, seconds]] : [];
     }))];
   }));
   return listings.map((listing) => {
@@ -71,7 +72,7 @@ export async function routeCommutes(listings, workplace, credentials, fetcher, n
   });
 }
 
-export async function geocodeAddress(address, fetcher: SourceFetch = fetch) {
+export async function geocodeAddress(address: unknown, fetcher: SourceFetch = fetch) {
   if (typeof address !== 'string' || address.trim().length < 4 || address.length > 160) {
     throw new SearchInputError('Enter a full street address with city, state and ZIP.');
   }
@@ -100,6 +101,6 @@ export async function geocodeAddress(address, fetcher: SourceFetch = fetch) {
   return point;
 }
 
-export async function resolveWorkplace(filters, fetcher) {
+export async function resolveWorkplace(filters: SearchFilters, fetcher: SourceFetch) {
   return localWorkplace(filters) ?? geocodeAddress(filters.customWorkplace, fetcher);
 }

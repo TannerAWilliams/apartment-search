@@ -1,11 +1,15 @@
+import type { ListingData } from './domain.ts';
+import type { retrieveBuildingRecords } from '../server/building-records.ts';
+export type BuildingRecordsResult = Awaited<ReturnType<typeof retrieveBuildingRecords>>;
+export type CheckBuilding = (listing: ListingData, signal: AbortSignal) => Promise<BuildingRecordsResult>;
 import { cachedBuildingReport, buildingRequestIdentity } from './building-report-cache.ts';
 import React, { useEffect, useRef, useState } from 'react';
 import { Text, View } from 'react-native';
 import { buildingReport } from './building-report.ts';
 import { styles } from './styles.ts';
 import { Link } from './ui.tsx';
-export function BuildingReport({ listing, onError, onCheckBuilding }) {
-  const [result, setResult] = useState<any>(null);
+export function BuildingReport({ listing, onError, onCheckBuilding }: { listing: ListingData; onError?: (message: string) => void; onCheckBuilding?: CheckBuilding }) {
+  const [result, setResult] = useState<BuildingRecordsResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const sequence = useRef(0);

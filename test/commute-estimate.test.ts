@@ -1,3 +1,4 @@
+import { required } from './test-values.ts';
 import { test } from 'bun:test';
 import assert from 'node:assert/strict';
 import { savedCommuteEstimate, withoutCommuteEstimate } from '../src/commute-estimate.ts';
@@ -6,7 +7,7 @@ import { comparisonRows } from '../src/comparison.ts';
 const destination = { label: 'Test workplace', latitude: 40.75, longitude: -73.98 };
 const checkedAt = '2026-11-17T00:00:00.000Z';
 const metadata = () => ({ provider: 'TravelTime', arrivalPeriod: 'weekday_morning', checkedAt, destination });
-const listing = { id: 'one', address: 'Test apartment', latitude: 40.7, longitude: -74, rent: 2000, bedrooms: 1 };
+const listing = { id: 'one', address: 'Test apartment', city: 'Brooklyn', state: 'NY', zip: '11201', kind: 'feed', sources: [], latitude: 40.7, longitude: -74, rent: 2000, bedrooms: 1 };
 const credentials = { appId: 'test', apiKey: 'fixture-not-a-real-key' };
 test('saved estimates require validated destination/provider/time context, never raw legacy durations', () => {
   assert.equal(savedCommuteEstimate({ transitSeconds: 600 }), null);
@@ -22,8 +23,8 @@ test('saved estimates require validated destination/provider/time context, never
 });
 test('routing attaches actual query destination and timestamp, while invalid coordinates never inherit estimates', async () => {
   const invalid = { ...listing, id: 'invalid', latitude: '40.7', transitSeconds: 5, commuteEstimate: metadata() };
-  const fetcher = async (_url, options) => {
-    const body = JSON.parse(options.body);
+  const fetcher = async (_url: string, options?: RequestInit) => {
+    const body = JSON.parse(String(required(options).body));
     assert.equal(body.locations.length, 2);
     assert.deepEqual(body.locations[1].coords, { lat: destination.latitude, lng: destination.longitude });
     return new Response(JSON.stringify({ results: ['transit', 'driving'].map(search_id => ({ search_id, locations: [{ id: '0', properties: { travel_time: search_id === 'transit' ? 601 : 1200 } }] })) }));
