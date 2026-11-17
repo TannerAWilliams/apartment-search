@@ -9,10 +9,11 @@ const fixtures = (count = 1) => Array.from({ length: count }, (_, index) => norm
   status: 'Active', url: `https://streeteasy.com/building/test/${index + 1}`,
 }, { id: 'streeteasy', name: 'StreetEasy', kind: 'feed' }));
 const now = '2026-11-13T12:00:00Z';
-async function mockApp(page: Page, options: { initialRefresh?: boolean; failed?: boolean; searchError?: boolean; listingCount?: number; notices?: string[]; priceHistory?: boolean } = {}) {
+async function mockApp(page: Page, options: { initialRefresh?: boolean; failed?: boolean; searchError?: boolean; listingCount?: number; notices?: string[]; priceHistory?: boolean; discovery?: boolean } = {}) {
   const requests: { path: string; method: string; body: any }[] = [];
   const unexpected: string[] = [];
   const listings = fixtures(options.listingCount);
+  if (options.discovery) Object.assign(listings[0], { bathrooms: 1.5, squareFeet: 900, petsAllowed: true, laundry: 'in_unit' });
   if (options.priceHistory) Object.assign(listings[0], { priceHistory: { sourceId: 'synthetic-fixture', firstObservedAt: '2026-11-01T12:00:00Z', lastObservedAt: now, truncated: true,
     observations: [{ checkedAt: '2026-11-01T12:00:00Z', rent: 1900, priceIncludesFees: false }, { checkedAt: now, rent: 1800, priceIncludesFees: true }] } });
   const refresh = { checking: false, lastCheckedAt: now, sources: [{ id: 'streeteasy-live', name: 'StreetEasy', status: options.failed ? 'failed' : 'updated', checkedAt: now, updatedAt: now, listingCount: listings.length, ...(options.failed ? { error: 'StreetEasy returned HTTP 403. Verification required.' } : {}) }] };
@@ -356,4 +357,24 @@ test('observed timeline distinguishes historical checks from live availability a
   await expect(page.getByText(/\$1,800\/mo · includes reported fees/)).toBeVisible();
   await expect(page.getByText('Older changes were trimmed; showing the most recent 24 observations.', { exact: true })).toBeVisible();
   expect(requests.filter(request => request.path === '/api/refresh')).toHaveLength(0);
+});
+
+
+test('feature filters require reported facts rather than matching unknown details', async ({ page }) => {
+  const { requests } = await mockApp(page, { listingCount: 2, discovery: true });
+  await page.getByRole('button', { name: 'Filters', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Minimum bathrooms', exact: true }).fill('1.5');
+  await page.getByRole('textbox', { name: 'Minimum square feet', exact: true }).fill('900');
+  await page.getByRole('button', { name: 'Require pets allowed', exact: true }).click();
+  await page.getByRole('button', { name: 'In-unit laundry', exact: true }).click();
+  await page.getByRole('button', { name: 'Search apartments →', exact: true }).click();
+  await expect(page.getByText('12 Grove Street', { exact: true })).toBeVisible();
+  await expect(page.getByText('13 Grove Street', { exact: true })).toHaveCount(0);
+  const search = requests.filter(request => request.path === '/api/search').at(-1)!;
+  expect(search.body.minBathrooms).toBe(1.5);
+  expect(search.body.minSquareFeet).toBe(900);
+  expect(search.body.petsRequired).toBe(true);
+  expect(search.body.laundry).toBe('in_unit');
+  await page.getByRole('button', { name: 'Details for 12 Grove Street', exact: true }).click();
+  await expect(page.getByText(/Source-reported details: 1.5 baths · 900 sq ft/)).toBeVisible();
 });
