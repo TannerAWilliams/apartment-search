@@ -590,6 +590,7 @@ function ApartmentSearch() {
   }
 
   const toggleFilter = (panel) => { setDraft({ ...formDefaults(), ...applied, maxRent: applied.maxRent == null ? '' : String(applied.maxRent), maxTransitMinutes: applied.maxTransitMinutes == null ? '' : String(applied.maxTransitMinutes), maxDrivingMinutes: applied.maxDrivingMinutes == null ? '' : String(applied.maxDrivingMinutes) }); setExpanded((current) => current === panel ? '' : panel); };
+  const checkBuilding = useCallback((listing, signal) => api('building-report', { token: activeToken, signal, body: { address: listing.address, city: listing.city, county: listing.county, state: listing.state, zip: listing.zip } }), [activeToken]);
   const displayed = scope === 'saved' ? savedResults : result;
   const points = displayed.mapPoints ?? EMPTY_POINTS;
   const split = WEB_MAP && wide && mapView;
@@ -637,7 +638,7 @@ function ApartmentSearch() {
               </Pressable>}
               <View style={[styles.resultLayout, split && styles.resultLayoutWide]}>
                 {listVisible && <View style={styles.results}>
-                  <Results onCheckBuilding={serverState === 'ready' ? listing => api('building-report', { token: activeToken, body: { address: listing.address, city: listing.city, county: listing.county, state: listing.state, zip: listing.zip } }) : undefined} visible={visible} setVisible={setVisible} result={displayed} applied={applied} sort={scope === 'saved' ? SAVED_FILTERS.sort : applied.sort} onSort={selectSort}
+                  <Results onCheckBuilding={serverState === 'ready' ? checkBuilding : undefined} visible={visible} setVisible={setVisible} result={displayed} applied={applied} sort={scope === 'saved' ? SAVED_FILTERS.sort : applied.sort} onSort={selectSort}
                     onPage={fetchPage} paging={busy}
                     openCommute={() => setExpanded('commute')}
                     commuteConfigured={commuteConfigured}

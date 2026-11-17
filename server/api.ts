@@ -254,7 +254,7 @@ export async function handleApi(request, env, { requireToken = false, fetcher = 
         status === 'failed' || status === 'feed_required');
       return json(result, unavailable ? 502 : 200);
     }
-    if (path === '/api/building-report') return json(await retrieveBuildingRecords(body, async (url, options) => fetcher(url, options)));
+    if (path === '/api/building-report') return json(await retrieveBuildingRecords(body, async (url, options) => fetcher(url, options), new Date(), request.signal));
     if (path === '/api/search-check') return json(await wholeSearchCheck(body, env, filters => search(filters, env, () => { throw new Error('External requests are disabled for saved search checks.'); }, true)));
     if (path === '/api/geocode') return json(await geocodeAddress(body?.address, fetcher));
     if ((body?.includeCommute || needsCommute(body ?? {})) && !request.headers.get('Content-Type')?.startsWith('application/json')) {

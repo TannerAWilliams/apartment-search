@@ -81,7 +81,7 @@ Bun.serve({
           if (retry) return reply(JSON.stringify({ error: `Sources were just requested. Try again in ${retry} seconds.` }), 429, { 'Content-Type': 'application/json', 'Retry-After': String(retry) });
         }
         allowApiResponseTime(server, request);
-        const response = await handleApi(new Request(url.href, { method: request.method, headers: request.headers, body: bytes.length ? bytes : undefined }), env, createListingSourceClient(env));
+        const response = await handleApi(new Request(url.href, { method: request.method, headers: request.headers, signal: request.signal, body: bytes.length ? bytes : undefined }), env, createListingSourceClient(env));
         const headers = new Headers(response.headers);
         if (publicApp && !bearer) headers.set('X-Refresh-Retry-After', String(publicLimits.refreshRemainingSeconds()));
         return reply(response.body, response.status, headers);

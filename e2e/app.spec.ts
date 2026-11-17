@@ -9,10 +9,11 @@ const fixtures = (count = 1) => Array.from({ length: count }, (_, index) => norm
   status: 'Active', url: `https://streeteasy.com/building/test/${index + 1}`,
 }, { id: 'streeteasy', name: 'StreetEasy', kind: 'feed' }));
 const now = '2026-11-13T12:00:00Z';
-async function mockApp(page: Page, options: { initialRefresh?: boolean; failed?: boolean; searchError?: boolean; listingCount?: number; notices?: string[]; priceHistory?: boolean; discovery?: boolean; commute?: boolean } = {}) {
+async function mockApp(page: Page, options: { initialRefresh?: boolean; failed?: boolean; searchError?: boolean; listingCount?: number; notices?: string[]; priceHistory?: boolean; discovery?: boolean; commute?: boolean; nyc?: boolean } = {}) {
   const requests: { path: string; method: string; body: any }[] = [];
   const unexpected: string[] = [];
   const listings = fixtures(options.listingCount);
+  if (options.nyc) Object.assign(listings[0], { city: 'Brooklyn', state: 'NY', county: 'Kings', zip: '11201', region: 'nyc' });
   if (options.commute) Object.assign(listings[0], { transitSeconds: 1801, drivingSeconds: 900, commuteEstimate: { provider: 'TravelTime', arrivalPeriod: 'weekday_morning', checkedAt: now, destination: { label: 'Synthetic test workplace', latitude: 40.75, longitude: -73.98 } } });
   if (options.discovery) Object.assign(listings[0], { bathrooms: 1.5, squareFeet: 900, petsAllowed: true, laundry: 'in_unit' });
   if (options.priceHistory) Object.assign(listings[0], { priceHistory: { sourceId: 'synthetic-fixture', firstObservedAt: '2026-11-01T12:00:00Z', lastObservedAt: now, truncated: true,
@@ -29,6 +30,7 @@ async function mockApp(page: Page, options: { initialRefresh?: boolean; failed?:
     let data: unknown;
     if (url.pathname === '/api/config') data = { mode: 'live', browserImportAllowed: false, commuteConfigured: false, sources: [{ id: 'streeteasy', name: 'StreetEasy' }], sourceCatalog: [{ id: 'streeteasy-live', marketplace: 'streeteasy', name: 'StreetEasy', coverage: 'Synthetic test feed', resyncable: true }], refresh };
     else if (url.pathname === '/api/refresh') data = refresh;
+    else if (url.pathname === '/api/building-report' && options.nyc) data = { status: 'matched', checkedAt: now, identity: { address: '12 Grove Street, 11201', borough: 'BROOKLYN', buildingId: '123', bin: '3000001' }, openViolations: 2, complaintsLast365Days: 3, since: '2025-11-14', bedbugs: null, dob: null, flood: null, errors: [] };
     else if (url.pathname === '/api/search') {
       if (options.searchError && requests.filter(r => r.path === '/api/search').length > 1) return route.fulfill({ status: 503, json: { error: 'Synthetic search unavailable' } });
       const filters = parseFilters(body); data = localSearch(listings, filters, localWorkplace(filters), 'live', [], options.notices ?? []);
@@ -424,4 +426,20 @@ test('local change checks opt in, seed baseline and show newer observed price ch
   await page.getByRole('button', { name: 'Check this page and save local baseline', exact: true }).click();
   await expect(page.getByText('Observed price decrease: $1,800 → $1,700/mo', { exact: true })).toBeVisible();
   expect(requests.filter(request => request.path === '/api/refresh')).toHaveLength(0);
+});
+
+
+test('NYC building report loads automatically on Details and reuses completed session cache', async ({ page }) => {
+  const { requests, unexpected } = await mockApp(page, { nyc: true });
+  const details = page.getByRole('button', { name: 'Details for 12 Grove Street', exact: true });
+  expect(requests.filter(item => item.path === '/api/building-report')).toHaveLength(0);
+  await details.click();
+  await expect(page.getByText('Official building report: matched', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Check official HPD records', exact: true })).toHaveCount(0);
+  expect(requests.filter(item => item.path === '/api/building-report')).toHaveLength(1);
+  await details.click(); await details.click();
+  await expect(page.getByText('Official building report: matched', { exact: true })).toBeVisible();
+  expect(requests.filter(item => item.path === '/api/building-report')).toHaveLength(1);
+  expect(requests.filter(item => item.path === '/api/refresh')).toHaveLength(0);
+  expect(unexpected).toEqual([]);
 });
