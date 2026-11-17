@@ -6,7 +6,7 @@ import { fileURLToPath, URL } from 'node:url';
 
 test('public server opens browsing but blocks cross-origin writes and anonymous imports', async () => {
  const port=39876; const origin=`http://127.0.0.1:${port}`;
- const child=spawn(process.execPath,['--preload','./test/fixtures/offline-network.ts','server/main.ts'],{cwd:fileURLToPath(new URL('..',import.meta.url)),env:{...process.env,DATABASE_URL:'',HOST:'127.0.0.1',PORT:String(port),PUBLIC_APP:'true',APP_ACCESS_TOKEN:'test-only-secret'.repeat(3),RENDER_EXTERNAL_URL:origin},stdio:['ignore','pipe','pipe']});
+ const child=spawn(process.execPath,['--preload','./test/fixtures/offline-network.ts','server/main.ts'],{cwd:fileURLToPath(new URL('..',import.meta.url)),env:{...process.env,DATABASE_URL:'',STARTUP_OPENIGLOO:'false',HOST:'127.0.0.1',PORT:String(port),PUBLIC_APP:'true',APP_ACCESS_TOKEN:'test-only-secret'.repeat(3),RENDER_EXTERNAL_URL:origin},stdio:['ignore','pipe','pipe']});
  try {
   await Promise.race([once(child.stdout,'data'), new Promise((_,reject)=>setTimeout(()=>reject(new Error('Startup timed out')),5000).unref())]);
   const dashboard = await fetch(origin+'/api/dashboard'); assert.equal(dashboard.status,200); assert.equal((await dashboard.json()).files.length,45);

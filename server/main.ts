@@ -1,3 +1,4 @@
+import { initializeInventory } from './startup-inventory.ts';
 import '../scripts/check-runtime.ts';
 import { allowApiResponseTime } from './http-timeout.ts';
 import { readRequestBody, RequestTooLarge } from './request-body.ts';
@@ -26,9 +27,12 @@ if (!publicApp && !local && (!token || token.length < 32)) throw new Error('A pr
 const database = process.env.DATABASE_URL ? createBunDatabase(process.env.DATABASE_URL) : null;
 const bucket = database ? await createPostgresBucket(database) : createMemoryBucket();
 const env = { ...process.env, BUCKET: bucket, TEMPORARY_CACHE: database ? 'false' : 'true' };
+// Rebuild the permitted limited sample before accepting searches on an empty startup.
+// Never change observation timestamps or silently promote historical rows.
+try { await initializeInventory(env); } catch { console.error('Initial inventory check failed; source status remains unavailable.'); }
 const publicOrigin = process.env.RENDER_EXTERNAL_URL;
 let failures = 0; let resetAt = 0;
-const loginPage = '<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><title>Apartment Search · Sign in</title></head><body><main><h1>Apartment Search</h1><p>This app is private. Enter the access password stored in your Render service environment.</p><form method="post" action="/login"><label>Access password <input name="password" type="password" required autocomplete="current-password"></label><button type="submit">Sign in</button></form><p>Listing storage mode is shown in the app. Provider refreshes are manual.</p></main></body></html>';
+const loginPage = '<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><title>Apartment Search · Sign in</title></head><body><main><h1>Apartment Search</h1><p>This app is private. Enter the access password stored in your Render service environment.</p><form method="post" action="/login"><label>Access password <input name="password" type="password" required autocomplete="current-password"></label><button type="submit">Sign in</button></form><p>Listing storage mode is shown in the app. An empty server startup checks the limited Openigloo sample once. Other provider refreshes are manual.</p></main></body></html>';
 
 const secureHeaders = {
   'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff',
