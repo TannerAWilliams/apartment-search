@@ -1,3 +1,4 @@
+import { dashboardChoices, dashboardMarket, dashboardSegmentLabel, selectDashboardMetric } from './dashboard-selection.ts';
 import { DashboardVisuals } from './DashboardVisuals.tsx';
 import React, { useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
@@ -22,6 +23,7 @@ export function DashboardExplorer({ loadDashboard }: { loadDashboard?: LoadDashb
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const row = file?.areas[area];
+  const choices = dashboardChoices(catalog, selected);
   useEffect(() => {
     setCatalog([]); setProvenance(null);
     if (!loadDashboard) return;
@@ -50,8 +52,18 @@ export function DashboardExplorer({ loadDashboard }: { loadDashboard?: LoadDashb
     {catalog.length > 0 && <>
       <Text style={styles.fieldLabel}>{catalog.length} of {DASHBOARD_FILES.length} supported files in stored snapshot</Text>
       <Text style={styles.smallMuted}>Not present in snapshot: {DASHBOARD_FILES.filter(name => !catalog.some(f => f.name === name)).join(', ') || 'None'}. Source: official StreetEasy master report. Missing files are not silently filled.</Text>
-      <View style={styles.chipRow}>{catalog.map(f => <Chip key={f.name} selected={f.name === selected} onPress={() => { setSelected(f.name); setArea(0); }}>
-        {METRICS[f.metric][0]} · {f.segment}</Chip>)}</View>
+      <Text style={styles.fieldLabel}>Market</Text>
+      <View style={styles.chipRow}>{choices.markets.map(market => <Chip key={market} selected={choices.market === market} onPress={() => {
+        const next = catalog.find(item => dashboardMarket(item.metric) === market);
+        if (next) setSelected(next.name);
+      }}>{market}</Chip>)}</View>
+      <Text style={styles.fieldLabel}>Metric</Text>
+      <View style={styles.chipRow}>{choices.metrics.map(metric => <Chip key={metric} selected={choices.current?.metric === metric} onPress={() => {
+        const next = selectDashboardMetric(catalog, metric, choices.current?.segment);
+        if (next) setSelected(next.name);
+      }}>{METRICS[metric][0]}</Chip>)}</View>
+      <Text style={styles.fieldLabel}>{choices.market === 'Rentals' ? 'Bedrooms' : 'Property type'}</Text>
+      <View style={styles.chipRow}>{choices.segments.map(item => <Chip key={item.name} selected={item.name === selected} onPress={() => setSelected(item.name)}>{dashboardSegmentLabel(item.segment)}</Chip>)}</View>
     </>}
     {file && <>
       <Field label="Find dashboard area" value={query} onChangeText={setQuery} maxLength={100} />
