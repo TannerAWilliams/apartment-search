@@ -1,4 +1,4 @@
-import test from 'node:test';
+import { test } from 'bun:test';
 import assert from 'node:assert/strict';
 import { parseTruliaPage, TRULIA_LIVE } from '../server/trulia.ts';
 import { parseZumperPage, ZUMPER_LIVE } from '../server/zumper.ts';

@@ -1,5 +1,7 @@
+import { discoveryFacts, mergeDiscoveryFacts } from './discovery.ts';
 import { MARKETPLACE_NAMES, marketplaceIdForUrl, safeListingUrl } from './marketplaces.ts';
 import { regionOf } from './regions.ts';
+import { isPoint } from './search.ts';
 
 const clean = (value, max = 160) => typeof value === 'string' ? value.trim().slice(0, max) : '';
 const numeric = (value) => typeof value === 'number' ? value :
@@ -83,7 +85,7 @@ export function normalizeListing(row, source) {
   const listing = {
     id: `${source.id}:${clean(row.id ?? row.listingId, 140) ||
       [address, unit, city, state, zip, safeListingUrl(originalUrl) || rent, bedrooms].join('|')}`,
-    address, unit, city, state, zip, county, rent, bedrooms, ...point,
+    address, unit, city, state, zip, county, rent, bedrooms, ...point, ...discoveryFacts(row),
     region: row.region,
     neighborhood: clean(row.neighborhood, 80),
     company: clean(row.company ?? row.brokerage),
@@ -99,9 +101,21 @@ export function mergeSourceLinks(first, second) {
   const links = new Map();
   for (const source of [...first, ...second]) {
     const key = source.url ?? source.id;
-    if (!links.has(key)) links.set(key, source);
+    const existing = links.get(key);
+    // A retained/historic link must not hide fresh evidence for the same URL.
+    if (!existing || (existing.kind !== 'feed' && source.kind === 'feed')) links.set(key, source);
   }
   return [...links.values()];
+}
+
+function hasIndependentSources(first, second) {
+  const identities = (listing) => new Set((listing.sources ?? [])
+    .map((source) => source.id ?? source.url)
+    .filter(Boolean));
+  const firstSources = identities(first);
+  const secondSources = identities(second);
+  if (!firstSources.size || !secondSources.size) return false;
+  return [...firstSources].every((source) => !secondSources.has(source));
 }
 
 export function mergeListings(listings, { preferFirst = false } = {}) {
@@ -120,9 +134,14 @@ export function mergeListings(listings, { preferFirst = false } = {}) {
     const listingTime = Date.parse(listing.seenAt) || 0;
     const preferred = !preferFirst && listingTime > currentTime ? listing : current;
     const alternate = preferred === listing ? current : listing;
-    const hasLocation = Number.isFinite(preferred.latitude) && Number.isFinite(preferred.longitude);
+    const hasLocation = isPoint(preferred);
+    const factsDiffer = preferred.rent !== alternate.rent || preferred.bedrooms !== alternate.bedrooms;
     merged.set(key, {
       ...preferred,
+      ...mergeDiscoveryFacts(preferred, alternate),
+      // A provider updating its own saved observation is history, not a disagreement between sources.
+      detailsConflict: Boolean(preferred.detailsConflict || alternate.detailsConflict ||
+        (factsDiffer && hasIndependentSources(preferred, alternate))),
       id: current.id,
       latitude: hasLocation ? preferred.latitude : alternate.latitude,
       longitude: hasLocation ? preferred.longitude : alternate.longitude,
@@ -132,4 +151,20 @@ export function mergeListings(listings, { preferFirst = false } = {}) {
     });
   }
   return [...merged.values()];
+}
+
+
+
+
+/** Presentation never converts missing bedrooms to a studio or guesses from a URL. */
+export function listingPresentation(listing) {
+  const bedsKnown = Number.isInteger(listing.bedrooms) && listing.bedrooms >= 0;
+  const priceKnown = Number.isFinite(listing.rent) && listing.rent > 0;
+  const notices: string[] = [];
+  if (!bedsKnown) notices.push('Bedroom count not provided. Check the listing.');
+  if (!priceKnown) notices.push('Monthly price not provided. Check the listing.');
+  else if (listing.rent < 500) notices.push('Unusually low price. Verify the monthly rent and whether this is a room or a full apartment.');
+  if (listing.discoveryConflicts?.length) notices.push('Sources disagree on apartment features. Conflicting features are treated as unknown; verify with the landlord.');
+  if (listing.detailsConflict) notices.push('Sources report different prices or bedroom counts. Verify details before comparing.');
+  return { priceKnown, bedsLabel: !bedsKnown ? 'Beds unknown' : listing.bedrooms === 0 ? 'Studio' : `${listing.bedrooms} ${listing.bedrooms === 1 ? 'bedroom' : 'bedrooms'}`, notices };
 }

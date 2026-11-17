@@ -85,6 +85,7 @@ export const styles = StyleSheet.create({
   resultHeading: { ...wrap, justifyContent: 'space-between', gap: 10, marginVertical: 1 },
   headingCopy: { gap: 3, flexShrink: 1 },
   noticeLine: { ...small, color: '#624215', padding: 10, backgroundColor: '#f9eed6', borderRadius: 10 },
+  noticePanel: { padding: 10, gap: 6, backgroundColor: '#f9eed6', borderRadius: 10 },
   error: { ...small, color: '#822924', backgroundColor: '#fae8e5', borderRadius: 10, padding: 12 },
   empty: { ...panel, padding: 24, alignItems: 'flex-start', gap: 10 },
   listing: { ...panel, paddingHorizontal: 15, paddingVertical: 13, gap: 10 },

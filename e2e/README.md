@@ -4,26 +4,28 @@ These tests operate the real exported React Native Web UI with synthetic API res
 
 ## Run
 
-Use Node 22.13+ and a browser-capable machine:
+Use Bun 1.4.4 and a browser-capable machine:
 
 ```
-npm ci
-npx playwright install chromium
-npm run test:e2e
+bun install --frozen-lockfile
+bun ./node_modules/playwright/cli.js install chromium
+bun run test:e2e
 ```
 
-`npm run test:e2e:list` lists cases without launching a browser. Optional `PLAYWRIGHT_CHROMIUM_EXECUTABLE=/path/to/chromium` selects an installed Chromium. Chromium sandbox stays enabled; do not disable it to work around a constrained runner. No hosted paid testing service is used.
+`bun run test:e2e:list` lists cases without launching a browser. Optional `PLAYWRIGHT_CHROMIUM_EXECUTABLE=/path/to/chromium` selects an installed Chromium. Chromium sandbox stays enabled; do not disable it to work around a constrained runner. No hosted paid testing service is used.
 
-The suite builds the actual Expo web bundle, serves it on loopback, blocks external browser requests and mocks every supported `/api` route before navigation. It cannot target production via a baseURL environment override. Unexpected API endpoints get an explicit test failure response. Refresh buttons exercise mocked request handling, not real StreetEasy traffic. Each test has an isolated browser context; saved-listing reload checks only synthetic local storage. Failure traces/screenshots are local under ignored output directories.
+The suite builds the actual Expo web bundle, serves it on loopback, blocks external browser requests and mocks every supported `/api` route before navigation. It cannot target production via a baseURL environment override. Unexpected API endpoints get an explicit test failure response. Refresh buttons exercise mocked request handling, not real StreetEasy traffic. Each test has an isolated browser context; saved-listing reload checks only synthetic local storage. Portrait screenshots and failure traces/screenshots are local under ignored output directories.
 
 ## Coverage map
 
 Desktop and mobile Chromium each exercise:
 
-- Homepage all-region search and once-per-session initial refresh.
+- Homepage all-region saved-inventory search with no automatic provider refresh.
 - StreetEasy HTTP 403 status, failed resync and retained cached listing.
 - Resync-all payload and disabled browse-only resync controls.
-- Tab clicks and browser back restoration.
+- Search/Saved/More navigation and browser back restoration.
+- Applied-filter, expanded-list and scroll restoration through navigation.
+- Portrait first-card visibility, list-first map state, filter cancellation/reset and horizontal overflow checks.
 - Empty add-listing validation and cancellation.
 - Search failure alerts rather than misleading empty success.
 - Save, reload persistence and remove.
@@ -39,8 +41,36 @@ Still needed: complete successful manual listing/import workflows, deduplication
 
 Playwright discovery, E2E/config TypeScript checks, existing application unit tests and Expo web export also passed. This is evidence for the listed UI flows only, not complete browser coverage or live provider availability. The temporary Render service has automatic deployments off and exposes only an inert health message, never test reports, source data or credentials.
 
-## iPhone 17 portrait contract
 
-The `iphone17-portrait-chromium` project uses Playwright 1.65's `iPhone 17` device descriptor: 402×681 CSS viewport, 402×874 screen, DPR 3 and touch/mobile emulation. It reruns the existing interaction flows, then checks horizontal overflow and on-screen navigation/resync controls across rent, filters, Sources, Platforms and add-listing screens. Successful layout checks save screenshots in the test output directory for visual review.
 
-This is Chromium-based layout emulation, not a physical iPhone 17, iOS keyboard/safe-area check, or Safari/WebKit result. Those require separate qualification. Run `npm run test:e2e -- --project=iphone17-portrait-chromium` after installing Chromium. This portrait addition has been collected/typechecked but not yet browser-executed; do not present it as passed until the runner logs confirm execution.
+## November 16 extension: unverified browser scenarios
+
+Six additional scenarios cover successful manual entry with validation recovery and reload,
+CSV atomic validation/recovery and reload, duplicate reimport/removal, oversized file
+reselection, unsupported-borough rejection, and housing-cost calculation/validation/reset.
+The housing-cost scenario requires the `HousingCost` feature to be integrated into listing details.
+
+The inventory now contains 19 named scenarios across desktop Chromium and Pixel 7 emulation
+(38 project cases). This is a scenario inventory, **not** 90% code coverage, complete product
+coverage, native-device testing, or a pass claim. Source/server code coverage needs its own
+instrumented denominator including unimported files. Native iOS/Android, WebKit/Firefox,
+real-provider integrations, accessibility audit, map gestures, source cooldown/race handling,
+and broader pagination/sort combinations remain outside this inventory.
+
+Local verification on November 16: Expo web export succeeded; TypeScript validation passed.
+The attempted 36-case run (before adding the cost scenario) could not launch Chromium:
+`process_singleton_posix.cc: socket() failed: Operation not permitted`.
+Zero browser scenarios were verified in that run. Chromium sandbox remains enabled.
+Use a runner that supports sandboxed Chromium before accepting the new tests.
+
+
+## Optional iPhone 17 portrait regression
+
+The `iphone17-portrait-chromium` project uses Playwright 1.65's iPhone 17 descriptor
+(402×681 CSS viewport, 402×874 screen, DPR 3) with Chromium explicitly selected.
+It repeats the current interaction suite and adds overflow/navigation/control checks
+for Search, the filter modal and dismissal, Sources, add-listing, and Platforms.
+Screenshots are saved locally during execution. Run `bun run test:e2e -- --project=iphone17-portrait-chromium`.
+This is optional layout emulation, not physical iPhone, Safari, native safe-area or
+keyboard qualification. Discovery/typechecking do not establish a browser pass.
+Browser execution remains blocked here by OS socket restrictions; sandboxing stays enabled.

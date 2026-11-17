@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import { test } from 'bun:test';
 import { relayRequest } from '../server/relay-policy.ts';
 import { createRelay } from '../server/relay-service.ts';
 
@@ -23,6 +23,9 @@ test('relay HTTP requires auth and preserves source status without forwarding cr
     calls++;
     assert.equal(url, 'https://api-v6.streeteasy.com/');
     assert.equal(new Headers(options?.headers).get('Authorization'), null);
+    assert.equal(new Headers(options?.headers).get('Origin'), 'https://streeteasy.com');
+    assert.equal(new Headers(options?.headers).get('Referer'), 'https://streeteasy.com/for-rent/nyc');
+    assert.equal(new Headers(options?.headers).get('User-Agent'), null);
     assert.equal(options?.redirect, 'error');
     return new Response('{"denied":true}', { status: 403, headers: { 'Set-Cookie': 'bad', 'Retry-After': '120' } });
   });

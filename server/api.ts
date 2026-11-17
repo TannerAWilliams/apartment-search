@@ -1,6 +1,9 @@
+import { dashboardSnapshot } from './dashboard-snapshot.ts';
+import { retrieveBuildingRecords } from './building-records.ts';
+import { wholeSearchCheck } from './whole-search-check.ts';
 import { relayConfig, type ListingTransports } from './relay-client.ts';
 import { companyCounts } from '../src/companies.ts';
-import { matchListings, needsCommute, parseFilters, SearchInputError } from '../src/search.ts';
+import { localWorkplace, matchListings, needsCommute, parseFilters, SearchInputError } from '../src/search.ts';
 import { formatSearch, RENT_GROUPINGS, rentAreas, SNAPSHOT_MONTH } from '../src/market.ts';
 import { NYC_SEARCH_AREAS, REGIONS } from '../src/regions.ts';
 import { buildingKey, mergeListings } from '../src/listings.ts';
@@ -14,12 +17,13 @@ import { type SourceFetch, refreshCatalog, refreshPlan, refreshSources, refreshS
 
 const REQUEST_LIMIT = 4096;
 const IMPORT_LIMIT = 2 * 1024 * 1024;
-const API_PATHS = new Set(['/api/config', '/api/search', '/api/geocode', '/api/market', '/api/housing', '/api/refresh']);
+const API_PATHS = new Set(['/api/dashboard', '/api/building-report', '/api/config', '/api/search', '/api/search-check', '/api/geocode', '/api/market', '/api/housing', '/api/refresh']);
 
 export function appConfig(env) {
   const feeds = configuredFeeds(env);
   return {
     mode: feeds.length > 0 ? 'live' : 'snapshot',
+    storageMode: env.TEMPORARY_CACHE === 'true' ? 'temporary' : env.BUCKET ? 'persistent' : 'none',
     browserImportAllowed: env.PUBLIC_APP !== 'true',
     listingRequestTransport: relayConfig(env) ? 'relay' : 'direct',
     snapshotMonth: SNAPSHOT_MONTH,
@@ -50,23 +54,23 @@ async function withHousingLinks(result, bucket) {
   }) };
 }
 
-async function storedSample(status, id, liveOnly, load) {
+async function storedSample(status, id, liveOnly, load, strict = false) {
   const sourceStatus = status?.sources.find((source) => source.id === id);
   const recent = sourceRecent(status, id);
-  const data = recent || (!liveOnly && sourceStatus?.updatedAt) ? await load().catch(() => null) : null;
+  const data = recent || (!liveOnly && sourceStatus?.updatedAt) ? await load().catch(error => { if (strict) throw error; return null; }) : null;
   const listings = data?.listings.map((listing) => recent ? listing : {
     ...listing, kind: 'cached', sources: listing.sources.map((source) => ({ ...source, kind: 'cached' })),
   }) ?? [];
   return { sourceStatus, recent, data, listings };
 }
 
-export async function search(rawFilters, env, fetcher: SourceFetch = fetch) {
+export async function search(rawFilters, env, fetcher: SourceFetch = fetch, observationsOnly = false) {
   const filters = parseFilters(rawFilters);
   const requireCommute = needsCommute(filters);
   const credentials = routingCredentials(env);
   if (requireCommute && !credentials) throw new CommuteError('Automatic commute estimates are unavailable because the routing service is disconnected.');
   const feeds = configuredFeeds(env);
-  const workplace = await resolveWorkplace(filters, fetcher);
+  const workplace = observationsOnly ? localWorkplace(filters) : await resolveWorkplace(filters, fetcher);
   const bucket = env.BUCKET;
   async function finish(listings, mode, sources, notices, snapshotMonth?: string) {
     const matched = matchListings(listings, filters, workplace);
@@ -81,6 +85,7 @@ export async function search(rawFilters, env, fetcher: SourceFetch = fetch) {
         commute.commuteNotice = error.message;
       }
     }
+    if (observationsOnly) return { matches: filters.source ? routed.filter(listing => listing.sources.some(source => source.id === filters.source && source.url)) : routed, sources, notices };
     const result = formatSearch(routed, filters, workplace, mode, sources, notices);
     return withHousingLinks({ ...result, ...(snapshotMonth ? { snapshotMonth } : {}), ...commute }, bucket);
   }
@@ -88,13 +93,13 @@ export async function search(rawFilters, env, fetcher: SourceFetch = fetch) {
   const sourceRegion = Object.hasOwn(NYC_SEARCH_AREAS, filters.region) ? 'nyc' : filters.region;
   const directSources = DIRECT_RENTAL_SOURCES.filter(({ regions }) => sourceRegion === 'all' || regions.includes(sourceRegion));
   const [openigloo, direct, results] = await Promise.all([
-    storedSample(status, OPENIGLOO.id, filters.liveOnly, () => storedOpenigloo(bucket)),
+    storedSample(status, OPENIGLOO.id, filters.liveOnly, () => storedOpenigloo(bucket), observationsOnly),
     Promise.all(directSources.map(async (source) => ({
       source,
-      ...await storedSample(status, source.id, filters.liveOnly, () => storedDirectRentals(bucket, source)),
+      ...await storedSample(status, source.id, filters.liveOnly, () => storedDirectRentals(bucket, source), observationsOnly),
     }))),
     Promise.allSettled(feeds.map(async (feed) => {
-      if (bucket) return storedSample(status, feed.id, filters.liveOnly, () => storedFeed(bucket, feed));
+      if (bucket) return storedSample(status, feed.id, filters.liveOnly, () => storedFeed(bucket, feed), observationsOnly);
       const data = await loadFeed(feed, fetcher);
       return { data, listings: data.listings, recent: true };
     })),
@@ -116,6 +121,7 @@ export async function search(rawFilters, env, fetcher: SourceFetch = fetch) {
   }
 
   for (const [index, result] of results.entries()) {
+    if (observationsOnly && result.status === 'rejected') throw result.reason;
     const { id, name } = feeds[index];
     const value = result.status === 'fulfilled' ? result.value : null;
     if (!value?.data) {
@@ -157,11 +163,17 @@ function json(value, status = 200) {
   return Response.json(value, { status, headers: { 'Cache-Control': 'no-store' } });
 }
 
-export async function handleApi(request, env, { requireToken = false, fetcher = (url, options) => globalThis.fetch(url, options), waitUntil, prepareListingSources, listingTransports }: { requireToken?: boolean; fetcher?: SourceFetch; waitUntil?: (work: Promise<unknown>) => void; prepareListingSources?: () => Promise<void>; listingTransports?: ListingTransports } = {}) {
+export async function handleApi(request, env, { privateAuthenticated = false, requireToken = false, fetcher = (url, options) => globalThis.fetch(url, options), waitUntil, prepareListingSources, listingTransports }: { privateAuthenticated?: boolean; requireToken?: boolean; fetcher?: SourceFetch; waitUntil?: (work: Promise<unknown>) => void; prepareListingSources?: () => Promise<void>; listingTransports?: ListingTransports } = {}) {
   const { pathname: path, searchParams } = new URL(request.url);
   if (!API_PATHS.has(path)) return json({ error: 'Endpoint not found.' }, 404);
   if (requireToken && request.headers.get('Authorization') !== `Bearer ${env.APP_ACCESS_TOKEN}`) {
     return json({ error: 'Enter your apartment search server access token.' }, 401);
+  }
+  if (path === '/api/dashboard') {
+    if (env.PUBLIC_APP === 'true' || !env.APP_ACCESS_TOKEN || (!privateAuthenticated && request.headers.get('Authorization') !== `Bearer ${env.APP_ACCESS_TOKEN}`)) return json({ error: 'Private authenticated access is required for this research snapshot.' }, 403);
+    if (request.method !== 'GET') return json({ error: 'Use GET for dashboard data.' }, 405);
+    const result = dashboardSnapshot(searchParams.has('file') ? searchParams.get('file') : undefined);
+    return result ? json(result) : json({ error: 'Unknown dashboard file.' }, 404);
   }
   if (path === '/api/config') {
     if (request.method !== 'GET') return json({ error: 'Use GET for app configuration.' }, 405);
@@ -249,6 +261,8 @@ export async function handleApi(request, env, { requireToken = false, fetcher = 
         status === 'failed' || status === 'feed_required');
       return json(result, unavailable ? 502 : 200);
     }
+    if (path === '/api/building-report') return json(await retrieveBuildingRecords(body, async (url, options) => fetcher(url, options), new Date(), request.signal));
+    if (path === '/api/search-check') return json(await wholeSearchCheck(body, env, filters => search(filters, env, () => { throw new Error('External requests are disabled for saved search checks.'); }, true)));
     if (path === '/api/geocode') return json(await geocodeAddress(body?.address, fetcher));
     if ((body?.includeCommute || needsCommute(body ?? {})) && !request.headers.get('Content-Type')?.startsWith('application/json')) {
       return json({ error: 'Send commute searches as JSON.' }, 400);

@@ -7,9 +7,40 @@ const RESERVED_FEEDS = new Set(['firstmover', 'housingconnect', 'openigloo', HDC
   ...[...AUTO_RENTAL_SOURCES, ...FEED_ONLY_SOURCES].map(({ id }) => id)]);
 const MAX_PAGES = 40;
 const MAX_ROWS = 25000;
+// Bound decoded response bytes before JSON parsing, independently of row count.
+// Large authorized feeds can paginate rather than exhaust a free server's memory.
+const MAX_PAGE_BYTES = 16 * 1024 * 1024;
 
 class IncompleteFeedError extends Error {
   code = 'incomplete_feed';
+}
+
+async function readFeedPage(response: Response) {
+  if (Number(response.headers.get('content-length')) > MAX_PAGE_BYTES) {
+    await response.body?.cancel();
+    throw new IncompleteFeedError('Feed page exceeded its byte limit; use smaller pages');
+  }
+  if (!response.body) throw new Error('Invalid feed response');
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  const parts: string[] = [];
+  let bytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      bytes += value.byteLength;
+      if (bytes > MAX_PAGE_BYTES) {
+        await reader.cancel();
+        throw new IncompleteFeedError('Feed page exceeded its byte limit; use smaller pages');
+      }
+      parts.push(decoder.decode(value, { stream: true }));
+    }
+    parts.push(decoder.decode());
+    return JSON.parse(parts.join(''));
+  } finally {
+    reader.releaseLock();
+  }
 }
 
 export function configuredFeeds(env) {
@@ -56,7 +87,7 @@ export async function loadFeed(feed, fetcher) {
       headers, redirect: 'error', signal: AbortSignal.any([deadline, AbortSignal.timeout(9000)]),
     });
     if (!response.ok) throw new Error('Feed unavailable');
-    const body = await response.json();
+    const body = await readFeedPage(response);
     const rows = Array.isArray(body) ? body : body?.listings;
     if (!Array.isArray(rows)) throw new Error('Invalid feed response');
     rowCount += rows.length;
@@ -67,6 +98,10 @@ export async function loadFeed(feed, fetcher) {
         throw new IncompleteFeedError('Inventory count changed or exceeded its limit');
       }
       reportedTotal = body.total;
+    }
+    // Stop immediately once complete coverage is impossible; do not fetch more pages.
+    if (reportedTotal !== undefined && rowCount > reportedTotal) {
+      throw new IncompleteFeedError('Inventory count exceeded its reported total');
     }
     for (const row of rows) {
       const listing = normalizeListing(row, feed);
@@ -88,4 +123,6 @@ export async function loadFeed(feed, fetcher) {
   if (reportedTotal !== undefined && rowCount !== reportedTotal) throw new IncompleteFeedError('Inventory count did not match');
   return { listings, pages: visited.size };
 }
+
+
 

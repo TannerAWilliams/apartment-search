@@ -1,3 +1,4 @@
+import type { FetchTransport } from './fetch-type.ts';
 import base64 from 'base64-js';
 import { gzipSync, gunzipSync, strFromU8, strToU8 } from 'fflate';
 import { checkFirstMover } from '../server/firstmover.ts';
@@ -14,7 +15,7 @@ export function retryablePublicSources(check, now = new Date()) {
     status === 'failed' && !(Date.parse(retryAt) > now.getTime())).map(({ id }) => id);
 }
 
-export async function pullPublicSources(plan, fetcher = fetch, now = new Date(), ids = Object.keys(PUBLIC_READERS)) {
+export async function pullPublicSources(plan, fetcher: FetchTransport = fetch, now = new Date(), ids = Object.keys(PUBLIC_READERS)) {
   const results = await Promise.allSettled(ids.map((id) => PUBLIC_READERS[id](plan, fetcher, now)));
   return Object.fromEntries(results.map((result, index) => [ids[index], result.status === 'fulfilled' ? result.value : null]));
 }

@@ -15,7 +15,9 @@ export function relayRequest(input: unknown): { url: string; init: RequestInit }
       id street unit zipCode status bedroomCount price urlPath areaName buildingType geoPoint { latitude longitude }
     } } } } }`;
     return { url: 'https://api-v6.streeteasy.com/', init: { method: 'POST', redirect: 'error',
-      headers: { Accept: 'application/json', 'Content-Type': 'application/json' }, body: JSON.stringify({ query }) } };
+      // Preserve fixed source context; never accept caller headers, cookies, or a spoofed browser identity.
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json',
+        Origin: 'https://streeteasy.com', Referer: 'https://streeteasy.com/for-rent/nyc' }, body: JSON.stringify({ query }) } };
   }
   if (value.source === 'hotpads' && ['new-york-ny', 'jersey-city-nj', 'stamford-ct'].includes(String(value.market))) {
     return { url: `https://hotpads.com/${value.market}/condos-for-rent`, init: {
@@ -23,3 +25,4 @@ export function relayRequest(input: unknown): { url: string; init: RequestInit }
   }
   return null;
 }
+
