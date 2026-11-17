@@ -501,6 +501,8 @@ function ApartmentSearch() {
         if (signature === lastProgress || signal.aborted) return;
         lastProgress = signature;
         const filters = appliedFilters.current;
+        // Progress updates read cached rentals without requesting external geocoding or routing.
+        if (needsCommute(filters) || !localWorkplace(filters)) return;
         const version = searchVersion.current;
         void api('search', { body: { ...filters, includeCommute: false }, token: activeToken, signal })
           .then(fresh => { if (!signal.aborted && version === searchVersion.current && filters === appliedFilters.current) setResult(fresh); })
