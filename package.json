@@ -18,7 +18,8 @@
     "test": "node --experimental-strip-types --test test/*.test.ts",
     "typecheck": "tsc --noEmit",
     "test:e2e": "npm run typecheck && npm run build:web && npm test && playwright test",
-    "test:e2e:list": "playwright test --list"
+    "test:e2e:list": "playwright test --list",
+    "test:postgres": "node --experimental-strip-types --test test/postgres-real.integration.ts"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",
