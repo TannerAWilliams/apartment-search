@@ -134,3 +134,50 @@ test('Redfin excludes communities, rent ranges and inactive rentals', () => {
     assert.equal(parseRedfinPage(html([{ ...home, rentalExtension: { ...home.rentalExtension, ...changes } }]), {}, at.toISOString()).length, 0);
   }
 });
+
+test('Compass reads rendered rental cards and skips coming-soon cards when embedded data is absent', () => {
+  const card = (id: number, badge: string) => `
+    <div data-testid="cx-react-listingCard">
+      <span class="cx-react-listingBadge">${badge}</span>
+      <p data-testid="cx-react-listingCard-title">$2,500</p>
+      <dd><span class="cx-screenReaderOnly">1</span><span aria-hidden="true">1</span></dd><dt><span class="cx-screenReaderOnly">Bedrooms</span></dt>
+      <a data-testid="cx-react-listingCard-subtitlesAnchor" href="/homedetails/example-NY-10001/${id}_lid/">
+        <p>10 Example Street, Unit ${id}</p><p>Chelsea</p>
+      </a>
+    </div>`;
+  const market = { city: 'New York', state: 'NY', region: 'nyc' };
+  const html = '<link rel="canonical" href="https://www.compass.com/for-rent/new-york-ny/">' + card(1, 'Listed By Compass') + card(2, 'Coming Soon');
+  const listings = parseCompassPage(html, market, at.toISOString());
+  assert.deepEqual(listings.map(({ id, bedrooms, rent }) => ({ id, bedrooms, rent })), [
+    { id: 'compass:1', bedrooms: 1, rent: 2500 },
+  ]);
+  assert.throws(() => parseCompassPage(html.replace('/for-rent/', '/for-sale/'), market, at.toISOString()), /recognized rental page/);
+});
+
+test('the existing StreetEasy resync checks the configured feed, preserves inventory after a bad count, and uses the StreetEasy filter', async () => {
+  const feed = { id: 'streeteasy', url: 'https://partner.test/rentals', token: 'fixture-token' };
+  const bucket = createMemoryBucket();
+  const env = { BUCKET: bucket, FREE_PARTNER_FEEDS_JSON: JSON.stringify([feed]) };
+  const listing = {
+    id: '1234', url: 'https://streeteasy.com/rental/1234', address: '10 Example Street',
+    unit: '1', zip: '10001', city: 'Manhattan', state: 'NY', bedrooms: 1, rent: 2500, status: 'Active',
+  };
+  const run = async (total: number) => handleApi(new Request('https://app.test/api/refresh', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ check: 'now', source: 'streeteasy-live' }),
+  }), env, { fetcher: async (url, options) => {
+    assert.equal(url, feed.url);
+    assert.equal(new Headers(options?.headers).get('Authorization'), 'Bearer ' + feed.token);
+    return Response.json({ listings: [listing], total });
+  }, prepareListingSources: async () => { throw new Error('Partner feed should not require the relay.'); } });
+  const updated = await (await run(1)).json();
+  assert.equal(updated.sources.find(({ id }: { id: string }) => id === 'streeteasy-live')?.transport, 'partner-feed');
+  const results = await search({ source: 'streeteasy', liveOnly: true }, env);
+  assert.equal(results.matches[0]?.sources[0].url, listing.url);
+  assert.equal(results.sources.filter(({ id }) => id === 'streeteasy').length, 1);
+  const failed = await (await run(2)).json();
+  assert.equal(failed.sources.find(({ id }: { id: string }) => id === 'streeteasy-live')?.status, 'failed');
+  const cached = await search({ source: 'streeteasy', liveOnly: true, includeCached: true }, env);
+  assert.equal(cached.matches[0]?.sources[0].url, listing.url);
+  assert.equal(cached.matches[0]?.kind, 'cached');
+});

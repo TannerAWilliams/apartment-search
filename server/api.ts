@@ -14,6 +14,7 @@ import { configuredFeeds, loadFeed } from './listings.ts';
 import { CommuteError, geocodeAddress, resolveWorkplace, routeCommutes, routingCredentials } from './commute.ts';
 import { OPENIGLOO } from './openigloo.ts';
 import { DIRECT_RENTAL_SOURCES } from './direct-rentals.ts';
+import { STREETEASY_LIVE } from './streeteasy.ts';
 import { decodeSourceImport } from '../src/pull-sources.ts';
 import { type SourceFetch, refreshCatalog, refreshPlan, refreshSources, refreshStatus, sourceExpiresAt, sourceRecent, storedDirectRentals, storedFeed, storedHdcRerentals, storedHousing, storedMarket,
   storedOpenigloo, storedRentHistory } from './refresh.ts';
@@ -77,7 +78,8 @@ export async function search(rawFilters: Record<string, unknown>, env: AppEnv, f
   const requireCommute = needsCommute(filters);
   const credentials = routingCredentials(env);
   if (requireCommute && !credentials) throw new CommuteError('Automatic commute estimates are unavailable because the routing service is disconnected.');
-  const feeds = configuredFeeds(env);
+  const configured = configuredFeeds(env);
+  const feeds = configured.filter(({ id }) => !env.BUCKET || id !== STREETEASY_LIVE.marketplace);
   const workplace = observationsOnly ? localWorkplace(filters) : await resolveWorkplace(filters, fetcher);
   const bucket = env.BUCKET;
   async function finish(listings: ListingData[], mode: string, sources: SearchSource[], notices: string[], snapshotMonth?: string) {
@@ -143,7 +145,8 @@ export async function search(rawFilters: Record<string, unknown>, env: AppEnv, f
     if (data) {
       listings.push(...rows);
       sources.push({ id: source.marketplace, name: source.name, status: recent ? 'searched' : 'cached', sample: true });
-      notices.push(source.name + ' · ' + rows.length + (recent ? ' apartments checked in ' : ' saved apartments in ') + source.coverage + '.');
+      const coverage = source.id === STREETEASY_LIVE.id && data.transport === 'partner-feed' ? 'the configured StreetEasy partner feed' : source.coverage;
+      notices.push(source.name + ' · ' + rows.length + (recent ? ' apartments checked in ' : ' saved apartments in ') + coverage + '.');
     }
     if (sourceStatus?.status === 'failed') {
       if (!data) sources.push({ id: source.marketplace, name: source.name, status: 'unavailable', sample: true });
@@ -212,7 +215,9 @@ export async function handleApi(request: Request, env: AppEnv, { privateAuthenti
       if (!env.BUCKET) return json(config);
       const refresh = await refreshStatus(env.BUCKET);
       const liveSources = [
-        ...DIRECT_RENTAL_SOURCES.map(({ marketplace: id, name, coverage }) => ({ id, name, sample: true, coverage })),
+        ...DIRECT_RENTAL_SOURCES.map(({ marketplace: id, name, coverage }) => ({ id, name, sample: true,
+          coverage: id === STREETEASY_LIVE.marketplace && config.sources.some((source) => source.id === id)
+            ? 'configured StreetEasy partner feed' : coverage })),
         { id: OPENIGLOO.id, name: OPENIGLOO.name, sample: true, coverage: 'NYC' },
       ];
       const companies = companyCounts((await storedMarket(env.BUCKET)).listings);

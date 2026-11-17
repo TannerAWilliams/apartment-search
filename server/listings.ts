@@ -69,7 +69,7 @@ export function configuredFeeds(env: { FREE_PARTNER_FEEDS_JSON?: string }) {
   });
 }
 
-export async function loadFeed(feed: { id: string; name: string; url: string; token?: string; kind: string }, fetcher: FetchTransport) {
+export async function loadFeed(feed: { id: string; name: string; url: string; token?: string; kind: string; maxBedrooms?: number }, fetcher: FetchTransport, { requireTotal = false } = {}) {
   const headers: Record<string, string> = { Accept: 'application/json' };
   if (feed.token) headers.Authorization = `Bearer ${feed.token}`;
   const start = new URL(feed.url);
@@ -122,7 +122,8 @@ export async function loadFeed(feed: { id: string; name: string; url: string; to
     if (!url || next.origin !== start.origin) throw new IncompleteFeedError('Next page must stay on the feed origin');
   }
   if (reportedTotal !== undefined && rowCount !== reportedTotal) throw new IncompleteFeedError('Inventory count did not match');
-  return { listings, pages: visited.size };
+  if (requireTotal && reportedTotal === undefined) throw new IncompleteFeedError('Inventory did not report a total');
+  return { listings, pages: visited.size, ...(requireTotal ? { total: reportedTotal } : {}) };
 }
 
 
