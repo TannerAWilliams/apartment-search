@@ -4,6 +4,28 @@ import { mergeListings } from '../src/listings.ts';
 
 const MAX_HTML_BYTES = 5 * 1024 * 1024;
 
+/** Parse an embedded JSON assignment without depending on its script wrapper or executing it. */
+export function assignedJson(html: string, assignment: RegExp): any {
+  const match = assignment.exec(html);
+  if (!match) return null;
+  const start = match.index + match[0].length;
+  if (html[start] !== '{') return null;
+  let depth = 0;
+  let quoted = false;
+  let escaped = false;
+  for (let index = start; index < html.length; index++) {
+    const character = html[index];
+    if (quoted) {
+      if (escaped) escaped = false;
+      else if (character === '\\') escaped = true;
+      else if (character === '"') quoted = false;
+    } else if (character === '"') quoted = true;
+    else if (character === '{') depth++;
+    else if (character === '}' && --depth === 0) return JSON.parse(html.slice(start, index + 1));
+  }
+  return null;
+}
+
 export function publicListingUrl(value: unknown, origin: string, pathPattern: RegExp) {
   if (typeof value !== 'string' || value.length === 0) return null;
   try {

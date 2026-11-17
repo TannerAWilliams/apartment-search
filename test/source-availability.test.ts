@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { handleApi, search } from '../server/api.ts';
 import { createMemoryBucket } from '../server/memory-bucket.ts';
 import { refreshSources, refreshStatus, storedDirectRentals } from '../server/refresh.ts';
-import { COMPASS_LIVE } from '../server/compass.ts';
-import { loadPublicPages, deduplicatePublicRentals } from '../server/public-rentals.ts';
+import { COMPASS_LIVE, parseCompassPage } from '../server/compass.ts';
+import { assignedJson, loadPublicPages, deduplicatePublicRentals } from '../server/public-rentals.ts';
 import { parseApartmentListPage } from '../server/apartmentlist.ts';
 import { parseRedfinPage } from '../server/redfin.ts';
 import { normalizeListing } from '../src/listings.ts';
@@ -32,6 +32,18 @@ test('every implemented rental provider is visible and resyncable before its fir
     assert.ok(result.sources.some((source: { id: string }) => source.id === id));
     assert.equal(result.sourceCatalog.find((source: { id: string }) => source.id === id + '-live')?.resyncable, true);
   }
+});
+
+test('Compass accepts script wrapper whitespace and parses JSON strings containing closing braces safely', () => {
+  const state = { sharedReactAppProps: { initialResults: { lolResults: { data: [{ listing: {
+    pageLink: '/homedetails/example-NY-10001/1_lid/', subtitles: ['10 Example Street, Unit 1', 'Chelsea'],
+    status: 0, title: '$2,500', location: { latitude: 40.75, longitude: -73.99 },
+    subStats: [{ titleLabel: 'Bedrooms', subtitle: '1' }],
+  } }] } } }, harmless: 'text with } and " quotes' };
+  const html = '<script> (function(global) {\n global.uc = ' + JSON.stringify(state) + '; })(this); </script>';
+  assert.deepEqual(assignedJson(html, /global\.uc\s*=\s*(?=\{)/), state);
+  assert.equal(parseCompassPage(html, { city: 'New York', state: 'NY', region: 'nyc' }, at.toISOString()).length, 1);
+  assert.equal(assignedJson('<script>global.uc = {', /global\.uc\s*=\s*(?=\{)/), null);
 });
 
 test('background refresh responds before relay preparation and publishes independent inventory while it waits', async () => {

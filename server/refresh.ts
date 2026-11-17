@@ -424,7 +424,8 @@ export async function refreshSources(env: AppEnv, { fetcher = fetch, now = new D
         if (counts.partial) { item.partial = true; item.requestedPages = counts.requestedPages; item.failedPages = counts.failedPages; }
         if (counts.total !== undefined) item.total = counts.total;
       }
-      if (!next) item.error = 'The ' + name + ' live sample could not be refreshed.';
+      if (!next) item.error = failure instanceof Error && failure.message.startsWith(name + ' ')
+        ? failure.message : 'The ' + name + ' live sample could not be refreshed.';
     } else {
       const listingCount = next?.listingCount ?? older?.listingCount;
       if (listingCount !== undefined) item.listingCount = listingCount;

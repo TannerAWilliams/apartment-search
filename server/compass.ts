@@ -1,7 +1,7 @@
 import type { FetchTransport } from '../src/fetch-type.ts';
 import { normalizeListing } from '../src/listings.ts';
 import { nycBorough } from './firstmover.ts';
-import { loadPublicPages, publicListingUrl } from './public-rentals.ts';
+import { assignedJson, loadPublicPages, publicListingUrl } from './public-rentals.ts';
 
 const SOURCE = { id: 'compass', name: 'Compass', kind: 'feed' };
 const ORIGIN = 'https://www.compass.com';
@@ -19,8 +19,8 @@ export const COMPASS_LIVE = {
 };
 
 export function parseCompassPage(html: string, market: {city:string; state:string; region:string}, checkedAt: string) {
-  const state = html.match(/<script\b[^>]*>\s*\(function \(global\) \{global\.uc=(\{[\s\S]*?\});\}\)\(this\);<\/script>/i);
-  const rows = state && JSON.parse(state[1])?.sharedReactAppProps?.initialResults?.lolResults?.data;
+  const state = assignedJson(html, /\bglobal\.uc\s*=\s*(?=\{)/);
+  const rows = state?.sharedReactAppProps?.initialResults?.lolResults?.data;
   if (!Array.isArray(rows)) throw new Error('Compass did not return a recognized rental page.');
   return rows.flatMap(({ listing: row }) => {
     const url = listingUrl(row?.pageLink);
