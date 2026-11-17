@@ -511,3 +511,31 @@ test('iPhone 17 portrait keeps primary controls inside the screen', async ({ pag
   await page.getByRole('tab', { name: 'Search', exact: true }).click();
   await checkLayout('search-return');
 });
+
+for (const width of [320, 375, 390]) {
+  test(`narrow ${width}px navigation keeps Affordable housing fully reachable`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 740 });
+    await mockApp(page);
+    await expect(page.getByRole('tab')).toHaveCount(3);
+    await page.getByRole('tab', { name: 'More', exact: true }).click();
+    const affordable = page.getByRole('button', { name: 'Affordable housing', exact: true });
+    await expect(affordable).toBeVisible();
+    const measure = await affordable.evaluate(element => {
+      const rect = element.getBoundingClientRect();
+      const range = document.createRange(); range.selectNodeContents(element);
+      const text = range.getBoundingClientRect();
+      return { left: rect.left, right: rect.right, textLeft: text.left, textRight: text.right,
+        viewport: document.documentElement.clientWidth, content: document.documentElement.scrollWidth };
+    });
+    expect(measure.left).toBeGreaterThanOrEqual(0);
+    expect(measure.right).toBeLessThanOrEqual(width);
+    expect(measure.textLeft).toBeGreaterThanOrEqual(measure.left);
+    expect(measure.textRight).toBeLessThanOrEqual(measure.right);
+    expect(measure.content).toBeLessThanOrEqual(measure.viewport + 1);
+    await affordable.click();
+    await expect(page.getByRole('heading', { name: 'Affordable housing', exact: true })).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath(`affordable-${width}.png`), fullPage: true });
+    await page.getByRole('tab', { name: 'Search', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Filters', exact: true })).toBeVisible();
+  });
+}
