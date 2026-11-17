@@ -1,0 +1,100 @@
+import { test, expect } from 'bun:test';
+import { exactBuildingAddress, retrieveBuildingRecords } from '../server/building-records.ts';
+import { handleApi } from '../server/api.ts';
+const address = { address: '123 MAIN STREET', city: 'Brooklyn', state: 'NY', zip: '11201' };
+const building = { buildingid: '12345', boroid: '3', boro: 'BROOKLYN', housenumber: '123', streetname: 'MAIN STREET', zip: '11201', bin: '3000001', recordstatus: 'Active' };
+const annual = { building_id: '12345', bin: '3000001', of_dwelling_units: '20', infested_dwelling_unit_count: '2', eradicated_unit_count: '1', re_infested_dwelling_unit: '1', filing_date: '2026-01-01T00:00:00.000', filing_period_start_date: '2024-11-01T00:00:00.000', filling_period_end_date: '2025-10-31T00:00:00.000' };
+const now = new Date('2026-11-17T12:00:00Z');
+function source(override: { buildings?: any; violations?: any; complaints?: any; bedbugs?: any; dob?: any; flood?: any; floodMetadata?: any } = {}) {
+  return async (url: string, options?: RequestInit) => {
+    const u = new URL(url);
+    if (u.hostname === 'a841-dotweb01.nyc.gov') return Response.json(u.pathname.endsWith('/7') ? (override.floodMetadata ?? { name: 'Current 100-Year Floodplain (2015 PFIRM)' }) : (override.flood ?? { features: [] }));
+    expect(u.origin).toBe('https://data.cityofnewyork.us'); expect(options?.redirect).toBe('error');
+    if (u.pathname.includes('kj4p')) return Response.json(override.buildings ?? [building]);
+    if (['3h2n-5cm9', '855j-jady', '6bgk-3dad'].some(id => u.pathname.includes(id))) { expect(u.searchParams.get('$where')).toBe("bin='3000001'"); return Response.json(override.dob ?? []); }
+    expect(u.searchParams.get('$where')).toContain('12345');
+    if (u.pathname.includes('wz6d')) return Response.json(override.bedbugs ?? [annual]);
+    if (u.pathname.includes('wvxf')) { expect(u.searchParams.get('$where')).toContain("upper(violationstatus)='OPEN'"); return Response.json(override.violations ?? [{ count: '2' }]); }
+    expect(u.searchParams.get('$group')).toBe('complaint_id');
+    expect(u.searchParams.get('$where')).toContain('received_date <='); expect(u.searchParams.get('$limit')).toBe('1001');
+    return Response.json(override.complaints ?? [{ complaint_id: '1' }, { complaint_id: '2' }]);
+  };
+}
+test('exact active building match joins HPD ID and distinguishes open violations from unique complaints', async () => {
+  const report = await retrieveBuildingRecords(address, source(), now);
+  expect(report.status).toBe('matched'); expect(report.identity?.buildingId).toBe('12345');
+  expect(report.openViolations).toBe(2); expect(report.complaintsLast365Days).toBe(2); expect(report.checkedAt).toBe(now.toISOString());
+});
+test('unmatched, ambiguous and inactive/mismatched identities never query findings', async () => {
+  for (const buildings of [[], [building, building], [{ ...building, zip: '11202' }], [{ ...building, buildingid: '1 OR 1=1' }], [{ ...building, recordstatus: 'Inactive' }], [{ ...building, boroid: '1' }]]) {
+    let calls = 0;
+    const report = await retrieveBuildingRecords(address, async () => { calls++; return Response.json(buildings); }, now);
+    expect(calls).toBe(1); expect(report.identity).toBeNull(); expect(report.openViolations).toBeNull();
+  }
+});
+test('outside jurisdiction, missing ZIP and apartment-bearing addresses fail closed without requests', async () => {
+  for (const input of [null, {}, { ...address, state: 'NJ' }, { ...address, zip: '' }, { ...address, county: 'New York' }, { ...address, address: '123 MAIN STREET APT 4' }, { ...address, address: '123 MAIN STREET #4' }]) {
+    expect(exactBuildingAddress(input)).toBeNull();
+    expect((await retrieveBuildingRecords(input, async () => { throw new Error('Must not request'); })).status).toBe('unmatched');
+  }
+});
+test('partial failures and capped/malformed complaint results are unknown, never false zero', async () => {
+  const capped = Array.from({ length: 1001 }, (_, i) => ({ complaint_id: String(i + 1) }));
+  for (const complaints of [capped, [{ complaint_id: '1' }, { complaint_id: '1' }], [{}]]) {
+    const report = await retrieveBuildingRecords(address, source({ complaints }), now);
+    expect(report.status).toBe('partial'); expect(report.complaintsLast365Days).toBeNull(); expect(report.openViolations).toBe(2);
+  }
+  const report = await retrieveBuildingRecords(address, source({ violations: [{ count: '-1' }], complaints: [] }), now);
+  expect(report.openViolations).toBeNull(); expect(report.complaintsLast365Days).toBe(0);
+});
+test('official network, oversized and invalid JSON failures stay sanitized', async () => {
+  for (const fetcher of [async () => { throw new Error('secret'); }, async () => new Response('x', { status: 429 }), async () => new Response('x'.repeat(262145)), async () => Response.json({ error: 'secret' })]) {
+    const report = await retrieveBuildingRecords(address, fetcher, now);
+    expect(report.status).toBe('unavailable'); expect(JSON.stringify(report)).not.toContain('secret');
+  }
+});
+test('HTTP API uses bounded report path and injected official transport', async () => {
+  const response = await handleApi(new Request('https://fixture.invalid/api/building-report', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(address) }), {}, { fetcher: source() });
+  expect(response.status).toBe(200); expect((await response.json()).status).toBe('matched');
+});
+
+test('complaint window uses NYC calendar dates and excludes future timestamps', async () => {
+  const queries: string[] = [];
+  const fetcher = source();
+  await retrieveBuildingRecords(address, async (url, options) => { queries.push(new URL(url).searchParams.get('$where') ?? ''); return fetcher(url, options); }, new Date('2026-11-17T02:00:00Z'));
+  expect(queries[2]).toContain("received_date <= '2026-11-16T21:00:00'");
+  expect(queries[2]).toContain("received_date >= '2025-11-17T00:00:00'");
+});
+
+test('latest annual filing is owner reported, not summed, with same-date ambiguity unknown', async () => {
+  const report = await retrieveBuildingRecords(address, source({ bedbugs: [annual, { ...annual, filing_date: '2025-12-01T00:00:00.000', infested_dwelling_unit_count: '9' }] }), now);
+  expect(report.bedbugs?.infested).toBe(2); expect(report.bedbugs?.periodEnd).toBe('2025-10-31');
+  const ambiguous = await retrieveBuildingRecords(address, source({ bedbugs: [annual, annual] }), now);
+  expect(ambiguous.bedbugs).toBeNull(); expect(ambiguous.status).toBe('partial');
+});
+test('DOB datasets preserve separate reported statuses, never sum them or assume active', async () => {
+  const report = await retrieveBuildingRecords(address, source({ dob: [{ status: 'Active', count: '1' }, { status: 'Pending Dismissal', count: '2' }] }), now);
+  expect(report.dob).toHaveLength(3); expect(report.dob?.[0].groups?.[1]).toEqual({ status: 'Pending Dismissal', count: 2 });
+  const missing = await retrieveBuildingRecords(address, source({ buildings: [{ ...building, bin: '0' }] }), now);
+  expect(missing.dob).toBeNull();
+});
+test('flood screen uses only official matched building point and labels preliminary layer', async () => {
+  const report = await retrieveBuildingRecords({ ...address, latitude: 0, longitude: 0 }, source({ bedbugs: [{ ...annual, latitude: '40.7', longitude: '-74.01' }], flood: { features: [{ attributes: { FLD_ZONE: 'VE', SFHA_TF: 'T' } }] } }), now);
+  expect(report.flood?.point).toEqual({ latitude: 40.7, longitude: -74.01 }); expect(report.flood?.zones).toEqual(['VE']); expect(report.flood?.layer).toContain('preliminary');
+  const empty = await retrieveBuildingRecords(address, source({ bedbugs: [{ ...annual, latitude: '40.7', longitude: '-74.01' }] }), now);
+  expect(empty.flood?.intersects).toBe(false);
+  const failure = await retrieveBuildingRecords(address, source({ bedbugs: [{ ...annual, latitude: '40.7', longitude: '-74.01' }], flood: { error: { message: 'unavailable' } } }), now);
+  expect(failure.flood).toBeNull(); expect(failure.status).toBe('partial');
+});
+
+test('impossible annual counts, duplicate DOB groups and non-SFHA zones fail conservatively', async () => {
+  const bad = await retrieveBuildingRecords(address, source({ bedbugs: [{ ...annual, infested_dwelling_unit_count: '21' }], dob: [{ status: 'Active', count: '1' }, { status: 'Active', count: '2' }] }), now);
+  expect(bad.bedbugs).toBeNull(); expect(bad.dob?.every(item => item.groups === null)).toBe(true);
+  const nonSfha = await retrieveBuildingRecords(address, source({ bedbugs: [{ ...annual, latitude: '40.7', longitude: '-74.01' }], flood: { features: [{ attributes: { FLD_ZONE: 'X', SFHA_TF: 'F' } }] } }), now);
+  expect(nonSfha.flood?.intersects).toBe(false); expect(nonSfha.flood?.zones).toEqual(['X']);
+});
+
+test('changed flood layer edition is unknown instead of silently mislabeled', async () => {
+  const report = await retrieveBuildingRecords(address, source({ bedbugs: [{ ...annual, latitude: '40.7', longitude: '-74.01' }], floodMetadata: { name: 'Future 2050 Floodplain' } }), now);
+  expect(report.flood).toBeNull(); expect(report.status).toBe('partial');
+});

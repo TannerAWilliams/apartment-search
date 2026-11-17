@@ -1,3 +1,4 @@
+import { BuildingReport } from './BuildingReport.tsx';
 import { discoveryFacts, LAUNDRY_LABELS } from './discovery.ts';
 import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
@@ -25,7 +26,7 @@ const card = StyleSheet.create({
   details: { borderTopWidth: 1, borderColor: colors.border, paddingTop: 10, gap: 8 },
 });
 
-export function Listing({ listing, selectedSource, workplace, commute, onSave, onSaveLink, onRemove, onError, saved }) {
+export function Listing({ listing, selectedSource, workplace, commute, onSave, onSaveLink, onRemove, onError, saved, onCheckBuilding }) {
   const [expanded, setExpanded] = useState(false);
   const { region, address, unit, city, state, zip, rent, transitSeconds, drivingSeconds, neighborhood } = listing;
   const regionInfo = REGIONS[searchBorough(listing) ?? region];
@@ -61,6 +62,11 @@ export function Listing({ listing, selectedSource, workplace, commute, onSave, o
         <Text style={styles.listingAddress}>{title}</Text>
       </ExternalLink> : <Text accessibilityRole="header" style={styles.listingTitle}>{title}</Text>}
       <Text style={styles.smallMuted}>{subtitle}</Text>
+      {listing.bestFit && <View style={{ gap: 3 }}>
+        <Text style={styles.fieldLabel}>Best fit {listing.bestFit.score}/100 · {listing.bestFit.rentWeight ? `rent savings ${listing.bestFit.affordability}/${listing.bestFit.rentWeight}` : 'rent not weighted'} · {listing.bestFit.commuteWeight ? `commute ${listing.bestFit.commute}/${listing.bestFit.commuteWeight}` : 'commute not weighted'}</Text>
+        <Text style={styles.smallMuted}>{listing.bestFit.explanation}</Text>
+        <Text style={styles.smallMuted}>Uses asking/recorded rent, not total move-in cost. Uses a matching TravelTime weekday-morning estimate when available, not live traffic or straight-line distance. No building safety or quality score. {listing.bestFit.unknowns.join(' · ')} {listing.bestFit.checkedAt ? 'Commute estimate checked ' + CHECK_TIME.format(new Date(listing.bestFit.checkedAt)) : ''}</Text>
+      </View>}
       {presentation.notices.map(notice => <Text key={notice} style={card.notice}>{notice}</Text>)}
       <View style={card.actions}>
         {original?.url && <Link label={listingLinkLabel(original)} url={original.url} onError={onError} />}
@@ -82,6 +88,7 @@ export function Listing({ listing, selectedSource, workplace, commute, onSave, o
         <CommuteDetails listing={listing} />
         <PriceHistory value={listing.priceHistory} />
         <HousingCost />
+        <BuildingReport key={listingKey(listing)} listing={listing} onError={onError} onCheckBuilding={onCheckBuilding} />
       </View>}
     </View>
   </View>;
