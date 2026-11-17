@@ -9,7 +9,7 @@ export function dashboardSnapshot(name?: string) {
   const provenance = { source: 'StreetEasy Data Dashboard', url: 'https://streeteasy.com/blog/data-dashboard/',
     downloadedAt: '2026-11-17', sourceArchive: 'https://cdn-charts.streeteasy.com/Master%20Report.zip',
     sha256: '05d017d90302883339eca32fe920b6b170d85a3583d6f436bd78a720bc6adfdc',
-    note: 'Frozen personal research snapshot, not live listings. No automatic refresh. Source anomalies retained and labeled.' };
+    note: 'Frozen historical aggregate snapshot, not live listings. No automatic refresh. Source anomalies retained and labeled.' };
   if (name !== undefined) {
     if (!DASHBOARD_CATALOG.some(file => file.name === name)) return null;
     let file = cache.get(name);
