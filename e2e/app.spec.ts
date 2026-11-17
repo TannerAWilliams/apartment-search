@@ -457,8 +457,11 @@ test('historical dashboard loads privately and a failed series does not trap the
   await page.getByRole('button',{name:'StreetEasy dashboard files',exact:true}).click();
   await expect(page.getByText('This historical series could not be loaded. No values have been substituted.')).toBeVisible();
   await page.getByRole('button',{name:'Rental inventory · All',exact:true}).click();
-  await expect(page.getByText('2025-02: 0',{exact:true})).toBeVisible();
-  await expect(page.getByText('2025-01: Not reported',{exact:true})).toBeVisible();
+  await expect(page.getByRole('button',{name:'2025-02 · Test area: 0',exact:true})).toBeVisible();
+  await expect(page.getByRole('button',{name:'2025-01 · Test area: Not reported',exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'All history',exact:true}).click();
+  await page.getByRole('button',{name:'2025-01 · Test area: Not reported',exact:true}).click();
+  await expect(page.getByText('Prior calendar month: Unavailable (missing, anomalous or zero baseline). Same month one year earlier: Unavailable (missing, anomalous or zero baseline).',{exact:true})).toBeVisible();
   await page.getByRole('button',{name:'Back to rent trends',exact:true}).click();
   await expect(page.getByText('StreetEasy historical dashboard',{exact:true})).toHaveCount(0);
 });

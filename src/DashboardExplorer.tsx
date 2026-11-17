@@ -1,7 +1,8 @@
+import { DashboardVisuals } from './DashboardVisuals.tsx';
 import React, { useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
 import { DASHBOARD_FILES, DASHBOARD_URL, METRICS, formatDashboardValue, type DashboardFile } from './dashboard-data.ts';
-import { Button, Chip, Field, Link } from './ui.tsx';
+import { Chip, Field, Link } from './ui.tsx';
 import { styles } from './styles.ts';
 
 export function DashboardExplorer({ loadDashboard }) {
@@ -11,7 +12,6 @@ export function DashboardExplorer({ loadDashboard }) {
   const [provenance, setProvenance] = useState<any>(null);
   const [area, setArea] = useState(0);
   const [query, setQuery] = useState('');
-  const [limit, setLimit] = useState(24);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const row = file?.areas[area];
@@ -24,7 +24,7 @@ export function DashboardExplorer({ loadDashboard }) {
     return () => controller.abort();
   }, [loadDashboard]);
   useEffect(() => {
-    setFile(null); setArea(0); setLimit(24); setError(''); setBusy(false);
+    setFile(null); setArea(0); setError(''); setBusy(false);
     if (!loadDashboard) return;
     const controller = new AbortController(); setBusy(true);
     loadDashboard(selected, controller.signal).then(result => { if (!controller.signal.aborted) setFile(result.file); })
@@ -43,20 +43,19 @@ export function DashboardExplorer({ loadDashboard }) {
     {catalog.length > 0 && <>
       <Text style={styles.fieldLabel}>{catalog.length} of {DASHBOARD_FILES.length} supported files in stored snapshot</Text>
       <Text style={styles.smallMuted}>Not present in snapshot: {DASHBOARD_FILES.filter(name => !catalog.some(f => f.name === name)).join(', ') || 'None'}. Source: official StreetEasy master report. Missing files are not silently filled.</Text>
-      <View style={styles.chipRow}>{catalog.map(f => <Chip key={f.name} selected={f.name === selected} onPress={() => { setSelected(f.name); setArea(0); setLimit(24); }}>
+      <View style={styles.chipRow}>{catalog.map(f => <Chip key={f.name} selected={f.name === selected} onPress={() => { setSelected(f.name); setArea(0); }}>
         {METRICS[f.metric][0]} · {f.segment}</Chip>)}</View>
     </>}
     {file && <>
       <Field label="Find dashboard area" value={query} onChangeText={setQuery} maxLength={100} />
       <View style={styles.chipRow}>{file.areas.map((a, i) => ({ a, i })).filter(({ a }) => `${a.name} ${a.borough}`.toLowerCase().includes(query.toLowerCase())).slice(0, 20).map(({ a, i }) =>
-        <Chip key={i} selected={i === area} onPress={() => { setArea(i); setLimit(24); }}>{a.name} · {a.borough || a.type}</Chip>)}</View>
+        <Chip key={i} selected={i === area} onPress={() => { setArea(i); }}>{a.name} · {a.borough || a.type}</Chip>)}</View>
       <Text style={styles.smallMuted}>Showing up to 20 matching areas; narrow the search for more. All/subtype and city/borough/neighborhood series overlap and must not be summed. Indices are repeat-listing dollar-level measures, not medians. Blank observations are unknown, not zero.</Text>
       {row && <>
         <Text accessibilityRole="header" style={styles.fieldLabel}>{row.name} · {METRICS[file.metric][0]} · {file.segment}</Text>
         <Text style={styles.smallMuted}>Reported file range: {file.months[0]} to {file.months.at(-1)}. This is not a live update timestamp. Units: {METRICS[file.metric][1]}{['share', 'ratio'].includes(METRICS[file.metric][1]) ? ' (shown as percent)' : ''}.</Text>
-        {file.months.map((m, i) => ({ m, v: row.values[i] })).reverse().slice(0, limit).map(({ m, v }) =>
-          <Text key={m} selectable style={styles.bodyText}>{m}: {formatDashboardValue(v, file.metric)}</Text>)}
-        {limit < file.months.length && <Button secondary onPress={() => setLimit(limit + 60)}>Show earlier months</Button>}
+        <DashboardVisuals key={file.name} file={file} areaIndex={area} />
+
       </>}
 
     </>}
