@@ -28,6 +28,7 @@ export function appConfig(env: AppEnv) {
     mode: feeds.length > 0 ? 'live' : 'snapshot',
     storageMode: env.TEMPORARY_CACHE === 'true' ? 'temporary' : env.BUCKET ? 'persistent' : 'none',
     browserImportAllowed: env.PUBLIC_APP !== 'true',
+    dashboardAvailable: env.PUBLIC_APP === 'true' || Boolean(env.APP_ACCESS_TOKEN),
     listingRequestTransport: relayConfig(env) ? 'relay' : 'direct',
     snapshotMonth: SNAPSHOT_MONTH,
     sources: feeds.map(({ id, name }) => ({ id, name })),
@@ -177,7 +178,7 @@ export async function handleApi(request: Request, env: AppEnv, { privateAuthenti
     return json({ error: 'Enter your apartment search server access token.' }, 401);
   }
   if (path === '/api/dashboard') {
-    if (env.PUBLIC_APP === 'true' || !env.APP_ACCESS_TOKEN || (!privateAuthenticated && request.headers.get('Authorization') !== `Bearer ${env.APP_ACCESS_TOKEN}`)) return json({ error: 'Private authenticated access is required for this research snapshot.' }, 403);
+    if (env.PUBLIC_APP !== 'true' && (!env.APP_ACCESS_TOKEN || (!privateAuthenticated && request.headers.get('Authorization') !== `Bearer ${env.APP_ACCESS_TOKEN}`))) return json({ error: 'Private authenticated access is required for this research snapshot.' }, 403);
     if (request.method !== 'GET') return json({ error: 'Use GET for dashboard data.' }, 405);
     const result = dashboardSnapshot(searchParams.get('file') ?? undefined);
     return result ? json(result) : json({ error: 'Unknown dashboard file.' }, 404);

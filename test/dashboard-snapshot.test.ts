@@ -19,10 +19,10 @@ test('official frozen master includes45files and every historic cell; anomalies 
   expect(cells).toBe(1582852); expect(blank).toBe(337240); expect(negative).toBe(15);
   expect(dashboardSnapshot('missing.csv')).toBeNull();
 });
-test('private snapshot never serves without explicit authentication or in public mode', async () => {
+test('private mode snapshot still requires explicit authentication', async () => {
   const request = (token?: string, suffix = '', method = 'GET') => new Request('https://app.test/api/dashboard'+suffix,{method,headers:token?{Authorization:`Bearer ${token}`}:{}});
   for (const [req,env,options] of [
-    [request(),{},{}], [request('secret'),{APP_ACCESS_TOKEN:'secret',PUBLIC_APP:'true'},{}],
+    [request(),{},{}],
     [request('wrong'),{APP_ACCESS_TOKEN:'secret'},{}], [request(),{APP_ACCESS_TOKEN:'secret'},{}],
   ] as any[]) expect((await handleApi(req,env,options)).status).toBe(403);
   const res = await handleApi(request('secret'),{APP_ACCESS_TOKEN:'secret'});

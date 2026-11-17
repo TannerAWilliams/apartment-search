@@ -9,8 +9,8 @@ test('public server opens browsing but blocks cross-origin writes and anonymous 
  const child=spawn(process.execPath,['--preload','./test/fixtures/offline-network.ts','server/main.ts'],{cwd:fileURLToPath(new URL('..',import.meta.url)),env:{...process.env,DATABASE_URL:'',HOST:'127.0.0.1',PORT:String(port),PUBLIC_APP:'true',APP_ACCESS_TOKEN:'test-only-secret'.repeat(3),RENDER_EXTERNAL_URL:origin},stdio:['ignore','pipe','pipe']});
  try {
   await Promise.race([once(child.stdout,'data'), new Promise((_,reject)=>setTimeout(()=>reject(new Error('Startup timed out')),5000).unref())]);
-  assert.equal((await fetch(origin+'/api/dashboard')).status,403);
-  assert.equal((await fetch(origin+'/api/dashboard',{headers:{Authorization:'Bearer '+ 'test-only-secret'.repeat(3)}})).status,403);
+  const dashboard = await fetch(origin+'/api/dashboard'); assert.equal(dashboard.status,200); assert.equal((await dashboard.json()).files.length,45);
+  assert.equal((await fetch(origin+'/api/dashboard',{headers:{Authorization:'Bearer '+ 'test-only-secret'.repeat(3)}})).status,200);
   const config=await fetch(origin+'/api/config'); assert.equal(config.status,200); assert.equal((await config.json()).browserImportAllowed,false);
   const home=await fetch(origin+'/'); assert.equal(home.status,200); assert.doesNotMatch(await home.text(),/Enter the access password/);
   const post=(body: unknown,site=origin)=>fetch(origin+'/api/refresh',{method:'POST',headers:{'Content-Type':'application/json',Origin:site},body:JSON.stringify(body)});

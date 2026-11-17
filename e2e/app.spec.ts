@@ -9,7 +9,7 @@ const fixtures = (count = 1) => Array.from({ length: count }, (_, index) => norm
   status: 'Active', url: `https://streeteasy.com/building/test/${index + 1}`,
 }, { id: 'streeteasy', name: 'StreetEasy', kind: 'feed' }));
 const now = '2026-11-13T12:00:00Z';
-async function mockApp(page: Page, options: { initialRefresh?: boolean; failed?: boolean; searchError?: boolean; listingCount?: number; notices?: string[]; priceHistory?: boolean; discovery?: boolean; commute?: boolean; nyc?: boolean } = {}) {
+async function mockApp(page: Page, options: { initialRefresh?: boolean; failed?: boolean; searchError?: boolean; listingCount?: number; notices?: string[]; priceHistory?: boolean; discovery?: boolean; commute?: boolean; nyc?: boolean; dashboardAvailable?: boolean } = {}) {
   const requests: { path: string; method: string; body: any }[] = [];
   const unexpected: string[] = [];
   const listings = fixtures(options.listingCount);
@@ -28,7 +28,7 @@ async function mockApp(page: Page, options: { initialRefresh?: boolean; failed?:
     const body = request.postDataJSON();
     requests.push({ path: url.pathname, method: request.method(), body });
     let data: unknown;
-    if (url.pathname === '/api/config') data = { mode: 'live', browserImportAllowed: false, commuteConfigured: false, sources: [{ id: 'streeteasy', name: 'StreetEasy' }], sourceCatalog: [{ id: 'streeteasy-live', marketplace: 'streeteasy', name: 'StreetEasy', coverage: 'Synthetic test feed', resyncable: true }], refresh };
+    if (url.pathname === '/api/config') data = { mode: 'live', dashboardAvailable: options.dashboardAvailable === true, browserImportAllowed: false, commuteConfigured: false, sources: [{ id: 'streeteasy', name: 'StreetEasy' }], sourceCatalog: [{ id: 'streeteasy-live', marketplace: 'streeteasy', name: 'StreetEasy', coverage: 'Synthetic test feed', resyncable: true }], refresh };
     else if (url.pathname === '/api/refresh') data = refresh;
     else if (url.pathname === '/api/building-report' && options.nyc) data = { status: 'matched', checkedAt: now, identity: { address: '12 Grove Street, 11201', borough: 'BROOKLYN', buildingId: '123', bin: '3000001' }, openViolations: 2, complaintsLast365Days: 3, since: '2025-11-14', bedbugs: null, dob: null, flood: null, errors: [] };
     else if (url.pathname === '/api/search') {
@@ -445,7 +445,7 @@ test('NYC building report loads automatically on Details and reuses completed se
 });
 
 test('historical dashboard loads privately and a failed series does not trap the selector', async ({ page }) => {
-  await mockApp(page);
+  await mockApp(page, { dashboardAvailable: true });
   await page.route('**/api/dashboard*', async route => {
     const name = new URL(route.request().url()).searchParams.get('file');
     if (name === 'medianAskingRent_All.csv') return route.fulfill({status:503,json:{error:'Synthetic unavailable series'}});
@@ -510,4 +510,14 @@ test('iPhone 17 portrait keeps primary controls inside the screen', async ({ pag
   await checkLayout('platforms');
   await page.getByRole('tab', { name: 'Search', exact: true }).click();
   await checkLayout('search-return');
+});
+
+
+test('unavailable dashboard capability explains access without requesting source bytes', async ({ page }) => {
+  const { requests } = await mockApp(page);
+  await page.getByRole('tab', { name: 'More', exact: true }).click();
+  await page.getByRole('button', { name: 'Rent chart', exact: true }).click();
+  await page.getByRole('button', { name: 'StreetEasy dashboard files', exact: true }).click();
+  await expect(page.getByText('Historical dashboard data is unavailable on this server. Connect to a server with dashboard access; a private server requires authentication.', { exact: true })).toBeVisible();
+  expect(requests.filter(request => request.path === '/api/dashboard')).toHaveLength(0);
 });

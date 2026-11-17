@@ -38,7 +38,7 @@ type DraftFilters = Omit<SearchFilters, 'maxRent' | 'maxTransitMinutes' | 'maxDr
 };
 type RefreshInfo = { sources: (SourceStatus & { month?: string; transport?: string })[]; checking?: boolean; state?: string; lastCheckedAt?: string; refreshRetryAt?: number; market?: { revision?: string; catalogEtag?: string; csvEtag?: string } | null };
 type ConfigSource = { id: string; name: string; sample?: boolean };
-type ApiConfig = { sources: ConfigSource[]; sourceCatalog?: SourceDefinition[]; commuteConfigured?: boolean; companies?: Record<string, number>; refresh?: RefreshInfo; refreshRetryAt?: number; browserImportAllowed?: boolean };
+type ApiConfig = { sources: ConfigSource[]; sourceCatalog?: SourceDefinition[]; commuteConfigured?: boolean; companies?: Record<string, number>; refresh?: RefreshInfo; refreshRetryAt?: number; browserImportAllowed?: boolean; dashboardAvailable?: boolean };
 type ApiOptions = { body?: object; token?: string; signal?: AbortSignal };
 const failureInfo = (value: unknown) => ({
   message: value instanceof Error ? value.message : '',
@@ -383,6 +383,7 @@ function ApartmentSearch() {
   const [token, setToken] = useState('');
   const [activeToken, setActiveToken] = useState('');
   const [commuteConfigured, setCommuteConfigured] = useState(false);
+  const [dashboardAvailable, setDashboardAvailable] = useState(false);
   const [tab, setTab] = useState('results');
   useEffect(() => {
     if (Platform.OS !== 'web') return;
@@ -441,6 +442,7 @@ function ApartmentSearch() {
     setConfiguredSources(config.sources);
     setSourceCatalog(config.sourceCatalog ?? []);
     setCommuteConfigured(config.commuteConfigured === true);
+    setDashboardAvailable(config.dashboardAvailable === true);
     setCompanies(config.companies ?? {});
     setRefresh(config.refresh ?? null);
     setRefreshClock(Date.now());
@@ -690,7 +692,7 @@ function ApartmentSearch() {
               {[['sources', 'Sources & sync'], ['chart', 'Rent chart'], ['marketplaces', 'Rental platforms'], ['affordable', 'Affordable housing']].map(([key, label]) => <Button key={key} secondary onPress={() => navigateTab(key)}>{label}</Button>)}
             </View>}
             {tab === 'chart' && <RentChart initialRegion={applied.region} saved={saved} showSaved={showSaved} onError={setError}
-              loadMarket={serverState === 'ready' ? loadMarket : undefined} loadDashboard={serverState === 'ready' ? loadDashboard : undefined} />}
+              loadMarket={serverState === 'ready' ? loadMarket : undefined} loadDashboard={serverState === 'ready' && dashboardAvailable ? loadDashboard : undefined} />}
             {tab === 'sources' && <>
               <Text accessibilityRole="header" style={styles.panelTitle}>Sources & sync</Text>
               {refreshError !== '' && <Text accessibilityRole="alert" style={styles.noticeLine}>{refreshError}</Text>}
