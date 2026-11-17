@@ -17,7 +17,7 @@ export function bestFit(listing: any, filters: { bestFitRentWeight?: number; max
     score: Math.round((affordability + commute) * 10) / 10,
     affordability: Math.round(affordability * 10) / 10, commute: Math.round(commute * 10) / 10,
     rentWeight, commuteWeight, rentLimit, commuteLimit, mode, rent, minutes,
-    checkedAt: minutes === null ? null : estimate.checkedAt,
+    checkedAt: minutes === null ? null : estimate?.checkedAt ?? null,
     unknowns: [rent === null ? 'Rent unknown' : '', minutes === null ? 'Matching commute estimate unavailable' : ''].filter(Boolean),
     explanation: `Rent savings: ${rentWeight} × max(0, 1 − rent / $${rentLimit.toLocaleString('en-US')}). ${mode === 'driving' ? 'Driving' : 'Transit'}: ${commuteWeight} × max(0, 1 − estimated minutes / ${commuteLimit}). Unknown values earn no points, not a favorable assumption.`,
   };

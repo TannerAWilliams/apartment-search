@@ -128,8 +128,8 @@ export async function retrieveBuildingRecords(input: unknown, fetcher: FetchTran
         f: 'json', geometry: `${point.longitude},${point.latitude}`, geometryType: 'esriGeometryPoint', inSR: '4326', spatialRel: 'esriSpatialRelIntersects', outFields: 'FLD_ZONE,SFHA_TF', returnGeometry: 'false',
       });
       const data = await readOfficialJson(url, fetcher, signal);
-      if (data.error || data.exceededTransferLimit || !Array.isArray(data.features) || data.features.length > 100 || data.features.some(item => typeof item?.attributes?.FLD_ZONE !== 'string' || item.attributes.FLD_ZONE.length > 80 || !['T', 'F'].includes(item.attributes.SFHA_TF))) throw new Error('Invalid flood layer response');
-      flood = { point, layer: '2015 preliminary 100-year floodplain (PFIRM)', zones: [...new Set(data.features.map(item => item.attributes.FLD_ZONE))], intersects: data.features.some(item => item.attributes.SFHA_TF === 'T') };
+      if (data.error || data.exceededTransferLimit || !Array.isArray(data.features) || data.features.length > 100 || data.features.some((item: { attributes?: { FLD_ZONE?: unknown; SFHA_TF?: unknown } }) => typeof item?.attributes?.FLD_ZONE !== 'string' || item.attributes.FLD_ZONE.length > 80 || (item.attributes.SFHA_TF !== 'T' && item.attributes.SFHA_TF !== 'F'))) throw new Error('Invalid flood layer response');
+      flood = { point, layer: '2015 preliminary 100-year floodplain (PFIRM)', zones: [...new Set(data.features.map((item: { attributes: { FLD_ZONE: string } }) => item.attributes.FLD_ZONE))], intersects: data.features.some((item: { attributes: { SFHA_TF: string } }) => item.attributes.SFHA_TF === 'T') };
     } catch { errors.push('Preliminary flood-map point intersection unavailable; flood risk is unknown.'); }
   }
   return { checkedAt, status: errors.length ? 'partial' : 'matched', identity, openViolations, complaintsLast365Days, bedbugs, dob, flood, since: since.slice(0, 10), errors };

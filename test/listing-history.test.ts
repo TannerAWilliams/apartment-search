@@ -1,3 +1,4 @@
+import { required } from './test-values.ts';
 import { test } from 'bun:test';
 import assert from 'node:assert/strict';
 import { recordListingHistory, MAX_HISTORY_UNITS } from '../server/listing-history.ts';
@@ -10,7 +11,7 @@ test('records only successful observations and price/basis changes, with first/l
   assert.equal(next.listings[0].priceHistory.firstObservedAt, at(1));
   assert.equal(next.listings[0].priceHistory.lastObservedAt, at(2));
   const cut = recordListingHistory([unit(1900)], next.observationHistory, 'feed', at(3));
-  assert.deepEqual(cut.listings[0].priceHistory.observations.map(o => o.rent), [2000, 1900]);
+  assert.deepEqual(cut.listings[0].priceHistory.observations.map((o: { rent: number }) => o.rent), [2000, 1900]);
   const fees = recordListingHistory([{ ...unit(1900), priceIncludesFees: true }], cut.observationHistory, 'feed', at(4));
   assert.equal(fees.listings[0].priceHistory.observations.length, 3);
   assert.equal(first.listings[0].priceHistory.lastObservedAt, at(1));
@@ -36,9 +37,9 @@ test('source and unit identity stay isolated; feed-supplied history is discarded
 test('bounded rolling price history labels truncation', () => {
   let history;
   for (let day = 1; day <= 30; day++) history = recordListingHistory([unit(2000 + day)], history?.observationHistory, 'feed', at(day));
-  assert.equal(history.listings[0].priceHistory.observations.length, 24);
-  assert.equal(history.listings[0].priceHistory.truncated, true);
-  assert.equal(history.listings[0].priceHistory.firstObservedAt, at(1));
+  assert.equal(required(history).listings[0].priceHistory.observations.length, 24);
+  assert.equal(required(history).listings[0].priceHistory.truncated, true);
+  assert.equal(required(history).listings[0].priceHistory.firstObservedAt, at(1));
   const many = recordListingHistory(Array.from({ length: MAX_HISTORY_UNITS + 1 }, (_, i) => unit(2000, `feed:${i}`)), undefined, 'feed', at(1));
   assert.equal(many.observationHistory.entries.length, MAX_HISTORY_UNITS);
   assert.equal(many.observationHistory.truncated, true);

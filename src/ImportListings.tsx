@@ -1,15 +1,16 @@
+import type { ListingData } from './domain.ts';
 import React, { useState } from 'react';
 import { Platform, Text, TextInput, View } from 'react-native';
 import { IMPORT_COLUMNS, MAX_IMPORT_SIZE, parseListingImport } from './import-listings.ts';
 import { styles } from './styles.ts';
 import { Button } from './ui.tsx';
 
-export function ImportListings({ onImport, onCancel }) {
+export function ImportListings({ onImport, onCancel }: { onImport: (listings: ListingData[]) => void; onCancel: () => void }) {
   const [csv, setCsv] = useState('');
   const [error, setError] = useState('');
   const [reading, setReading] = useState(false);
 
-  async function selectFile(event) {
+  async function selectFile(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     event.target.value = '';
     if (!file) return;
@@ -34,7 +35,7 @@ export function ImportListings({ onImport, onCancel }) {
     try {
       onImport(parseListingImport(csv));
     } catch (failure) {
-      setError(failure.message);
+      setError(failure instanceof Error ? failure.message : 'The CSV could not be imported.');
     }
   }
 

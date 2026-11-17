@@ -10,7 +10,7 @@ export function validateTours(value: unknown): Tour[] {
     if (!t || !plain(t.id, 200) || ids.has(t.id) || !plain(t.listingKey, 2000) || !plain(t.address, 1000) ||
       typeof t.startsAt !== 'string' || !Number.isFinite(Date.parse(t.startsAt)) || new Date(t.startsAt).toISOString() !== t.startsAt ||
       !Number.isInteger(t.minutes) || t.minutes < 5 || t.minutes > 240 || typeof t.notes !== 'string' || t.notes.length > 2000 ||
-      !Array.isArray(t.checked) || t.checked.some(i => !Number.isInteger(i) || i < 0 || i >= TOUR_CHECKLIST.length) || new Set(t.checked).size !== t.checked.length)
+      !Array.isArray(t.checked) || t.checked.some((i: unknown) => typeof i !== 'number' || !Number.isInteger(i) || i < 0 || i >= TOUR_CHECKLIST.length) || new Set(t.checked).size !== t.checked.length)
       throw Error('Stored tour plan is invalid. It has not been overwritten.');
     ids.add(t.id);
     return { id: t.id, listingKey: t.listingKey, address: t.address, startsAt: t.startsAt, minutes: t.minutes, notes: t.notes, checked: [...t.checked] };

@@ -1,3 +1,4 @@
+import type { HousingResponse } from '../server/contracts.ts';
 import React, { useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
 import { NYC_SEARCH_DEFAULT } from './regions.ts';
@@ -11,10 +12,10 @@ const HDC_PAGE = 'https://www.nychdc.com/find-re-rentals';
 const DATE = new Intl.DateTimeFormat('en-US', {
   timeZone: 'UTC', month: 'short', day: 'numeric', year: 'numeric',
 });
-const showDate = (date) => DATE.format(new Date(date));
+const showDate = (date?: string) => date ? DATE.format(new Date(date)) : 'unknown';
 
-export function AffordableHousing({ region, loadHousing, onError }) {
-  const [data, setData] = useState(null);
+export function AffordableHousing({ region, loadHousing, onError }: { region: string; loadHousing?: (signal: AbortSignal) => Promise<HousingResponse>; onError: (message: string) => void }) {
+  const [data, setData] = useState<HousingResponse | null>(null);
   const [visible, setVisible] = useState(10);
   const [showRerentals, setShowRerentals] = useState(false);
 
@@ -27,7 +28,7 @@ export function AffordableHousing({ region, loadHousing, onError }) {
     return () => controller.abort();
   }, [loadHousing]);
 
-  function inArea({ borough }) {
+  function inArea({ borough }: { borough?: string }) {
     const area = borough?.trim().toLowerCase();
     return region === NYC_SEARCH_DEFAULT ? area === 'manhattan' || area === 'brooklyn' : area === region;
   }

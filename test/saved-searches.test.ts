@@ -14,7 +14,7 @@ test('presets pick validated filters, ignore secrets and pagination, round-trip 
   expect(() => addSavedSearch([], ' ', {}, 'one')).toThrow();
   expect(() => addSavedSearch([], 'x'.repeat(61), {}, 'one')).toThrow();
   expect(() => addSavedSearch([], 'Name', {}, '../bad')).toThrow();
-  let many = []; for (let i = 0; i < 10; i++) many = addSavedSearch(many, String(i), {}, String(i));
+  let many: ReturnType<typeof addSavedSearch> = []; for (let i = 0; i < 10; i++) many = addSavedSearch(many, String(i), {}, String(i));
   expect(() => addSavedSearch(many, 'extra', {}, 'extra')).toThrow();
 });
 test('corrupt saved state fails closed and no generated document bypasses read validation', () => {

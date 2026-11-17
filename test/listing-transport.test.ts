@@ -18,7 +18,7 @@ for (const mode of ['direct', 'relay'] as const) test(`API records actual ${mode
   const response=await handleApi(new Request('https://app.example/api/refresh',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({check:'now',source:'streeteasy-live'})}),env,client);
   assert.equal(response.status,200);
   const result=await response.json();
-  const source=result.sources.find(s=>s.id==='streeteasy-live');
+  const source=result.sources.find((s: { id: string })=>s.id==='streeteasy-live');
   assert.equal(source.requestTransport,mode);
   assert.equal(source.status,'failed');
   assert.match(source.error,/403/);

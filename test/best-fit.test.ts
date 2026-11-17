@@ -1,3 +1,4 @@
+import { required } from './test-values.ts';
 import { test, expect } from 'bun:test';
 import { bestFit } from '../src/best-fit.ts';
 import { compareResults, matchListings, needsCommute, parseFilters } from '../src/search.ts';
@@ -28,16 +29,16 @@ test('driving-only preference uses driving; transit remains default for both con
 test('best-fit recomputes after route enrichment, sorts before pagination, and alone requests no routes', () => {
   const filters = parseFilters({ region: 'all', bedrooms: 1, maxRent: 5000, sort: 'best' });
   expect(needsCommute(filters)).toBe(false);
-  const listing = { id: 'a', state: 'NY', city: 'Brooklyn', zip: '11201', latitude: 40.7, longitude: -74, bedrooms: 1, rent: 3000, sources: [], kind: 'snapshot' };
+  const listing = { id: 'a', address: 'Test apartment', state: 'NY', city: 'Brooklyn', zip: '11201', latitude: 40.7, longitude: -74, bedrooms: 1, rent: 3000, sources: [], kind: 'snapshot' };
   const matches = matchListings([listing, { ...listing, id: 'b', rent: 2000 }, { ...listing, id: 'c', rent: 6000 }], filters, workplace);
   expect(matches).toHaveLength(2);
   const enriched = matches.map(row => ({ ...row, commuteEstimate: route, transitSeconds: row.id === 'a' ? 600 : 3600 }));
   const result = formatSearch(enriched, filters, workplace, 'fixture', [], []);
-  expect(result.matches.map(x => x.id)).toEqual(['a', 'b']); expect(result.matches[0].bestFit.minutes).toBe(10);
+  expect(result.matches.map(x => x.id)).toEqual(['a', 'b']); expect(required(result.matches[0].bestFit).minutes).toBe(10);
   expect(formatSearch(enriched, { ...filters, sort: 'rent' }, workplace, 'fixture', [], []).matches[0].bestFit).toBeUndefined();
 });
 test('equal fit scores use deterministic rent/id fallback', () => {
-  expect(compareResults({ id: 'a', rent: 2000, bestFit: { score: 1 } }, { id: 'b', rent: 2000, bestFit: { score: 1 } }, 'best')).toBeLessThan(0);
+  expect(compareResults({ id: 'a', kind: 'feed', rent: 2000, bestFit: { score: 1 } }, { id: 'b', kind: 'feed', rent: 2000, bestFit: { score: 1 } }, 'best')).toBeLessThan(0);
 });
 
 test('custom weights are validated and complement to100 including endpoints', () => {

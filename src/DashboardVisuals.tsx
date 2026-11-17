@@ -8,10 +8,10 @@ const COLORS = ['#206248', '#34638c'];
 export function DashboardVisuals({ file, areaIndex }: { file: DashboardFile; areaIndex: number }) {
   const [range, setRange] = useState(12);
   const [comparison, setComparison] = useState<number | null>(null);
-  const [month, setMonth] = useState(file.months.at(-1));
+  const [month, setMonth] = useState(file.months.at(-1) ?? '');
   const [tableLimit, setTableLimit] = useState(24);
   const [width, setWidth] = useState(0);
-  const end = file.months.at(-1), start = range ? shiftDashboardMonth(end, 1 - range) : file.months[0];
+  const end = file.months.at(-1) ?? '', start = range ? shiftDashboardMonth(end, 1 - range) : file.months[0];
   const primary = dashboardPlot(file, areaIndex, start, end);
   const selectedMonth = primary.some(p => p.month === month) ? month : end;
   const series = [areaIndex, ...(comparison !== null && comparison !== areaIndex ? [comparison] : [])].map(i => ({ area: file.areas[i], points: dashboardPlot(file, i, start, end) }));
@@ -21,7 +21,7 @@ export function DashboardVisuals({ file, areaIndex }: { file: DashboardFile; are
   const min = Math.max(0, low - span * .1), max = Math.max(min + 1, high + span * .1);
   const x = (m: string) => 16 + (width - 32) * (Date.parse(m + '-01') - Date.parse(start + '-01')) / Math.max(1,Date.parse(end + '-01') - Date.parse(start + '-01'));
   const y = (v: number) => 16 + 168 * (max - v) / (max - min);
-  const change = (item) => item ? `${item.value > 0 ? '+' : ''}${item.value.toFixed(2)} ${item.unit}` : 'Unavailable (missing, anomalous or zero baseline)';
+  const change = (item: { value: number; unit: string } | null) => item ? `${item.value > 0 ? '+' : ''}${item.value.toFixed(2)} ${item.unit}` : 'Unavailable (missing, anomalous or zero baseline)';
   return <View style={styles.chartCard}>
     <Text accessibilityRole="header" style={styles.panelTitle}>Historical trend and neighborhood context</Text>
     <View style={styles.chipRow}>{[[12,'1 year'],[36,'3 years'],[0,'All history']].map(([n,label]) => <Chip key={n} selected={range === n} onPress={() => { setRange(Number(n)); setTableLimit(24); }}>{label}</Chip>)}</View>
@@ -33,10 +33,11 @@ export function DashboardVisuals({ file, areaIndex }: { file: DashboardFile; are
         {width > 32 && series.map((s,si) => s.points.map((p,i) => {
           if (p.value === null) return null;
           const prev=s.points[i-1], px=x(p.month), py=y(p.value);
-          const linked=prev?.value !== null && prev && shiftDashboardMonth(prev.month,1) === p.month;
-          const dx=linked ? px-x(prev.month):0, dy=linked ? py-y(prev.value):0, length=Math.hypot(dx,dy);
+          const previousValue = prev?.value;
+          const linked = prev && typeof previousValue === 'number' && shiftDashboardMonth(prev.month,1) === p.month;
+          const dx=linked ? px-x(prev.month):0, dy=linked ? py-y(previousValue!):0, length=Math.hypot(dx,dy);
           return <React.Fragment key={si+'-'+p.month}>
-            {linked && <View style={{position:'absolute',height:2,width:length,left:(px+x(prev.month)-length)/2,top:(py+y(prev.value))/2,backgroundColor:COLORS[si],transform:[{rotate:Math.atan2(dy,dx)+'rad'}]}} />}
+            {linked && <View style={{position:'absolute',height:2,width:length,left:(px+x(prev.month)-length)/2,top:(py+y(previousValue!))/2,backgroundColor:COLORS[si],transform:[{rotate:Math.atan2(dy,dx)+'rad'}]}} />}
             <View style={{position:'absolute',width:6,height:6,borderRadius:si===0?3:0,left:px-3,top:py-3,backgroundColor:COLORS[si]}} />
           </React.Fragment>;
         }))}

@@ -61,7 +61,7 @@ test('HTTP API uses bounded report path and injected official transport', async 
 test('complaint window uses NYC calendar dates and excludes future timestamps', async () => {
   const queries: string[] = [];
   const fetcher = source();
-  await retrieveBuildingRecords(address, async (url, options) => { queries.push(new URL(url).searchParams.get('$where') ?? ''); return fetcher(url, options); }, new Date('2026-11-17T02:00:00Z'));
+  await retrieveBuildingRecords(address, async (url: string, options?: RequestInit) => { queries.push(new URL(url).searchParams.get('$where') ?? ''); return fetcher(url, options); }, new Date('2026-11-17T02:00:00Z'));
   expect(queries[2]).toContain("received_date <= '2026-11-16T21:00:00'");
   expect(queries[2]).toContain("received_date >= '2025-11-17T00:00:00'");
 });

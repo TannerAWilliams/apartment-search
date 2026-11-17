@@ -12,7 +12,7 @@ const PAGES = [
 ].flatMap(([slug, city]) => ['', 'page-2/'].map((page) => ({
   url: `${ORIGIN}/${slug}/${page}`, city, state: 'NY', region: 'nyc',
 })));
-const listingUrl = (url) => publicListingUrl(url, ORIGIN, /^\/[a-z\d-]+\/[a-z\d-]+-\d+\/?$/i);
+const listingUrl = (url: unknown) => publicListingUrl(url, ORIGIN, /^\/[a-z\d-]+\/[a-z\d-]+-\d+\/?$/i);
 
 export const AFFORDABLE_LIVE = {
   ...SOURCE, id: 'affordablehousing-live', marketplace: SOURCE.id, coverage: 'Manhattan and Brooklyn',
@@ -20,7 +20,7 @@ export const AFFORDABLE_LIVE = {
   listingUrl, load: loadAffordableRentals,
 };
 
-export function parseAffordableRentals(html, market, checkedAt) {
+export function parseAffordableRentals(html: string, market: {city:string; state:string; region:string}, checkedAt: string) {
   const cards = [...html.matchAll(/<article\b[^>]*\bdata-listing-card-type=["'][^"']+["'][^>]*>[\s\S]*?<\/article>/gi)];
   if (!cards.length) throw new Error('AffordableHousing.com did not return a recognized rental page.');
   return cards.flatMap(([card]) => {

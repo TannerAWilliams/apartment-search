@@ -1,3 +1,4 @@
+import type { FetchTransport } from '../src/fetch-type.ts';
 import { normalizeListing } from '../src/listings.ts';
 import { nycBorough } from './firstmover.ts';
 import { loadPublicPages, publicListingUrl } from './public-rentals.ts';
@@ -9,15 +10,15 @@ const PAGES = [
   ['white-plains-ny', 'White Plains', 'NY', 'metroNorth'],
   ['stamford-ct', 'Stamford', 'CT', 'ct'],
 ].map(([path, city, state, region]) => ({ url: ORIGIN + '/for-rent/' + path + '/', city, state, region }));
-const listingUrl = (url) => publicListingUrl(url, ORIGIN, /^\/homedetails\/[^/]+\/\d+_lid\/?$/);
+const listingUrl = (url: unknown) => publicListingUrl(url, ORIGIN, /^\/homedetails\/[^/]+\/\d+_lid\/?$/);
 
 export const COMPASS_LIVE = {
   ...SOURCE, id: 'compass-live', marketplace: SOURCE.id, coverage: 'NYC, White Plains and Stamford',
   regions: ['nyc', 'metroNorth', 'ct'], minPages: PAGES.length, maxPages: PAGES.length, rowsPerPage: 60,
-  listingUrl, load: (fetcher, now) => loadPublicPages(SOURCE, PAGES, parseCompassPage, fetcher, now),
+  listingUrl, load: (fetcher: FetchTransport, now: Date) => loadPublicPages(SOURCE, PAGES, parseCompassPage, fetcher, now),
 };
 
-export function parseCompassPage(html, market, checkedAt) {
+export function parseCompassPage(html: string, market: {city:string; state:string; region:string}, checkedAt: string) {
   const state = html.match(/<script\b[^>]*>\s*\(function \(global\) \{global\.uc=(\{[\s\S]*?\});\}\)\(this\);<\/script>/i);
   const rows = state && JSON.parse(state[1])?.sharedReactAppProps?.initialResults?.lolResults?.data;
   if (!Array.isArray(rows)) throw new Error('Compass did not return a recognized rental page.');
@@ -29,16 +30,16 @@ export function parseCompassPage(html, market, checkedAt) {
     const address = (fullAddress?.[1] ?? title)?.match(/^(\d.+?)(?:,\s*Unit\s+|\s+#\s*)([^#,]+)$/i);
     const city = market.region === 'nyc' ? nycBorough(location?.[2] ?? '') : fullAddress?.[2];
     const badges = row?.badges?.cornerBadges ?? [];
-    if (!url || !address || !city || location?.[1] !== market.state ||
+    if (!url || !address || !city || !location || location?.[1] !== market.state ||
         (market.region !== 'nyc' && city.toLowerCase() !== market.city.toLowerCase()) || row.status !== 0 ||
-        badges.some(({ displayText }) => /coming soon|application pending|rented/i.test(displayText))) return [];
+        badges.some(({ displayText }: { displayText: string }) => /coming soon|application pending|rented/i.test(displayText))) return [];
 
     const { latitude, longitude } = row.location ?? {};
     const rent = row.title?.match(/^\$([\d,]+)$/)?.[1];
-    const beds = row.subStats?.find(({ titleLabel }) => titleLabel === 'Bedrooms')?.subtitle;
+    const beds = row.subStats?.find(({ titleLabel }: { titleLabel: string }) => titleLabel === 'Bedrooms')?.subtitle;
     if (!rent || !Number.isFinite(latitude) || !Number.isFinite(longitude)) return [];
-    const courtesy = row.footer?.find(({ data }) => data?.text?.content?.startsWith('Listing Courtesy of '))?.data.text.content;
-    const company = badges.some(({ displayText }) => displayText === 'Listed By Compass') ? 'Compass' :
+    const courtesy = row.footer?.find(({ data }: { data?: { text?: { content?: string } } }) => data?.text?.content?.startsWith('Listing Courtesy of '))?.data.text.content;
+    const company = badges.some(({ displayText }: { displayText: string }) => displayText === 'Listed By Compass') ? 'Compass' :
       courtesy?.slice('Listing Courtesy of '.length);
     const listing = normalizeListing({
       id: location[3], url, address: address[1], unit: address[2].trim(), city, state: market.state,

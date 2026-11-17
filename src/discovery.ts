@@ -7,7 +7,8 @@ function positiveNumber(value: unknown, max: number, halfSteps = false): number 
   return Number.isFinite(parsed) && parsed > 0 && parsed <= max && (!halfSteps || Number.isInteger(parsed * 2)) ? parsed : null;
 }
 /** Only explicit structured facts, never claims inferred from prose, photos or missing values. */
-export function discoveryFacts(row: any) {
+export type DiscoveryFacts = { bathrooms: number | null; squareFeet: number | null; petsAllowed: boolean | null; laundry: typeof LAUNDRY_OPTIONS[number] | null };
+export function discoveryFacts(row: any): DiscoveryFacts {
   return {
     bathrooms: positiveNumber(row?.bathrooms, 20, true),
     squareFeet: positiveNumber(row?.squareFeet, 100000),
@@ -25,14 +26,14 @@ export function matchesDiscovery(listing: any, filters: any): boolean {
 
 /** Do not fill preferred-source unknowns from another source without field provenance. */
 export function mergeDiscoveryFacts(preferred: any, alternate: any) {
-  const sourceIds = (listing: any) => new Set((listing.sources ?? []).map(source => source.id ?? source.url).filter(Boolean));
+  const sourceIds = (listing: any) => new Set((listing.sources ?? []).map((source: { id?: string; url?: string | null }) => source.id ?? source.url).filter(Boolean));
   const first = sourceIds(preferred), second = sourceIds(alternate);
   // Without per-field provenance, overlapping merged source sets are ambiguous.
   // Only identical single-source observations are confidently same-source updates.
   const independentSources = !(first.size === 1 && second.size === 1 && [...first][0] === [...second][0]);
   const facts = discoveryFacts(preferred), other = discoveryFacts(alternate);
   const conflicts: string[] = [];
-  for (const key of Object.keys(facts)) {
+  for (const key of (Object.keys(facts) as (keyof DiscoveryFacts)[])) {
     if ((Array.isArray(preferred.discoveryConflicts) && preferred.discoveryConflicts.includes(key)) ||
         (Array.isArray(alternate.discoveryConflicts) && alternate.discoveryConflicts.includes(key)) ||
         (independentSources && facts[key] !== null && other[key] !== null && facts[key] !== other[key])) {

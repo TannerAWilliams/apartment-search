@@ -21,7 +21,7 @@ export function comparisonOptions(listings: any[], query: string) {
 }
 export function comparisonRows(listing: any) {
   const facts = discoveryFacts(listing), presentation = listingPresentation(listing);
-  for (const key of Object.keys(facts)) if (Array.isArray(listing.discoveryConflicts) && listing.discoveryConflicts.includes(key)) facts[key] = null;
+  for (const key of (Object.keys(facts) as (keyof typeof facts)[])) if (Array.isArray(listing.discoveryConflicts) && listing.discoveryConflicts.includes(key)) facts[key] = null;
   const commute = savedCommuteEstimate(listing);
   const checkedAt = listing.checkedAt ?? listing.seenAt;
   return [

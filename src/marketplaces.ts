@@ -1,6 +1,7 @@
+import type { ListingData, SearchFilters } from './domain.ts';
 import { matchCompany, NYC_COMPANIES } from './companies.ts';
 
-export const MARKETPLACE_NAMES = {
+export const MARKETPLACE_NAMES: Record<string, string> = {
   ...Object.fromEntries(NYC_COMPANIES.map(({ id, name }) => [id, name])),
   streeteasy: 'StreetEasy',
   zillow: 'Zillow',
@@ -21,14 +22,14 @@ export const MARKETPLACE_NAMES = {
   affordablehousing: 'AffordableHousing.com',
 };
 
-const STATES = { NY: 'New-York', NJ: 'New-Jersey', CT: 'Connecticut', PA: 'Pennsylvania' };
-const STREETEASY_AREAS = {
+const STATES: Record<string, string> = { NY: 'New-York', NJ: 'New-Jersey', CT: 'Connecticut', PA: 'Pennsylvania' };
+const STREETEASY_AREAS: Record<string, string> = {
   'New York': 'nyc', Manhattan: 'manhattan', Brooklyn: 'brooklyn',
   Queens: 'queens', Bronx: 'bronx', 'Staten Island': 'staten-island',
   'Jersey City': 'jersey-city',
 };
 
-export function marketplaceLinks(market, filters) {
+export function marketplaceLinks(market: { city: string; state: string; region: string; zip: string }, filters: Pick<SearchFilters, 'zip' | 'bedrooms' | 'maxRent'>) {
   const { city, state, region } = market;
   const citySlug = city.toLowerCase().replace(/[^a-z0-9]+/g, '-');
   const stateSlug = state.toLowerCase();
@@ -42,9 +43,9 @@ export function marketplaceLinks(market, filters) {
   const apartmentArea = filters.zip || slug;
   const location = encodeURIComponent(city.replaceAll(' ', '_')) + ',' + state;
   const realtorArea = filters.zip || titleSlug + '_' + state;
-  const realtorBeds = beds > 0 ? `/beds-${beds}-${beds}` : '';
+  const realtorBeds = beds !== null && beds > 0 ? `/beds-${beds}-${beds}` : '';
   const hotpadsPath = max === null ? 'apartments-for-rent' : `apartments-under-${max}`;
-  const redfinArea = { 'New York': '30749/NY/New-York', 'Jersey City': '9168/NJ/Jersey-City' }[city];
+  const redfinArea = ({ 'New York': '30749/NY/New-York', 'Jersey City': '9168/NJ/Jersey-City' } as Record<string, string>)[city];
   const craigslistZone = region === 'pa' ? (
     ['Philadelphia', 'Doylestown'].includes(city) ? 'philadelphia' : city === 'Stroudsburg' ? 'poconos' : 'allentown'
   ) : region === 'li' ? 'longisland' : region === 'ct' ?
@@ -98,8 +99,9 @@ export const MARKETPLACE_DOMAINS = {
   openigloo: 'openigloo.com', affordablehousing: 'affordablehousing.com',
 };
 
-export function safeListingUrl(value) {
+export function safeListingUrl(value: unknown) {
   try {
+    if (typeof value !== 'string') return null;
     const url = new URL(value);
     return url.protocol === 'https:' && !url.username && !url.password && url.href.length <= 2000 ?
       url.href : null;
@@ -108,19 +110,19 @@ export function safeListingUrl(value) {
   }
 }
 
-export function marketplaceIdForUrl(value) {
+export function marketplaceIdForUrl(value: unknown) {
   const url = safeListingUrl(value);
   if (!url) return null;
   const hostname = new URL(url).hostname;
-  const matches = (domain) => hostname === domain || hostname.endsWith('.' + domain);
+  const matches = (domain: string) => hostname === domain || hostname.endsWith('.' + domain);
   return Object.entries(MARKETPLACE_DOMAINS).find(([, domain]) => matches(domain))?.[0] ??
     NYC_COMPANIES.find(({ domain }) => matches(domain))?.id ?? null;
 }
 
-export function marketplaceAddressSearches(listing, sources = listing.sources) {
+export function marketplaceAddressSearches(listing: ListingData, sources = listing.sources) {
   const linked = new Set(sources.filter(({ url }) => url).map(({ id }) => id));
   const address = listing.address.replace(/"/g, '');
-  const unit = listing.unit.replace(/"/g, '').replace(/^(?:unit|apt\.?|suite|#)\s*/i, '');
+  const unit = (listing.unit ?? '').replace(/"/g, '').replace(/^(?:unit|apt\.?|suite|#)\s*/i, '');
   const location = listing.zip || [listing.city, listing.state].filter(Boolean).join(' ');
   if (!address) return [];
 

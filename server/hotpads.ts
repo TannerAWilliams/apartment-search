@@ -1,3 +1,4 @@
+import type { FetchTransport } from '../src/fetch-type.ts';
 import { normalizeListing } from '../src/listings.ts';
 import { jsonLd, loadPublicPages, publicListingUrl } from './public-rentals.ts';
 
@@ -9,20 +10,21 @@ const MARKETS = [
   { city: 'Stamford', state: 'CT', region: 'ct', slug: 'stamford-ct' },
 ];
 const PAGES = MARKETS.map((market) => ({ ...market, url: `${ORIGIN}/${market.slug}/condos-for-rent` }));
-const listingUrl = (url) => publicListingUrl(url, ORIGIN, /^\/[a-z0-9-]+\/[a-z0-9-]+\/pad\/?$/i);
+const listingUrl = (url: unknown) => publicListingUrl(url, ORIGIN, /^\/[a-z0-9-]+\/[a-z0-9-]+\/pad\/?$/i);
 
 export const HOTPADS_LIVE = {
   ...SOURCE, id: 'hotpads-live', marketplace: SOURCE.id,
   coverage: 'first condo-rental search page in New York, Jersey City and Stamford; exact apartment units only',
   regions: ['nyc', 'nj', 'ct'], minPages: PAGES.length, maxPages: PAGES.length, rowsPerPage: 50,
-  listingUrl, load: (fetcher, now) => loadPublicPages(SOURCE, PAGES, parseHotpadsPage, fetcher, now),
+  listingUrl, load: (fetcher: FetchTransport, now: Date) => loadPublicPages(SOURCE, PAGES, parseHotpadsPage, fetcher, now),
 };
 
-export function parseHotpadsPage(html, market, checkedAt) {
+export function parseHotpadsPage(html: string, market: {city:string; state:string; region:string}, checkedAt: string) {
   const list = jsonLd(html).flatMap((schema) => schema?.['@graph'] ?? [])
     .find((schema) => schema?.['@type'] === 'ItemList');
-  if (!Array.isArray(list?.itemListElement)) throw new Error('HotPads did not return a recognized rental page.');
-  return list.itemListElement.flatMap(({ item }) => {
+  const entries = list?.itemListElement;
+  if (!Array.isArray(entries)) throw new Error('HotPads did not return a recognized rental page.');
+  return entries.flatMap(({ item }) => {
     const url = listingUrl(item?.url);
     const unit = item?.name?.match(/\s+#\s*([\w-]+)$/)?.[1];
     const address = item?.address;

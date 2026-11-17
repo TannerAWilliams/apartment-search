@@ -1,3 +1,4 @@
+import { required } from './test-values.ts';
 import { test } from 'bun:test';
 import assert from 'node:assert/strict';
 import { loadFeed } from '../server/listings.ts';
@@ -42,6 +43,6 @@ test('an impossible feed count preserves previously saved inventory', async () =
   const result = await refreshSources(env, { sourceId: feed.id, onDemand: true, now: new Date('2026-11-13T13:00:00Z'),
     fetcher: async () => { calls++; return Response.json({ listings: [row], total: 0, next: '/unneeded' }); } });
   assert.equal(calls, 1);
-  assert.equal(result.sources.find(({ id }) => id === feed.id).status, 'failed');
+  assert.equal(required(result.sources.find(({ id }) => id === feed.id)).status, 'failed');
   assert.deepEqual(await storedFeed(env.BUCKET, feed), saved);
 });

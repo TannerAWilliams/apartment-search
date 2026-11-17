@@ -1,3 +1,4 @@
+import { required } from './test-values.ts';
 import { test } from 'bun:test';
 import assert from 'node:assert/strict';
 import { createMemoryBucket } from '../server/memory-bucket.ts';
@@ -9,11 +10,11 @@ test('stored Node Buffers are isolated from caller mutations and backing array o
   const stored = await bucket.put('source', body);
   parent.fill(0);
   const snapshot = await bucket.get('source');
-  assert.equal(await snapshot.text(), 'original');
-  assert.equal(snapshot.etag, stored.etag);
-  const read = new Uint8Array(await snapshot.arrayBuffer());
+  assert.equal(await required(snapshot).text(), 'original');
+  assert.equal(required(snapshot).etag, required(stored).etag);
+  const read = new Uint8Array(await required(snapshot).arrayBuffer());
   read.fill(0);
-  assert.equal(await (await bucket.get('source')).text(), 'original');
+  assert.equal(await required((await bucket.get('source'))).text(), 'original');
 });
 
 test('an oversized Buffer replacement preserves saved bytes and ETag', async () => {
@@ -21,6 +22,6 @@ test('an oversized Buffer replacement preserves saved bytes and ETag', async () 
   const initial = await bucket.put('source', Buffer.from('good'));
   await assert.rejects(bucket.put('source', Buffer.from('oversized')), /capacity exceeded/);
   const saved = await bucket.get('source');
-  assert.equal(saved.etag, initial.etag);
-  assert.equal(await saved.text(), 'good');
+  assert.equal(required(saved).etag, required(initial).etag);
+  assert.equal(await required(saved).text(), 'good');
 });

@@ -1,3 +1,4 @@
+import type { FetchTransport } from '../src/fetch-type.ts';
 import { normalizeListing } from '../src/listings.ts';
 import { NYC_SEARCH_AREAS, searchBorough } from '../src/regions.ts';
 import { loadPublicPages, publicListingUrl } from './public-rentals.ts';
@@ -14,16 +15,16 @@ const PAGES = ZUMPER_MARKETS.flatMap((market) => ['', '/cheap', '?page=2'].map((
   ...market,
   url: ORIGIN + '/apartments-for-rent/' + market.city.toLowerCase().replaceAll(' ', '-') + '-' + market.state.toLowerCase() + suffix,
 })));
-const listingUrl = (url) => publicListingUrl(url, ORIGIN, /^\/listings\/\d+p?\/[^/]+\/?$/);
+const listingUrl = (url: unknown) => publicListingUrl(url, ORIGIN, /^\/listings\/\d+p?\/[^/]+\/?$/);
 const sharedRental = /\b(?:room[- ]for[- ]rent|private (?:bed)?room|shared (?:apartment|home|housing)|roommates?|roomates?|(?:small|medium|large) (?:size )?room|rent (?:a|one) room)\b/i;
 
 export const ZUMPER_LIVE = {
   ...SOURCE, id: 'zumper-live', marketplace: SOURCE.id, coverage: 'three search pages each in Manhattan, Brooklyn, Jersey City and Stamford',
   regions: ['nyc', 'nj', 'ct'], minPages: PAGES.length, maxPages: PAGES.length, rowsPerPage: 60,
-  listingUrl, load: (fetcher, now) => loadPublicPages(SOURCE, PAGES, parseZumperPage, fetcher, now),
+  listingUrl, load: (fetcher: FetchTransport, now: Date) => loadPublicPages(SOURCE, PAGES, parseZumperPage, fetcher, now),
 };
 
-export function parseZumperPage(html, market, checkedAt) {
+export function parseZumperPage(html: string, market: {city:string; state:string; region:string; borough:string|null}, checkedAt: string) {
   const state = html.match(/window\.__PRELOADED_STATE__\s*=\s*(\{[\s\S]*?\});\s*window\.__GIT_SHA__/);
   const rows = state && JSON.parse(state[1])?.currentSearch?.listables?.listables;
   if (!Array.isArray(rows)) throw new Error('Zumper did not return a recognized rental page.');
@@ -36,7 +37,7 @@ export function parseZumperPage(html, market, checkedAt) {
         row.min_price !== row.max_price || row.min_bedrooms !== row.max_bedrooms ||
         !Number.isFinite(row.lat) || !Number.isFinite(row.lng)) return [];
 
-    const city = market.state === 'NY' ? NYC_SEARCH_AREAS[borough].label : market.city;
+    const city = market.state === 'NY' && borough ? NYC_SEARCH_AREAS[borough].label : market.city;
     const listing = normalizeListing({
       id: String(row.listing_id), url, address: row.address, city, state: row.state, region: market.region,
       zipCode: row.zipcode, latitude: row.lat, longitude: row.lng, bedrooms: row.min_bedrooms,

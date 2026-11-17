@@ -1,3 +1,4 @@
+import { required } from './test-values.ts';
 import { test } from 'bun:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
@@ -17,8 +18,8 @@ test('private Bun server rejects anonymous API, supports cookie login and reject
   assert.equal((await fetch(origin + '/login', { method: 'POST', headers: { Origin: 'https://evil.example' }, body: 'password=' + secret, redirect: 'manual' })).status, 403);
   const login = await fetch(origin + '/login', { method: 'POST', headers: { Origin: origin }, body: 'password=' + secret, redirect: 'manual' });
   assert.equal(login.status, 303); const cookie = login.headers.get('set-cookie');
-  assert.match(cookie, /HttpOnly; Secure; SameSite=Strict/);
-  const headers = { Cookie: cookie.split(';')[0] };
+  assert.match(required(cookie), /HttpOnly; Secure; SameSite=Strict/);
+  const headers = { Cookie: required(cookie).split(';')[0] };
   assert.equal((await fetch(origin + '/api/config', { headers })).status, 200);
   assert.equal((await fetch(origin + '/api/search', { method: 'POST', headers: { ...headers, Origin: 'https://evil.example', 'Content-Type': 'application/json' }, body: '{}' })).status, 403);
   assert.equal((await fetch(origin + '/api/search', { method: 'POST', headers: { ...headers, Origin: origin, 'Content-Type': 'application/json' }, body: 'x'.repeat(5000) })).status, 413);
@@ -36,6 +37,6 @@ test('private Bun server rejects anonymous API, supports cookie login and reject
   assert.equal((await fetch(origin + '/..%2Fpackage.json', { headers })).status, 404);
   assert.equal((await fetch(origin + '/', { method: 'DELETE', headers })).status, 405);
   const logout = await fetch(origin + '/logout', { method: 'POST', headers: { ...headers, Origin: origin }, redirect: 'manual' });
-  assert.equal(logout.status, 303); assert.match(logout.headers.get('set-cookie'), /Max-Age=0/);
+  assert.equal(logout.status, 303); assert.match(required(logout.headers.get('set-cookie')), /Max-Age=0/);
  } finally { child.kill('SIGTERM'); await once(child, 'exit'); }
 });

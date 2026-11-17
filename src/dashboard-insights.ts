@@ -1,5 +1,5 @@
 import { METRICS, type DashboardFile } from './dashboard-data.ts';
-export function validDashboardValue(value: number | null | undefined) {
+export function validDashboardValue(value: number | null | undefined): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0;
 }
 export function shiftDashboardMonth(month: string, offset: number) {
@@ -19,7 +19,7 @@ export function dashboardInsights(file: DashboardFile, areaIndex: number, month:
   const peers = file.areas.filter(a => a.type === area.type && a.borough === area.borough && validDashboardValue(a.values[index]));
   const latest = file.months.filter((_, i) => validDashboardValue(area.values[i])).at(-1) ?? null;
   return { current, latest, monthly: dashboardChange(current, previous(-1), file.metric), yearly: dashboardChange(current, previous(-12), file.metric),
-    peers: validDashboardValue(current) ? { count: peers.length, below: peers.filter(a => a.values[index] < current).length, equal: peers.filter(a => a.values[index] === current).length } : null };
+    peers: validDashboardValue(current) ? { count: peers.length, below: peers.filter(a => { const value = a.values[index]; return validDashboardValue(value) && value < current; }).length, equal: peers.filter(a => a.values[index] === current).length } : null };
 }
 export function dashboardPlot(file: DashboardFile, areaIndex: number, start: string, end: string) {
   const area = file.areas[areaIndex];

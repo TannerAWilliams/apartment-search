@@ -1,9 +1,10 @@
+import { required } from './test-values.ts';
 import { test } from 'bun:test';
 import assert from 'node:assert/strict';
-import { compareResults } from '../src/search.ts';
+import { compareResults, parseFilters } from '../src/search.ts';
 
-const listing = (id, rent, seenAt, kind = 'feed') => ({ id, rent, seenAt, kind });
-const ordered = (rows, sort = 'recent') => [...rows].sort((a, b) => compareResults(a, b, sort)).map(row => row.id);
+const listing = (id: string, rent: number, seenAt: string | null, kind = 'feed') => ({ id, rent, seenAt, kind, address: 'Test apartment', city: 'Brooklyn', state: 'NY', zip: '11201', bedrooms: 1, sources: [] });
+const ordered = (rows: ReturnType<typeof listing>[], sort = 'recent') => [...rows].sort((a, b) => compareResults(a, b, sort)).map(row => row.id);
 
 test('recent sort orders checked listings by timestamp before rent', () => {
   const rows = [listing('old', 1000, '2026-11-01T00:00:00Z'), listing('new', 4000, '2026-11-13T00:00:00Z')];
@@ -34,11 +35,11 @@ test('recent sort is applied across the complete result set before pagination', 
     ...listing(String(n).padStart(3, '0'), 1000 + n, new Date(Date.UTC(2026, 0, 1) + n * 60000).toISOString()),
     sources: [{ id: 'streeteasy', name: 'StreetEasy', kind: 'feed', url: `https://streeteasy.com/rental/${n}` }],
   }));
-  const first = formatSearch(rows, { sort: 'recent', offset: 0 }, {}, 'live', [], []);
-  const last = formatSearch(rows, { sort: 'recent', offset: 100 }, {}, 'live', [], []);
+  const first = formatSearch(rows, parseFilters({ sort: 'recent', offset: 0 }), required({ label: 'Fixture', latitude: 0, longitude: 0 }), 'live', [], []);
+  const last = formatSearch(rows, parseFilters({ sort: 'recent', offset: 100 }), required({ label: 'Fixture', latitude: 0, longitude: 0 }), 'live', [], []);
   assert.equal(first.total, 105);
   assert.equal(first.matches[0].id, '104');
-  assert.equal(first.matches.at(-1).id, '005');
+  assert.equal(required(first.matches.at(-1)).id, '005');
   assert.equal(first.nextOffset, 100);
   assert.deepEqual(last.matches.map(row => row.id), ['004', '003', '002', '001', '000']);
   assert.equal(last.nextOffset, null);

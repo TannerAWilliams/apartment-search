@@ -1,3 +1,4 @@
+import type { ListingData, SourceLink } from './domain.ts';
 import React, { useState } from 'react';
 import { Text, View } from 'react-native';
 import { listingLinkLabel, orderedListingLinks, sourceLink } from './listings.ts';
@@ -5,7 +6,7 @@ import { marketplaceAddressSearches } from './marketplaces.ts';
 import { styles } from './styles.ts';
 import { Button, Field, Link } from './ui.tsx';
 
-export function ListingSources({ listing, onSaveLink, onError }) {
+export function ListingSources({ listing, onSaveLink, onError }: { listing: ListingData; onSaveLink: (listing: ListingData, link: SourceLink) => void; onError: (message: string) => void }) {
   const [expanded, setExpanded] = useState(false);
   const [url, setUrl] = useState('');
   const [error, setError] = useState('');
@@ -35,9 +36,9 @@ export function ListingSources({ listing, onSaveLink, onError }) {
             url={link.url} onError={onError} />)}
         </View>
       </View>}
-      {listing.buildingLinks?.length > 0 && <View style={styles.sourceGroup}>
+      {(listing.buildingLinks?.length ?? 0) > 0 && <View style={styles.sourceGroup}>
         <Text style={styles.fieldLabel}>Housing lotteries at this building</Text>
-        {listing.buildingLinks.map(({ name, url }) =>
+        {listing.buildingLinks?.map(({ name, url }) =>
           <Link key={url} label={name} url={url} onError={onError} />)}
       </View>}
       <View style={styles.sourceGroup}>

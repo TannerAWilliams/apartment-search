@@ -1,3 +1,4 @@
+import type { FetchTransport } from '../src/fetch-type.ts';
 import { normalizeListing } from '../src/listings.ts';
 import { searchBorough } from '../src/regions.ts';
 import { jsonLd, loadPublicPages, publicListingUrl } from './public-rentals.ts';
@@ -7,16 +8,16 @@ const ORIGIN = 'https://www.apartments.com';
 const PAGES = ['manhattan', 'brooklyn'].flatMap((borough) => [1, 2].flatMap((bedrooms) =>
   ['', '2/'].map((suffix) => ({ borough, bedrooms,
     url: ORIGIN + '/' + borough + '-ny/' + bedrooms + '-bedrooms/' + suffix }))));
-const listingUrl = (value) => publicListingUrl(value, ORIGIN, /^\/[a-z0-9-]+\/[a-z0-9]{7}\/$/i);
+const listingUrl = (value: unknown) => publicListingUrl(value, ORIGIN, /^\/[a-z0-9-]+\/[a-z0-9]{7}\/$/i);
 
 export const APARTMENTS_LIVE = {
   ...SOURCE, id: 'apartments-live', marketplace: SOURCE.id,
   coverage: 'the first two one- and two-bedroom search pages per borough',
   regions: ['nyc'], minPages: PAGES.length, maxPages: PAGES.length, rowsPerPage: 50,
-  listingUrl, load: (fetcher, now) => loadPublicPages(SOURCE, PAGES, parseApartmentsPage, fetcher, now),
+  listingUrl, load: (fetcher: FetchTransport, now: Date) => loadPublicPages(SOURCE, PAGES, parseApartmentsPage, fetcher, now),
 };
 
-export function parseApartmentsPage(html, { borough, bedrooms }, checkedAt) {
+export function parseApartmentsPage(html: string, { borough, bedrooms }: {borough:string; bedrooms:number}, checkedAt: string) {
   const collection = jsonLd(html).flatMap((schema) => schema?.['@graph'] ?? [])
     .find((entry) => entry?.['@type'] === 'CollectionPage');
   const entries = collection?.mainEntity?.itemListElement;

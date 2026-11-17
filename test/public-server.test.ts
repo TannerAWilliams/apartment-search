@@ -13,7 +13,7 @@ test('public server opens browsing but blocks cross-origin writes and anonymous 
   assert.equal((await fetch(origin+'/api/dashboard',{headers:{Authorization:'Bearer '+ 'test-only-secret'.repeat(3)}})).status,403);
   const config=await fetch(origin+'/api/config'); assert.equal(config.status,200); assert.equal((await config.json()).browserImportAllowed,false);
   const home=await fetch(origin+'/'); assert.equal(home.status,200); assert.doesNotMatch(await home.text(),/Enter the access password/);
-  const post=(body,site=origin)=>fetch(origin+'/api/refresh',{method:'POST',headers:{'Content-Type':'application/json',Origin:site},body:JSON.stringify(body)});
+  const post=(body: unknown,site=origin)=>fetch(origin+'/api/refresh',{method:'POST',headers:{'Content-Type':'application/json',Origin:site},body:JSON.stringify(body)});
   assert.equal((await post({check:'now'},'https://evil.example')).status,403);
   assert.equal((await post({imports:{}})).status,403);
   // Invalid source exercises the accepted path without fetching any upstream provider.

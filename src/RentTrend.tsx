@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { formatSnapshotMonth } from './market.ts';
-import { rentSeries } from './rent-history.ts';
+import { type RentArea, type RentHistory, type RentPoint, rentSeries } from './rent-history.ts';
 import { bedroomLabel, formatRent } from './search.ts';
 import { styles } from './styles.ts';
 
@@ -10,21 +10,21 @@ const CHART_HEIGHT = 178;
 const AXIS_WIDTH = 65;
 const PADDING = 10;
 const MONTH = new Intl.DateTimeFormat('en-US', { month: 'short', timeZone: 'UTC' });
-const monthLabel = (month) => MONTH.format(new Date(month + '-01T00:00:00Z'));
+const monthLabel = (month: string) => MONTH.format(new Date(month + '-01T00:00:00Z'));
 
-function priceScale(values) {
+function priceScale(values: number[]) {
   const low = Math.min(...values);
   const high = Math.max(...values);
   const range = Math.max(high - low, high * 0.18, 100);
   const rough = range / 4;
   const unit = 10 ** Math.floor(Math.log10(rough));
-  const step = [1, 2, 2.5, 5, 10].find((multiple) => multiple * unit >= rough) * unit;
+  const step = [1, 2, 2.5, 5, 10].find((multiple) => multiple * unit >= rough)! * unit;
   const min = Math.max(0, Math.floor((low - range * 0.05) / step) * step);
   const max = Math.max(min + step * 3, Math.ceil((high + range * 0.05) / step) * step);
   return { min, max, ticks: Array.from({ length: Math.round((max - min) / step) + 1 }, (_, index) => min + index * step) };
 }
 
-function Segment({ start, end, color }) {
+function Segment({ start, end, color }: { start: { x: number; y: number }; end: { x: number; y: number }; color: string }) {
   const length = Math.hypot(end.x - start.x, end.y - start.y);
   const angle = Math.atan2(end.y - start.y, end.x - start.x);
   return <View style={[styles.trendLine, {
@@ -33,10 +33,10 @@ function Segment({ start, end, color }) {
   }]} />;
 }
 
-function TrendPlot({ series, points, scale, selectedIndex, onMonth }) {
+function TrendPlot({ series, points, scale, selectedIndex, onMonth }: { series: { id: string; color: string; values: RentPoint[] }[]; points: RentPoint[]; scale: ReturnType<typeof priceScale>; selectedIndex: number; onMonth: (month: string) => void }) {
   const [width, setWidth] = useState(0);
-  const x = (index) => AXIS_WIDTH + (width - AXIS_WIDTH) * (index + 0.5) / points.length;
-  const y = (price) => PADDING + (CHART_HEIGHT - PADDING * 2) * (scale.max - price) / (scale.max - scale.min);
+  const x = (index: number) => AXIS_WIDTH + (width - AXIS_WIDTH) * (index + 0.5) / points.length;
+  const y = (price: number) => PADDING + (CHART_HEIGHT - PADDING * 2) * (scale.max - price) / (scale.max - scale.min);
   return <>
     <View style={[styles.trendPlot, { height: CHART_HEIGHT }]}
       onLayout={(event) => setWidth(Math.round(event.nativeEvent.layout.width))} aria-hidden accessibilityElementsHidden>
@@ -50,7 +50,7 @@ function TrendPlot({ series, points, scale, selectedIndex, onMonth }) {
           const dots = values.map(({ median }, index) => median === null ? null : { x: x(index), y: y(median) });
           return <React.Fragment key={id}>
             {dots.map((dot, index) => dot && dots[index - 1] ?
-              <Segment key={'line-' + index} start={dots[index - 1]} end={dot} color={color} /> : null)}
+              <Segment key={'line-' + index} start={dots[index - 1]!} end={dot} color={color} /> : null)}
             {dots.map((dot, index) => dot && <View key={'dot-' + index}
               style={[styles.trendDot, index === selectedIndex && styles.trendDotActive, {
                 left: dot.x - (index === selectedIndex ? 5 : 3),
@@ -70,7 +70,7 @@ function TrendPlot({ series, points, scale, selectedIndex, onMonth }) {
   </>;
 }
 
-export function RentTrend({ areas, bedrooms, month, history }) {
+export function RentTrend({ areas, bedrooms, month, history }: { areas: RentArea[]; bedrooms: number; month: string; history: RentHistory }) {
   const [selectedMonth, setSelectedMonth] = useState('');
   const series = useMemo(() => areas.map((area, index) => ({
     id: area.id, label: area.label, detail: area.detail, color: SERIES_COLORS[index],
@@ -81,7 +81,7 @@ export function RentTrend({ areas, bedrooms, month, history }) {
   const selectedIndex = index >= 0 ? index : primary.values.length - 1;
   const selected = primary.values[selectedIndex];
   const previous = primary.values[selectedIndex - 1];
-  const change = selected.median !== null && previous?.median > 0 ?
+  const change = selected.median !== null && typeof previous?.median === 'number' && previous.median > 0 ?
     (selected.median - previous.median) / previous.median * 100 : null;
   const prices = series.flatMap(({ values }) => values.map(({ median }) => median).filter((value) => value !== null));
   return <>

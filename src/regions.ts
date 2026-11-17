@@ -1,4 +1,6 @@
-export const WORKPLACES = {
+import type { ListingData, SearchFilters, Workplace } from './domain.ts';
+type Location = { state: string; city?: string; county?: string; zip?: string; region?: string };
+export const WORKPLACES: Record<string, Workplace> = {
   rockefeller: { label: 'Rockefeller Center', latitude: 40.75874, longitude: -73.97867 },
   grandCentral: { label: 'Grand Central Terminal', latitude: 40.75273, longitude: -73.97724 },
   penn: { label: 'Penn Station', latitude: 40.75061, longitude: -73.99357 },
@@ -66,7 +68,7 @@ export const MARKETS = [
 
 export const NYC_SEARCH_MARKETS = MARKETS.filter(({ label }) => label === 'Manhattan' || label === 'Brooklyn');
 
-export function searchBorough({ state, county = '', zip = '', city = '' }) {
+export function searchBorough({ state, county = '', zip = '', city = '' }: Location) {
   if (state !== 'NY') return null;
   const normalizedCounty = county.toLowerCase().trim().replace(/ county$/, '');
   if (normalizedCounty) return normalizedCounty === 'new york' ? 'manhattan' : normalizedCounty === 'kings' ? 'brooklyn' : null;
@@ -76,21 +78,21 @@ export function searchBorough({ state, county = '', zip = '', city = '' }) {
   return !/^\d{5}$/.test(zip) && (borough === 'manhattan' || borough === 'brooklyn') ? borough : null;
 }
 
-export function matchesRegion(listing, region: string, broader?: string) {
+export function matchesRegion(listing: Location, region: string, broader?: string) {
   if (region === 'all') return true;
   if (!Object.hasOwn(NYC_SEARCH_AREAS, region)) return region === (broader ?? regionOf(listing));
   const borough = searchBorough(listing);
   return borough !== null && (region === NYC_SEARCH_DEFAULT || region === borough);
 }
 
-export function marketsForSearch(filters) {
+export function marketsForSearch(filters: { region: string; zip?: string }) {
   if (filters.region === 'all') return MARKETS;
   if (!Object.hasOwn(NYC_SEARCH_AREAS, filters.region)) return MARKETS.filter(({ region }) => region === filters.region);
   const borough = filters.region === NYC_SEARCH_DEFAULT ? searchBorough({ state: 'NY', zip: filters.zip }) : filters.region;
   return borough ? NYC_SEARCH_MARKETS.filter(({ label }) => label.toLowerCase() === borough) : NYC_SEARCH_MARKETS;
 }
 
-const COUNTIES = {
+const COUNTIES: Record<string, Record<string, string[]>> = {
   NY: {
     nyc: ['new york', 'kings', 'queens', 'bronx', 'richmond'],
     li: ['nassau', 'suffolk'],
@@ -105,7 +107,7 @@ const COUNTIES = {
   PA: { pa: ['bucks', 'carbon', 'lehigh', 'monroe', 'montgomery', 'northampton', 'philadelphia', 'pike'] },
 };
 
-const REGION_STATES = { nyc: 'NY', nj: 'NJ', li: 'NY', metroNorth: 'NY', ct: 'CT', pa: 'PA' };
+const REGION_STATES: Record<string, string> = { nyc: 'NY', nj: 'NJ', li: 'NY', metroNorth: 'NY', ct: 'CT', pa: 'PA' };
 
 export function regionOf({ city = '', state, county = '', zip = '', region }: { city?: string; state: string; county?: string; zip?: string; region?: string }) {
   if (region && REGION_STATES[region] === state) return region;

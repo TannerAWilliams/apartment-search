@@ -92,9 +92,9 @@ Bun.serve({
       if (!path.startsWith(root + sep)) return reply(null, 404);
       const file = Bun.file(path);
       if (!await file.exists()) return reply(null, 404);
-      return reply(request.method === 'HEAD' ? null : file, 200, { 'Content-Type': MIME[extname(path)] || 'application/octet-stream' });
+      return reply(request.method === 'HEAD' ? null : file, 200, { 'Content-Type': MIME[extname(path) as keyof typeof MIME] || 'application/octet-stream' });
     } catch (error) {
-      return reply('The request could not be completed.', error instanceof RequestTooLarge ? 413 : error.code === 'ENOENT' || error.code === 'EISDIR' ? 404 : 500);
+      return reply('The request could not be completed.', error instanceof RequestTooLarge ? 413 : error instanceof Error && 'code' in error && (error.code === 'ENOENT' || error.code === 'EISDIR') ? 404 : 500);
     }
   },
   error() { return reply('The request could not be completed.', 500); },

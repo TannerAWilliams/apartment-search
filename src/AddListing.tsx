@@ -1,3 +1,4 @@
+import type { ListingData, Point } from './domain.ts';
 import React, { useState } from 'react';
 import { Text, View } from 'react-native';
 import { normalizeListing } from './listings.ts';
@@ -7,16 +8,16 @@ import { isPoint } from './search.ts';
 import { styles } from './styles.ts';
 import { Button, Chip, Field } from './ui.tsx';
 
-const BOROUGHS = ['manhattan', 'brooklyn'];
+const BOROUGHS = ['manhattan', 'brooklyn'] as const;
 const BEDROOMS = ['Studio', '1 BR', '2 BR', '3 BR', '4 BR'];
 
-export function AddListing({ initialRegion, onSave, onCancel, geocode }) {
+export function AddListing({ initialRegion, onSave, onCancel, geocode }: { initialRegion: string; onSave: (listing: ListingData) => void; onCancel: () => void; geocode?: (address: string) => Promise<Point> }) {
   const [region, setRegion] = useState(initialRegion === NYC_SEARCH_DEFAULT ? 'manhattan' : initialRegion);
   const [bedrooms, setBedrooms] = useState(1);
   const [fields, setFields] = useState({ url: '', address: '', unit: '', zip: '', neighborhood: '', rent: '', coordinates: '' });
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const set = (key) => (value) => setFields((previous) => ({ ...previous, [key]: value }));
+  const set = (key: keyof typeof fields) => (value: string) => setFields((previous) => ({ ...previous, [key]: value }));
 
   async function submit() {
     setError('');
@@ -39,7 +40,7 @@ export function AddListing({ initialRegion, onSave, onCancel, geocode }) {
       }
     }
 
-    const listing = normalizeListing({ ...fields, url, bedrooms, city: NYC_SEARCH_AREAS[region].label, state: 'NY', region: 'nyc',
+    const listing = normalizeListing({ ...fields, url, bedrooms, city: NYC_SEARCH_AREAS[region as keyof typeof NYC_SEARCH_AREAS]?.label ?? region, state: 'NY', region: 'nyc',
       updatedAt: new Date().toISOString(), ...point }, { id: 'saved', name: 'Saved listing', kind: 'saved' });
     if (!listing) {
       setError('Enter the street address and a positive monthly asking rent.');

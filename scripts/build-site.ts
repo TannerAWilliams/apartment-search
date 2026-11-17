@@ -5,7 +5,7 @@ import { MIME } from '../server/mime.ts';
 const assets: Record<string, { type: string; binary: boolean; content: string }> = {};
 for await (const relative of new Bun.Glob('**/*').scan({ cwd: 'web-build', onlyFiles: true, dot: true })) {
   if (relative.endsWith('.map') || relative === 'metadata.json') continue;
-  const type = MIME[extname(relative)] || 'application/octet-stream';
+  const type = (MIME as Readonly<Record<string, string>>)[extname(relative)] || 'application/octet-stream';
   const binary = !/charset=utf-8|image\/svg\+xml/.test(type);
   const file = Bun.file('web-build/' + relative);
   assets['/' + relative] = { type, binary, content: binary ? Buffer.from(await file.arrayBuffer()).toString('base64') : await file.text() };

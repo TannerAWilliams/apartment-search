@@ -1,15 +1,16 @@
+import type { AppEnv } from './contracts.ts';
 import assets from 'virtual:web-assets';
 import { handleApi } from './api.ts';
 import { createListingSourceClient } from './relay-client.ts';
 
-function workerFetch(url, options) {
+function workerFetch(url: string, options?: RequestInit) {
   // The Worker supports manual redirects. Source readers reject non-success responses.
-  const init = options?.redirect === 'error' ? { ...options, redirect: 'manual' } : options;
+  const init: RequestInit | undefined = options?.redirect === 'error' ? { ...options, redirect: 'manual' } : options;
   return globalThis.fetch(url, init);
 }
 
 export default {
-  async fetch(request, env, context) {
+  async fetch(request: Request, env: AppEnv, context?: { waitUntil?: (work: Promise<unknown>) => void }) {
     const { pathname } = new URL(request.url);
     if (pathname.startsWith('/api/')) {
       try {
