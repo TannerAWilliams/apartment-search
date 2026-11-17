@@ -521,3 +521,32 @@ test('unavailable dashboard capability explains access without requesting source
   await expect(page.getByText('Historical dashboard data is unavailable on this server. Connect to a server with dashboard access; a private server requires authentication.', { exact: true })).toBeVisible();
   expect(requests.filter(request => request.path === '/api/dashboard')).toHaveLength(0);
 });
+
+
+for (const width of [320, 375, 390]) {
+  test(`narrow ${width}px navigation keeps Affordable housing fully reachable`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 740 });
+    await mockApp(page);
+    await expect(page.getByRole('tab')).toHaveCount(3);
+    await page.getByRole('tab', { name: 'More', exact: true }).click();
+    const affordable = page.getByRole('button', { name: 'Affordable housing', exact: true });
+    await expect(affordable).toBeVisible();
+    const measure = await affordable.evaluate(element => {
+      const rect = element.getBoundingClientRect();
+      const range = document.createRange(); range.selectNodeContents(element);
+      const text = range.getBoundingClientRect();
+      return { left: rect.left, right: rect.right, textLeft: text.left, textRight: text.right,
+        viewport: document.documentElement.clientWidth, content: document.documentElement.scrollWidth };
+    });
+    expect(measure.left).toBeGreaterThanOrEqual(0);
+    expect(measure.right).toBeLessThanOrEqual(width);
+    expect(measure.textLeft).toBeGreaterThanOrEqual(measure.left);
+    expect(measure.textRight).toBeLessThanOrEqual(measure.right);
+    expect(measure.content).toBeLessThanOrEqual(measure.viewport + 1);
+    await affordable.click();
+    await expect(page.getByRole('heading', { name: 'Affordable housing', exact: true })).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath(`affordable-${width}.png`), fullPage: true });
+    await page.getByRole('tab', { name: 'Search', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Filters', exact: true })).toBeVisible();
+  });
+}
