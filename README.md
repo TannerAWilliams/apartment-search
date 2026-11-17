@@ -114,6 +114,8 @@ sync worker requires its own verified deployment and unattended access; OCR,
 spoofed headers, or a successful first page do not establish complete coverage.
 
 
+Set `STREETEASY_PUBLIC_SEARCH=true` to check the first page of the public NYC and New Jersey rental search when no StreetEasy partner feed is configured. This checks one page with ordinary HTTP and serves only supported rows marked active. The source shows the page count and provider-reported total separately, and keeps older observations as cached if they were not confirmed in the sample. An error or access denial is surfaced normally.
+
 ### External StreetEasy recovery runner
 
 The owner-only Site serves `/_streeteasy-sync.mjs`. On an authorized Bun 1.4.4

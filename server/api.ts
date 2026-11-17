@@ -14,7 +14,7 @@ import { configuredFeeds, loadFeed } from './listings.ts';
 import { CommuteError, geocodeAddress, resolveWorkplace, routeCommutes, routingCredentials } from './commute.ts';
 import { OPENIGLOO } from './openigloo.ts';
 import { DIRECT_RENTAL_SOURCES } from './direct-rentals.ts';
-import { STREETEASY_LIVE } from './streeteasy.ts';
+import { STREETEASY_LIVE, STREETEASY_PUBLIC_COVERAGE, STREETEASY_PUBLIC_TRANSPORT } from './streeteasy.ts';
 import { decodeSourceImport } from '../src/pull-sources.ts';
 import { type SourceFetch, refreshCatalog, refreshPlan, refreshSources, refreshStatus, sourceExpiresAt, sourceRecent, storedDirectRentals, storedFeed, storedHdcRerentals, storedHousing, storedMarket,
   storedOpenigloo, storedRentHistory } from './refresh.ts';
@@ -145,7 +145,8 @@ export async function search(rawFilters: Record<string, unknown>, env: AppEnv, f
     if (data) {
       listings.push(...rows);
       sources.push({ id: source.marketplace, name: source.name, status: recent ? 'searched' : 'cached', sample: true });
-      const coverage = source.id === STREETEASY_LIVE.id && data.transport === 'partner-feed' ? 'the configured StreetEasy partner feed' : source.coverage;
+      const coverage = data.transport === STREETEASY_PUBLIC_TRANSPORT ? STREETEASY_PUBLIC_COVERAGE :
+        source.id === STREETEASY_LIVE.id && data.transport === 'partner-feed' ? 'the configured StreetEasy partner feed' : source.coverage;
       notices.push(source.name + ' · ' + rows.length + (recent ? ' apartments checked in ' : ' saved apartments in ') + coverage + '.');
     }
     if (sourceStatus?.status === 'failed') {
@@ -217,7 +218,8 @@ export async function handleApi(request: Request, env: AppEnv, { privateAuthenti
       const liveSources = [
         ...DIRECT_RENTAL_SOURCES.map(({ marketplace: id, name, coverage }) => ({ id, name, sample: true,
           coverage: id === STREETEASY_LIVE.marketplace && config.sources.some((source) => source.id === id)
-            ? 'configured StreetEasy partner feed' : coverage })),
+            ? 'configured StreetEasy partner feed' : id === STREETEASY_LIVE.marketplace && env.STREETEASY_PUBLIC_SEARCH === 'true'
+              ? STREETEASY_PUBLIC_COVERAGE : coverage })),
         { id: OPENIGLOO.id, name: OPENIGLOO.name, sample: true, coverage: 'NYC' },
       ];
       const companies = companyCounts((await storedMarket(env.BUCKET)).listings);

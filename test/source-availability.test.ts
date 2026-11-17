@@ -181,3 +181,33 @@ test('the existing StreetEasy resync checks the configured feed, preserves inven
   assert.equal(cached.matches[0]?.sources[0].url, listing.url);
   assert.equal(cached.matches[0]?.kind, 'cached');
 });
+
+test('StreetEasy resync can read the public active search as a bounded sample', async () => {
+  const url = 'https://streeteasy.com/for-rent/nyc';
+  const bucket = createMemoryBucket();
+  const env = { BUCKET: bucket, STREETEASY_PUBLIC_SEARCH: 'true' };
+  const node = { id: '12', status: 'ACTIVE', urlPath: '/rental/12', zipCode: '10001', street: '10 Example Street',
+    unit: '#12', bedroomCount: 1, price: 2500, geoPoint: { latitude: 40.75, longitude: -73.99 } };
+  const data = { listingData: { search: { criteria: 'area:1|status:open' }, totalCount: 15000,
+    edges: [{ node }, { node: { ...node, id: '13', urlPath: '/rental/13', status: 'RENTED' } }] } };
+  const html = '<script>self.__next_f.push(' + JSON.stringify([1, 'e:' + JSON.stringify(data)]) + ')</script>';
+  const response = await handleApi(new Request('https://app.test/api/refresh', { method: 'POST',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ check: 'now', source: 'streeteasy-live' }) }), env, {
+    fetcher: (requested, options) => {
+      assert.equal(requested, url);
+      assert.equal(options?.method, undefined);
+      return new Response(html, { headers: { 'Content-Type': 'text/html' } });
+    },
+    prepareListingSources: async () => { throw new Error('Public search should not use the API relay.'); },
+  });
+  const { sources } = await response.json();
+  const status = sources.find(({ id }: { id: string }) => id === 'streeteasy-live');
+  assert.equal(status.transport, 'public-search');
+  assert.equal(status.total, 15000);
+  assert.equal(status.listingCount, 1);
+  assert.equal(status.pages, 1);
+  const results = await search({ source: 'streeteasy', liveOnly: true }, env);
+  assert.equal(results.total, 1);
+  assert.equal(results.matches[0]?.sources[0].url, 'https://streeteasy.com/rental/12');
+  assert.ok(results.notices.some(notice => notice.includes('first page of the public NYC and New Jersey rental search')));
+});

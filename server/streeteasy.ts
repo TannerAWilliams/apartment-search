@@ -1,7 +1,7 @@
 import type { FetchTransport } from '../src/fetch-type.ts';
 import { normalizeListing } from '../src/listings.ts';
 import { NJ_ZIPS, nycBorough } from './firstmover.ts';
-import { deduplicatePublicRentals, jsonLd, publicListingUrl } from './public-rentals.ts';
+import { assignedJson, deduplicatePublicRentals, fetchPublicHtml, jsonLd, publicListingUrl } from './public-rentals.ts';
 
 const SOURCE = { id: 'streeteasy', name: 'StreetEasy', kind: 'feed', maxBedrooms: 100 };
 const ORIGIN = 'https://streeteasy.com';
@@ -82,6 +82,11 @@ export function parseStreetEasyPage(html: string, state: string, bedrooms: numbe
   if (!rentals.length) throw new Error('StreetEasy did not return a recognized rental page.');
   return rentals.map((row) => normalizeRental(row, state, bedrooms, checkedAt)).filter((listing) => listing !== null);
 }
+
+export const STREETEASY_PUBLIC_TRANSPORT = 'public-search';
+export const STREETEASY_PUBLIC_COVERAGE = 'first page of the public NYC and New Jersey rental search';
+const PUBLIC_SEARCH_URL = ORIGIN + '/for-rent/nyc';
+const PUBLIC_PAGE_LIMIT = 50;
 
 type SearchRental = {
   id?: string;
@@ -189,7 +194,13 @@ export async function loadStreetEasy(fetcher: FetchTransport = fetch, now = new 
     throw error;
   }
   const checkedAt = now.toISOString();
-  const rows = edges.flatMap(({ node }) => {
+  const rows = activeRentals(edges, checkedAt);
+  if (first.totalCount > 0 && !rows.length) throw new Error('StreetEasy v6 returned no supported apartment listings.');
+  return { listings: deduplicatePublicRentals(rows), pages, total: first.totalCount, rawCount: edges.length, checkedAt, transport: 'v6-daily' };
+}
+
+function activeRentals(edges: { node?: SearchRental }[], checkedAt: string) {
+  return edges.flatMap(({ node }) => {
     if (node?.status !== 'ACTIVE') return [];
     const url = streetEasyListingUrl(node.urlPath);
     const zip = node.zipCode ?? '';
@@ -198,7 +209,7 @@ export async function loadStreetEasy(fetcher: FetchTransport = fetch, now = new 
     const state = borough ? 'NY' : /^0[78]\d{3}$/.test(zip) ? 'NJ' : /^06\d{3}$/.test(zip) ? 'CT' : /^1\d{4}$/.test(zip) ? 'NY' : null;
     if (!url || !state) return [];
     const listing = normalizeListing({
-      id: node.id, url, address: node.street, unit: node.unit, zipCode: node.zipCode,
+      id: node.id, url, address: node.street, unit: node.unit?.replace(/^#\s*/, ''), zipCode: node.zipCode,
       city: borough ?? nj?.[0] ?? (state === 'NJ' ? 'New Jersey' : state === 'CT' ? 'Connecticut' : 'New York State'),
       state, county: nj?.[1], region: state === 'NJ' ? 'nj' : state === 'CT' ? 'ct' : undefined,
       neighborhood: node.areaName, bedrooms: node.bedroomCount, rent: node.price,
@@ -207,7 +218,26 @@ export async function loadStreetEasy(fetcher: FetchTransport = fetch, now = new 
     }, SOURCE);
     return listing ? [listing] : [];
   });
-  if (first.totalCount > 0 && !rows.length) throw new Error('StreetEasy v6 returned no supported apartment listings.');
-  return { listings: deduplicatePublicRentals(rows), pages, total: first.totalCount, rawCount: edges.length, checkedAt, transport: 'v6-daily' };
 }
 
+export function parseStreetEasyPublicSearch(html: string, now: Date) {
+  const payload = [...html.matchAll(/<script>self\.__next_f\.push\(([^]*?)\)<\/script>/g)]
+    .map(([, chunk]) => JSON.parse(chunk))
+    .filter((chunk) => chunk[0] === 1 && typeof chunk[1] === 'string')
+    .map(([, data]) => data as string).join('');
+  const page = assignedJson(payload, /"listingData":\s*(?=\{)/);
+  if (page?.search?.criteria !== 'area:1|status:open' || !Number.isSafeInteger(page.totalCount) ||
+      !Array.isArray(page.edges) || page.edges.length > PUBLIC_PAGE_LIMIT || page.totalCount < page.edges.length ||
+      !page.edges.every((entry: unknown) => entry !== null && typeof entry === 'object')) {
+    throw new Error('StreetEasy did not return its public active rental search.');
+  }
+  const checkedAt = now.toISOString();
+  const listings = deduplicatePublicRentals(activeRentals(page.edges, checkedAt));
+  if (!listings.length && page.totalCount !== 0) throw new Error('StreetEasy public search returned no supported rentals.');
+  return { listings, pages: 1, total: page.totalCount as number, checkedAt, sampleLimit: PUBLIC_PAGE_LIMIT,
+    limited: true, transport: STREETEASY_PUBLIC_TRANSPORT };
+}
+
+export async function loadStreetEasyPublicSearch(fetcher: FetchTransport, now: Date) {
+  return parseStreetEasyPublicSearch(await fetchPublicHtml(fetcher, PUBLIC_SEARCH_URL, SOURCE.name), now);
+}

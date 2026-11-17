@@ -15,7 +15,7 @@ import { AUTO_RENTAL_SOURCES, DIRECT_RENTAL_SOURCES } from './direct-rentals.ts'
 import { loadOpenigloo, OPENIGLOO_SAMPLE_LIMIT } from './openigloo.ts';
 import { requestForRefresh, retrySchedule } from './source-requests.ts';
 
-import { STREETEASY_LIVE } from './streeteasy.ts';
+import { loadStreetEasyPublicSearch, STREETEASY_LIVE, STREETEASY_PUBLIC_COVERAGE, STREETEASY_PUBLIC_TRANSPORT } from './streeteasy.ts';
 
 type RentalSnapshot = { listings: ListingData[]; observationHistory?: ObservationHistory; pages?: number; total?: number; rawCount?: number; transport?: string; checkedAt?: string; sampleLimit?: number; limited?: boolean; partial?: boolean; requestedPages?: number; failedPages?: number };
 
@@ -59,7 +59,7 @@ type CheckResult = {
 };
 
 export type SourceStatus = CheckResult & {
-  requestTransport?: 'direct' | 'relay' | 'import' | 'partner-feed' | 'not-recorded';
+  requestTransport?: 'direct' | 'relay' | 'import' | 'partner-feed' | 'public-search' | 'not-recorded';
   id: string;
   name: string;
   checkedAt: string | null;
@@ -102,7 +102,8 @@ export function refreshCatalog(env: AppEnv) {
     { ...HDC_RERENTALS, coverage: 'NYC affordable re-rentals', resyncable: true },
     { id: 'openigloo', name: 'Openigloo', coverage: 'Limited NYC sample', resyncable: true },
     ...DIRECT_RENTAL_SOURCES.map(({ id, name, marketplace, coverage }) => ({ id, name, marketplace,
-      coverage: streetEasyPartner && id === STREETEASY_LIVE.id ? 'Configured StreetEasy partner feed' : coverage,
+      coverage: id !== STREETEASY_LIVE.id ? coverage : streetEasyPartner ? 'Configured StreetEasy partner feed' :
+        env.STREETEASY_PUBLIC_SEARCH === 'true' ? STREETEASY_PUBLIC_COVERAGE : coverage,
       resyncable: AUTO_IDS.includes(id) })),
     ...feeds.filter(({ id }) => id !== STREETEASY_LIVE.marketplace).map(({ id, name }) => ({ id, name, coverage: 'Configured feed', resyncable: true })),
   ].map(({ id, name, marketplace, coverage, resyncable }: any) => ({ id, name, marketplace, coverage, resyncable }));
@@ -141,7 +142,7 @@ function checkedDuring(sources: SourceStatus[] | undefined, ids: string[], hour:
 const coolingDown = (source: SourceStatus | undefined, now: Date) => Date.parse(source?.retryAt ?? '') > now.getTime();
 
 const sourceLifetime = (id: string, transport: string | undefined) =>
-  id === STREETEASY_LIVE.id && (transport === STREETEASY_TRANSPORT || transport === STREETEASY_PARTNER_TRANSPORT)
+  id === STREETEASY_LIVE.id && (transport === STREETEASY_TRANSPORT || transport === STREETEASY_PARTNER_TRANSPORT || transport === STREETEASY_PUBLIC_TRANSPORT)
     ? STREETEASY_SYNC_INTERVAL : LIVE_MAX_AGE;
 
 export function sourceRecent(status: { sources: SourceStatus[] } | null | undefined, id: string, now = new Date()) {
@@ -273,7 +274,7 @@ export async function saveObservedSnapshot(bucket: Bucket, key: string, result: 
   const object = await bucket.get(key);
   const previous = object ? await unpack(object) : null;
   const observed = recordListingHistory(listings, previous?.observationHistory, sourceId, at);
-  if ('partial' in result && result.partial === true) {
+  if (('partial' in result && result.partial === true) || ('limited' in result && result.limited === true && sourceId === STREETEASY_LIVE.id)) {
     const ids = new Set(observed.listings.map(listing => listing.id));
     const retained = (previous?.listings ?? []).filter((listing: ListingData) => !ids.has(listing.id))
       .map((listing: ListingData) => ({ ...listing, kind: 'cached',
@@ -329,6 +330,7 @@ async function refreshDirectRentals(bucket: Bucket, source: typeof DIRECT_RENTAL
   await saveObservedSnapshot(bucket, 'rentals/' + source.id + '.json.gz', result, listings, source.id, at);
   return { status: 'updated', updatedAt: at, listingCount: result.listings.length, pages: result.pages, total: result.total,
     ...(validPartial ? { partial: true, requestedPages: result.requestedPages, failedPages: result.failedPages } : {}),
+    ...(result.transport === STREETEASY_PUBLIC_TRANSPORT ? { sampleLimit: result.sampleLimit } : {}),
     ...(verifiedStreetEasy || verifiedPartner ? { transport: result.transport } : {}) };
 }
 
@@ -347,7 +349,8 @@ export async function refreshSources(env: AppEnv, { fetcher = fetch, now = new D
   const previousById = new Map((previous.sources ?? []).map((source) => [source.id, source]));
   const feeds = configuredFeeds(env);
   const streetEasyPartner = feeds.find(({ id }) => id === STREETEASY_LIVE.marketplace);
-  const streetEasyTransport = streetEasyPartner ? STREETEASY_PARTNER_TRANSPORT : STREETEASY_TRANSPORT;
+  const streetEasyTransport = streetEasyPartner ? STREETEASY_PARTNER_TRANSPORT :
+    env.STREETEASY_PUBLIC_SEARCH === 'true' ? STREETEASY_PUBLIC_TRANSPORT : STREETEASY_TRANSPORT;
   const ready = (id: string) => {
     const prior = previousById.get(id);
     if (id !== STREETEASY_LIVE.id) return !coolingDown(prior, now);
@@ -403,6 +406,9 @@ export async function refreshSources(env: AppEnv, { fetcher = fetch, now = new D
           const listings = result.listings.map((listing) => ({ ...listing, seenAt: listing.seenAt ?? at }));
           return refreshDirectRentals(bucket, source, { ...result, listings, transport: STREETEASY_PARTNER_TRANSPORT }, at, true);
         }
+        if (onDemand && source.id === STREETEASY_LIVE.id && streetEasyTransport === STREETEASY_PUBLIC_TRANSPORT) {
+          return refreshDirectRentals(bucket, source, await loadStreetEasyPublicSearch(sourceFetch, now), at);
+        }
         if (onDemand && ['streeteasy-live', 'hotpads-live'].includes(source.id)) await prepare();
         return refreshDirectRentals(bucket, source, await liveData(source.id, source.load), at);
       },
@@ -425,6 +431,7 @@ export async function refreshSources(env: AppEnv, { fetcher = fetch, now = new D
     if (id === STREETEASY_LIVE.id && (onDemand || next?.transport === STREETEASY_TRANSPORT)) {
       item.transport = onDemand ? streetEasyTransport : STREETEASY_TRANSPORT;
       if (onDemand && streetEasyPartner) item.requestTransport = 'partner-feed';
+      if (onDemand && streetEasyTransport === STREETEASY_PUBLIC_TRANSPORT) item.requestTransport = 'public-search';
     }
     if (id === HDC_RERENTALS.id) item.listingCount = next?.listingCount ?? older?.listingCount;
     if (id === 'firstmover') {
@@ -444,6 +451,7 @@ export async function refreshSources(env: AppEnv, { fetcher = fetch, now = new D
       if (counts?.updatedAt) {
         item.listingCount = counts.listingCount;
         item.pages = counts.pages;
+        if (counts.sampleLimit !== undefined) item.sampleLimit = counts.sampleLimit;
         if (counts.partial) { item.partial = true; item.requestedPages = counts.requestedPages; item.failedPages = counts.failedPages; }
         if (counts.total !== undefined) item.total = counts.total;
       }
