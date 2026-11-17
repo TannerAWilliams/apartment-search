@@ -23,6 +23,7 @@ import { ListingMap } from './src/ListingMap';
 import { SourcesPage } from './src/SourcesPage.tsx';
 import { refreshSummary } from './src/source-status.ts';
 import { LAUNDRY_LABELS } from './src/discovery.ts';
+import { SavedComparison } from './src/SavedComparison.tsx';
 import { Listing } from './src/Listing.tsx';
 import { RentChart } from './src/RentChart.tsx';
 
@@ -618,6 +619,7 @@ function ApartmentSearch() {
         <View style={styles.results}>
             {error !== '' && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
             {(tab === 'results' || tab === 'saved') && <>
+              {tab === 'saved' && <SavedComparison listings={saved} />}
               {tab === 'results' && <Pressable accessibilityRole="button" accessibilityLabel="View source freshness and coverage" onPress={() => navigateTab('sources')}>
                 <Text style={mobileStyles.freshness}>{refreshing ? 'Refreshing sources…' : failedSources.length ? 'Partial coverage · Some sources unavailable' : refresh?.lastCheckedAt ? 'Saved results · ' + CHECK_TIME.format(new Date(refresh.lastCheckedAt)) : 'Saved results · Not yet refreshed'} · Details</Text>
               </Pressable>}

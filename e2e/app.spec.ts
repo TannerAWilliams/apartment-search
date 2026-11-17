@@ -378,3 +378,21 @@ test('feature filters require reported facts rather than matching unknown detail
   await page.getByRole('button', { name: 'Details for 12 Grove Street', exact: true }).click();
   await expect(page.getByText(/Source-reported details: 1.5 baths · 900 sq ft/)).toBeVisible();
 });
+
+test('saved comparison caps four, enables replacements and clears without removing saved apartments', async ({ page }) => {
+  const { requests } = await mockApp(page, { listingCount: 5, discovery: true });
+  for (let index = 0; index < 5; index++) await page.getByRole('button', { name: 'Save apartment', exact: true }).first().click();
+  await page.getByRole('tab', { name: 'Saved (5)', exact: true }).click();
+  await page.getByRole('button', { name: 'Compare saved apartments', exact: true }).click();
+  for (let index = 0; index < 4; index++) await page.getByRole('checkbox', { name: `Compare ${12 + index} Grove Street, Jersey City`, exact: true }).click();
+  const fifth = page.getByRole('checkbox', { name: 'Compare 16 Grove Street, Jersey City', exact: true });
+  await expect(fifth).toBeDisabled();
+  await expect(page.getByText('4 of 4 selected. Remove a selection to choose another.', { exact: true })).toBeVisible();
+  await page.getByRole('checkbox', { name: 'Compare 12 Grove Street, Jersey City', exact: true }).click();
+  await expect(fifth).toBeEnabled();
+  await fifth.click();
+  await page.getByRole('button', { name: 'Clear comparison', exact: true }).click();
+  await expect(page.getByText('0 of 4 selected', { exact: true })).toBeVisible();
+  await expect(page.getByRole('tab', { name: 'Saved (5)', exact: true })).toBeVisible();
+  expect(requests.filter(request => request.path === '/api/refresh')).toHaveLength(0);
+});
