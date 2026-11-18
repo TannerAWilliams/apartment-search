@@ -216,6 +216,31 @@ test('StreetEasy resync can read the public active search as a bounded sample', 
   assert.ok(results.notices.some(notice => notice.includes('first page of the public NYC and New Jersey rental search')));
 });
 
+test('public StreetEasy denial names the failing route and honors the provider retry window', async () => {
+  const env = { BUCKET: createMemoryBucket(), STREETEASY_PUBLIC_SEARCH: 'true' };
+  let calls = 0;
+  const refresh = () => refreshSources(env, {
+    sourceId: 'streeteasy-live', onDemand: true, forceRefresh: true,
+    fetcher: async (url) => {
+      calls++;
+      assert.equal(url, 'https://streeteasy.com/for-rent/nyc');
+      return new Response('<title>Access Denied</title>private upstream details', {
+        status: 403, headers: { 'Retry-After': '1800' },
+      });
+    },
+  });
+
+  const startedAt = Date.now();
+  const result = await refresh();
+  const denied = result.sources.find(({ id }) => id === 'streeteasy-live');
+  assert.equal(denied?.status, 'failed');
+  assert.equal(denied?.error, 'StreetEasy public rentals page returned HTTP 403 (upstream access-denied page).');
+  assert.ok(Date.parse(denied.retryAt!) >= startedAt + 30 * 60_000);
+  assert.doesNotMatch(JSON.stringify(result), /private upstream details/);
+  assert.equal((await refresh()).state, 'already_checked');
+  assert.equal(calls, 1);
+});
+
 test('a complete StreetEasy export syncs all rows in one request and preserves the previous export on invalid input', async () => {
   const url = 'https://feed.example.test/complete.json';
   const env = { BUCKET: createMemoryBucket(), FREE_PARTNER_FEEDS_JSON: JSON.stringify([

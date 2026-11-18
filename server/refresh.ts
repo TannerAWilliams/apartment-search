@@ -483,7 +483,10 @@ export async function refreshSources(env: AppEnv, { fetcher = fetch, now = new D
     if (!next && onDemand) {
       const status = failure?.httpStatus;
       if (status) {
-        item.error = name + ' returned HTTP ' + status +
+        const endpoint = id === STREETEASY_LIVE.id && streetEasyTransport === STREETEASY_PUBLIC_TRANSPORT ?
+          'StreetEasy public rentals page' : id === STREETEASY_LIVE.id && streetEasyTransport === STREETEASY_TRANSPORT ?
+            'StreetEasy API' : name;
+        item.error = endpoint + ' returned HTTP ' + status +
           (failure?.providerDenial ? ' (' + failure.providerDenial + ')' : '') + '.';
       }
       else if (failure?.name === 'TimeoutError') item.error = name + ' did not respond in time.';

@@ -6,7 +6,7 @@ import { assignedJson, deduplicatePublicRentals, fetchPublicHtml, jsonLd, public
 const MAX_STREETEASY_RENT = 2_147_483_647;
 const SOURCE = { id: 'streeteasy', name: 'StreetEasy', kind: 'feed', maxBedrooms: 100, maxRent: MAX_STREETEASY_RENT };
 const ORIGIN = 'https://streeteasy.com';
-const SEARCH_URL = 'https://api-v6.streeteasy.com/';
+export const STREETEASY_API_URL = 'https://api-v6.streeteasy.com/';
 const PAGE_SIZE = 500;
 const MAX_PAGES = 160;
 const RESULT_WINDOW = 1000;
@@ -86,7 +86,7 @@ export function parseStreetEasyPage(html: string, state: string, bedrooms: numbe
 
 export const STREETEASY_PUBLIC_TRANSPORT = 'public-search';
 export const STREETEASY_PUBLIC_COVERAGE = 'first page of the public NYC and New Jersey rental search';
-const PUBLIC_SEARCH_URL = ORIGIN + '/for-rent/nyc';
+export const STREETEASY_PUBLIC_SEARCH_URL = ORIGIN + '/for-rent/nyc';
 const PUBLIC_PAGE_LIMIT = 50;
 
 type SearchRental = {
@@ -104,7 +104,7 @@ type SearchRental = {
 };
 
 async function fetchPage(fetcher: FetchTransport, page: number, range?: PriceRange, signal?: AbortSignal) {
-  const response = await fetcher(SEARCH_URL, {
+  const response = await fetcher(STREETEASY_API_URL, {
     method: 'POST',
     headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
     body: JSON.stringify({ query: searchQuery(page, range) }),
@@ -255,5 +255,5 @@ export async function parseStreetEasyPublicSearch(html: string, now: Date) {
 }
 
 export async function loadStreetEasyPublicSearch(fetcher: FetchTransport, now: Date) {
-  return parseStreetEasyPublicSearch(await fetchPublicHtml(fetcher, PUBLIC_SEARCH_URL, SOURCE.name), now);
+  return parseStreetEasyPublicSearch(await fetchPublicHtml(fetcher, STREETEASY_PUBLIC_SEARCH_URL, SOURCE.name), now);
 }
