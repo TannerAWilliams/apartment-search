@@ -86,6 +86,10 @@ Set `FREE_PARTNER_FEEDS_JSON` in the server environment to an array of approved 
 
 Each row supplies an ID, `status: "Active"`, `addressLine1`, a unit if known, `city`, `state`, `county`, `zipCode`, `bedrooms` (studio = 0), and monthly `price`. Include numeric `latitude` and `longitude`, `neighborhood`, `updatedAt`, and an HTTPS `listingUrl` for the original listing. Only source URLs supplied by the feed are presented as direct links. Page counts describe the supplied feed, whose coverage may be smaller than the source website's inventory. On hosted deployments, a configured feed with `id: "streeteasy"` powers the existing StreetEasy check on page open and the StreetEasy resync button. It requires a reconciled `total` and original StreetEasy listing links. The partner feed follows the same daily refresh interval. An incomplete refresh preserves the last saved inventory.
 
+CityRealty (`cityrealty`), Brown Harris Stevens (`bhs`), CitySnap (`citysnap`), Craigslist (`craigslist`), and the companies in the NYC directory can use this contract once their provider supplies an authorized feed. Until then, their browse links and connection status are available without adding inventory to search.
+
+For an approved REBNY RLS or other compatible RESO Web API feed, use `format: "reso-web-api"` with the authorized HTTPS Property endpoint and its bearer token. For REBNY, use `id: "rebny-rls"`. The adapter reads OData `value`, `@odata.nextLink`, and optional `@odata.count` and imports active residential leases that allow listing and address display. Ask the provider for an active-rental query and a feed scoped to your licensed market so the snapshot fits the pagination limit. If the provider supplies its `ListingURL` field, the original link appears on the listing. CitySnap and CityRealty draw on REBNY data, so adding an RLS feed provides a distinct source named REBNY RLS.
+
 ## Verify
 
 ```sh
@@ -115,6 +119,8 @@ spoofed headers, or a successful first page do not establish complete coverage.
 
 
 Set `STREETEASY_PUBLIC_SEARCH=true` to check the first page of the public NYC and New Jersey rental search when no StreetEasy partner feed is configured. This checks one page with ordinary HTTP and serves only supported rows marked active. The source shows the page count and provider-reported total separately, and keeps older observations as cached if they were not confirmed in the sample. An error or access denial is surfaced normally.
+
+Set `STREETEASY_SYNC_ENABLED=false` to pause StreetEasy listing refreshes. Saved records and historical charts remain available.
 
 ### Complete StreetEasy export
 

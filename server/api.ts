@@ -24,7 +24,7 @@ const IMPORT_LIMIT = 2 * 1024 * 1024;
 const API_PATHS = new Set(['/api/dashboard', '/api/building-report', '/api/config', '/api/search', '/api/search-check', '/api/geocode', '/api/market', '/api/housing', '/api/refresh']);
 
 export function appConfig(env: AppEnv) {
-  const feeds = configuredFeeds(env);
+  const feeds = configuredFeeds(env).filter(({ id }) => env.STREETEASY_SYNC_ENABLED !== 'false' || id !== STREETEASY_LIVE.marketplace);
   return {
     mode: feeds.length > 0 ? 'live' : 'snapshot',
     storageMode: env.TEMPORARY_CACHE === 'true' ? 'temporary' : env.BUCKET ? 'persistent' : 'none',
@@ -79,7 +79,8 @@ export async function search(rawFilters: Record<string, unknown>, env: AppEnv, f
   const credentials = routingCredentials(env);
   if (requireCommute && !credentials) throw new CommuteError('Automatic commute estimates are unavailable because the routing service is disconnected.');
   const configured = configuredFeeds(env);
-  const feeds = configured.filter(({ id }) => !env.BUCKET || id !== STREETEASY_LIVE.marketplace);
+  const feeds = configured.filter(({ id }) => id !== STREETEASY_LIVE.marketplace ||
+    (!env.BUCKET && env.STREETEASY_SYNC_ENABLED !== 'false'));
   const workplace = observationsOnly ? localWorkplace(filters) : await resolveWorkplace(filters, fetcher);
   const bucket = env.BUCKET;
   async function finish(listings: ListingData[], mode: string, sources: SearchSource[], notices: string[], snapshotMonth?: string) {

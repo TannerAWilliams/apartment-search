@@ -3,7 +3,7 @@ const companies = [
   ['serhant', 'SERHANT.', 'serhant.com', '/', 'Brokerage'],
   ['corcoran', 'Corcoran', 'corcoran.com', '/', 'Brokerage'],
   ['elliman', 'Douglas Elliman', 'elliman.com', '/', 'Brokerage'],
-  ['bhs', 'Brown Harris Stevens', 'bhsusa.com', '/', 'Brokerage'],
+  ['bhs', 'Brown Harris Stevens', 'www.bhsusa.com', '/for-rent/new-york-city', 'Brokerage'],
   ['nooklyn', 'Nooklyn', 'nooklyn.com', '/', 'Brokerage'],
   ['realny', 'REAL New York', 'realnyproperties.com', '/', 'Brokerage'],
   ['livingny', 'Living New York', 'livingny.com', '/', 'Brokerage'],
@@ -24,12 +24,13 @@ const companies = [
   ['durst', 'Durst Organization', 'durst.org', '/', 'Owner or manager'],
   ['greystar', 'Greystar', 'greystar.com', '/', 'Owner or manager'],
   ['udr', 'UDR', 'udr.com', '/', 'Owner or manager'],
+  ['stuytown', 'StuyTown', 'www.stuytown.com', '/nyc-apartments-for-rent', 'Owner or manager'],
 ];
 
 const companyText = (name: unknown) => String(name ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().replace(/^the /, '');
 
 export const NYC_COMPANIES = companies.map(([id, name, domain, path, type]) => ({
-  id, name, domain, type, url: 'https://' + domain + path,
+  id, name, domain: domain.replace(/^www\./, ''), type, url: 'https://' + domain + path,
 }));
 
 export function matchCompany(name: unknown) {

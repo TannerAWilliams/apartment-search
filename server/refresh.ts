@@ -14,6 +14,8 @@ import { HDC_RERENTALS, loadHdcRerentals } from './hdc-rerentals.ts';
 import { AUTO_RENTAL_SOURCES, DIRECT_RENTAL_SOURCES } from './direct-rentals.ts';
 import { loadOpenigloo, OPENIGLOO_SAMPLE_LIMIT } from './openigloo.ts';
 import { requestForRefresh, retrySchedule } from './source-requests.ts';
+import { MARKETPLACE_NAMES } from '../src/marketplaces.ts';
+import type { SourceDefinition } from '../src/source-status.ts';
 
 import { loadStreetEasyPublicSearch, STREETEASY_LIVE, STREETEASY_PUBLIC_COVERAGE, STREETEASY_PUBLIC_TRANSPORT } from './streeteasy.ts';
 
@@ -38,6 +40,7 @@ const HDC_KEY = 'rentals/hdc-rerentals.json';
 const FEED_PREFIX = 'rentals/feeds/';
 const LOCK_TIMEOUT = 5 * 60_000;
 const LIVE_MAX_AGE = 2 * 60 * 60_000;
+const FEED_REQUIRED_IDS = ['cityrealty', 'bhs', 'citysnap', 'craigslist', 'rebny-rls'] as const;
 const PAGE_FETCH_TIMEOUT = 25_000;
 export type SourceFetch = (url: string, options?: RequestInit) => Response | Promise<Response>;
 
@@ -93,9 +96,11 @@ type RefreshOptions = {
   onStarted?: () => void;
 };
 
-export function refreshCatalog(env: AppEnv) {
+export function refreshCatalog(env: AppEnv): SourceDefinition[] {
   const feeds = configuredFeeds(env);
   const streetEasyPartner = feeds.find(({ id }) => id === STREETEASY_LIVE.marketplace);
+  const streetEasyPaused = env.STREETEASY_SYNC_ENABLED === 'false';
+  const feedIds = new Set(feeds.map(({ id }) => id));
   return [
     { id: 'firstmover', name: 'FirstMover rent history', coverage: 'Historical rent charts, not active inventory', resyncable: true },
     { id: 'housingconnect', name: 'NYC Housing Connect', coverage: 'NYC affordable housing opportunities', resyncable: true },
@@ -105,9 +110,14 @@ export function refreshCatalog(env: AppEnv) {
       coverage: id !== STREETEASY_LIVE.id ? coverage : streetEasyPartner?.format === STREETEASY_EXPORT_FORMAT ? STREETEASY_EXPORT_COVERAGE :
         streetEasyPartner ? 'Configured StreetEasy partner feed' :
         env.STREETEASY_PUBLIC_SEARCH === 'true' ? STREETEASY_PUBLIC_COVERAGE : coverage,
-      resyncable: AUTO_IDS.includes(id) })),
+      resyncable: AUTO_IDS.includes(id) && (id !== STREETEASY_LIVE.id || !streetEasyPaused),
+      ...(id === STREETEASY_LIVE.id && streetEasyPaused ? { paused: true } : {}) })),
     ...feeds.filter(({ id }) => id !== STREETEASY_LIVE.marketplace).map(({ id, name }) => ({ id, name, coverage: 'Configured feed', resyncable: true })),
-  ].map(({ id, name, marketplace, coverage, resyncable }: any) => ({ id, name, marketplace, coverage, resyncable }));
+    ...FEED_REQUIRED_IDS.filter(id => !feedIds.has(id)).map(id => ({
+      id, name: MARKETPLACE_NAMES[id], coverage: id === 'citysnap' ? 'REBNY listing feed access required' : 'Authorized listing feed required',
+      resyncable: false,
+    })),
+  ];
 }
 
 let cachedMarket: { bucket: Bucket; etag: string; market: { month: string; listings: ListingData[] } } | undefined;
@@ -357,6 +367,7 @@ export async function refreshSources(env: AppEnv, { fetcher = fetch, now = new D
   const ready = (id: string) => {
     const prior = previousById.get(id);
     if (id !== STREETEASY_LIVE.id) return !coolingDown(prior, now);
+    if (env.STREETEASY_SYNC_ENABLED === 'false') return false;
     if (onDemand && prior?.transport && prior.transport !== streetEasyTransport) return true;
     if (coolingDown(prior, now)) return false;
     if (selected === id || forceRefresh || prior?.transport !== streetEasyTransport || prior.status === 'failed') return true;
@@ -373,7 +384,8 @@ export async function refreshSources(env: AppEnv, { fetcher = fetch, now = new D
     (!priorStreetEasy || priorStreetEasy.status === 'failed' ||
       now.getTime() - Date.parse(priorStreetEasy.updatedAt ?? '') >= STREETEASY_SYNC_INTERVAL);
   const requestedLiveChecks = onlyStreetEasy ? (ready(STREETEASY_LIVE.id) ? [STREETEASY_LIVE.id] : []) : fallback ? (recoveredStreetEasy ? [STREETEASY_LIVE.id] : []) : onDemand ? AUTO_IDS.filter((id) => ready(id) && (!skipStreetEasy || id !== STREETEASY_LIVE.id)) : LIVE_IDS.filter((id) => imports && Object.hasOwn(imports, id));
-  const liveChecks = !onDemand && streetEasyPartner ? requestedLiveChecks.filter((id) => id !== STREETEASY_LIVE.id) : requestedLiveChecks;
+  const liveChecks = env.STREETEASY_SYNC_ENABLED === 'false' || (!onDemand && streetEasyPartner) ?
+    requestedLiveChecks.filter((id) => id !== STREETEASY_LIVE.id) : requestedLiveChecks;
   const checkHdc = onDemand && !onlyStreetEasy && !fallback && ready(HDC_RERENTALS.id);
   const ids = [...publicChecks, ...liveChecks, ...feedChecks.map(({ id }) => id), ...(checkHdc ? [HDC_RERENTALS.id] : [])].filter((id) => !selected || id === selected);
   if (ids.length === 0 || (!onDemand && !selected && !onlyStreetEasy && !previous.running && !imports?.firstmover?.changed && checkedDuring(previous.sources, ids, hour))) {
@@ -432,7 +444,7 @@ export async function refreshSources(env: AppEnv, { fetcher = fetch, now = new D
       const result = await loadFeed(feed, sourceFetch);
       const listings = result.listings.map((listing: ListingData) => ({ ...withoutCommuteEstimate(listing), checkedAt: at }));
       await saveObservedSnapshot(bucket, FEED_PREFIX + feed.id + '.json.gz', result, listings, feed.id, at);
-      return { status: 'updated', updatedAt: at, listingCount: listings.length, pages: result.pages };
+      return { status: 'updated', updatedAt: at, listingCount: listings.length, pages: result.pages, total: result.total };
     } })),
   ];
   const checks = selected ? candidates.filter(({ id }) => id === selected) : candidates;
@@ -477,6 +489,8 @@ export async function refreshSources(env: AppEnv, { fetcher = fetch, now = new D
       if (listingCount !== undefined) item.listingCount = listingCount;
       const pages = next?.pages ?? older?.pages;
       if (pages !== undefined) item.pages = pages;
+      const total = next ? next.total : older?.total;
+      if (total !== undefined) item.total = total;
       if (!next) item.error = failure?.code === 'incomplete_feed' ?
         name + ' returned an incomplete inventory.' : name + ' could not be refreshed.';
     }

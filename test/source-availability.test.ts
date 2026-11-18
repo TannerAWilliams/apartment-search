@@ -34,6 +34,55 @@ test('every implemented rental provider is visible and resyncable before its fir
   }
 });
 
+test('new sources show that they need a feed and a paused StreetEasy cannot be refreshed', async () => {
+  const env = { BUCKET: createMemoryBucket(), STREETEASY_SYNC_ENABLED: 'false' };
+  const config = await (await handleApi(new Request('https://app.test/api/config'), env)).json();
+  for (const id of ['cityrealty', 'bhs', 'citysnap', 'craigslist', 'rebny-rls']) {
+    const source = config.sourceCatalog.find((entry: { id: string }) => entry.id === id);
+    assert.equal(source?.resyncable, false);
+    assert.match(source?.coverage, /feed.*required/i);
+  }
+  assert.equal(config.sourceCatalog.find((entry: { id: string }) => entry.id === 'streeteasy-live')?.paused, true);
+  const response = await handleApi(new Request('https://app.test/api/refresh', { method: 'POST',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ check: 'now', source: 'streeteasy-live' }) }), env, {
+    fetcher: () => { throw new Error('A paused source must not be fetched.'); },
+  });
+  assert.equal(response.status, 422);
+});
+
+test('an approved RESO feed imports paginated active rentals and skips rows with display restrictions', async () => {
+  const host = 'https://licensed-listings.example.test';
+  const url = host + '/odata/Property?$count=true';
+  const env = { BUCKET: createMemoryBucket(), FREE_PARTNER_FEEDS_JSON: JSON.stringify([
+    { id: 'rebny-rls', url, format: 'reso-web-api', token: 'test-feed-token' },
+  ]) };
+  const listing = { ListingKey: 'lease-1', StandardStatus: 'Active', PropertyType: 'Residential Lease',
+    StreetNumber: '10', StreetName: 'Example', StreetSuffix: 'Street', UnitNumber: '2A',
+    StateOrProvince: 'NY', City: 'Brooklyn', PostalCode: '11201', ListPrice: 2650, BedroomsTotal: 1,
+    ListingURL: host + '/listings/lease-1' };
+  const requests: string[] = [];
+  const result = await refreshSources(env, { sourceId: 'rebny-rls', onDemand: true, fetcher: (input, options) => {
+    requests.push(input);
+    assert.equal(new Headers(options?.headers).get('Authorization'), 'Bearer test-feed-token');
+    assert.equal(options?.redirect, 'error');
+    if (input === url) return Response.json({
+      '@odata.count': 3, '@odata.nextLink': '?$skiptoken=next',
+      value: [listing, { ...listing, ListingKey: 'hidden', InternetAddressDisplayYN: false }],
+    });
+    assert.equal(input, host + '/odata/Property?$skiptoken=next');
+    return Response.json({ value: [{ ...listing, ListingKey: 'closed', StandardStatus: 'Closed' }] });
+  } });
+  const saved = result.sources.find(source => source.id === 'rebny-rls');
+  assert.equal(saved?.status, 'updated');
+  assert.equal(saved?.listingCount, 1);
+  assert.equal(saved?.total, 3);
+  assert.equal(requests.length, 2);
+  const searched = await search({ source: 'rebny-rls', region: 'nyc', liveOnly: true }, env);
+  assert.equal(searched.total, 1);
+  assert.equal(searched.matches[0]?.rent, 2650);
+  assert.equal(searched.matches[0]?.sources[0]?.url, listing.ListingURL);
+});
+
 test('Compass accepts script wrapper whitespace and parses JSON strings containing closing braces safely', () => {
   const state = { sharedReactAppProps: { initialResults: { lolResults: { data: [{ listing: {
     pageLink: '/homedetails/example-NY-10001/1_lid/', subtitles: ['10 Example Street, Unit 1', 'Chelsea'],
