@@ -222,12 +222,26 @@ function activeRentals(edges: { node?: SearchRental }[], checkedAt: string) {
   });
 }
 
-export function parseStreetEasyPublicSearch(html: string, now: Date) {
-  const payload = [...html.matchAll(/<script>self\.__next_f\.push\(([^]*?)\)<\/script>/g)]
-    .map(([, chunk]) => JSON.parse(chunk))
-    .filter((chunk) => chunk[0] === 1 && typeof chunk[1] === 'string')
-    .map(([, data]) => data as string).join('');
-  const page = assignedJson(payload, /"listingData":\s*(?=\{)/);
+export async function parseStreetEasyPublicSearch(html: string, now: Date) {
+  const payload: string[] = [];
+  let script = '';
+  const parsed = new HTMLRewriter().on('script', {
+    element(element) {
+      script = '';
+      element.onEndTag(() => {
+        const args = script.match(/^\s*self\.__next_f\.push\(([\s\S]*)\)\s*;?\s*$/)?.[1];
+        if (!args) return;
+        const chunk: unknown = JSON.parse(args);
+        if (Array.isArray(chunk) && chunk[0] === 1 && typeof chunk[1] === 'string') payload.push(chunk[1]);
+      });
+    },
+    text(chunk) {
+      script += chunk.text;
+    },
+  }).transform(new Response(html));
+  await parsed.body?.pipeTo(new WritableStream());
+
+  const page = assignedJson(payload.join(''), /"listingData":\s*(?=\{)/);
   if (page?.search?.criteria !== 'area:1|status:open' || !Number.isSafeInteger(page.totalCount) ||
       !Array.isArray(page.edges) || page.edges.length > PUBLIC_PAGE_LIMIT || page.totalCount < page.edges.length ||
       !page.edges.every((entry: unknown) => entry !== null && typeof entry === 'object')) {

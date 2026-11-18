@@ -190,7 +190,11 @@ test('StreetEasy resync can read the public active search as a bounded sample', 
     unit: '#12', bedroomCount: 1, price: 2500, geoPoint: { latitude: 40.75, longitude: -73.99 } };
   const data = { listingData: { search: { criteria: 'area:1|status:open' }, totalCount: 15000,
     edges: [{ node }, { node: { ...node, id: '13', urlPath: '/rental/13', status: 'RENTED' } }] } };
-  const html = '<script>self.__next_f.push(' + JSON.stringify([1, 'e:' + JSON.stringify(data)]) + ')</script>';
+  const payload = 'e:' + JSON.stringify(data);
+  const middle = Math.floor(payload.length / 2);
+  const html = '<!-- <script>self.__next_f.push(invalid)</script> -->' +
+    '<script data-test="bootstrap">  self.__next_f.push(' + JSON.stringify([1, payload.slice(0, middle)]) + '); </script>' +
+    '<script>self.__next_f.push(' + JSON.stringify([1, payload.slice(middle)]) + ')</script>';
   const response = await handleApi(new Request('https://app.test/api/refresh', { method: 'POST',
     headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ check: 'now', source: 'streeteasy-live' }) }), env, {
     fetcher: (requested, options) => {
