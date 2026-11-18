@@ -105,9 +105,7 @@ type SearchRental = {
 async function fetchPage(fetcher: FetchTransport, page: number, range?: PriceRange, signal?: AbortSignal) {
   const response = await fetcher(SEARCH_URL, {
     method: 'POST',
-    headers: { Accept: 'application/json', 'Content-Type': 'application/json',
-      Origin: ORIGIN, Referer: ORIGIN + '/for-rent/nyc',
-      'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36' },
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
     body: JSON.stringify({ query: searchQuery(page, range) }),
     redirect: 'error',
     signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(9000)]) : AbortSignal.timeout(9000),
@@ -196,7 +194,8 @@ export async function loadStreetEasy(fetcher: FetchTransport = fetch, now = new 
   const checkedAt = now.toISOString();
   const rows = activeRentals(edges, checkedAt);
   if (first.totalCount > 0 && !rows.length) throw new Error('StreetEasy v6 returned no supported apartment listings.');
-  return { listings: deduplicatePublicRentals(rows), pages, total: first.totalCount, rawCount: edges.length, checkedAt, transport: 'v6-daily' };
+  // Preserve provider listing IDs in storage. Search can merge listings for the same unit for display.
+  return { listings: rows, pages, total: first.totalCount, rawCount: edges.length, checkedAt, transport: 'v6-daily' };
 }
 
 function activeRentals(edges: { node?: SearchRental }[], checkedAt: string) {

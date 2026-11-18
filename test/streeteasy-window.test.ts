@@ -95,3 +95,14 @@ test('retains other regional ZIPs without inventing a municipality',async()=>{
  const result=await loadStreetEasy(mock.fetcher);
  assert.deepEqual(result.listings.map(x=>[x.city,x.region]),[['New Jersey','nj'],['Connecticut','ct'],['New York State','metroNorth']]);
 });
+
+test('keeps distinct StreetEasy listing IDs for the same unit and sends only JSON request headers', async () => {
+  const mock = server([rental(1, 2500), { ...rental(2, 2500), unit: '1' }]);
+  const result = await loadStreetEasy(async (url, options) => {
+    const headers = new Headers(options?.headers);
+    assert.deepEqual([...headers], [['accept', 'application/json'], ['content-type', 'application/json']]);
+    return mock.fetcher(url, options);
+  });
+  assert.equal(result.rawCount, 2);
+  assert.deepEqual(result.listings.map(({ id }) => id), ['streeteasy:1', 'streeteasy:2']);
+});
