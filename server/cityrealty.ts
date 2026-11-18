@@ -9,6 +9,7 @@ const ORIGIN = 'https://www.cityrealty.com';
 const SEARCH = ORIGIN + '/rpc/search/get-rental-listings';
 const ROWS_PER_PAGE = 52;
 const MAX_PAGES = 100;
+const PAGE_TIMEOUT_MS = 18_000;
 export const CITYREALTY_ID = 'cityrealty-live';
 export const CITYREALTY_TRANSPORT = 'complete-cityrealty-search';
 export const CITYREALTY_COVERAGE = 'All active rentals returned by CityRealty’s public rental search';
@@ -55,7 +56,7 @@ function parseListing(html: string, candidate: Candidate, checkedAt: string) {
 async function searchPage(fetcher: FetchTransport, page: number) {
   const url = page === 1 ? SEARCH : SEARCH + '?page=' + page;
   const response = await fetcher(url, {
-    headers: { Accept: 'application/json' }, redirect: 'error', signal: AbortSignal.timeout(12000),
+    headers: { Accept: 'application/json' }, redirect: 'error', signal: AbortSignal.timeout(PAGE_TIMEOUT_MS),
   });
   if (!response.ok) throw new Error('CityRealty returned HTTP ' + response.status + '.');
   if (!response.headers.get('content-type')?.includes('application/json') ||
@@ -74,8 +75,18 @@ async function searchPage(fetcher: FetchTransport, page: number) {
   return { rows, total };
 }
 
+async function retryTimedOut<T>(request: () => Promise<T>): Promise<T> {
+  try {
+    return await request();
+  } catch (error) {
+    if (!(error instanceof Error) || error.name !== 'TimeoutError') throw error;
+    return request();
+  }
+}
+
 export async function loadCityRealty(fetcher: FetchTransport, now: Date) {
-  const first = await searchPage(fetcher, 1);
+  const getPage = (page: number) => retryTimedOut(() => searchPage(fetcher, page));
+  const first = await getPage(1);
   const { total } = first;
   const pages = Math.max(1, Math.ceil(total / ROWS_PER_PAGE));
   const seen = new Set<number>();
@@ -106,15 +117,17 @@ export async function loadCityRealty(fetcher: FetchTransport, now: Date) {
   collect(first);
   for (let page = 2; page <= pages; page += 4) {
     const batch = Array.from({ length: Math.min(4, pages - page + 1) }, (_, index) => page + index);
-    (await Promise.all(batch.map(number => searchPage(fetcher, number)))).forEach(collect);
+    (await Promise.all(batch.map(getPage))).forEach(collect);
   }
   if (seen.size !== total) throw new Error('CityRealty returned fewer unique listings than its search count.');
 
   const listings: ListingData[] = [];
   const checkedAt = now.toISOString();
   for (let index = 0; index < candidates.length; index += 5) {
-    const verified = await Promise.all(candidates.slice(index, index + 5).map(async candidate =>
-      parseListing(await fetchPublicHtml(fetcher, candidate.url, SOURCE.name), candidate, checkedAt)));
+    const verified = await Promise.all(candidates.slice(index, index + 5).map(async candidate => {
+      const html = await retryTimedOut(() => fetchPublicHtml(fetcher, candidate.url, SOURCE.name, PAGE_TIMEOUT_MS));
+      return parseListing(html, candidate, checkedAt);
+    }));
     listings.push(...verified);
   }
   return { listings, pages, total, rawCount: seen.size, transport: CITYREALTY_TRANSPORT };
