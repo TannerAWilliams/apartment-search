@@ -37,9 +37,9 @@ export function publicListingUrl(value: unknown, origin: string, pathPattern: Re
   }
 }
 
-export async function fetchPublicHtml(fetcher: FetchTransport, url: string, name: string) {
+export async function fetchPublicHtml(fetcher: FetchTransport, url: string, name: string, timeout = 9000) {
   const response = await fetcher(url, {
-    headers: { Accept: 'text/html' }, redirect: 'error', signal: AbortSignal.timeout(9000),
+    headers: { Accept: 'text/html' }, redirect: 'error', signal: AbortSignal.timeout(timeout),
   });
   if (!response.ok) throw new Error(name + ' returned HTTP ' + response.status + '.');
   if (!response.headers.get('content-type')?.includes('text/html') || !response.body ||
