@@ -4,6 +4,10 @@ export const BUILDING_SOURCES = [
   { name: 'DOB building history', url: 'https://www.nyc.gov/site/buildings/tenant/get-building-history.page', purpose: 'Official instructions for BIS and DOB NOW. Check both systems for complaints, violations, permits and inspections.' },
   { name: 'HPD violations dataset', url: 'https://data.cityofnewyork.us/Housing-Development/Housing-Maintenance-Code-Violations/wvxf-dwi5/about_data', purpose: 'Agency-issued housing-code violations; records and status may lag current conditions.' },
   { name: 'HPD complaints and problems dataset', url: 'https://data.cityofnewyork.us/Housing-Development/Housing-Maintenance-Code-Complaint-Problems/ygpa-z7cr', purpose: 'Public reports of housing conditions. One complaint can include several problems; row counts are not complaint counts.' },
+  { name: 'NYC 311 service requests', url: 'https://data.cityofnewyork.us/d/erm2-nwe9', purpose: 'Service requests by problem, agency, and location.' },
+  { name: 'NYC recorded deeds and property documents', url: 'https://www.nyc.gov/site/finance/property/acris.page', purpose: 'Use the borough, block, and lot to check the relevant deed records.' },
+  { name: 'NYS HCR rent registration', url: 'https://hcr.ny.gov/office-rent-administration-ora', purpose: 'State rent-regulated building search and registration data.' },
+  { name: 'Request rent history from HCR', url: 'https://portal.hcr.ny.gov/app/ask', purpose: 'Tenants can request their own apartment’s rent history or ask about its stabilization status.' },
   { name: 'HPD bedbug annual reporting', url: 'https://www.nyc.gov/site/hpd/services-and-information/bedbugs.page', purpose: 'Review the owner-filed annual report period and history in HPD Online. A filing is not an independent inspection or a guarantee of current conditions.' },
   { name: 'NYC flood maps', url: 'https://www.nyc.gov/site/floodmaps/maps/your-risk.page', purpose: 'Look up the exact property on official flood maps; distinguish map editions and risk scenarios. No flood-zone result has been checked here.' },
 ] as const;

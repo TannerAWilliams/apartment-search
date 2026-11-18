@@ -18,7 +18,7 @@ test('official source links fixed HTTPS destinations, never listing-controlled U
   expect(report.sources.map(source => source.name)).toContain('NYC flood maps');
   expect(report.sources.map(source => source.name)).toContain('HPD bedbug annual reporting');
   for (const source of report.sources) {
-    const url = new URL(source.url); expect(url.protocol).toBe('https:'); expect(['www.nyc.gov', 'data.cityofnewyork.us']).toContain(url.hostname);
+    const url = new URL(source.url); expect(url.protocol).toBe('https:'); expect(['www.nyc.gov', 'data.cityofnewyork.us', 'hcr.ny.gov', 'portal.hcr.ny.gov']).toContain(url.hostname);
   }
   expect(report.sources[3].purpose).toContain('row counts are not complaint counts');
 });

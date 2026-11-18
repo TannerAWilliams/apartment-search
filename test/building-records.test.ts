@@ -2,16 +2,38 @@ import { test, expect } from 'bun:test';
 import { exactBuildingAddress, retrieveBuildingRecords } from '../server/building-records.ts';
 import { handleApi } from '../server/api.ts';
 const address = { address: '123 MAIN STREET', city: 'Brooklyn', state: 'NY', zip: '11201' };
-const building = { buildingid: '12345', boroid: '3', boro: 'BROOKLYN', housenumber: '123', streetname: 'MAIN STREET', zip: '11201', bin: '3000001', recordstatus: 'Active' };
+const bbl = '3000120004';
+const building = { buildingid: '12345', boroid: '3', boro: 'BROOKLYN', housenumber: '123', streetname: 'MAIN STREET', zip: '11201', bin: '3000001', block: '12', lot: '4', recordstatus: 'Active' };
+const registered = { attributes: { bbl, zip_code: 11201, last_year_registered: 2026, registered_units: 18 } };
 const annual = { building_id: '12345', bin: '3000001', of_dwelling_units: '20', infested_dwelling_unit_count: '2', eradicated_unit_count: '1', re_infested_dwelling_unit: '1', filing_date: '2026-01-01T00:00:00.000', filing_period_start_date: '2024-11-01T00:00:00.000', filling_period_end_date: '2025-10-31T00:00:00.000' };
 const now = new Date('2026-11-17T12:00:00Z');
-function source(override: { buildings?: any; violations?: any; complaints?: any; bedbugs?: any; dob?: any; flood?: any; floodMetadata?: any } = {}) {
+function source(override: { buildings?: any; violations?: any; complaints?: any; bedbugs?: any; dob?: any; requests311?: any;
+  owner?: any; registration?: any; flood?: any; floodMetadata?: any } = {}) {
   return async (url: string, options?: RequestInit) => {
     const u = new URL(url);
     if (u.hostname === 'a841-dotweb01.nyc.gov') return Response.json(u.pathname.endsWith('/7') ? (override.floodMetadata ?? { name: 'Current 100-Year Floodplain (2015 PFIRM)' }) : (override.flood ?? { features: [] }));
+    if (u.hostname === 'services8.arcgis.com') {
+      expect(u.pathname).toEndWith('/registered_buildings_unit_counts/FeatureServer/0/query');
+      expect(u.searchParams.get('where')).toBe(`bbl='${bbl}' AND zip_code=11201`);
+      expect(options?.redirect).toBe('error');
+      return Response.json(override.registration ?? { features: [registered] });
+    }
     expect(u.origin).toBe('https://data.cityofnewyork.us'); expect(options?.redirect).toBe('error');
     if (u.pathname.includes('kj4p')) return Response.json(override.buildings ?? [building]);
-    if (['3h2n-5cm9', '855j-jady', '6bgk-3dad'].some(id => u.pathname.includes(id))) { expect(u.searchParams.get('$where')).toBe("bin='3000001'"); return Response.json(override.dob ?? []); }
+    if (u.pathname.includes('64uk-42ks')) {
+      expect(u.searchParams.get('$where')).toBe(`bbl=${bbl}`);
+      return Response.json(override.owner ?? [{ bbl: bbl + '.00000000', ownername: 'EXAMPLE PROPERTY LLC', version: '26v2' }]);
+    }
+    if (u.pathname.includes('erm2-nwe9')) {
+      expect(u.searchParams.get('$group')).toBe('complaint_type');
+      expect(u.searchParams.get('$where')).toStartWith(`bbl='${bbl}' AND created_date >=`);
+      return Response.json(override.requests311 ?? [{ status: 'Heat / hot water', count: '3' }, { status: 'Noise', count: '2' }]);
+    }
+    if (['3h2n-5cm9', '855j-jady', '6bgk-3dad', 'eabe-havv', 'rbx6-tga4'].some(id => u.pathname.includes(id))) {
+      expect(u.searchParams.get('$where')).toStartWith("bin='3000001'");
+      if (u.pathname.includes('rbx6-tga4')) expect(u.searchParams.get('$where')).toContain('issued_date <=');
+      return Response.json(override.dob ?? []);
+    }
     expect(u.searchParams.get('$where')).toContain('12345');
     if (u.pathname.includes('wz6d')) return Response.json(override.bedbugs ?? [annual]);
     if (u.pathname.includes('wvxf')) { expect(u.searchParams.get('$where')).toContain("upper(violationstatus)='OPEN'"); return Response.json(override.violations ?? [{ count: '2' }]); }
@@ -24,6 +46,24 @@ test('exact active building match joins HPD ID and distinguishes open violations
   const report = await retrieveBuildingRecords(address, source(), now);
   expect(report.status).toBe('matched'); expect(report.identity?.buildingId).toBe('12345');
   expect(report.openViolations).toBe(2); expect(report.complaintsLast365Days).toBe(2); expect(report.checkedAt).toBe(now.toISOString());
+  expect(report.requests311).toEqual({ total: 5, topProblems: [{ problem: 'Heat / hot water', count: 3 }, { problem: 'Noise', count: 2 }] });
+  expect(report.taxLotOwner).toEqual({ bbl, name: 'EXAMPLE PROPERTY LLC', edition: '26v2' });
+  expect(report.rentRegistration).toEqual({ matched: true, latestYear: 2026, registeredUnits: 18 });
+});
+test('missing state registrations and invalid matched tax lot responses never imply apartment status', async () => {
+  const unknown = await retrieveBuildingRecords(address, source({ registration: { features: [] }, requests311: [], owner: [] }), now);
+  expect(unknown.rentRegistration).toEqual({ matched: false });
+  expect(unknown.taxLotOwner).toBeNull();
+  expect(unknown.requests311?.total).toBe(0);
+  const mismatched = await retrieveBuildingRecords(address, source({
+    registration: { features: [{ attributes: { ...registered.attributes, zip_code: 11202 } }] },
+    owner: [{ bbl: '3000120005', ownername: 'UNRELATED OWNER' }],
+    requests311: [{ status: 'Noise', count: '2' }, { status: 'Noise', count: '3' }],
+  }), now);
+  expect(mismatched.rentRegistration).toBeNull(); expect(mismatched.taxLotOwner).toBeNull(); expect(mismatched.requests311).toBeNull();
+  const multiple = await retrieveBuildingRecords(address, source({ registration: { features: [registered,
+    { attributes: { ...registered.attributes, last_year_registered: 2025, registered_units: 20 } }] } }), now);
+  expect(multiple.rentRegistration).toEqual({ matched: true, latestYear: 2026, registeredUnits: null });
 });
 test('unmatched, ambiguous and inactive/mismatched identities never query findings', async () => {
   for (const buildings of [[], [building, building], [{ ...building, zip: '11202' }], [{ ...building, buildingid: '1 OR 1=1' }], [{ ...building, recordstatus: 'Inactive' }], [{ ...building, boroid: '1' }]]) {
@@ -74,7 +114,7 @@ test('latest annual filing is owner reported, not summed, with same-date ambigui
 });
 test('DOB datasets preserve separate reported statuses, never sum them or assume active', async () => {
   const report = await retrieveBuildingRecords(address, source({ dob: [{ status: 'Active', count: '1' }, { status: 'Pending Dismissal', count: '2' }] }), now);
-  expect(report.dob).toHaveLength(3); expect(report.dob?.[0].groups?.[1]).toEqual({ status: 'Pending Dismissal', count: 2 });
+  expect(report.dob).toHaveLength(5); expect(report.dob?.[0].groups?.[1]).toEqual({ status: 'Pending Dismissal', count: 2 });
   const missing = await retrieveBuildingRecords(address, source({ buildings: [{ ...building, bin: '0' }] }), now);
   expect(missing.dob).toBeNull();
 });
