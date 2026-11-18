@@ -65,3 +65,18 @@ test('malformed optional timestamps do not break failure status persistence', ()
     assert.equal(Date.parse(required(result.retryAt)), startedAt + 30 * 60_000);
   }
 });
+
+test('classifies a verification page without returning upstream body text or retrying', async () => {
+  let calls = 0;
+  const request = requestForRefresh(async () => {
+    calls++;
+    return new Response('<div id="px-captcha">upstream-private-text</div>', { status: 403 });
+  }, new AbortController().signal);
+  await assert.rejects(request('https://api-v6.streeteasy.com/', { method: 'POST' }), (error: any) => {
+    assert.equal(error.httpStatus, 403);
+    assert.equal(error.providerDenial, 'browser verification challenge');
+    assert.doesNotMatch(JSON.stringify(error), /upstream-private-text/);
+    return true;
+  });
+  assert.equal(calls, 1);
+});

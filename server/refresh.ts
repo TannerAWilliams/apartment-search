@@ -482,7 +482,10 @@ export async function refreshSources(env: AppEnv, { fetcher = fetch, now = new D
     }
     if (!next && onDemand) {
       const status = failure?.httpStatus;
-      if (status) item.error = name + ' returned HTTP ' + status + '.';
+      if (status) {
+        item.error = name + ' returned HTTP ' + status +
+          (failure?.providerDenial ? ' (' + failure.providerDenial + ')' : '') + '.';
+      }
       else if (failure?.name === 'TimeoutError') item.error = name + ' did not respond in time.';
       Object.assign(item, retrySchedule(failure, older?.transport === item.transport ? older : undefined, now.getTime()));
     }

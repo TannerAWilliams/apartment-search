@@ -1,11 +1,42 @@
 import type { SourceFetch } from './refresh.ts';
 const TRANSIENT = new Set([502, 503, 504]);
 const MINUTE = 60_000;
+const STREETEASY_API = 'https://api-v6.streeteasy.com/';
+const ERROR_PREFIX_LIMIT = 16 * 1024;
+
+async function streetEasyDenial(response: Response): Promise<string | undefined> {
+  if (response.headers.get('cf-mitigated') === 'challenge') return 'Cloudflare verification challenge';
+  if (!response.body) return;
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let remaining = ERROR_PREFIX_LIMIT;
+  let prefix = '';
+  try {
+    while (remaining > 0) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      prefix += decoder.decode(value.subarray(0, remaining), { stream: true });
+      remaining -= value.byteLength;
+    }
+  } catch {
+    return;
+  } finally {
+    void reader.cancel().catch(() => {});
+    reader.releaseLock();
+  }
+  if (/px-captcha|perimeterx.*captcha|please verify (?:that )?you are (?:a )?human/i.test(prefix)) {
+    return 'browser verification challenge';
+  }
+  if (/request blocked by (?:the )?egress|outbound network policy/i.test(prefix)) return 'outbound network policy';
+  if (/<title[^>]*>\s*Access Denied\s*<\/title>/i.test(prefix)) return 'upstream access-denied page';
+}
+
 
 class SourceResponseError extends Error {
   declare httpStatus: number;
   declare receivedAt: number;
   declare retryAfter: number;
+  declare providerDenial?: string;
   constructor(response: Response, receivedAt: number) {
     super('HTTP ' + response.status);
     this.httpStatus = response.status;
@@ -38,6 +69,7 @@ export function requestForRefresh(fetcher: SourceFetch, deadline: AbortSignal) {
     if (response.ok || response.status === 304) return response;
 
     const error = new SourceResponseError(response, Date.now());
+    if (url === STREETEASY_API && response.status === 403) error.providerDenial = await streetEasyDenial(response);
     await response.body?.cancel().catch(() => {});
     throw error;
   };
