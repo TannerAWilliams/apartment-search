@@ -1,6 +1,7 @@
 import type { AppEnv, Bucket } from './contracts.ts';
 import type { ListingData, SourceStatus as SearchSource, SearchResult } from '../src/domain.ts';
 import type { SourceStatus } from './refresh.ts';
+import { CITYREALTY_COVERAGE, CITYREALTY_ID, CITYREALTY_TRANSPORT } from './cityrealty.ts';
 import { dashboardSnapshot } from './dashboard-snapshot.ts';
 import { retrieveBuildingRecords } from './building-records.ts';
 import { wholeSearchCheck } from './whole-search-check.ts';
@@ -147,7 +148,7 @@ export async function search(rawFilters: Record<string, unknown>, env: AppEnv, f
     if (data) {
       listings.push(...rows);
       sources.push({ id: source.marketplace, name: source.name, status: recent ? 'searched' : 'cached',
-        sample: data.transport !== STREETEASY_EXPORT_FORMAT });
+        sample: data.transport !== STREETEASY_EXPORT_FORMAT && data.transport !== CITYREALTY_TRANSPORT });
       const coverage = data.transport === STREETEASY_EXPORT_FORMAT ? STREETEASY_EXPORT_COVERAGE :
         data.transport === STREETEASY_PUBLIC_TRANSPORT ? STREETEASY_PUBLIC_COVERAGE :
         source.id === STREETEASY_LIVE.id && data.transport === 'partner-feed' ? 'the configured StreetEasy partner feed' : source.coverage;
@@ -201,7 +202,7 @@ function json(value: unknown, status = 200) {
   return Response.json(value, { status, headers: { 'Cache-Control': 'no-store' } });
 }
 
-export async function handleApi(request: Request, env: AppEnv, { privateAuthenticated = false, requireToken = false, fetcher = (url, options) => globalThis.fetch(url, options), waitUntil, prepareListingSources, listingTransports, backgroundRefresh = false }: { privateAuthenticated?: boolean; requireToken?: boolean; fetcher?: SourceFetch; waitUntil?: (work: Promise<unknown>) => void; prepareListingSources?: () => Promise<void>; listingTransports?: ListingTransports; backgroundRefresh?: boolean } = {}) {
+export async function handleApi(request: Request, env: AppEnv, { privateAuthenticated = false, requireToken = false, fetcher = (url, options) => globalThis.fetch(url, options), waitUntil, prepareListingSources, listingTransports, backgroundRefresh = false, cityRealtyJob }: { privateAuthenticated?: boolean; requireToken?: boolean; fetcher?: SourceFetch; waitUntil?: (work: Promise<unknown>) => void; prepareListingSources?: () => Promise<void>; listingTransports?: ListingTransports; backgroundRefresh?: boolean; cityRealtyJob?: { start(delay: boolean): Promise<void>; pending(): Promise<boolean> } } = {}) {
   const { pathname: path, searchParams } = new URL(request.url);
   if (!API_PATHS.has(path)) return json({ error: 'Endpoint not found.' }, 404);
   if (requireToken && request.headers.get('Authorization') !== `Bearer ${env.APP_ACCESS_TOKEN}`) {
@@ -224,7 +225,7 @@ export async function handleApi(request: Request, env: AppEnv, { privateAuthenti
       const liveSources = [
         ...DIRECT_RENTAL_SOURCES.map(({ marketplace, id, name }) => {
           const coverage = coverageById.get(id);
-          return { id: marketplace, name, coverage, sample: coverage !== STREETEASY_EXPORT_COVERAGE };
+          return { id: marketplace, name, coverage, sample: coverage !== STREETEASY_EXPORT_COVERAGE && coverage !== CITYREALTY_COVERAGE };
         }),
         { id: OPENIGLOO.id, name: OPENIGLOO.name, sample: true, coverage: 'NYC' },
       ];
@@ -267,7 +268,8 @@ export async function handleApi(request: Request, env: AppEnv, { privateAuthenti
     }
   }
   if (path === '/api/refresh' && request.method === 'GET') {
-    return json(await refreshPlan(env.BUCKET));
+    const plan = await refreshPlan(env.BUCKET);
+    return json(plan.checking || !cityRealtyJob || !(await cityRealtyJob.pending()) ? plan : { ...plan, checking: true, activeSource: CITYREALTY_ID });
   }
   if (request.method !== 'POST') return json({ error: 'Use POST for this endpoint.' }, 405);
   if (path === '/api/refresh' && (!env.BUCKET || !request.headers.get('Content-Type')?.startsWith('application/json'))) {
@@ -289,10 +291,21 @@ export async function handleApi(request: Request, env: AppEnv, { privateAuthenti
     if (path === '/api/refresh') {
       if (body?.check === 'now') {
         if (body.source !== undefined && !refreshCatalog(env).some((source) => source.id === body.source && source.resyncable)) return json({ error: 'Unknown or disconnected refresh source.' }, 422);
+        if (cityRealtyJob && body.source === CITYREALTY_ID) {
+          const current = await refreshPlan(env.BUCKET);
+          const previous = current.sources.find(item => item.id === CITYREALTY_ID);
+          if (previous?.retryAt && Date.parse(previous.retryAt) > Date.now()) return json({ ...current, state: 'already_checked' });
+          if (!current.checking || current.activeSource !== CITYREALTY_ID) await cityRealtyJob.start(Boolean(current.checking));
+          return json({ ...current, state: 'running', checking: true, activeSource: CITYREALTY_ID }, 202);
+        }
         let started!: () => void;
         const starting = new Promise<void>(resolve => { started = resolve; });
         const work = refreshSources(env, { fetcher, listingTransports, onDemand: true, prepareListingSources,
-          sourceId: body.source, forceRefresh: body.sessionStart !== true, onStarted: started });
+          sourceId: body.source, forceRefresh: body.sessionStart !== true, onStarted: started, excludeCityRealty: Boolean(cityRealtyJob) });
+        if (cityRealtyJob && body.source === undefined && body.sessionStart !== true) {
+          try { await cityRealtyJob.start(true); }
+          catch (cause) { await work.catch(() => {}); throw cause; }
+        }
         waitUntil?.(work.catch(() => {}));
         if (backgroundRefresh) {
           // Bun keeps this process alive independently of the initiating HTTP request.

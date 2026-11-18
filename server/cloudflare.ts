@@ -5,10 +5,15 @@ import { secretsEqual } from './private-session.ts';
 import { isPublicRefresh } from './public-access.ts';
 import { readRequestBody, RequestTooLarge } from './request-body.ts';
 import { createListingSourceClient } from './relay-client.ts';
+export { CityRealtySync } from './cityrealty-workflow.ts';
 
 type Environment = AppEnv & {
   APARTMENTS: D1Database;
   ASSETS: { fetch(request: Request): Promise<Response> };
+  CITYREALTY_SYNC?: {
+    create(options: { id: string; params: { delay: boolean } }): Promise<unknown>;
+    get(id: string): Promise<{ status(): Promise<{ status: string }> }>;
+  };
 };
 
 const headers = { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' };
@@ -40,10 +45,30 @@ export default {
       const appEnv = { ...env, BUCKET: createD1Bucket(env.APARTMENTS), LISTING_FETCH_TRANSPORT: 'direct' };
       const client = createListingSourceClient(appEnv, (target, options) =>
         fetch(target, options?.redirect === 'error' ? { ...options, redirect: 'manual' } : options));
-      return await handleApi(apiRequest, appEnv, { ...client, privateAuthenticated: bearer });
+      const workflow = env.CITYREALTY_SYNC;
+      const workflowId = (offset = 0) => 'cityrealty-' + (Math.floor(Date.now() / 120_000) - offset);
+      return await handleApi(apiRequest, appEnv, { ...client, privateAuthenticated: bearer,
+        cityRealtyJob: workflow ? {
+          async start(delay) {
+            const id = workflowId();
+            try { await workflow.create({ id, params: { delay } }); }
+            catch (error) {
+              const existing = await workflow.get(id).then(instance => instance.status()).catch(() => { throw error; });
+              if (existing.status === 'unknown') throw error;
+            }
+          },
+          async pending() {
+            const statuses = await Promise.allSettled([0, 1].map(offset =>
+              workflow.get(workflowId(offset)).then(instance => instance.status())));
+            return statuses.some(result => result.status === 'fulfilled' &&
+              ['queued', 'running', 'waiting'].includes(result.value.status));
+          },
+        } : undefined,
+      });
     } catch (cause) {
       if (cause instanceof RequestTooLarge) return error('The request is too large.', 413);
       return error('Apartment Search could not complete the request.', 503);
     }
   },
 };
+

@@ -1,5 +1,6 @@
 import apartment from '../../server/cloudflare.ts';
 import { secretsEqual } from '../../server/private-session.ts';
+export { CityRealtySync } from '../../server/cloudflare.ts';
 
 export default {
   fetch(request: Request, env: Parameters<typeof apartment.fetch>[1]) {

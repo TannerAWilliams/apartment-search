@@ -1,0 +1,62 @@
+import { expect, test } from 'bun:test';
+import { handleApi } from '../server/api.ts';
+import { CITYREALTY_ID } from '../server/cityrealty.ts';
+import type { FetchTransport } from '../src/fetch-type.ts';
+import { createMemoryBucket } from '../server/memory-bucket.ts';
+import { refreshSources, storedDirectRentals } from '../server/refresh.ts';
+
+function mockCityRealty({ duplicate = false }: { duplicate?: boolean } = {}): FetchTransport {
+  return (input) => {
+    const url = new URL(input);
+    expect(url.origin).toBe('https://www.cityrealty.com');
+    if (url.pathname === '/rpc/search/get-rental-listings') {
+      const page = Number(url.searchParams.get('page') ?? 1);
+      const ids = page === 1 ? Array.from({ length: 52 }, (_, index) => index + 1) : [duplicate ? 1 : 53];
+      const items = ids.map(id => ({
+        active: true, rented: false, out_of_market: false, isPublic: true, sale_or_rent: 2, listing_id: id,
+        mask_id: 'mask' + id, building_address: '10 Example Street', unit: String(id),
+        url_listing: '/nyc/example/10-example/1/' + id + '/mask' + id,
+        lat: 40.75, lng: -73.99, hood: id === 53 ? 'Jersey City' : 'Chelsea',
+      }));
+      return Response.json({ items, tableTools: { pagination: { total: 53, rowsPerPage: 52, currentPage: page } } });
+    }
+    const mask = url.pathname.split('/').at(-1);
+    const listing = { utype: 'anonymous', ptype: 'listing', lid: mask, ltype: 'rent', lstatus: 'active',
+      laddress: 'Example Building, 10  example street', lbeds: 1, lprice: 2500, lbaths: 1,
+      lzip: mask === 'mask53' ? 7310 : 10001, lzone: mask === 'mask53' ? 'new jersey' : 'manhattan' };
+    return new Response('<script>window.dataLayer.push(' + JSON.stringify(listing) + ');</script>', {
+      headers: { 'content-type': 'text/html' },
+    });
+  };
+}
+
+test('CityRealty publishes every verified page and retains it if a subsequent run repeats a listing ID', async () => {
+  const bucket = createMemoryBucket();
+  const env = { BUCKET: bucket };
+  const options = { sourceId: CITYREALTY_ID, onDemand: true };
+  const catalog = { id: CITYREALTY_ID };
+  const refreshed = await refreshSources(env, { ...options, fetcher: mockCityRealty() });
+  expect(refreshed.state).toBe('complete');
+  expect(refreshed.sources.find(source => source.id === CITYREALTY_ID)).toMatchObject({ pages: 2, total: 53, listingCount: 53 });
+  const snapshot = await storedDirectRentals(bucket, catalog);
+  expect(snapshot?.listings[52]).toMatchObject({ id: 'cityrealty:53', zip: '07310', state: 'NJ' });
+  const incomplete = await refreshSources(env, { ...options, fetcher: mockCityRealty({ duplicate: true }) });
+  expect(incomplete.sources.find(source => source.id === CITYREALTY_ID)).toMatchObject({ status: 'failed', listingCount: 53 });
+  expect(await storedDirectRentals(bucket, catalog)).toEqual(snapshot);
+});
+
+test('Cloudflare queues manual CityRealty refresh and reports a pending job while it starts', async () => {
+  const env = { BUCKET: createMemoryBucket() };
+  const url = 'https://app.test/api/refresh';
+  const job = { start: async () => { started++; }, pending: async () => started > 0 };
+  let started = 0;
+  const request = new Request(url, { method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ source: CITYREALTY_ID, check: 'now' }) });
+  const result = await handleApi(request, env, {
+    cityRealtyJob: job, fetcher: () => { throw Error('Cannot fetch a full inventory inside an API request.'); },
+  });
+  expect(result.status).toBe(202);
+  expect(started).toBe(1);
+  expect(await (await handleApi(new Request(url), env, { cityRealtyJob: job })).json())
+    .toMatchObject({ checking: true, activeSource: CITYREALTY_ID });
+});

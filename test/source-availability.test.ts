@@ -28,7 +28,7 @@ async function until(check: () => Promise<boolean>) {
 
 test('every implemented rental provider is visible and resyncable before its first fetch', async () => {
   const result = await (await handleApi(new Request('https://app.test/api/config'), { BUCKET: createMemoryBucket() })).json();
-  for (const id of ['zillow', 'compass', 'renthop', 'realtor', 'redfin', 'apartmentlist']) {
+  for (const id of ['zillow', 'compass', 'renthop', 'realtor', 'redfin', 'apartmentlist', 'cityrealty']) {
     assert.ok(result.sources.some((source: { id: string }) => source.id === id));
     assert.equal(result.sourceCatalog.find((source: { id: string }) => source.id === id + '-live')?.resyncable, true);
   }
@@ -37,7 +37,7 @@ test('every implemented rental provider is visible and resyncable before its fir
 test('new sources show that they need a feed and a paused StreetEasy cannot be refreshed', async () => {
   const env = { BUCKET: createMemoryBucket(), STREETEASY_SYNC_ENABLED: 'false' };
   const config = await (await handleApi(new Request('https://app.test/api/config'), env)).json();
-  for (const id of ['cityrealty', 'bhs', 'citysnap', 'craigslist', 'rebny-rls']) {
+  for (const id of ['bhs', 'citysnap', 'craigslist', 'rebny-rls']) {
     const source = config.sourceCatalog.find((entry: { id: string }) => entry.id === id);
     assert.equal(source?.resyncable, false);
     assert.match(source?.coverage, /feed.*required/i);
