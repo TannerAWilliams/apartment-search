@@ -9,7 +9,7 @@ bun install --frozen-lockfile
 bun run build:web
 mkdir -p dist/cloudflare
 bun build server/cloudflare.ts --target=node --format=esm --minify --outfile=dist/cloudflare/cloudflare.mjs
-cp deploy/cloudflare/private.mjs dist/cloudflare/private.mjs
+bun build deploy/cloudflare/private.ts --target=node --format=esm --minify --outfile=dist/cloudflare/private.mjs
 ```
 
 Apply `schema.sql` to the D1 database. Bind it as `APARTMENTS` and bind `web-build` as `ASSETS`. Enable `nodejs_compat`, route all requests through the Worker to protect assets and API requests, and use `private.mjs` as the entrypoint with an `APP_ACCESS_TOKEN` secret for staging.
