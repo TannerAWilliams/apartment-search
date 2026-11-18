@@ -5,7 +5,7 @@ export type CheckBuilding = (listing: ListingData, signal: AbortSignal) => Promi
 import { cachedBuildingReport, buildingRequestIdentity } from './building-report-cache.ts';
 import React, { useEffect, useRef, useState } from 'react';
 import { Text, View } from 'react-native';
-import { buildingReport } from './building-report.ts';
+import { buildingReport, justFixOwnershipUrl, JUSTFIX_RENT_HISTORY_URL } from './building-report.ts';
 import { styles } from './styles.ts';
 import { Link } from './ui.tsx';
 export function BuildingReport({ listing, onError, onCheckBuilding }: { listing: ListingData; onError?: (message: string) => void; onCheckBuilding?: CheckBuilding }) {
@@ -56,11 +56,13 @@ export function BuildingReport({ listing, onError, onCheckBuilding }: { listing:
         `${result.taxLotOwner.name} · NYC PLUTO tax-lot owner${result.taxLotOwner.edition ? ' · ' + result.taxLotOwner.edition : ''}` :
         'Unknown: no tax-lot owner record verified.'}</Text>
       <Text style={styles.smallMuted}>Check the recorded deed for title and the HPD registration for management contacts.</Text>
+      <Link label="Research landlord and related buildings on JustFix" url={justFixOwnershipUrl(result.identity?.bbl)} onError={onError} />
       <Text style={styles.fieldLabel}>Rent stabilization</Text>
       <Text style={styles.smallMuted}>{result.rentRegistration?.matched ?
         `State rent registration on this tax lot · latest filing year ${result.rentRegistration.latestYear}${result.rentRegistration.registeredUnits != null ? ' · ' + result.rentRegistration.registeredUnits + ' registered units reported' : ''}.` :
         result.rentRegistration ? 'No state registration match found for this tax lot.' : 'State registration could not be verified.'}</Text>
       <Text style={styles.smallMuted}>Apartment-level stabilization status: unverified. Use HCR rent history for the specific apartment.</Text>
+      <Link label="Request your apartment’s rent history with JustFix" url={JUSTFIX_RENT_HISTORY_URL} onError={onError} />
       <Text style={styles.smallMuted}>{result.bedbugs ? `Latest owner-filed bedbug report: ${result.bedbugs.periodStart} to ${result.bedbugs.periodEnd}, filed ${result.bedbugs.filedAt}. Units reported: ${result.bedbugs.units}; infested ${result.bedbugs.infested}; eradicated ${result.bedbugs.eradicated}; reinfested ${result.bedbugs.reinfested}. This is an owner filing, not an independent inspection or a statement of current infestation. Corrections use the latest filing, never summed.` : 'Bedbug annual filing: unknown / no unambiguous report retrieved.'}</Text>
       <Text style={styles.fieldLabel}>DOB records by matched BIN</Text>
       {result.dob ? result.dob.map(source => <View key={source.dataset} style={{ gap: 2 }}>
@@ -75,6 +77,10 @@ export function BuildingReport({ listing, onError, onCheckBuilding }: { listing:
       {(result.errors ?? []).map((message, index) => <Text key={index} style={styles.smallMuted}>{message}</Text>)}
     </View>}
     {report.nyc ? <>
+      {!result && <>
+        <Link label="Search for a landlord or building on JustFix" url={justFixOwnershipUrl()} onError={onError} />
+        <Link label="Request your apartment’s rent history with JustFix" url={JUSTFIX_RENT_HISTORY_URL} onError={onError} />
+      </>}
       <Text style={styles.smallMuted}>Review checklist: match the exact borough, address and BIN/BBL or HPD building ID; separate open from closed records; inspect recent heat/hot-water, pests and maintenance reports; check DOB permits and any vacate orders. Ask about unresolved conditions at the viewing. Records are not a substitute for inspecting the apartment.</Text>
       {report.sources.map(source => <View key={source.name} style={{ gap: 3 }}>
         <Link label={source.name} url={source.url} onError={onError} />

@@ -1,5 +1,5 @@
 import { test, expect } from 'bun:test';
-import { buildingReport, BUILDING_SOURCES } from '../src/building-report.ts';
+import { buildingReport, BUILDING_SOURCES, justFixOwnershipUrl, JUSTFIX_RENT_HISTORY_URL } from '../src/building-report.ts';
 test('NYC report separates unknown records from zero and complaints from violations', () => {
   const report = buildingReport({ address: '10 Example St', city: 'Brooklyn', state: 'NY', zip: '11201' });
   expect(report.nyc).toBe(true); expect(report.complaints).toBeNull(); expect(report.violations).toBeNull(); expect(report.checkedAt).toBeNull();
@@ -21,4 +21,12 @@ test('official source links fixed HTTPS destinations, never listing-controlled U
     const url = new URL(source.url); expect(url.protocol).toBe('https:'); expect(['www.nyc.gov', 'data.cityofnewyork.us', 'hcr.ny.gov', 'portal.hcr.ny.gov']).toContain(url.hostname);
   }
   expect(report.sources[3].purpose).toContain('row counts are not complaint counts');
+});
+
+test('JustFix uses the matched tax lot and falls back to building search without a valid BBL', () => {
+  expect(justFixOwnershipUrl('3000120004')).toBe('https://whoownswhat.justfix.org/en/bbl/3000120004');
+  for (const bbl of [undefined, null, '', '9000120004', '3000120004/other', 'https://example.com']) {
+    expect(justFixOwnershipUrl(bbl)).toBe('https://whoownswhat.justfix.org/en');
+  }
+  expect(JUSTFIX_RENT_HISTORY_URL).toBe('https://app.justfix.org/en/rh/splash');
 });

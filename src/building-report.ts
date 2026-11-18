@@ -1,4 +1,14 @@
 import { regionOf } from './regions.ts';
+
+const JUSTFIX_WHO_OWNS_WHAT = 'https://whoownswhat.justfix.org/en';
+export const JUSTFIX_RENT_HISTORY_URL = 'https://app.justfix.org/en/rh/splash';
+
+export function justFixOwnershipUrl(bbl?: string | null): string {
+  return bbl && /^[1-5]\d{9}$/.test(bbl)
+    ? `${JUSTFIX_WHO_OWNS_WHAT}/bbl/${bbl}`
+    : JUSTFIX_WHO_OWNS_WHAT;
+}
+
 export const BUILDING_SOURCES = [
   { name: 'HPD Online', url: 'https://www.nyc.gov/site/hpd/about/hpd-online.page', purpose: 'Housing maintenance complaints, issued violations, registration and other building records.' },
   { name: 'DOB building history', url: 'https://www.nyc.gov/site/buildings/tenant/get-building-history.page', purpose: 'Official instructions for BIS and DOB NOW. Check both systems for complaints, violations, permits and inspections.' },
