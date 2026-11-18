@@ -35,8 +35,17 @@ test('CityRealty publishes every verified page and retains it if a subsequent ru
   const env = { BUCKET: bucket };
   const options = { sourceId: CITYREALTY_ID, onDemand: true };
   const catalog = { id: CITYREALTY_ID };
-  const refreshed = await refreshSources(env, { ...options, fetcher: mockCityRealty() });
+  const provider = mockCityRealty();
+  let retried = false;
+  const refreshed = await refreshSources(env, { ...options, fetcher: (url, options) => {
+    if (url.endsWith('/mask53') && !retried) {
+      retried = true;
+      throw new DOMException('Example network timeout', 'TimeoutError');
+    }
+    return provider(url, options);
+  } });
   expect(refreshed.state).toBe('complete');
+  expect(retried).toBe(true);
   expect(refreshed.sources.find(source => source.id === CITYREALTY_ID)).toMatchObject({ pages: 2, total: 53, listingCount: 53 });
   const snapshot = await storedDirectRentals(bucket, catalog);
   expect(snapshot?.listings[52]).toMatchObject({ id: 'cityrealty:53', zip: '07310', state: 'NJ' });
