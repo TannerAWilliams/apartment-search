@@ -2,7 +2,7 @@ import type { ListingData } from '../src/domain.ts';
 import type { FetchTransport } from '../src/fetch-type.ts';
 import { mergeListings } from '../src/listings.ts';
 
-const MAX_HTML_BYTES = 5 * 1024 * 1024;
+export const MAX_PUBLIC_HTML_BYTES = 5 * 1024 * 1024;
 
 /** Parse an embedded JSON assignment without depending on its script wrapper or executing it. */
 export function assignedJson(html: string, assignment: RegExp): any {
@@ -43,7 +43,7 @@ export async function fetchPublicHtml(fetcher: FetchTransport, url: string, name
   });
   if (!response.ok) throw new Error(name + ' returned HTTP ' + response.status + '.');
   if (!response.headers.get('content-type')?.includes('text/html') || !response.body ||
-      Number(response.headers.get('content-length')) > MAX_HTML_BYTES) {
+      Number(response.headers.get('content-length')) > MAX_PUBLIC_HTML_BYTES) {
     throw new Error(name + ' did not return a supported rental page.');
   }
   const reader = response.body.getReader();
@@ -54,7 +54,7 @@ export async function fetchPublicHtml(fetcher: FetchTransport, url: string, name
     const { done, value } = await reader.read();
     if (done) return html + decoder.decode();
     bytes += value.byteLength;
-    if (bytes > MAX_HTML_BYTES) {
+    if (bytes > MAX_PUBLIC_HTML_BYTES) {
       await reader.cancel();
       throw new Error(name + ' returned a rental page that was too large.');
     }
