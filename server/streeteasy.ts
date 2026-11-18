@@ -3,7 +3,8 @@ import { normalizeListing } from '../src/listings.ts';
 import { NJ_ZIPS, nycBorough } from './firstmover.ts';
 import { assignedJson, deduplicatePublicRentals, fetchPublicHtml, jsonLd, publicListingUrl } from './public-rentals.ts';
 
-const SOURCE = { id: 'streeteasy', name: 'StreetEasy', kind: 'feed', maxBedrooms: 100 };
+const MAX_STREETEASY_RENT = 2_147_483_647;
+const SOURCE = { id: 'streeteasy', name: 'StreetEasy', kind: 'feed', maxBedrooms: 100, maxRent: MAX_STREETEASY_RENT };
 const ORIGIN = 'https://streeteasy.com';
 const SEARCH_URL = 'https://api-v6.streeteasy.com/';
 const PAGE_SIZE = 500;
@@ -185,7 +186,7 @@ export async function loadStreetEasy(fetcher: FetchTransport = fetch, now = new 
     return complete(children.flat(), result.totalCount);
   }
   let edges: Result['edges'];
-  try { edges = await collect({ lower: 0, upper: 2147483647 }, first); }
+  try { edges = await collect({ lower: 0, upper: MAX_STREETEASY_RENT }, first); }
   catch (error) {
     failure ??= error;
     controller.abort();
@@ -193,7 +194,9 @@ export async function loadStreetEasy(fetcher: FetchTransport = fetch, now = new 
   }
   const checkedAt = now.toISOString();
   const rows = activeRentals(edges, checkedAt);
-  if (first.totalCount > 0 && !rows.length) throw new Error('StreetEasy v6 returned no supported apartment listings.');
+  if (rows.length !== edges.length) {
+    throw new Error('StreetEasy returned ' + (edges.length - rows.length) + ' rentals that could not be saved.');
+  }
   // Preserve provider listing IDs in storage. Search can merge listings for the same unit for display.
   return { listings: rows, pages, total: first.totalCount, rawCount: edges.length, checkedAt, transport: 'v6-daily' };
 }

@@ -63,7 +63,7 @@ export function sourceLink(url: unknown, kind: string, fallback: Pick<SourceLink
     url: href, kind };
 }
 
-export function normalizeListing(input: unknown, source: { id: string; name: string; kind: string; maxBedrooms?: number }): ListingData | null {
+export function normalizeListing(input: unknown, source: { id: string; name: string; kind: string; maxBedrooms?: number; maxRent?: number }): ListingData | null {
   if (!input || typeof input !== 'object') return null;
   const row = input as Record<string, unknown>;
   const status = clean(row.status).toLowerCase();
@@ -78,7 +78,7 @@ export function normalizeListing(input: unknown, source: { id: string; name: str
   const rent = numeric(row.price ?? row.rent);
   const bedrooms = numeric(row.bedrooms);
   if (!address || !city || !/^\d{5}$/.test(zip) || !['NY', 'NJ', 'CT', 'PA'].includes(state) ||
-      !Number.isFinite(rent) || rent <= 0 || rent > 100000 || !Number.isInteger(bedrooms) || bedrooms < 0 || bedrooms > (source.maxBedrooms ?? 4)) {
+      !Number.isFinite(rent) || rent <= 0 || rent > (source.maxRent ?? 100000) || !Number.isInteger(bedrooms) || bedrooms < 0 || bedrooms > (source.maxBedrooms ?? 4)) {
     return null;
   }
   const originalUrl = row.listingUrl ?? row.url;

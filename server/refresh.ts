@@ -321,7 +321,7 @@ async function refreshDirectRentals(bucket: Bucket, source: typeof DIRECT_RENTAL
         typeof listing.id !== 'string' || !listing.id.startsWith(source.marketplace + ':') ||
         typeof listing.address !== 'string' || !listing.address || typeof listing.unit !== 'string' ||
         typeof listing.city !== 'string' || !listing.city || !/^\d{5}$/.test(listing.zip) ||
-        !Number.isFinite(listing.rent) || listing.rent <= 0 || listing.rent > 100000 ||
+        !Number.isFinite(listing.rent) || listing.rent <= 0 || listing.rent > ('maxRent' in source ? source.maxRent : 100000) ||
         !Number.isInteger(listing.bedrooms) || listing.bedrooms < 0 || listing.bedrooms > (('maxBedrooms' in source ? source.maxBedrooms as number : undefined) ?? 4) ||
         !Array.isArray(listing.sources) || !listing.sources.length ||
         listing.sources.some((link) => link?.id !== source.marketplace || link.kind !== 'feed' ||

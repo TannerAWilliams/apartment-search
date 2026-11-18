@@ -97,12 +97,18 @@ test('retains other regional ZIPs without inventing a municipality',async()=>{
 });
 
 test('keeps distinct StreetEasy listing IDs for the same unit and sends only JSON request headers', async () => {
-  const mock = server([rental(1, 2500), { ...rental(2, 2500), unit: '1' }]);
+  const mock = server([rental(1, 2500), { ...rental(2, 150000), unit: '1' }]);
   const result = await loadStreetEasy(async (url, options) => {
     const headers = new Headers(options?.headers);
     assert.deepEqual([...headers], [['accept', 'application/json'], ['content-type', 'application/json']]);
     return mock.fetcher(url, options);
   });
   assert.equal(result.rawCount, 2);
+  assert.equal(result.listings[1].rent, 150000);
   assert.deepEqual(result.listings.map(({ id }) => id), ['streeteasy:1', 'streeteasy:2']);
+});
+
+test('does not report a complete sync when a provider record cannot be normalized', async () => {
+  await assert.rejects(() => loadStreetEasy(server([{ ...rental(1, 2500), urlPath: '' }]).fetcher),
+    /1 rentals that could not be saved/);
 });
