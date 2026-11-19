@@ -408,3 +408,11 @@ Live search responses include the earliest expiry of the source observations use
 Selecting a listing website also limits which apartment origins are sent to TravelTime. Other websites are not routed behind that selection. Counts remain all-inventory counts when no commute limits apply; with commute limits, the notice explicitly identifies selected-website route coverage and excludes unknown routes rather than inventing qualification. All-websites searches retain all matching origins.
 
 Search submission waits for a ready search-server connection. Submitting while configuration is loading, locked, or offline leaves the current results, destination, and draft intact and gives a recovery message, rather than replacing inventory with a local empty result. Offline Filters offers Retry connection; after reconnecting, apply the draft again. This does not initiate a provider refresh.
+
+## Jersey City affordable housing notices
+
+| Source | Coverage | Refresh |
+| --- | --- | --- |
+| [Jersey City official current affordable housing postings](https://www.jerseycitynj.gov/CityHall/HousingAndDevelopment/affordable_housing/recent_affordable_housing_postings) | Income-restricted building application notices, separate from market-rate search inventory | Existing on-demand Sources & sync, individually or in the ordinary all-sources check |
+
+The Affordable housing panel reports the city revision date, retrieval date, building count and apartments described by bedroom count, with official posting/application links. These counts are not verified vacancies or individual unit advertisements. Rents, eligibility and deadlines must be verified with the city; missing prices and deadlines are not invented. HTTP/structure/count errors or a backwards revision preserve the last successful snapshot and record a failed source check. An unrecognized empty page is unknown, not a confirmed zero. This addition creates no recurring schedule and does not add the source to the Openigloo-only native startup bootstrap. The source ID is reserved against partner-feed collisions.

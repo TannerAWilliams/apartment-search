@@ -2,6 +2,7 @@ import { test, expect, type Page } from 'playwright/test';
 import { localSearch } from '../src/market.ts';
 import { normalizeListing } from '../src/listings.ts';
 import { parseFilters, localWorkplace } from '../src/search.ts';
+import type { HousingResponse } from '../server/contracts.ts';
 
 const fixtures = (count = 1) => Array.from({ length: count }, (_, index) => normalizeListing({
   id: `fixture-${index + 1}`, addressLine1: `${12 + index} Grove Street`, city: 'Jersey City', state: 'NJ', zipCode: '07302',
@@ -9,7 +10,7 @@ const fixtures = (count = 1) => Array.from({ length: count }, (_, index) => norm
   status: 'Active', url: `https://streeteasy.com/building/test/${index + 1}`,
 }, { id: 'streeteasy', name: 'StreetEasy', kind: 'feed' }));
 const now = '2026-11-13T12:00:00Z';
-async function mockApp(page: Page, options: { initialRefresh?: boolean; failed?: boolean; searchError?: boolean; listingCount?: number; notices?: string[]; priceHistory?: boolean; discovery?: boolean; commute?: boolean; nyc?: boolean; dashboardAvailable?: boolean; temporaryStorage?: boolean; inventoryExpiresAt?: string } = {}) {
+async function mockApp(page: Page, options: { initialRefresh?: boolean; failed?: boolean; searchError?: boolean; listingCount?: number; notices?: string[]; priceHistory?: boolean; discovery?: boolean; commute?: boolean; nyc?: boolean; dashboardAvailable?: boolean; temporaryStorage?: boolean; inventoryExpiresAt?: string; housing?: HousingResponse } = {}) {
   const requests: { path: string; method: string; body: any }[] = [];
   const unexpected: string[] = [];
   const listings = fixtures(options.listingCount);
@@ -30,6 +31,7 @@ async function mockApp(page: Page, options: { initialRefresh?: boolean; failed?:
     let data: unknown;
     if (url.pathname === '/api/config') data = { mode: 'live', storageMode: options.temporaryStorage ? 'temporary' : 'persistent', dashboardAvailable: options.dashboardAvailable === true, browserImportAllowed: false, commuteConfigured: false, sources: [{ id: 'streeteasy', name: 'StreetEasy' }], sourceCatalog: [{ id: 'streeteasy-live', marketplace: 'streeteasy', name: 'StreetEasy', coverage: 'Synthetic test feed', resyncable: true }], refresh };
     else if (url.pathname === '/api/refresh') data = refresh;
+    else if (url.pathname === '/api/housing' && options.housing) data = options.housing;
     else if (url.pathname === '/api/building-report' && options.nyc) data = {
       status: 'matched', checkedAt: now,
       identity: { address: '12 Grove Street, 11201', borough: 'BROOKLYN', buildingId: '123', bin: '3000001', bbl: '3000120004' },
@@ -49,6 +51,27 @@ async function mockApp(page: Page, options: { initialRefresh?: boolean; failed?:
   await expect.poll(() => requests.filter(r => r.path === '/api/search').length).toBeGreaterThan(0);
   return { requests, unexpected, listings };
 }
+
+test('Jersey City affordable notices display official links and stay out of apartment search', async ({ page }) => {
+  const { requests, unexpected } = await mockApp(page, { housing: {
+    publishedAt: null, checkedAt: null, opportunities: [], rerentals: null,
+    jersey: { revision: '2026-11-16', checkedAt: now, total: 3,
+      sourceUrl: 'https://www.jerseycitynj.gov/CityHall/HousingAndDevelopment/affordable_housing/recent_affordable_housing_postings',
+      applicationUrl: 'https://affordablehousingjc.com/',
+      notices: [{ id: 'fixture', name: 'Example affordable building', address: '10 Example St, Jersey City, NJ 07302', sizes: [1, 2, 0, 0, 0], total: 3 }] },
+  } });
+  await expect(page.getByText('Example affordable building', { exact: true })).toHaveCount(0);
+  await page.getByRole('tab', { name: 'More', exact: true }).click();
+  await page.getByRole('button', { name: 'Affordable housing', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Jersey City affordable housing applications' })).toBeVisible();
+  await expect(page.getByText('Example affordable building', { exact: true })).toBeVisible();
+  await expect(page.getByText('Studio: 1 · 1 BR: 2', { exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Jersey City preliminary application portal' })).toHaveAttribute('href', 'https://affordablehousingjc.com/');
+  await page.getByRole('tab', { name: 'Search', exact: true }).click();
+  await expect(page.getByText('Example affordable building', { exact: true })).toHaveCount(0);
+  expect(requests.filter(r => r.path === '/api/refresh' && r.method === 'POST')).toHaveLength(0);
+  expect(unexpected).toEqual([]);
+});
 
 test('homepage searches saved all-region inventory without starting a refresh', async ({ page }) => {
   const { requests, unexpected } = await mockApp(page, { initialRefresh: true });

@@ -39,6 +39,20 @@ export function AffordableHousing({ region, loadHousing, onError }: { region: st
     <Text accessibilityRole="header" style={styles.panelTitle}>Affordable housing</Text>
     <Text style={styles.bodyText}>Check lotteries, waitlists, and voucher listings separately from market-rate apartments.</Text>
     <View style={styles.chartCard}>
+      <Text accessibilityRole="header" style={styles.listingTitle}>Jersey City affordable housing applications</Text>
+      <Text style={styles.smallMuted}>Income-restricted application notices, not exact available units or market-rate listings. Verify eligibility, rent, and application status with the city; no deadline is inferred.</Text>
+      {data?.jersey ? <>
+        <Text style={styles.smallMuted}>{data.jersey.notices.length} building notices · {data.jersey.total} apartments described by the city · City revision {data.jersey.revision} · Retrieved {showDate(data.jersey.checkedAt)}</Text>
+        {data.jersey.notices.map(notice => <View key={notice.id} style={styles.listing}>
+          <Text style={styles.listingTitle}>{notice.name}</Text><Text style={styles.smallMuted}>{notice.address}</Text>
+          <Text style={styles.bodyText}>{notice.sizes.map((count, index) => count ? `${SIZE_LABELS[index]}: ${count}` : null).filter(Boolean).join(' · ')}</Text>
+        </View>)}
+      </> : <Text style={styles.smallMuted}>No saved Jersey City postings are available. This does not mean there are no opportunities. Check Sources &amp; sync or the official page.</Text>}
+      <Text style={styles.smallMuted}>Saved notices can be out of date; a failed check retains the last successful copy. See Sources &amp; sync for the latest check status.</Text>
+      <Link label="Official Jersey City postings" url="https://www.jerseycitynj.gov/CityHall/HousingAndDevelopment/affordable_housing/recent_affordable_housing_postings" onError={onError} />
+      <Link label="Jersey City preliminary application portal" url="https://affordablehousingjc.com/" onError={onError} />
+    </View>
+    <View style={styles.chartCard}>
       <Text accessibilityRole="header" style={styles.listingTitle}>NYC HDC re-rentals and waitlists</Text>
       {data?.rerentals && <>
         <Text style={styles.smallMuted}>{rerentals.length} notices in this area · Checked {showDate(data.rerentals.checkedAt)}{data.rerentals.limited ? ' · Partial coverage' : ''}</Text>

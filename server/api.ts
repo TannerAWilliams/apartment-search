@@ -1,3 +1,4 @@
+import { storedJerseyAffordable } from './refresh.ts';
 import type { AppEnv, Bucket } from './contracts.ts';
 import type { ListingData, SourceStatus as SearchSource, SearchResult } from '../src/domain.ts';
 import type { SourceStatus } from './refresh.ts';
@@ -242,8 +243,8 @@ export async function handleApi(request: Request, env: AppEnv, { privateAuthenti
   if (path === '/api/housing') {
     if (request.method !== 'GET') return json({ error: 'Use GET for affordable housing.' }, 405);
     try {
-      const [housing, rerentals] = await Promise.all([storedHousing(env.BUCKET), storedHdcRerentals(env.BUCKET).catch(() => null)]);
-      return json({ ...housing, rerentals });
+      const [housing, rerentals, jersey] = await Promise.all([storedHousing(env.BUCKET), storedHdcRerentals(env.BUCKET).catch(() => null), storedJerseyAffordable(env.BUCKET).catch(() => null)]);
+      return json({ ...housing, rerentals, jersey });
     } catch {
       return json({ error: 'The Housing Connect data could not be read.' }, 503);
     }
@@ -341,4 +342,3 @@ export async function handleApi(request: Request, env: AppEnv, { privateAuthenti
     return json({ error: 'The address or listing feed could not be reached. Try again or use a workplace preset.' }, 502);
   }
 }
-

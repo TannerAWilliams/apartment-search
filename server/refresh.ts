@@ -1,3 +1,4 @@
+import { JERSEY_AFFORDABLE, loadJerseyAffordable, type JerseySnapshot } from './jersey-affordable.ts';
 import type { RentHistory } from '../src/rent-history.ts';
 import type { ListingData } from '../src/domain.ts';
 import type { AppEnv, Bucket, BucketObject, BucketHead, HousingSnapshot, HdcSnapshot } from './contracts.ts';
@@ -37,6 +38,7 @@ const LIVE_IDS = ['openigloo', ...DIRECT_RENTAL_SOURCES.map(({ id }) => id)];
 const AUTO_IDS = ['openigloo', ...AUTO_RENTAL_SOURCES.map(({ id }) => id)];
 const DIRECT_BY_ID = new Map(DIRECT_RENTAL_SOURCES.map((source) => [source.id, source]));
 const HOUSING_KEY = 'rentals/housing-connect.json';
+const JERSEY_KEY = 'rentals/jersey-affordable.json';
 const HDC_KEY = 'rentals/hdc-rerentals.json';
 const FEED_PREFIX = 'rentals/feeds/';
 const LOCK_TIMEOUT = 5 * 60_000;
@@ -108,6 +110,7 @@ export function refreshCatalog(env: AppEnv): SourceDefinition[] {
   return [
     { id: 'firstmover', name: 'FirstMover rent history', coverage: 'Historical rent charts, not active inventory', resyncable: true },
     { id: 'housingconnect', name: 'NYC Housing Connect', coverage: 'NYC affordable housing opportunities', resyncable: true },
+    { ...JERSEY_AFFORDABLE, coverage: 'Jersey City income-restricted application notices, not market inventory', resyncable: true },
     { ...HDC_RERENTALS, coverage: 'NYC affordable re-rentals', resyncable: true },
     { id: 'openigloo', name: 'Openigloo', coverage: 'Limited NYC sample', resyncable: true },
     ...DIRECT_RENTAL_SOURCES.map(({ id, name, marketplace, coverage }) => ({ id, name, marketplace,
@@ -191,9 +194,9 @@ export async function refreshPlan(bucket: Bucket | undefined, now = new Date()) 
   const [{ value }, object] = await Promise.all([readState(bucket), bucket?.head(MARKET_KEY)]);
   const market = marketBaseline(object, value.market);
   const hour = now.toISOString().slice(0, 13);
-  const privateFeeds = value.sources?.map(({ id }) => id).filter((id) => !PUBLIC_IDS.includes(id) && !LIVE_IDS.includes(id) && id !== HDC_RERENTALS.id) ?? [];
+  const privateFeeds = value.sources?.map(({ id }) => id).filter((id) => !PUBLIC_IDS.includes(id) && !LIVE_IDS.includes(id) && id !== HDC_RERENTALS.id && id !== JERSEY_AFFORDABLE.id) ?? [];
   return { ready: Boolean(bucket), market,
-    alreadyChecked: Boolean(market) && !value.running && checkedDuring(value.sources, [...PUBLIC_IDS, ...AUTO_IDS, HDC_RERENTALS.id, ...privateFeeds], hour),
+    alreadyChecked: Boolean(market) && !value.running && checkedDuring(value.sources, [...PUBLIC_IDS, ...AUTO_IDS, HDC_RERENTALS.id, JERSEY_AFFORDABLE.id, ...privateFeeds], hour),
     publicAlreadyChecked: Boolean(market) && !value.running && checkedDuring(value.sources, PUBLIC_IDS, hour),
     ...publicStatus(value, now) };
 }
@@ -265,6 +268,11 @@ export async function storedHousing(bucket: Bucket | undefined, now = new Date()
   const today = housingDate(now);
   return { ...data, checkedAt: object.customMetadata.updatedAt,
     opportunities: data.opportunities.filter(({ closes }) => closes >= today) };
+}
+
+export async function storedJerseyAffordable(bucket: Bucket | undefined): Promise<JerseySnapshot | null> {
+  const object = await bucket?.get(JERSEY_KEY);
+  return object ? object.json() : null;
 }
 
 export async function storedHdcRerentals(bucket: Bucket | undefined): Promise<HdcSnapshot | null> {
@@ -399,8 +407,9 @@ export async function refreshSources(env: AppEnv, { fetcher = fetch, now = new D
   const requestedLiveChecks = onlyStreetEasy ? (ready(STREETEASY_LIVE.id) ? [STREETEASY_LIVE.id] : []) : fallback ? (recoveredStreetEasy ? [STREETEASY_LIVE.id] : []) : onDemand ? AUTO_IDS.filter((id) => ready(id) && (!skipStreetEasy || id !== STREETEASY_LIVE.id)) : LIVE_IDS.filter((id) => imports && Object.hasOwn(imports, id));
   const liveChecks = env.STREETEASY_SYNC_ENABLED === 'false' || (!onDemand && streetEasyPartner) ?
     requestedLiveChecks.filter((id) => id !== STREETEASY_LIVE.id) : requestedLiveChecks;
+  const checkJersey = onDemand && !onlyStreetEasy && !fallback && ready(JERSEY_AFFORDABLE.id);
   const checkHdc = onDemand && !onlyStreetEasy && !fallback && ready(HDC_RERENTALS.id);
-  const ids = [...publicChecks, ...liveChecks, ...feedChecks.map(({ id }) => id), ...(checkHdc ? [HDC_RERENTALS.id] : [])].filter((id) => !selected || id === selected);
+  const ids = [...publicChecks, ...liveChecks, ...feedChecks.map(({ id }) => id), ...(checkHdc ? [HDC_RERENTALS.id] : []), ...(checkJersey ? [JERSEY_AFFORDABLE.id] : [])].filter((id) => !selected || id === selected);
   if (ids.length === 0 || (!onDemand && !selected && !onlyStreetEasy && !previous.running && !imports?.firstmover?.changed && checkedDuring(previous.sources, ids, hour))) {
     return { state: 'already_checked', ...publicStatus(previous) };
   }
@@ -422,6 +431,13 @@ export async function refreshSources(env: AppEnv, { fetcher = fetch, now = new D
       refreshMarket(bucket, previous.market, at, sourceFetch, imports?.firstmover, Boolean(imports), onDemand) }] : []),
     ...(publicChecks.includes('housingconnect') ? [{ id: 'housingconnect', name: 'NYC Housing Connect', work: () =>
       refreshHousing(bucket, at, sourceFetch, now, imports?.housingconnect, Boolean(imports)) }] : []),
+    ...(checkJersey ? [{ ...JERSEY_AFFORDABLE, work: async () => {
+      const data = await loadJerseyAffordable(sourceFetch, now);
+      const prior = await storedJerseyAffordable(bucket);
+      if (prior && data.revision < prior.revision) throw new Error('Jersey City returned an older revision.');
+      await bucket.put(JERSEY_KEY, JSON.stringify(data));
+      return { status: 'updated', updatedAt: at, listingCount: data.notices.length, revision: data.revision };
+    } }] : []),
     ...(checkHdc ? [{ ...HDC_RERENTALS, work: async () => {
       const data = await loadHdcRerentals(sourceFetch);
       await bucket.put(HDC_KEY, JSON.stringify({ ...data, checkedAt: at }));
@@ -475,7 +491,7 @@ export async function refreshSources(env: AppEnv, { fetcher = fetch, now = new D
       if (onDemand && streetEasyTransport !== STREETEASY_TRANSPORT) item.requestTransport = streetEasyTransport;
     }
     if (id === CITYREALTY_ID && next?.transport) item.transport = next.transport;
-    if (id === HDC_RERENTALS.id) item.listingCount = next?.listingCount ?? older?.listingCount;
+    if (id === HDC_RERENTALS.id || id === JERSEY_AFFORDABLE.id) item.listingCount = next?.listingCount ?? older?.listingCount;
     if (id === 'firstmover') {
       item.month = next?.month ?? older?.month ?? SNAPSHOT_MONTH;
       if (!next) item.error = failure instanceof Error &&
@@ -549,7 +565,7 @@ export async function refreshSources(env: AppEnv, { fetcher = fetch, now = new D
   }));
   const attempted = checks.map((check, index) => statusFor(check, results[index]));
 
-  const retainedIds = new Set([...PUBLIC_IDS, ...LIVE_IDS, HDC_RERENTALS.id, ...feeds.map(({ id }) => id)]);
+  const retainedIds = new Set([...PUBLIC_IDS, ...LIVE_IDS, HDC_RERENTALS.id, JERSEY_AFFORDABLE.id, ...feeds.map(({ id }) => id)]);
   const sources = [...attempted, ...(previous.sources ?? []).filter(({ id }) => !ids.includes(id) && retainedIds.has(id))];
   const marketResult = results[checks.findIndex(({ id }) => id === 'firstmover')];
   const market = marketResult?.status === 'fulfilled' ? marketResult.value : previous.market;
