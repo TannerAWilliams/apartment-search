@@ -72,11 +72,33 @@ test('classifies a verification page without returning upstream body text or ret
     calls++;
     return new Response('<div id="px-captcha">upstream-private-text</div>', { status: 403 });
   }, new AbortController().signal);
-  await assert.rejects(request('https://api-v6.streeteasy.com/', { method: 'POST' }), (error: any) => {
+  const verifyDenial = (error: any) => {
     assert.equal(error.httpStatus, 403);
     assert.equal(error.providerDenial, 'browser verification challenge');
     assert.doesNotMatch(JSON.stringify(error), /upstream-private-text/);
     return true;
-  });
+  };
+  await assert.rejects(request('https://api-v6.streeteasy.com/', { method: 'POST' }), verifyDenial);
   assert.equal(calls, 1);
+  await assert.rejects(request('https://streeteasy.com/for-rent/nyc'), verifyDenial);
+  assert.equal(calls, 2);
+});
+
+test('an explicit Cloudflare challenge fails the refresh regardless of status', async () => {
+  for (const status of [200, 503]) {
+    let calls = 0;
+    const request = requestForRefresh(async () => {
+      calls++;
+      return new Response('<html>upstream-private-text</html>', { status, headers: { 'cf-mitigated': 'challenge' } });
+    }, new AbortController().signal);
+    await assert.rejects(request('https://streeteasy.com/for-rent/nyc'), (error: any) => {
+      assert.equal(error.httpStatus, status);
+      assert.equal(error.providerDenial, 'Cloudflare verification challenge');
+      assert.equal(Date.parse(required(retrySchedule(error, undefined, error.receivedAt).retryAt)),
+        error.receivedAt + 15 * 60_000);
+      assert.doesNotMatch(JSON.stringify(error), /upstream-private-text/);
+      return true;
+    });
+    assert.equal(calls, 1);
+  }
 });

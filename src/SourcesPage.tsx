@@ -26,7 +26,7 @@ export function SourcesPage({ catalog, refresh, refreshing, cooldownSeconds = 0,
       {row.status?.error && <Text style={styles.error}>{row.status.error}</Text>}
       {row.coolingDown && <Text style={styles.smallMuted}>Retry after: {time(row.status?.retryAt)}</Text>}
       <Button secondary onPress={() => onResync(row.id)} disabled={!refresh || busy || !row.resyncable || row.coolingDown}>
-        {row.resyncable ? `Resync ${row.name}` : 'Resync unavailable: not connected'}
+        {row.paused ? 'Sync paused' : row.resyncable ? `Resync ${row.name}` : 'Resync unavailable: not connected'}
       </Button>
     </View>)}
   </View>;

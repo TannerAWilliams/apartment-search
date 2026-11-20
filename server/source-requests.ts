@@ -1,11 +1,13 @@
 import type { SourceFetch } from './refresh.ts';
+import { STREETEASY_API_URL, STREETEASY_PUBLIC_SEARCH_URL } from './streeteasy.ts';
+
 const TRANSIENT = new Set([502, 503, 504]);
 const MINUTE = 60_000;
-const STREETEASY_API = 'https://api-v6.streeteasy.com/';
 const ERROR_PREFIX_LIMIT = 16 * 1024;
+const CLOUDFLARE_CHALLENGE = 'Cloudflare verification challenge';
+const isChallenge = (response: Response) => response.headers.get('cf-mitigated') === 'challenge';
 
 async function streetEasyDenial(response: Response): Promise<string | undefined> {
-  if (response.headers.get('cf-mitigated') === 'challenge') return 'Cloudflare verification challenge';
   if (!response.body) return;
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
@@ -61,26 +63,31 @@ export function requestForRefresh(fetcher: SourceFetch, deadline: AbortSignal) {
     const method = (options?.method ?? 'GET').toUpperCase();
     const exhausted = response.headers.get('X-RateLimit-Remaining')?.trim() === '0';
     if ((method === 'GET' || method === 'HEAD') && TRANSIENT.has(response.status) && !signal.aborted &&
-        !response.headers.has('Retry-After') && !exhausted) {
+        !response.headers.has('Retry-After') && !exhausted && !isChallenge(response)) {
       await response.body?.cancel().catch(() => {});
       await new Promise((resolve) => setTimeout(resolve, 250));
       if (!signal.aborted) response = await fetcher(url, init);
     }
-    if (response.ok || response.status === 304) return response;
+    const challenged = isChallenge(response);
+    if (!challenged && (response.ok || response.status === 304)) return response;
 
     const error = new SourceResponseError(response, Date.now());
-    if (url === STREETEASY_API && response.status === 403) error.providerDenial = await streetEasyDenial(response);
+    if (challenged) error.providerDenial = CLOUDFLARE_CHALLENGE;
+    else if (response.status === 403 && (url === STREETEASY_API_URL || url === STREETEASY_PUBLIC_SEARCH_URL)) {
+      error.providerDenial = await streetEasyDenial(response);
+    }
     await response.body?.cancel().catch(() => {});
     throw error;
   };
 }
 
-export function retrySchedule(error: { httpStatus?: number; retryAfter?: unknown; receivedAt?: unknown } | null | undefined, previous: { retryAttempts?: number } | undefined, startedAt: number) {
+export function retrySchedule(error: { httpStatus?: number; retryAfter?: unknown; receivedAt?: unknown; providerDenial?: string } | null | undefined, previous: { retryAttempts?: number } | undefined, startedAt: number) {
   const status = error?.httpStatus;
-  if (![401, 403, 429].includes(status ?? 0) && !error?.retryAfter) return {};
+  const refused = status === 401 || status === 403 || error?.providerDenial === CLOUDFLARE_CHALLENGE;
+  if (!refused && status !== 429 && !error?.retryAfter) return {};
 
   const attempts = Math.min((previous?.retryAttempts ?? 0) + 1, 7);
-  const base = status === 401 || status === 403 ? 15 * MINUTE : MINUTE;
+  const base = refused ? 15 * MINUTE : MINUTE;
   const backoff = Math.min(base * 2 ** (attempts - 1), 60 * MINUTE);
   const receivedAt = typeof error?.receivedAt === 'number' && Number.isFinite(error.receivedAt) ? error.receivedAt : startedAt;
   const serverRetryAt = typeof error?.retryAfter === 'number' && Number.isFinite(error.retryAfter) ? error.retryAfter : 0;

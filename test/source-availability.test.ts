@@ -28,10 +28,59 @@ async function until(check: () => Promise<boolean>) {
 
 test('every implemented rental provider is visible and resyncable before its first fetch', async () => {
   const result = await (await handleApi(new Request('https://app.test/api/config'), { BUCKET: createMemoryBucket() })).json();
-  for (const id of ['zillow', 'compass', 'renthop', 'realtor', 'redfin', 'apartmentlist']) {
+  for (const id of ['zillow', 'compass', 'renthop', 'realtor', 'redfin', 'apartmentlist', 'cityrealty']) {
     assert.ok(result.sources.some((source: { id: string }) => source.id === id));
     assert.equal(result.sourceCatalog.find((source: { id: string }) => source.id === id + '-live')?.resyncable, true);
   }
+});
+
+test('new sources show that they need a feed and a paused StreetEasy cannot be refreshed', async () => {
+  const env = { BUCKET: createMemoryBucket(), STREETEASY_SYNC_ENABLED: 'false' };
+  const config = await (await handleApi(new Request('https://app.test/api/config'), env)).json();
+  for (const id of ['bhs', 'citysnap', 'craigslist', 'rebny-rls']) {
+    const source = config.sourceCatalog.find((entry: { id: string }) => entry.id === id);
+    assert.equal(source?.resyncable, false);
+    assert.match(source?.coverage, /feed.*required/i);
+  }
+  assert.equal(config.sourceCatalog.find((entry: { id: string }) => entry.id === 'streeteasy-live')?.paused, true);
+  const response = await handleApi(new Request('https://app.test/api/refresh', { method: 'POST',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ check: 'now', source: 'streeteasy-live' }) }), env, {
+    fetcher: () => { throw new Error('A paused source must not be fetched.'); },
+  });
+  assert.equal(response.status, 422);
+});
+
+test('an approved RESO feed imports paginated active rentals and skips rows with display restrictions', async () => {
+  const host = 'https://licensed-listings.example.test';
+  const url = host + '/odata/Property?$count=true';
+  const env = { BUCKET: createMemoryBucket(), FREE_PARTNER_FEEDS_JSON: JSON.stringify([
+    { id: 'rebny-rls', url, format: 'reso-web-api', token: 'test-feed-token' },
+  ]) };
+  const listing = { ListingKey: 'lease-1', StandardStatus: 'Active', PropertyType: 'Residential Lease',
+    StreetNumber: '10', StreetName: 'Example', StreetSuffix: 'Street', UnitNumber: '2A',
+    StateOrProvince: 'NY', City: 'Brooklyn', PostalCode: '11201', ListPrice: 2650, BedroomsTotal: 1,
+    ListingURL: host + '/listings/lease-1' };
+  const requests: string[] = [];
+  const result = await refreshSources(env, { sourceId: 'rebny-rls', onDemand: true, fetcher: (input, options) => {
+    requests.push(input);
+    assert.equal(new Headers(options?.headers).get('Authorization'), 'Bearer test-feed-token');
+    assert.equal(options?.redirect, 'error');
+    if (input === url) return Response.json({
+      '@odata.count': 3, '@odata.nextLink': '?$skiptoken=next',
+      value: [listing, { ...listing, ListingKey: 'hidden', InternetAddressDisplayYN: false }],
+    });
+    assert.equal(input, host + '/odata/Property?$skiptoken=next');
+    return Response.json({ value: [{ ...listing, ListingKey: 'closed', StandardStatus: 'Closed' }] });
+  } });
+  const saved = result.sources.find(source => source.id === 'rebny-rls');
+  assert.equal(saved?.status, 'updated');
+  assert.equal(saved?.listingCount, 1);
+  assert.equal(saved?.total, 3);
+  assert.equal(requests.length, 2);
+  const searched = await search({ source: 'rebny-rls', region: 'nyc', liveOnly: true }, env);
+  assert.equal(searched.total, 1);
+  assert.equal(searched.matches[0]?.rent, 2650);
+  assert.equal(searched.matches[0]?.sources[0]?.url, listing.ListingURL);
 });
 
 test('Compass accepts script wrapper whitespace and parses JSON strings containing closing braces safely', () => {
@@ -190,7 +239,11 @@ test('StreetEasy resync can read the public active search as a bounded sample', 
     unit: '#12', bedroomCount: 1, price: 2500, geoPoint: { latitude: 40.75, longitude: -73.99 } };
   const data = { listingData: { search: { criteria: 'area:1|status:open' }, totalCount: 15000,
     edges: [{ node }, { node: { ...node, id: '13', urlPath: '/rental/13', status: 'RENTED' } }] } };
-  const html = '<script>self.__next_f.push(' + JSON.stringify([1, 'e:' + JSON.stringify(data)]) + ')</script>';
+  const payload = 'e:' + JSON.stringify(data);
+  const middle = Math.floor(payload.length / 2);
+  const html = '<!-- <script>self.__next_f.push(invalid)</script> -->' +
+    '<script data-test="bootstrap">  self.__next_f.push(' + JSON.stringify([1, payload.slice(0, middle)]) + '); </script>' +
+    '<script>self.__next_f.push(' + JSON.stringify([1, payload.slice(middle)]) + ')</script>';
   const response = await handleApi(new Request('https://app.test/api/refresh', { method: 'POST',
     headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ check: 'now', source: 'streeteasy-live' }) }), env, {
     fetcher: (requested, options) => {
@@ -210,6 +263,31 @@ test('StreetEasy resync can read the public active search as a bounded sample', 
   assert.equal(results.total, 1);
   assert.equal(results.matches[0]?.sources[0].url, 'https://streeteasy.com/rental/12');
   assert.ok(results.notices.some(notice => notice.includes('first page of the public NYC and New Jersey rental search')));
+});
+
+test('public StreetEasy denial names the failing route and honors the provider retry window', async () => {
+  const env = { BUCKET: createMemoryBucket(), STREETEASY_PUBLIC_SEARCH: 'true' };
+  let calls = 0;
+  const refresh = () => refreshSources(env, {
+    sourceId: 'streeteasy-live', onDemand: true, forceRefresh: true,
+    fetcher: async (url) => {
+      calls++;
+      assert.equal(url, 'https://streeteasy.com/for-rent/nyc');
+      return new Response('<title>Access Denied</title>private upstream details', {
+        status: 403, headers: { 'Retry-After': '1800' },
+      });
+    },
+  });
+
+  const startedAt = Date.now();
+  const result = await refresh();
+  const denied = result.sources.find(({ id }) => id === 'streeteasy-live');
+  assert.equal(denied?.status, 'failed');
+  assert.equal(denied?.error, 'StreetEasy public rentals page returned HTTP 403 (upstream access-denied page).');
+  assert.ok(Date.parse(denied.retryAt!) >= startedAt + 30 * 60_000);
+  assert.doesNotMatch(JSON.stringify(result), /private upstream details/);
+  assert.equal((await refresh()).state, 'already_checked');
+  assert.equal(calls, 1);
 });
 
 test('a complete StreetEasy export syncs all rows in one request and preserves the previous export on invalid input', async () => {

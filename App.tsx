@@ -39,7 +39,7 @@ type DraftFilters = Omit<SearchFilters, 'maxRent' | 'maxTransitMinutes' | 'maxDr
   maxRent: string | number | null; maxTransitMinutes: string | number | null; maxDrivingMinutes: string | number | null;
   minBathrooms: string | number | null; minSquareFeet: string | number | null; bestFitRentWeight: string | number;
 };
-type RefreshInfo = { sources: (SourceStatus & { month?: string; transport?: string })[]; checking?: boolean; state?: string; lastCheckedAt?: string; refreshRetryAt?: number; market?: { revision?: string; catalogEtag?: string; csvEtag?: string } | null };
+type RefreshInfo = { sources: (SourceStatus & { month?: string; transport?: string })[]; checking?: boolean; activeSource?: string | null; state?: string; lastCheckedAt?: string; refreshRetryAt?: number; market?: { revision?: string; catalogEtag?: string; csvEtag?: string } | null };
 type ConfigSource = { id: string; name: string; sample?: boolean };
 type ApiConfig = { sources: ConfigSource[]; sourceCatalog?: SourceDefinition[]; commuteConfigured?: boolean; companies?: Record<string, number>; refresh?: RefreshInfo; refreshRetryAt?: number; browserImportAllowed?: boolean; dashboardAvailable?: boolean; storageMode?: string };
 type ApiOptions = { body?: object; token?: string; signal?: AbortSignal };
@@ -96,8 +96,12 @@ async function api<T>(path: string, { body, token, signal }: ApiOptions = {}): P
 }
 
 async function finishSourceCheck(check: RefreshInfo, token: string, signal?: AbortSignal, onProgress?: (check: RefreshInfo) => void) {
-  for (let attempt = 0; check.checking && attempt < 125; attempt += 1) {
-    await new Promise((resolve) => setTimeout(resolve, 1200));
+  const started = Date.now();
+  let cityRealtyRunning = false;
+  while (check.checking) {
+    cityRealtyRunning ||= check.activeSource === 'cityrealty-live';
+    if (Date.now() - started >= (cityRealtyRunning ? 13 * 60_000 : 150_000)) break;
+    await new Promise((resolve) => setTimeout(resolve, cityRealtyRunning ? 4000 : 1200));
     if (signal?.aborted) return check;
     check = await api('refresh', { token, signal });
     onProgress?.(check);

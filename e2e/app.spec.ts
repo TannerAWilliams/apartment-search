@@ -30,7 +30,15 @@ async function mockApp(page: Page, options: { initialRefresh?: boolean; failed?:
     let data: unknown;
     if (url.pathname === '/api/config') data = { mode: 'live', storageMode: options.temporaryStorage ? 'temporary' : 'persistent', dashboardAvailable: options.dashboardAvailable === true, browserImportAllowed: false, commuteConfigured: false, sources: [{ id: 'streeteasy', name: 'StreetEasy' }], sourceCatalog: [{ id: 'streeteasy-live', marketplace: 'streeteasy', name: 'StreetEasy', coverage: 'Synthetic test feed', resyncable: true }], refresh };
     else if (url.pathname === '/api/refresh') data = refresh;
-    else if (url.pathname === '/api/building-report' && options.nyc) data = { status: 'matched', checkedAt: now, identity: { address: '12 Grove Street, 11201', borough: 'BROOKLYN', buildingId: '123', bin: '3000001' }, openViolations: 2, complaintsLast365Days: 3, since: '2025-11-14', bedbugs: null, dob: null, flood: null, errors: [] };
+    else if (url.pathname === '/api/building-report' && options.nyc) data = {
+      status: 'matched', checkedAt: now,
+      identity: { address: '12 Grove Street, 11201', borough: 'BROOKLYN', buildingId: '123', bin: '3000001', bbl: '3000120004' },
+      openViolations: 2, complaintsLast365Days: 3, since: '2025-11-14',
+      requests311: { total: 5, topProblems: [{ problem: 'Heat / hot water', count: 4 }] },
+      taxLotOwner: { name: 'EXAMPLE PROPERTY LLC', bbl: '3000120004', edition: '26v2' },
+      rentRegistration: { matched: true, latestYear: 2026, registeredUnits: 18 },
+      bedbugs: null, dob: null, flood: null, errors: [],
+    };
     else if (url.pathname === '/api/search') {
       if (options.searchError && requests.filter(r => r.path === '/api/search').length > 1) return route.fulfill({ status: 503, json: { error: 'Synthetic search unavailable' } });
       const filters = parseFilters(body); data = { ...localSearch(listings, filters, localWorkplace(filters), 'live', [], options.notices ?? []), ...(options.inventoryExpiresAt ? { inventoryExpiresAt: options.inventoryExpiresAt } : {}) };
@@ -435,6 +443,10 @@ test('NYC building report loads automatically on Details and reuses completed se
   expect(requests.filter(item => item.path === '/api/building-report')).toHaveLength(0);
   await details.click();
   await expect(page.getByText('Official building report: matched', { exact: true })).toBeVisible();
+  await expect(page.getByText('311 service requests on this tax lot in the last 365 days: 5.', { exact: true })).toBeVisible();
+  await expect(page.getByText('EXAMPLE PROPERTY LLC · NYC PLUTO tax-lot owner · 26v2', { exact: true })).toBeVisible();
+  await expect(page.getByText('State rent registration on this tax lot · latest filing year 2026 · 18 registered units reported.', { exact: true })).toBeVisible();
+  await expect(page.getByText(/Apartment-level stabilization status: unverified/)).toBeVisible();
   await expect(page.getByRole('button', { name: 'Check official HPD records', exact: true })).toHaveCount(0);
   expect(requests.filter(item => item.path === '/api/building-report')).toHaveLength(1);
   await details.click(); await details.click();
