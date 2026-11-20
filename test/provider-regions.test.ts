@@ -70,7 +70,7 @@ test('Zumper keeps broker listings with a hidden building number and non-apartme
     state: 'NY', city: 'New York', zipcode: '10003', address: 'E 13th St #3AB', min_price: 14995, max_price: 14995, min_bedrooms: 6, max_bedrooms: 6, lat: 40.73, lng: -73.99 };
   const market = { city: 'Manhattan', state: 'NY', region: 'nyc', borough: 'manhattan' };
   const parse = (row: unknown) => parseZumperPage(zumperHtml(row), market, checkedAt);
-  assert.equal(parse(base)[0]?.address, 'E 13th St #3AB');
+  assert.deepEqual([parse(base)[0]?.address, parse(base)[0]?.unit], ['E 13th St', '3AB']);
   assert.equal(parse({ ...base, address: 'E 13th St' }).length, 0, 'no unit and no building number');
   assert.equal(parse({ ...base, listing_type: 1, property_type: 1, address: '801 Riverside Dr #5A', zipcode: '10032' }).length, 1);
   assert.equal(parse({ ...base, property_type: 16 }).length, 0);
