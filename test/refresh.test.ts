@@ -705,6 +705,33 @@ test('provider 403 without wrapper metadata saves failure, releases lock and pre
   assert.equal((await required((await env.BUCKET.get('rentals/refresh.json'))).json()).running, false);
 });
 
+test('StreetEasy public search verification on HTTP 200 preserves the saved snapshot and starts a cooldown', async () => {
+  const env = { BUCKET: new TestBucket(), STREETEASY_PUBLIC_SEARCH: 'true' };
+  const listing = required(parseStreetEasyPage(streetEasyHtml([publicRental]), 'NY', 1, at.toISOString())[0]);
+  await refreshSources(env, { now: at, sourceId: STREETEASY_LIVE.id,
+    imports: { [STREETEASY_LIVE.id]: { listings: [listing], pages: 1 } } });
+  const before = required(await storedDirectRentals(env.BUCKET, STREETEASY_LIVE));
+  let calls = 0;
+  const result = await refreshSources(env, { now: next, sourceId: STREETEASY_LIVE.id, onDemand: true,
+    fetcher: async (url) => {
+      calls++;
+      assert.equal(url, 'https://streeteasy.com/for-rent/nyc');
+      return new Response('<div id="px-captcha">private upstream text</div>', { headers: { 'Content-Type': 'text/html' } });
+    } });
+  const status = required(result.sources.find(({ id }) => id === STREETEASY_LIVE.id));
+  assert.equal(status.status, 'failed');
+  assert.equal(status.error, 'StreetEasy returned HTTP 200 (browser verification challenge).');
+  assert.equal(status.updatedAt, at.toISOString());
+  assert.equal(status.listingCount, 1);
+  assert.ok(Date.parse(required(status.retryAt)) >= next.getTime() + 15 * 60_000);
+  assert.deepEqual(await storedDirectRentals(env.BUCKET, STREETEASY_LIVE), before);
+
+  const skipped = await refreshSources(env, { now: new Date(next.getTime() + 1000), sourceId: STREETEASY_LIVE.id,
+    onDemand: true, fetcher: async () => { calls++; return new Response(null, { status: 200 }); } });
+  assert.equal(skipped.state, 'already_checked');
+  assert.equal(calls, 1);
+});
+
 test('duplicate imported listing IDs fail without replacing the last valid source snapshot', async () => {
   const env = { BUCKET: new TestBucket() };
   const listing = required(parseStreetEasyPage(streetEasyHtml([publicRental]), 'NY', 1, at.toISOString())[0]);

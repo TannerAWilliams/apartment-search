@@ -27,7 +27,9 @@ test('relay HTTP requires auth and preserves source status without forwarding cr
     assert.equal(new Headers(options?.headers).get('Referer'), 'https://streeteasy.com/for-rent/nyc');
     assert.equal(new Headers(options?.headers).get('User-Agent'), null);
     assert.equal(options?.redirect, 'error');
-    return new Response('{"denied":true}', { status: 403, headers: { 'Set-Cookie': 'bad', 'Retry-After': '120' } });
+    return new Response('<title>Verify you are human</title>', { status: 403, headers: {
+      'Set-Cookie': 'bad', 'Retry-After': '120', 'CF-Mitigated': 'challenge', 'Content-Type': 'text/html',
+    } });
   });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const address = server.address();
@@ -41,6 +43,8 @@ test('relay HTTP requires auth and preserves source status without forwarding cr
     assert.equal(response.status, 403);
     assert.equal(response.headers.get('Set-Cookie'), null);
     assert.equal(response.headers.get('Retry-After'), '120');
+    assert.equal(response.headers.get('CF-Mitigated'), 'challenge');
+    assert.match(response.headers.get('Content-Type') ?? '', /^text\/html/);
     assert.equal(calls, 1);
   } finally { server.closeAllConnections(); await new Promise<void>((resolve) => server.close(() => resolve())); }
 });

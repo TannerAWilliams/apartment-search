@@ -80,3 +80,25 @@ test('classifies a verification page without returning upstream body text or ret
   });
   assert.equal(calls, 1);
 });
+
+test('a StreetEasy public search challenge on HTTP 503 skips the immediate GET retry', async () => {
+  let calls = 0;
+  const request = requestForRefresh(async () => {
+    calls++;
+    return new Response(null, { status: 503, headers: { 'CF-Mitigated': 'challenge' } });
+  }, new AbortController().signal);
+  await assert.rejects(request('https://streeteasy.com/for-rent/nyc'), (error: any) => {
+    assert.equal(error.httpStatus, 503);
+    assert.equal(error.providerDenial, 'Cloudflare verification challenge');
+    assert.equal(Date.parse(required(retrySchedule(error, undefined, error.receivedAt).retryAt)), error.receivedAt + 15 * 60_000);
+    return true;
+  });
+  assert.equal(calls, 1);
+});
+
+test('a StreetEasy public rental page can contain verification script references without being a challenge', async () => {
+  const html = '<title>NYC rentals</title><script src="px-captcha.js"></script>' + 'listings '.repeat(3000);
+  const request = requestForRefresh(async () => new Response(html, { headers: { 'Content-Type': 'text/html' } }),
+    new AbortController().signal);
+  assert.equal(await (await request('https://streeteasy.com/for-rent/nyc')).text(), html);
+});

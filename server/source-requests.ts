@@ -1,13 +1,17 @@
 import type { SourceFetch } from './refresh.ts';
 const TRANSIENT = new Set([502, 503, 504]);
 const MINUTE = 60_000;
-const STREETEASY_API = 'https://api-v6.streeteasy.com/';
+const STREETEASY_ENDPOINTS = new Set(['https://api-v6.streeteasy.com/', 'https://streeteasy.com/for-rent/nyc']);
 const ERROR_PREFIX_LIMIT = 16 * 1024;
 
 async function streetEasyDenial(response: Response): Promise<string | undefined> {
   if (response.headers.get('cf-mitigated') === 'challenge') return 'Cloudflare verification challenge';
-  if (!response.body) return;
-  const reader = response.body.getReader();
+  const isHtml = response.headers.get('Content-Type')?.split(';', 1)[0]?.trim().toLowerCase() === 'text/html';
+  if (!isHtml && response.status !== 403 && response.status !== 493) return;
+  // Leave successful rental pages available to the caller.
+  const body = response.ok ? response.clone().body : response.body;
+  if (!body) return;
+  const reader = body.getReader();
   const decoder = new TextDecoder();
   let remaining = ERROR_PREFIX_LIMIT;
   let prefix = '';
@@ -24,10 +28,11 @@ async function streetEasyDenial(response: Response): Promise<string | undefined>
     void reader.cancel().catch(() => {});
     reader.releaseLock();
   }
-  if (/px-captcha|perimeterx.*captcha|please verify (?:that )?you are (?:a )?human/i.test(prefix)) {
+  const challengeMarkup = /<(?:div|form|iframe)\b[^>]*\bid\s*=\s*(?:["']px-captcha["']|px-captcha(?=[\s>]))|<title[^>]*>\s*(?:please )?verify (?:that )?you are (?:a )?human\b/i;
+  if (challengeMarkup.test(prefix) || (!response.ok && /px-captcha|perimeterx.*captcha|please verify (?:that )?you are (?:a )?human/i.test(prefix))) {
     return 'browser verification challenge';
   }
-  if (/request blocked by (?:the )?egress|outbound network policy/i.test(prefix)) return 'outbound network policy';
+  if (!response.ok && /request blocked by (?:the )?egress|outbound network policy/i.test(prefix)) return 'outbound network policy';
   if (/<title[^>]*>\s*Access Denied\s*<\/title>/i.test(prefix)) return 'upstream access-denied page';
 }
 
@@ -58,29 +63,35 @@ export function requestForRefresh(fetcher: SourceFetch, deadline: AbortSignal) {
       AbortSignal.any([options.signal, deadline]) : deadline;
     const init = { ...options, headers, signal };
     let response = await fetcher(url, init);
+    const isStreetEasy = STREETEASY_ENDPOINTS.has(url);
+    let denial = isStreetEasy ? await streetEasyDenial(response) : undefined;
     const method = (options?.method ?? 'GET').toUpperCase();
     const exhausted = response.headers.get('X-RateLimit-Remaining')?.trim() === '0';
-    if ((method === 'GET' || method === 'HEAD') && TRANSIENT.has(response.status) && !signal.aborted &&
+    if (!denial && (method === 'GET' || method === 'HEAD') && TRANSIENT.has(response.status) && !signal.aborted &&
         !response.headers.has('Retry-After') && !exhausted) {
       await response.body?.cancel().catch(() => {});
       await new Promise((resolve) => setTimeout(resolve, 250));
-      if (!signal.aborted) response = await fetcher(url, init);
+      if (!signal.aborted) {
+        response = await fetcher(url, init);
+        if (isStreetEasy) denial = await streetEasyDenial(response);
+      }
     }
-    if (response.ok || response.status === 304) return response;
+    if (!denial && (response.ok || response.status === 304)) return response;
 
     const error = new SourceResponseError(response, Date.now());
-    if (url === STREETEASY_API && response.status === 403) error.providerDenial = await streetEasyDenial(response);
+    if (denial) error.providerDenial = denial;
     await response.body?.cancel().catch(() => {});
     throw error;
   };
 }
 
-export function retrySchedule(error: { httpStatus?: number; retryAfter?: unknown; receivedAt?: unknown } | null | undefined, previous: { retryAttempts?: number } | undefined, startedAt: number) {
+export function retrySchedule(error: { httpStatus?: number; retryAfter?: unknown; receivedAt?: unknown; providerDenial?: string } | null | undefined, previous: { retryAttempts?: number } | undefined, startedAt: number) {
   const status = error?.httpStatus;
-  if (![401, 403, 429].includes(status ?? 0) && !error?.retryAfter) return {};
+  const denied = Boolean(error?.providerDenial) || status === 401 || status === 403;
+  if (!denied && status !== 429 && !error?.retryAfter) return {};
 
   const attempts = Math.min((previous?.retryAttempts ?? 0) + 1, 7);
-  const base = status === 401 || status === 403 ? 15 * MINUTE : MINUTE;
+  const base = denied ? 15 * MINUTE : MINUTE;
   const backoff = Math.min(base * 2 ** (attempts - 1), 60 * MINUTE);
   const receivedAt = typeof error?.receivedAt === 'number' && Number.isFinite(error.receivedAt) ? error.receivedAt : startedAt;
   const serverRetryAt = typeof error?.retryAfter === 'number' && Number.isFinite(error.retryAfter) ? error.retryAfter : 0;

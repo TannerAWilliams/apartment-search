@@ -45,10 +45,13 @@ export function createRelay(token: string, fetcher: FetchTransport = fetch, appT
           content.push(value);
         }
       }
-      // Preserve source status/rate limits, never forward cookies or redirects.
+      // Forward retry timing and a known challenge marker without forwarding cookies or redirects.
       const retryAfter = upstream.headers.get('Retry-After');
       if (retryAfter) res.setHeader('Retry-After', retryAfter);
-      res.writeHead(upstream.status, { 'Content-Type': request.url.includes('api-v6') ? 'application/json' : 'text/html; charset=utf-8' });
+      const streetEasyApi = request.url === 'https://api-v6.streeteasy.com/';
+      if (streetEasyApi && upstream.headers.get('cf-mitigated') === 'challenge') res.setHeader('CF-Mitigated', 'challenge');
+      const upstreamHtml = /^text\/html(?:;|$)/i.test(upstream.headers.get('Content-Type') ?? '');
+      res.writeHead(upstream.status, { 'Content-Type': streetEasyApi && !upstreamHtml ? 'application/json' : 'text/html; charset=utf-8' });
       res.end(Buffer.concat(content));
     } catch {
       if (!res.headersSent) respond(502, 'Listing source request failed'); else res.end();
