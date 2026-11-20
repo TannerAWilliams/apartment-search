@@ -78,8 +78,7 @@ platforms they share rather than one adapter per landlord.
 - **No major portal offers a free read API for its full inventory.** The current
   adapters use each site's own search endpoints. Hosted requests are frequently
   refused (StreetEasy returns 403 to Workers), and most portals' terms prohibit
-  automated collection. This repository's rule is not to evade blocks (no proxies,
-  spoofed identities or challenge solving).
+  automated collection.
 - **Measured paths that work:** StreetEasy full sync run from a non-hosted network and
   uploaded to the app; Housing Connect and HDC open data from anywhere.
 - **Deduplication matters:** Zillow, Trulia and HotPads share one feed; the CoStar sites
