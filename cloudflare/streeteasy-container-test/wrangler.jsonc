@@ -1,0 +1,23 @@
+{
+  // One-off Cloudflare Containers test for StreetEasy access. Separate from the
+  // apartment-search Workers; deploying it changes nothing in the live app.
+  // Build first: bun cloudflare/streeteasy-container-test/build.ts
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "streeteasy-container-test",
+  "main": "worker.ts",
+  "compatibility_date": "2026-11-20",
+  "workers_dev": true,
+  "containers": [
+    {
+      "class_name": "StreetEasyProbe",
+      "image": "docker.io/oven/bun:1.4.4",
+      "instance_type": "basic",
+      "max_instances": 1
+    }
+  ],
+  "durable_objects": {
+    "bindings": [{ "name": "PROBE", "class_name": "StreetEasyProbe" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["StreetEasyProbe"] }],
+  "observability": { "enabled": true }
+}
