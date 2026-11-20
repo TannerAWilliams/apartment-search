@@ -2,6 +2,7 @@ import type { AppEnv, Bucket } from './contracts.ts';
 import type { ListingData, SourceStatus as SearchSource, SearchResult } from '../src/domain.ts';
 import type { SourceStatus } from './refresh.ts';
 import { CITYREALTY_COVERAGE, CITYREALTY_ID, CITYREALTY_TRANSPORT } from './cityrealty.ts';
+import { ZUMPER_COVERAGE, ZUMPER_TRANSPORT } from './zumper.ts';
 import { dashboardSnapshot } from './dashboard-snapshot.ts';
 import { retrieveBuildingRecords } from './building-records.ts';
 import { wholeSearchCheck } from './whole-search-check.ts';
@@ -148,7 +149,7 @@ export async function search(rawFilters: Record<string, unknown>, env: AppEnv, f
     if (data) {
       listings.push(...rows);
       sources.push({ id: source.marketplace, name: source.name, status: recent ? 'searched' : 'cached',
-        sample: data.transport !== STREETEASY_EXPORT_FORMAT && data.transport !== CITYREALTY_TRANSPORT });
+        sample: data.transport !== STREETEASY_EXPORT_FORMAT && data.transport !== CITYREALTY_TRANSPORT && data.transport !== ZUMPER_TRANSPORT });
       const coverage = data.transport === STREETEASY_EXPORT_FORMAT ? STREETEASY_EXPORT_COVERAGE :
         data.transport === STREETEASY_PUBLIC_TRANSPORT ? STREETEASY_PUBLIC_COVERAGE :
         source.id === STREETEASY_LIVE.id && data.transport === 'partner-feed' ? 'the configured StreetEasy partner feed' : source.coverage;
@@ -225,7 +226,7 @@ export async function handleApi(request: Request, env: AppEnv, { privateAuthenti
       const liveSources = [
         ...DIRECT_RENTAL_SOURCES.map(({ marketplace, id, name }) => {
           const coverage = coverageById.get(id);
-          return { id: marketplace, name, coverage, sample: coverage !== STREETEASY_EXPORT_COVERAGE && coverage !== CITYREALTY_COVERAGE };
+          return { id: marketplace, name, coverage, sample: coverage !== STREETEASY_EXPORT_COVERAGE && coverage !== CITYREALTY_COVERAGE && coverage !== ZUMPER_COVERAGE };
         }),
         { id: OPENIGLOO.id, name: OPENIGLOO.name, sample: false, coverage: coverageById.get(OPENIGLOO.id) ?? 'NYC' },
       ];

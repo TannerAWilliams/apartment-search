@@ -9,7 +9,8 @@ type Environment = AppEnv & { APARTMENTS: D1Database };
 /** sources: which complete syncs to run, in order; all of them when omitted. */
 type RefreshParameters = { delay: boolean; sources?: string[] };
 
-const NAMES: Record<string, string> = { [CITYREALTY_ID]: 'CityRealty', openigloo: 'Openigloo' };
+const NAMES: Record<string, string> = { [CITYREALTY_ID]: 'CityRealty', openigloo: 'Openigloo', 'zumper-live': 'Zumper' };
+const STEP_TIMEOUTS: Record<string, '13 minutes' | '25 minutes'> = { [CITYREALTY_ID]: '13 minutes', 'zumper-live': '25 minutes' };
 
 /** Runs the complete-inventory syncs that are too long for an API request. Named for its first source. */
 export class CityRealtySync extends WorkflowEntrypoint<Environment, RefreshParameters> {
@@ -29,7 +30,7 @@ export class CityRealtySync extends WorkflowEntrypoint<Environment, RefreshParam
     const bucket = createD1Bucket(this.env.APARTMENTS);
     for (let attempt = 0; attempt < 6; attempt++) {
       const result = await step.do(`Verify and save ${NAMES[sourceId]} inventory (attempt ${attempt + 1})`,
-        { timeout: '13 minutes', retries: { limit: 0, delay: '1 second' } },
+        { timeout: STEP_TIMEOUTS[sourceId] ?? '13 minutes', retries: { limit: 0, delay: '1 second' } },
         () => refreshSources({ ...this.env, BUCKET: bucket }, {
           sourceId, onDemand: true, forceRefresh: true,
           fetcher: (url, options) => fetch(url, { ...options, redirect: 'manual' }),

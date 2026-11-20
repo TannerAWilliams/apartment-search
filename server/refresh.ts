@@ -16,6 +16,7 @@ import { loadOpenigloo, OPENIGLOO_COVERAGE, OPENIGLOO_MAX_LISTINGS, OPENIGLOO_MI
 import { requestForRefresh, retrySchedule } from './source-requests.ts';
 import { MARKETPLACE_NAMES } from '../src/marketplaces.ts';
 import { CITYREALTY_ID, CITYREALTY_TRANSPORT } from './cityrealty.ts';
+import { ZUMPER_LIVE, ZUMPER_TRANSPORT } from './zumper.ts';
 import type { SourceDefinition } from '../src/source-status.ts';
 
 import { loadStreetEasyPublicSearch, STREETEASY_LIVE, STREETEASY_PUBLIC_COVERAGE, STREETEASY_PUBLIC_TRANSPORT } from './streeteasy.ts';
@@ -44,8 +45,10 @@ export const CITYREALTY_TIMEOUT = 12 * 60_000;
 /** A complete Openigloo sync is paced to about one request a second, roughly 20 minutes. */
 export const OPENIGLOO_TIMEOUT = 28 * 60_000;
 /** Sources whose complete sync runs in the Cloudflare Workflow rather than an API request. */
-export const WORKFLOW_SOURCE_IDS = [CITYREALTY_ID, 'openigloo'];
-const workflowTimeout = (id: string | null | undefined) => id === 'openigloo' ? OPENIGLOO_TIMEOUT : CITYREALTY_TIMEOUT;
+export const ZUMPER_TIMEOUT = 25 * 60_000;
+export const WORKFLOW_SOURCE_IDS = [CITYREALTY_ID, 'openigloo', ZUMPER_LIVE.id];
+const workflowTimeout = (id: string | null | undefined) =>
+  id === 'openigloo' ? OPENIGLOO_TIMEOUT : id === ZUMPER_LIVE.id ? ZUMPER_TIMEOUT : CITYREALTY_TIMEOUT;
 const LIVE_MAX_AGE = 2 * 60 * 60_000;
 const FEED_REQUIRED_IDS = ['bhs', 'citysnap', 'craigslist', 'rebny-rls'] as const;
 const PAGE_FETCH_TIMEOUT = 25_000;
@@ -296,8 +299,9 @@ async function refreshHousing(bucket: Bucket, checkedAt: string, fetcher: Source
 export async function saveObservedSnapshot(bucket: Bucket, key: string, result: object, listings: ListingData[], sourceId: string, at: string, customMetadata: Record<string, string> = {}) {
   const object = await bucket.get(key);
   const previous = object ? await unpack(object) : null;
-  const observed = recordListingHistory(listings, previous?.observationHistory, sourceId, at);
-  if (('partial' in result && result.partial === true) || ('limited' in result && result.limited === true && sourceId === STREETEASY_LIVE.id)) {
+  const carriesForward = ('partial' in result && result.partial === true) || ('limited' in result && result.limited === true && sourceId === STREETEASY_LIVE.id);
+  const observed = recordListingHistory(listings, previous?.observationHistory, sourceId, at, { keepUnseen: carriesForward });
+  if (carriesForward) {
     const ids = new Set(observed.listings.map(listing => listing.id));
     const retained = (previous?.listings ?? []).filter((listing: ListingData) => !ids.has(listing.id))
       .map((listing: ListingData) => ({ ...listing, kind: 'cached',
@@ -327,7 +331,8 @@ async function refreshOpenigloo(bucket: Bucket, result: RentalSnapshot, at: stri
 }
 
 async function refreshDirectRentals(bucket: Bucket, source: typeof DIRECT_RENTAL_SOURCES[number], result: RentalSnapshot, at: string, verifiedPartner = false) {
-  const verifiedCityRealty = source.id === CITYREALTY_ID && result?.transport === CITYREALTY_TRANSPORT;
+  const verifiedCityRealty = (source.id === CITYREALTY_ID && result?.transport === CITYREALTY_TRANSPORT) ||
+    (source.id === ZUMPER_LIVE.id && result?.transport === ZUMPER_TRANSPORT);
   if (source.id === CITYREALTY_ID && (!verifiedCityRealty || !Number.isSafeInteger(result.total) ||
       result.rawCount !== result.total || result.listings.length > result.rawCount!)) {
     throw new Error('CityRealty did not return a verifiable complete inventory.');
@@ -482,7 +487,7 @@ export async function refreshSources(env: AppEnv, { fetcher = fetch, now = new D
       item.transport = onDemand ? streetEasyTransport : STREETEASY_TRANSPORT;
       if (onDemand && streetEasyTransport !== STREETEASY_TRANSPORT) item.requestTransport = streetEasyTransport;
     }
-    if (id === CITYREALTY_ID && next?.transport) item.transport = next.transport;
+    if ((id === CITYREALTY_ID || id === ZUMPER_LIVE.id) && next?.transport) item.transport = next.transport;
     if (id === HDC_RERENTALS.id) item.listingCount = next?.listingCount ?? older?.listingCount;
     if (id === 'firstmover') {
       item.month = next?.month ?? older?.month ?? SNAPSHOT_MONTH;

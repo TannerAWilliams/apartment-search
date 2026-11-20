@@ -19,7 +19,7 @@
     // Concurrency 1 is set on the Workflow in the dashboard (deploy/cloudflare/README.md).
     { "binding": "CITYREALTY_SYNC", "name": "apartment-cityrealty-sync", "class_name": "CityRealtySync" }
   ],
-  "limits": { "cpu_ms": 5000 },
+  "limits": { "cpu_ms": 30000 }, // full Zumper and CityRealty pages parse within one Workflow step
   "observability": { "enabled": true }
   // Secret, set with `wrangler secret put`: APP_ACCESS_TOKEN (must equal APARTMENT_BACKEND_KEY on apartment-search-access).
 }

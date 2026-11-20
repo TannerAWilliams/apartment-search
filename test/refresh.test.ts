@@ -7,7 +7,10 @@ import { refreshSources, saveObservedSnapshot, refreshStatus, sourceRecent, stor
 import { handleApi, search } from '../server/api.ts';
 import { APARTMENTS_LIVE } from '../server/apartments-com.ts';
 import { parseStreetEasyPage, STREETEASY_LIVE } from '../server/streeteasy.ts';
-import { ZUMPER_LIVE, ZUMPER_MARKETS } from '../server/zumper.ts';
+import { ZUMPER_LIVE, ZUMPER_MARKETS, zumperPacing } from '../server/zumper.ts';
+
+// Real Zumper syncs space pages a second apart; these tests use local fakes.
+zumperPacing.intervalMs = 0;
 import { rentSeries } from '../src/rent-history.ts';
 
 const CSV = [
@@ -294,7 +297,8 @@ function zumperPage(rent: number) {
   return new Response(body, { headers: { 'Content-Type': 'text/html' } });
 }
 
-test('opening or reloading the app fetches new source data even within the same hour', async () => {
+// Zumper is a daily complete sync, so opening the app reuses it; a manual refresh fetches it again.
+test('a manual refresh fetches new source data even within the same hour', async () => {
   const env = { BUCKET: new TestBucket() };
   await refreshSources(env, { fetcher: sources(), now: at });
   let price = 2500;
@@ -309,7 +313,7 @@ test('opening or reloading the app fetches new source data even within the same 
   };
   for (const minute of [26, 27]) {
     const now = new Date('2026-11-10T00:' + minute + ':00Z');
-    const check = await refreshSources(env, { fetcher, now, onDemand: true });
+    const check = await refreshSources(env, { fetcher, now, onDemand: true, forceRefresh: true });
     assert.equal(required(check.sources.find(({ id }: { id: string }) => id === ZUMPER_LIVE.id)).checkedAt, now.toISOString());
     assert.equal(required(check.sources.find(({ id }: { id: string }) => id === 'firstmover')).status, minute === 26 ? 'updated' : 'current');
     const listings = required((await storedDirectRentals(env.BUCKET, ZUMPER_LIVE))).listings;
@@ -318,11 +322,11 @@ test('opening or reloading the app fetches new source data even within the same 
     price -= 100;
   }
   const zumper = requests.filter((url) => new URL(url).hostname === 'www.zumper.com');
-  assert.equal(zumper.length, 2 * ZUMPER_MARKETS.length * 3);
+  // The fake repeats one page, so each market stops after its second page adds nothing new.
+  assert.equal(zumper.length, 2 * ZUMPER_MARKETS.length * 2);
   assert.equal(zumper.filter((url) => new URL(url).searchParams.get('page') === '2').length, 2 * ZUMPER_MARKETS.length);
   assert.deepEqual([...new Set(zumper.map((url) => new URL(url).pathname))].sort(),
-    ZUMPER_MARKETS.flatMap(({ city, state }) => ['', '/cheap'].map((suffix) =>
-      '/apartments-for-rent/' + city.toLowerCase().replaceAll(' ', '-') + '-' + state.toLowerCase() + suffix)).sort());
+    ZUMPER_MARKETS.map(({ city, state }) => '/apartments-for-rent/' + city.toLowerCase().replaceAll(' ', '-') + '-' + state.toLowerCase()).sort());
   for (const domain of ['zillow', 'compass', 'renthop', 'realtor']) {
     assert.ok(requests.some((url) => new URL(url).hostname === `www.${domain}.com`));
   }
