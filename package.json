@@ -14,6 +14,7 @@
     "web": "bun ./node_modules/expo/bin/cli start --web",
     "dev": "bun server/main.ts",
     "serve": "bun server/main.ts",
+    "inspect:streeteasy": "bun scripts/inspect-streeteasy.ts",
     "build:web": "bun ./node_modules/expo/bin/cli export --platform web --output-dir web-build",
     "build": "bun run build:web && bun scripts/build-site.ts",
     "test": "bun test ./test/*.test.ts",

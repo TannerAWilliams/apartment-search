@@ -19,6 +19,7 @@ export type AppEnv = {
   LISTING_RELAY_URL?: string;
   LISTING_RELAY_TOKEN?: string;
   LISTING_FETCH_TRANSPORT?: string;
+  STREETEASY_SYNC_ENABLED?: string;
   STREETEASY_PUBLIC_SEARCH?: string;
   TRAVELTIME_APP_ID?: string;
   TRAVELTIME_API_KEY?: string;

@@ -11,8 +11,18 @@ export const NYC_SEARCH_AREAS = {
   'manhattan-brooklyn': { label: 'Manhattan & Brooklyn', color: '#27725a' },
   manhattan: { label: 'Manhattan', color: '#27725a' },
   brooklyn: { label: 'Brooklyn', color: '#2c6196' },
+  queens: { label: 'Queens', color: '#8a5a12' },
+  bronx: { label: 'The Bronx', color: '#7b3f8c' },
+  'staten-island': { label: 'Staten Island', color: '#2f7480' },
 };
 export const NYC_SEARCH_DEFAULT = 'manhattan-brooklyn';
+/** Borough keys, as returned by searchBorough. */
+export const NYC_BOROUGHS = ['manhattan', 'brooklyn', 'queens', 'bronx', 'staten-island'] as const;
+export type NycBorough = typeof NYC_BOROUGHS[number];
+/** Areas inside a broader region, searched by county or ZIP prefix. */
+export const SUB_REGIONS: Record<string, { parent: string; state: string; counties: string[]; zipPrefixes: number[] }> = {
+  westchester: { parent: 'metroNorth', state: 'NY', counties: ['westchester'], zipPrefixes: [105, 106, 107, 108] },
+};
 
 export const REGIONS = {
   ...NYC_SEARCH_AREAS,
@@ -21,6 +31,7 @@ export const REGIONS = {
   nj: { label: 'New Jersey', center: [40.70, -74.44, 58], color: '#a4482b' },
   li: { label: 'Long Island', center: [40.87, -72.90, 65], color: '#2c6196' },
   metroNorth: { label: 'Metro-North NY', center: [41.30, -73.91, 56], color: '#68519a' },
+  westchester: { label: 'Westchester County', center: [41.12, -73.78, 28], color: '#5a4a8f' },
   ct: { label: 'Connecticut', center: [41.23, -73.27, 51], color: '#815e16' },
   pa: { label: 'Eastern Pennsylvania', center: [40.62, -75.33, 52], color: '#7a415e' },
 };
@@ -66,30 +77,66 @@ export const MARKETS = [
   ['Philadelphia', 'Philadelphia', 'PA', '19103', 'pa'],
 ].map(([label, city, state, zip, region]) => ({ label, city, state, zip, region }));
 
-export const NYC_SEARCH_MARKETS = MARKETS.filter(({ label }) => label === 'Manhattan' || label === 'Brooklyn');
+export const NYC_SEARCH_MARKETS = MARKETS.filter(({ region, label }) => region === 'nyc' && label !== 'New York City');
 
-export function searchBorough({ state, county = '', zip = '', city = '' }: Location) {
+/** The region a search area belongs to: a borough's is nyc, Westchester's is metroNorth. */
+export function parentRegion(region: string) {
+  return Object.hasOwn(NYC_SEARCH_AREAS, region) ? 'nyc' : SUB_REGIONS[region]?.parent ?? region;
+}
+
+/** Borough key for a market or city name such as "The Bronx" or "Staten Island". */
+export function boroughKey(city: string): NycBorough | null {
+  const key = city.trim().toLowerCase().replace(/^the /, '').replace(/\s+/g, '-');
+  return (NYC_BOROUGHS as readonly string[]).includes(key) ? key as NycBorough : null;
+}
+
+/** Display name for a borough market ("Bronx" becomes "The Bronx"); other cities are unchanged. */
+export function boroughLabel(city: string) {
+  const key = boroughKey(city);
+  return key ? NYC_SEARCH_AREAS[key].label : city;
+}
+
+function inSubRegion(listing: Location, region: string) {
+  const area = SUB_REGIONS[region];
+  if (!area || listing.state !== area.state) return false;
+  const county = (listing.county ?? '').toLowerCase().trim().replace(/ county$/, '');
+  if (county) return area.counties.includes(county);
+  return /^\d{5}$/.test(listing.zip ?? '') && area.zipPrefixes.includes(Number(listing.zip!.slice(0, 3)));
+}
+
+const COUNTY_BOROUGHS: Record<string, NycBorough> = {
+  'new york': 'manhattan', kings: 'brooklyn', queens: 'queens', bronx: 'bronx', richmond: 'staten-island',
+};
+const ZIP_BOROUGHS: Record<string, NycBorough> = {
+  100: 'manhattan', 101: 'manhattan', 102: 'manhattan', 103: 'staten-island', 104: 'bronx',
+  111: 'queens', 112: 'brooklyn', 113: 'queens', 114: 'queens', 116: 'queens',
+};
+
+/** The NYC borough of a New York location, from its county, else its ZIP code, else its city. */
+export function searchBorough({ state, county = '', zip = '', city = '' }: Location): NycBorough | null {
   if (state !== 'NY') return null;
   const normalizedCounty = county.toLowerCase().trim().replace(/ county$/, '');
-  if (normalizedCounty) return normalizedCounty === 'new york' ? 'manhattan' : normalizedCounty === 'kings' ? 'brooklyn' : null;
-  if (/^(100|101|102)\d{2}$/.test(zip)) return 'manhattan';
-  if (/^112\d{2}$/.test(zip)) return 'brooklyn';
-  const borough = city.trim().toLowerCase();
-  return !/^\d{5}$/.test(zip) && (borough === 'manhattan' || borough === 'brooklyn') ? borough : null;
+  if (normalizedCounty) return COUNTY_BOROUGHS[normalizedCounty] ?? null;
+  if (/^1100[45]$/.test(zip)) return 'queens';
+  if (/^\d{5}$/.test(zip)) return ZIP_BOROUGHS[zip.slice(0, 3)] ?? null;
+  return boroughKey(city);
 }
 
 export function matchesRegion(listing: Location, region: string, broader?: string) {
   if (region === 'all') return true;
+  if (Object.hasOwn(SUB_REGIONS, region)) return inSubRegion(listing, region);
   if (!Object.hasOwn(NYC_SEARCH_AREAS, region)) return region === (broader ?? regionOf(listing));
   const borough = searchBorough(listing);
-  return borough !== null && (region === NYC_SEARCH_DEFAULT || region === borough);
+  return borough !== null && (region === NYC_SEARCH_DEFAULT ? borough === 'manhattan' || borough === 'brooklyn' : region === borough);
 }
 
 export function marketsForSearch(filters: { region: string; zip?: string }) {
   if (filters.region === 'all') return MARKETS;
+  if (Object.hasOwn(SUB_REGIONS, filters.region)) return MARKETS.filter((market) => inSubRegion(market, filters.region));
   if (!Object.hasOwn(NYC_SEARCH_AREAS, filters.region)) return MARKETS.filter(({ region }) => region === filters.region);
   const borough = filters.region === NYC_SEARCH_DEFAULT ? searchBorough({ state: 'NY', zip: filters.zip }) : filters.region;
-  return borough ? NYC_SEARCH_MARKETS.filter(({ label }) => label.toLowerCase() === borough) : NYC_SEARCH_MARKETS;
+  const defaults = NYC_SEARCH_MARKETS.filter(({ label }) => label === 'Manhattan' || label === 'Brooklyn');
+  return borough ? NYC_SEARCH_MARKETS.filter(({ label }) => boroughKey(label) === borough) : defaults;
 }
 
 const COUNTIES: Record<string, Record<string, string[]>> = {

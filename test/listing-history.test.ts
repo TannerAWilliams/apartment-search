@@ -16,20 +16,25 @@ test('records only successful observations and price/basis changes, with first/l
   assert.equal(fees.listings[0].priceHistory.observations.length, 3);
   assert.equal(first.listings[0].priceHistory.lastObservedAt, at(1));
 });
-test('missing units retain history without claiming delisted, rented, or available', () => {
+test('only current listings keep price history; a partial observation carries earlier ones forward', () => {
   const first = recordListingHistory([unit()], undefined, 'feed', at(1));
-  const missing = recordListingHistory([], first.observationHistory, 'feed', at(2));
-  assert.equal(missing.listings.length, 0);
-  assert.deepEqual(missing.observationHistory.entries, first.observationHistory.entries);
-  const back = recordListingHistory([unit(2100)], missing.observationHistory, 'feed', at(3));
+  const carried = recordListingHistory([], first.observationHistory, 'feed', at(2), { keepUnseen: true });
+  assert.deepEqual(carried.observationHistory.entries, first.observationHistory.entries);
+  const back = recordListingHistory([unit(2100)], carried.observationHistory, 'feed', at(3));
   assert.equal(back.listings[0].priceHistory.observations.length, 2);
   assert.equal('status' in back.listings[0].priceHistory, false);
+  const missing = recordListingHistory([], back.observationHistory, 'feed', at(4));
+  assert.equal(missing.listings.length, 0);
+  assert.deepEqual(missing.observationHistory.entries, [], 'a listing gone from a complete observation keeps no history');
+  const relisted = recordListingHistory([unit(2200)], missing.observationHistory, 'feed', at(5));
+  assert.equal(relisted.listings[0].priceHistory.observations.length, 1);
+  assert.equal(relisted.listings[0].priceHistory.firstObservedAt, at(5));
 });
 test('source and unit identity stay isolated; feed-supplied history is discarded', () => {
   const first = recordListingHistory([unit()], undefined, 'feed', at(1));
   const other = recordListingHistory([{ ...unit(), unit: '3', priceHistory: { forged: true } }], first.observationHistory, 'feed', at(2));
   assert.equal(other.listings[0].priceHistory.firstObservedAt, at(2));
-  assert.equal(other.observationHistory.entries.length, 2);
+  assert.equal(other.observationHistory.entries.length, 1, 'the unit no longer listed keeps no history');
   assert.throws(() => recordListingHistory([unit()], first.observationHistory, 'other', at(3)));
   const unknown = recordListingHistory([{ ...unit(NaN), priceHistory: { forged: true } }], undefined, 'feed', at(1));
   assert.equal('priceHistory' in unknown.listings[0], false);

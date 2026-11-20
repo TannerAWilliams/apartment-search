@@ -1,5 +1,5 @@
 export type SourceStatus = { id: string; name?: string; marketplace?: string; status?: string; checkedAt?: string; updatedAt?: string; retryAt?: string; error?: string; listingCount?: number; total?: number; pages?: number; sampleLimit?: number; partial?: boolean; requestedPages?: number; failedPages?: number };
-export type SourceDefinition = { id: string; name: string; marketplace?: string; coverage?: string; resyncable: boolean };
+export type SourceDefinition = { id: string; name: string; marketplace?: string; coverage?: string; resyncable: boolean; paused?: boolean };
 export function sourceRows(catalog: SourceDefinition[], statuses: SourceStatus[], browseNames: Record<string, string>, now = Date.now()) {
   const definitions = new Map(catalog.map((source) => [source.id, source]));
   const represented = new Set(catalog.map((source) => source.marketplace ?? source.id.replace(/-live$/, '')));
@@ -9,7 +9,7 @@ export function sourceRows(catalog: SourceDefinition[], statuses: SourceStatus[]
     const status = statuses.find((item) => item.id === definition.id);
     const coolingDown = Date.parse(status?.retryAt ?? '') > now;
     return { ...definition, status, coolingDown,
-      state: !definition.resyncable ? 'Not connected' : status?.status === 'failed' ? 'Last attempt failed' : status?.updatedAt ? 'Saved data available' : 'Not fetched yet' };
+      state: definition.paused ? 'Sync paused' : !definition.resyncable ? 'Not connected' : status?.status === 'failed' ? 'Last attempt failed' : status?.updatedAt ? 'Saved data available' : 'Not fetched yet' };
   }).sort((a, b) => Number(b.resyncable) - Number(a.resyncable) || a.name.localeCompare(b.name));
 }
 

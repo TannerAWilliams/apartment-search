@@ -11,22 +11,26 @@ Compare rentals by asking rent and weekday-morning transit or driving time to yo
 | StreetEasy | The StreetEasy v6 sync requests all active rentals without an area filter on explicit request. It partitions searches into bounded price ranges to stay within the observed 1,000-result search window, deduplicates overlapping gross/discounted-rent matches, and requires counts to reconcile before replacing inventory. It stops after 160 requests or 20,000 reported listings. Sync status shows the number received and the reported inventory. The separate [FirstMover Open Data](https://www.firstmovernyc.com/open-data) monthly snapshot supplies the rent charts and dated listings. |
 | Apartments.com | Individually identified, available units with exact asking rents from the first two public search pages for one- and two-bedroom rentals in each borough. Building-wide price ranges are excluded. |
 | HotPads | A bounded exact-unit sample from NYC, Jersey City and Stamford. Building summaries and rent ranges are excluded. |
-| Openigloo | A bounded live sample from its published NYC search interface. The app requests up to ten results per borough and bedroom count (one and two bedrooms), without a rent cap. |
+| Openigloo | All active NYC rentals from its published search interface (about 5,800 in November 2026). The search returns at most ten results, so the daily sync splits each borough and bedroom count by rent, and by neighborhood where listings share a price, pacing requests a second apart. It saves only when at least 98% of the reported inventory is usable. On Cloudflare it runs in the sync Workflow after CityRealty. |
 | Zillow, Compass, RentHop, and Realtor.com | Connected public search adapters. Refresh now attempts their documented regional samples; they are no longer disabled as feed-only sources. Provider errors remain visible in Sources. |
 | Apartment List | Identified NYC units marked available now on its first public search page. Community starting prices and future availability are excluded. |
 | Redfin | Active, individually identified units from its public NYC search results. Community prices and rent ranges are excluded. |
-| Trulia | The first two pages of each Manhattan and Brooklyn one- and two-bedroom search, without a rent cap. |
-| Zumper | Individual apartments with exact prices from the first two public search pages and the first low-price sort page in each borough. |
-| AffordableHousing.com | Apartments marked available now from the first two pages in Manhattan and Brooklyn. The importer uses the free U.S. Census batch geocoder when coordinates are available by exact address. |
+| Trulia | The first two pages of each one- and two-bedroom search in the five NYC boroughs, Jersey City, Hoboken, Newark, Hempstead, Huntington, Yonkers, White Plains, New Rochelle, Stamford, Norwalk and Greenwich, without a rent cap. |
+| Zumper | Every individually priced apartment on Zumper's search pages in the five NYC boroughs, Jersey City, Hoboken, Newark, Hempstead, Huntington, Yonkers, White Plains, New Rochelle, Stamford, Norwalk and Greenwich. The daily sync pages through each market until Zumper reports no more results, a second per page. Buildings shown as one entry with a price range are counted but not saved, because Zumper's pages list their floorplans rather than units. On Cloudflare it runs in the sync Workflow. |
+| AffordableHousing.com | Apartments marked available now from the first two pages in each of the five NYC boroughs. The importer uses the free U.S. Census batch geocoder when coordinates are available by exact address. |
 | Rent.com, Apartment Guide, Craigslist, Facebook Marketplace, Linecity, and Settled.nyc | Browse links until a working data connection is established. These are not counted as successful listing feeds. |
 | NYC Housing Connect | [NYC Open Data](https://data.cityofnewyork.us/d/vy5i-a666) advertised rental lotteries. The Affordable tab shows application dates, building addresses, and bedroom counts. |
 | Authorized no-cost partner feed | Optional. Configure a feed only when you have permission to use and display it at no API cost. The bundled public sources require no feed credentials. |
 
 **Listing websites** shows direct source and saved links for a unit, followed by separate address searches. An address search can surface multiple units in a building. Matching known units uses the normalized street, ZIP, state, and unit number. A shared building address alone does not merge apartments. The **Available rentals** view and map show only apartments reported active in a recently checked source. The **Listing company** filter and company coverage cards use the advertiser field from the dated snapshot, including Compass, SERHANT., Corcoran, Douglas Elliman, Brown Harris Stevens, and other NYC brokerages and managers. Company-site links are separate from the original ad URL supplied by each source. Save or add Manhattan and Brooklyn listings separately. The saved list stays on the current device.
 
-Snapshot prices are from when the rentals first appeared in the month. Check the original website or another exact-unit link for current availability or price. Map popups list the known exact-unit links. Separate address searches open Google results for the named site. Use More → Rental platforms to browse Manhattan and Brooklyn. Transit and driving directions open in Google Maps. Edit the workplace to use a different preset, coordinates, or a full street address. The default workplace is Rockefeller Center.
+Snapshot prices are from when the rentals first appeared in the month. Check the original website or another exact-unit link for current availability or price. Map popups list the known exact-unit links. Separate address searches open Google results for the named site. Use More → Rental platforms to browse each area. Transit and driving directions open in Google Maps. Edit the workplace to use a different preset, coordinates, or a full street address. The default workplace is Rockefeller Center.
 
 Results default to **Lowest rent** among available rentals. **Lowest rent**, **Fastest transit**, and **Fastest drive** sort all matching rentals before limiting the displayed list. Use **Import CSV** to add up to 500 collected listings per file to this device’s Saved list. The header is `url,address,unit,city,state,zip,bedrooms,rent` with optional `county,neighborhood,latitude,longitude` columns. Use studio = 0, five-digit ZIPs, and plain numeric rents. Coordinates are optional and support map placement when provided.
+
+## Search areas
+
+Search all regions, New York City, or one borough (Manhattan, Brooklyn, Queens, the Bronx or Staten Island), or Manhattan & Brooklyn together. Outside the city: New Jersey, Long Island, Westchester County, the wider Metro-North region (Westchester, Rockland, Putnam, Dutchess and Orange counties), Connecticut and eastern Pennsylvania. Boroughs and Westchester are matched by county, or by ZIP code when a source gives no county. How many listings an area shows depends on which sources cover it: see the table above.
 
 ## Commute estimates
 
@@ -86,6 +90,10 @@ Set `FREE_PARTNER_FEEDS_JSON` in the server environment to an array of approved 
 
 Each row supplies an ID, `status: "Active"`, `addressLine1`, a unit if known, `city`, `state`, `county`, `zipCode`, `bedrooms` (studio = 0), and monthly `price`. Include numeric `latitude` and `longitude`, `neighborhood`, `updatedAt`, and an HTTPS `listingUrl` for the original listing. Only source URLs supplied by the feed are presented as direct links. Page counts describe the supplied feed, whose coverage may be smaller than the source website's inventory. On hosted deployments, a configured feed with `id: "streeteasy"` powers the existing StreetEasy check on page open and the StreetEasy resync button. It requires a reconciled `total` and original StreetEasy listing links. The partner feed follows the same daily refresh interval. An incomplete refresh preserves the last saved inventory.
 
+CityRealty Resync reads every page of the public rental search and verifies active listings and their addresses against the detail pages. The app keeps its saved inventory if a run cannot confirm completeness. CityRealty (`cityrealty`), Brown Harris Stevens (`bhs`), CitySnap (`citysnap`), Craigslist (`craigslist`), and the companies in the NYC directory can also use this contract with an authorized feed. Sources awaiting a feed still have browse links and connection status.
+
+For an approved REBNY RLS or other compatible RESO Web API feed, use `format: "reso-web-api"` with the authorized HTTPS Property endpoint and its bearer token. For REBNY, use `id: "rebny-rls"`. The adapter reads OData `value`, `@odata.nextLink`, and optional `@odata.count` and imports active residential leases that allow listing and address display. Ask the provider for an active-rental query and a feed scoped to your licensed market so the snapshot fits the pagination limit. If the provider supplies its `ListingURL` field, the original link appears on the listing. CitySnap and CityRealty draw on REBNY data, so adding an RLS feed provides a distinct source named REBNY RLS.
+
 ## Verify
 
 ```sh
@@ -116,6 +124,8 @@ spoofed headers, or a successful first page do not establish complete coverage.
 
 Set `STREETEASY_PUBLIC_SEARCH=true` to check the first page of the public NYC and New Jersey rental search when no StreetEasy partner feed is configured. This checks one page with ordinary HTTP and serves only supported rows marked active. The source shows the page count and provider-reported total separately, and keeps older observations as cached if they were not confirmed in the sample. An error or access denial is surfaced normally.
 
+Set `STREETEASY_SYNC_ENABLED=false` to pause StreetEasy listing refreshes. Saved records and historical charts remain available.
+
 ### Complete StreetEasy export
 
 If a provider gives you a current, authorized export of the entire active StreetEasy inventory, add one entry to `FREE_PARTNER_FEEDS_JSON`:
@@ -130,22 +140,40 @@ The response must be one JSON object with `schema: "streeteasy-complete-export-v
 
 This is the app's input contract for an authorized provider. Matching the count verifies delivery of the declared snapshot. Confirm the provider's actual coverage and display permission when setting up the connection.
 
-### External StreetEasy recovery runner
+### Daily StreetEasy sync from your own computer
 
-The owner-only Site serves `/_streeteasy-sync.mjs`. On an authorized Bun 1.4.4
-host with StreetEasy access, this runner downloads complete partitioned inventory
-and submits it through the authenticated import endpoint, then verifies saved
-counts. Pass a current owner service credential through stdin, not a command
-argument or a committed file. Use the host's approved secret delivery mechanism.
+Cloud hosts, including the Cloudflare Worker, get HTTP 403 from StreetEasy. The sync
+therefore runs on a computer you own and uploads the result to the Worker, which saves it
+in D1. The runner downloads the complete partitioned inventory with ordinary requests,
+requires the received count to reconcile with StreetEasy's reported total, uploads it
+through the authenticated `/api/refresh` import, and then confirms the saved count.
 
-Pass `--manual` to fetch on demand even when saved data is less than a day old. This mode updates only StreetEasy. No daily automation is needed or installed. The browser button calls the hosted Worker, which can use the configured authenticated Render relay described below. Without that relay, StreetEasy may reject the Worker with HTTP 403. Failed refreshes preserve stored listings. The runner respects retry times, retries inventory
-movement once, and does not solve CAPTCHAs or bypass authentication. Non-manual recovery
-affects only missing, failed, or day-old StreetEasy inventory; stale or incomplete receipts are rejected.
-The runner requires an accessible external host and credential delivery for each manual invocation. Publishing this file does **not** connect that host to the browser button. No daily schedule is configured.
+One-time setup on a Mac or Linux computer that is usually on (Bun 1.4.4 required):
+
+```sh
+git clone https://github.com/TannerAWilliams/apartment-search.git && cd apartment-search
+scripts/install-streeteasy-schedule.sh --origin=https://apartment-search.<subdomain>.workers.dev
+```
+
+Use the `apartment-search` Worker's own URL, not `apartments.5thof6.com`: that hostname
+requires an interactive Cloudflare Access sign-in. The installer asks for the Worker's
+`APP_ACCESS_TOKEN` and stores it in the macOS Keychain (or `~/.config/apartment-search/token`
+with mode 600 on Linux). It runs daily at 6:17 local time (`SYNC_HOUR`/`SYNC_MINUTE` change
+this); on a Mac, a run missed while asleep happens at wake. Logs go to
+`~/Library/Logs/apartment-search-streeteasy.log` or `~/.config/apartment-search/streeteasy.log`.
+Run once immediately with `scripts/streeteasy-daily.sh` (add `--manual` to fetch even when
+saved data is under a day old). Remove it with `scripts/install-streeteasy-schedule.sh --uninstall`.
+
+Failures leave saved listings unchanged. The runner skips work when saved StreetEasy data is
+under a day old, respects the source retry time, retries inventory movement once, and refuses
+an upload above the Worker's 2 MiB request limit instead of sending a truncated one. The
+StreetEasy import was about 1.9 MB in November 2026, so a much larger inventory will need a
+larger Worker limit. If StreetEasy starts refusing your home connection too, the run fails
+with that HTTP status in the log.
 
 ### Sources and manual refresh
 
-More → Sources & sync lists connected feeds and browse-only websites separately. It shows each source's last fetch attempt, last successful saved data, counts, coverage and failure. Individual resync targets only that source; Resync all connected providers respects source retry limits. Browse-only websites have disabled resync controls until a feed is configured. No automatic daily schedule is installed.
+More → Sources & sync lists connected feeds and browse-only websites separately. It shows each source's last fetch attempt, last successful saved data, counts, coverage and failure. Individual resync targets only that source; Resync all connected providers respects source retry limits. Browse-only websites have disabled resync controls until a feed is configured. The only scheduled job is the optional StreetEasy sync above, installed on your own computer.
 
 Trulia and Zumper now include bounded Jersey City and Stamford samples alongside Manhattan and Brooklyn. These are explicitly samples, not exhaustive NY/NJ/CT coverage.
 
@@ -247,9 +275,9 @@ Saved apartments now include explicit-save notes and viewing status in Details. 
 #### Observed listing price history
 Successful manual refreshes of direct rentals, Openigloo samples, and configured feeds now record source-specific price observations in the **same stored snapshot** as the inventory. Failed validation, provider failures, or failed snapshot writes do not replace either inventory or history. This begins with future successful refreshes; it is not retroactive market data. The history tracks first/last observed checks and price or fee-basis changes. Missing units remain unknown, never automatically marked rented or delisted, because sources can be incomplete. There are no automatic notifications or scheduled fetches.
 
-Retention is bounded to the 24 most recent price changes per source/unit identity and 20,000 most recently observed identities per source; truncation is labeled in stored data. Units absent from a later sample retain their observation records until retention evicts them. Listing Details displays the recorded observation timeline, first/last checks, fee basis, and retention warning. Listings without valid recorded history show an explicit empty state. It survives restarts only with durable storage configured; the default temporary bucket does not provide durability. Existing snapshots without history start clean. Historical snapshot feeds (FirstMover) and affordable-housing opportunities are not mixed into these observed asking-price histories.
+Retention is bounded to the 24 most recent price changes per source/unit identity and 20,000 most recently observed identities per source; truncation is labeled in stored data. Only listings in the latest sync keep their history: a unit missing from a complete sync loses its records, and starts a new history if it is listed again. A partial sync, which carries earlier listings forward, keeps theirs. No history of past listings is stored. Listing Details displays the recorded observation timeline, first/last checks, fee basis, and retention warning. Listings without valid recorded history show an explicit empty state. It survives restarts only with durable storage configured; the default temporary bucket does not provide durability. Existing snapshots without history start clean. Historical snapshot feeds (FirstMover) and affordable-housing opportunities are not mixed into these observed asking-price histories.
 
-Source snapshots use etag compare-and-swap: an overlapping refresh whose source object changed cannot overwrite the winning inventory/history, even after the global refresh lease expires. Older observation timestamps are rejected, including empty snapshots. Duplicate source/unit observations are rejected rather than recording contradictory same-check prices. The 20,000-unit retention bound applies to the archived history map; current inventory still includes each current listing's bounded history. This is conservative observation tracking, not an authoritative listing-availability ledger.
+Source snapshots use etag compare-and-swap: an overlapping refresh whose source object changed cannot overwrite the winning inventory/history, even after the global refresh lease expires. Older observation timestamps are rejected, including empty snapshots. Duplicate source/unit observations are rejected rather than recording contradictory same-check prices. The 20,000-unit bound applies per source; each current listing carries its own bounded history. This is conservative observation tracking, not an authoritative listing-availability ledger.
 
 #### Optional structured discovery facts
 Configured feeds can supply `bathrooms` (positive half-step count through 20), `squareFeet` (positive through 100,000), `petsAllowed` (strict boolean), and `laundry` (`in_unit`, `in_building`, or `none`). Missing or invalid values remain unknown, not false or zero. No amenities are inferred from descriptions, addresses, or photos. Listing Details shows reported facts and unknown labels; Filters can require minimum bathrooms/area, explicitly allowed pets, and a reported laundry category. All selected requirements must match, excluding units with unknown required facts. Restrictions and measurement accuracy still need landlord verification. This does not imply existing providers supply these fields; many current results will remain unknown. Photo collection/display is not added because there is no established licensed media input. Existing source links remain the way to inspect provider photos.
@@ -338,6 +366,8 @@ The building panel calls `/api/building-report` automatically when listing Detai
 The matched HPD **building ID**, not BIN or BBL, joins open Housing Maintenance Code violations and unique complaint IDs in the Complaints and Problems dataset. Complaints are grouped by ID so several problem rows do not multiply a complaint. The window is 365 NYC calendar days including today, ending at the check time; both open and closed reports count. Above 1,000 distinct complaints, or if either source fails validation, that count is unknown, not zero. A partial report retains only successful counts. Each lookup has one 25-second abort deadline, a 256-KiB response cap per source and fixed hosts/queries; redirects are rejected. No retries, background refresh or paid provider is introduced.
 
 The UI displays retrieval time, exact matched building identity, separate counts, unknown/error states and explicit limitations. Retrieval time is **not** the agency's update time; official datasets can lag current conditions. Counts are building-wide, not apartment-specific. Automatic supplemental DOB, bedbug and preliminary flood summaries are described below. Official links remain for fuller records and context. Neither zero counts nor an exact record match proves safety or habitability.
+
+The HPD borough-block-lot match also supports three separate checks. NYC 311 service requests are counted by tax lot for the last 365 NYC calendar days and summarized by their most common problem categories. Housing requests can also appear in HPD records. The City Planning PLUTO dataset reports the tax lot's listed owner and data edition. The official deeds link helps verify title, including when the listed owner is a company or the tax lot contains multiple units. The NYS HCR dashboard reports registered buildings by BBL and ZIP. The report shows the latest registration year and the reported unit count when one record matches. A registration or missing match leaves a specific apartment's stabilization status unverified. The HCR tenant portal accepts requests for a specific apartment's rent history. DOB summaries include complaints and DOB NOW permit issuances alongside BIS, Safety, and ECB records.
 
 Source verification: [HPD Open Data](https://www.nyc.gov/site/hpd/about/open-data.page) links datasets `kj4p-ruqc` (buildings), `wvxf-dwi5` (violations) and `ygpa-z7cr` (complaints/problems). Their official `/api/views/{id}/columns.json` schemas were read on 2026-11-17. HPD documents filtering Violation Status to Open. A separate read-only live check selected one public active Brooklyn building and successfully matched its identity and retrieved both counts; this is a single-source-path check, not a market-wide or hosted-production validation. Automated tests use injected synthetic responses and never query real providers.
 

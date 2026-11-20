@@ -7,7 +7,10 @@ import { refreshSources, saveObservedSnapshot, refreshStatus, sourceRecent, stor
 import { handleApi, search } from '../server/api.ts';
 import { APARTMENTS_LIVE } from '../server/apartments-com.ts';
 import { parseStreetEasyPage, STREETEASY_LIVE } from '../server/streeteasy.ts';
-import { ZUMPER_LIVE } from '../server/zumper.ts';
+import { ZUMPER_LIVE, ZUMPER_MARKETS, zumperPacing } from '../server/zumper.ts';
+
+// Real Zumper syncs space pages a second apart; these tests use local fakes.
+zumperPacing.intervalMs = 0;
 import { rentSeries } from '../src/rent-history.ts';
 
 const CSV = [
@@ -237,43 +240,16 @@ test('the private writer imports a completed public check without publisher acce
   assert.equal((await storedMarket(env.BUCKET)).listings.length, 2);
 });
 
-test('the Openigloo connector uses its published limit and preserves only exact source links', async () => {
-  const { loadOpenigloo } = await import('../server/openigloo.ts');
-  const areas: string[] = [];
-  const checked = await loadOpenigloo(async (url: string, options: RequestInit = {}) => {
-    if (url.includes('addressbatch')) return new Response('"openigloo:sample",address,Match,Exact,normalized,"-73.99,40.67"\n');
-    const message = JSON.parse(String(options.body));
-    if (message.method === 'notifications/initialized') return new Response(null, { status: 202 });
-    if (message.method === 'initialize') return Response.json({ id: message.id, result: { protocolVersion: '2025-11-25' } });
-    assert.equal(message.params.arguments.limit, 10);
-    assert.equal(Object.hasOwn(message.params.arguments, 'max_rent'), false);
-    areas.push(message.params.arguments.area + ':' + message.params.arguments.bedrooms.join(','));
-    return Response.json({ id: message.id, result: { structuredContent: { total_matches: 30, apartments: [
-      { id: 'sample', address: '28 Example Street #2, Brooklyn, NY 11215', borough: 'Brooklyn',
-        status: 'for_rent', bedrooms: 1, rent_per_month: 6100,
-        url: 'https://www.openigloo.com/unit/nyc/sample' },
-      { id: 'bad', address: '28 Example Street #3, Brooklyn, NY 11215', borough: 'Brooklyn',
-        status: 'for_rent', bedrooms: 1, rent_per_month: 2000, url: 'https://unrelated.test/ads' },
-    ] } } });
-  }, at);
-  assert.equal(checked.listings.length, 1);
-  assert.deepEqual(areas.sort(), ['Brooklyn:1', 'Brooklyn:2', 'Manhattan:1', 'Manhattan:2']);
-  assert.equal(checked.sampleLimit, 40);
-  assert.equal(checked.listings[0].rent, 6100);
-  assert.equal(checked.listings[0].unit, '2');
-  assert.equal(checked.listings[0].latitude, 40.67);
-  assert.equal(checked.listings[0].sources[0].id, 'openigloo');
-});
-
-test('Trulia collects bounded one- and two-bedroom searches across NY, NJ and CT', async () => {
-  const { TRULIA_LIVE } = await import('../server/trulia.ts');
+test('Trulia collects bounded one- and two-bedroom searches across NYC, NJ, Long Island, Westchester and CT', async () => {
+  const { TRULIA_LIVE, TRULIA_MARKETS } = await import('../server/trulia.ts');
+  const zips: Record<string, string> = { Manhattan: '10019', Brooklyn: '11215', Queens: '11101', Bronx: '10451', 'Staten Island': '10301' };
   const urls: string[] = [];
   const result = await TRULIA_LIVE.load(async (url: string) => {
     urls.push(url);
-    const [rawCity, state, beds] = required(new URL(url).pathname.match(/(Manhattan|Brooklyn|Jersey_City|Stamford),(NY|NJ|CT)\/(\d)_beds\//)).slice(1);
+    const [rawCity, state, beds] = required(new URL(url).pathname.match(/for_rent\/([A-Za-z_]+),(NY|NJ|CT)\/(\d)_beds\//)).slice(1);
     const city = rawCity.replaceAll('_', ' ');
     const id = urls.length;
-    const zipCode = { Manhattan: '10019', Brooklyn: '11215', 'Jersey City': '07302', Stamford: '06901' }[city];
+    const zipCode = zips[city] ?? { NJ: '07302', CT: '06901', NY: '10701' }[state];
     const row = {
       url: `/home/example-unit-${id}`,
       metadata: { unifiedListingType: 'RENTAL_SINGLE_UNIT' },
@@ -285,13 +261,13 @@ test('Trulia collects bounded one- and two-bedroom searches across NY, NJ and CT
     return new Response('<script id="__NEXT_DATA__">' + JSON.stringify({ props: { searchData: { homes: [row] } } }) + '</script>',
       { headers: { 'Content-Type': 'text/html' } });
   }, at);
-  assert.equal(urls.length, 16);
-  assert.equal(urls.filter((url) => url.endsWith('/2_p/')).length, 8);
+  assert.equal(urls.length, TRULIA_MARKETS.length * 4);
+  assert.equal(urls.filter((url) => url.endsWith('/2_p/')).length, TRULIA_MARKETS.length * 2);
   assert.ok(urls.every((url) => !url.includes('_price')));
-  assert.equal(result.listings.length, 16);
+  assert.equal(result.listings.length, TRULIA_MARKETS.length * 4);
   assert.ok(result.listings.every(({ rent }) => rent === 7250));
   assert.deepEqual([...new Set(result.listings.map(({ city, bedrooms }) => city + ':' + bedrooms))].sort(),
-    ['Brooklyn:1', 'Brooklyn:2', 'Jersey City:1', 'Jersey City:2', 'Manhattan:1', 'Manhattan:2', 'Stamford:1', 'Stamford:2']);
+    TRULIA_MARKETS.flatMap(({ city }) => [1, 2].map((beds) => (city === 'Bronx' ? 'The Bronx' : city) + ':' + beds)).sort());
 });
 
 const publicRental = {
@@ -321,7 +297,8 @@ function zumperPage(rent: number) {
   return new Response(body, { headers: { 'Content-Type': 'text/html' } });
 }
 
-test('opening or reloading the app fetches new source data even within the same hour', async () => {
+// Zumper is a daily complete sync, so opening the app reuses it; a manual refresh fetches it again.
+test('a manual refresh fetches new source data even within the same hour', async () => {
   const env = { BUCKET: new TestBucket() };
   await refreshSources(env, { fetcher: sources(), now: at });
   let price = 2500;
@@ -336,7 +313,7 @@ test('opening or reloading the app fetches new source data even within the same 
   };
   for (const minute of [26, 27]) {
     const now = new Date('2026-11-10T00:' + minute + ':00Z');
-    const check = await refreshSources(env, { fetcher, now, onDemand: true });
+    const check = await refreshSources(env, { fetcher, now, onDemand: true, forceRefresh: true });
     assert.equal(required(check.sources.find(({ id }: { id: string }) => id === ZUMPER_LIVE.id)).checkedAt, now.toISOString());
     assert.equal(required(check.sources.find(({ id }: { id: string }) => id === 'firstmover')).status, minute === 26 ? 'updated' : 'current');
     const listings = required((await storedDirectRentals(env.BUCKET, ZUMPER_LIVE))).listings;
@@ -345,13 +322,11 @@ test('opening or reloading the app fetches new source data even within the same 
     price -= 100;
   }
   const zumper = requests.filter((url) => new URL(url).hostname === 'www.zumper.com');
-  assert.equal(zumper.length, 24);
-  assert.equal(zumper.filter((url) => new URL(url).searchParams.get('page') === '2').length, 8);
+  // The fake repeats one page, so each market stops after its second page adds nothing new.
+  assert.equal(zumper.length, 2 * ZUMPER_MARKETS.length * 2);
+  assert.equal(zumper.filter((url) => new URL(url).searchParams.get('page') === '2').length, 2 * ZUMPER_MARKETS.length);
   assert.deepEqual([...new Set(zumper.map((url) => new URL(url).pathname))].sort(),
-    ['/apartments-for-rent/brooklyn-ny', '/apartments-for-rent/brooklyn-ny/cheap',
-      '/apartments-for-rent/jersey-city-nj', '/apartments-for-rent/jersey-city-nj/cheap',
-      '/apartments-for-rent/manhattan-ny', '/apartments-for-rent/manhattan-ny/cheap',
-      '/apartments-for-rent/stamford-ct', '/apartments-for-rent/stamford-ct/cheap']);
+    ZUMPER_MARKETS.map(({ city, state }) => '/apartments-for-rent/' + city.toLowerCase().replaceAll(' ', '-') + '-' + state.toLowerCase()).sort());
   for (const domain of ['zillow', 'compass', 'renthop', 'realtor']) {
     assert.ok(requests.some((url) => new URL(url).hostname === `www.${domain}.com`));
   }

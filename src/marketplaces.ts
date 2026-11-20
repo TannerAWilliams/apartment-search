@@ -16,6 +16,9 @@ export const MARKETPLACE_NAMES: Record<string, string> = {
   apartmentguide: 'Apartment Guide',
   renthop: 'RentHop',
   linecity: 'Linecity',
+  cityrealty: 'CityRealty',
+  citysnap: 'CitySnap',
+  'rebny-rls': 'REBNY Residential Listing Service',
   craigslist: 'Craigslist',
   facebook: 'Facebook Marketplace',
   openigloo: 'Openigloo',
@@ -76,6 +79,10 @@ export function marketplaceLinks(market: { city: string; state: string; region: 
     ['affordablehousing', `https://www.affordablehousing.com/${slug}/`, 'Browse rentals and voucher listings'],
     ['openigloo', 'https://www.openigloo.com/apartments', 'NYC rentals and building reviews'],
   ];
+  if (region === 'nyc') links.push(
+    ['cityrealty', 'https://www.cityrealty.com/nyc/apartments-for-rent', 'NYC rental search'],
+    ['citysnap', 'https://www.citysnap.com/', 'REBNY member listings'],
+  );
   const streetEasyArea = STREETEASY_AREAS[city];
   if (streetEasyArea) {
     const constraints = [beds === null ? '' : 'beds:' + beds, max === null ? '' : 'price:-' + max].filter(Boolean);
@@ -95,6 +102,7 @@ export const MARKETPLACE_DOMAINS = {
   realtor: 'realtor.com', redfin: 'redfin.com', trulia: 'trulia.com', hotpads: 'hotpads.com',
   zumper: 'zumper.com', apartmentlist: 'apartmentlist.com', rent: 'rent.com',
   apartmentguide: 'apartmentguide.com', renthop: 'renthop.com', linecity: 'linecity.com', craigslist: 'craigslist.org',
+  cityrealty: 'cityrealty.com', citysnap: 'citysnap.com',
   facebook: 'facebook.com',
   openigloo: 'openigloo.com', affordablehousing: 'affordablehousing.com',
 };

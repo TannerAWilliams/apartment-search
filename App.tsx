@@ -10,7 +10,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { NYC_COMPANIES } from './src/companies.ts';
-import { NYC_SEARCH_AREAS, NYC_SEARCH_DEFAULT, NYC_SEARCH_MARKETS, REGIONS, WORKPLACES, marketsForSearch, matchesRegion, searchBorough } from './src/regions.ts';
+import { NYC_SEARCH_AREAS, NYC_SEARCH_DEFAULT, NYC_SEARCH_MARKETS, REGIONS, WORKPLACES, marketsForSearch, matchesRegion, regionOf, searchBorough } from './src/regions.ts';
 import { MARKETPLACE_NAMES, marketplaceLinks } from './src/marketplaces.ts';
 import {
   DEFAULT_FILTERS, RESULT_SORTS, bedroomLabel, directionsLink, formatRent, localWorkplace, needsCommute, parseFilters,
@@ -39,7 +39,7 @@ type DraftFilters = Omit<SearchFilters, 'maxRent' | 'maxTransitMinutes' | 'maxDr
   maxRent: string | number | null; maxTransitMinutes: string | number | null; maxDrivingMinutes: string | number | null;
   minBathrooms: string | number | null; minSquareFeet: string | number | null; bestFitRentWeight: string | number;
 };
-type RefreshInfo = { sources: (SourceStatus & { month?: string; transport?: string })[]; checking?: boolean; state?: string; lastCheckedAt?: string; refreshRetryAt?: number; market?: { revision?: string; catalogEtag?: string; csvEtag?: string } | null };
+type RefreshInfo = { sources: (SourceStatus & { month?: string; transport?: string })[]; checking?: boolean; activeSource?: string | null; state?: string; lastCheckedAt?: string; refreshRetryAt?: number; market?: { revision?: string; catalogEtag?: string; csvEtag?: string } | null };
 type ConfigSource = { id: string; name: string; sample?: boolean };
 type ApiConfig = { sources: ConfigSource[]; sourceCatalog?: SourceDefinition[]; commuteConfigured?: boolean; companies?: Record<string, number>; refresh?: RefreshInfo; refreshRetryAt?: number; browserImportAllowed?: boolean; dashboardAvailable?: boolean; storageMode?: string };
 type ApiOptions = { body?: object; token?: string; signal?: AbortSignal };
@@ -96,8 +96,12 @@ async function api<T>(path: string, { body, token, signal }: ApiOptions = {}): P
 }
 
 async function finishSourceCheck(check: RefreshInfo, token: string, signal?: AbortSignal, onProgress?: (check: RefreshInfo) => void) {
-  for (let attempt = 0; check.checking && attempt < 125; attempt += 1) {
-    await new Promise((resolve) => setTimeout(resolve, 1200));
+  const started = Date.now();
+  let cityRealtyRunning = false;
+  while (check.checking) {
+    cityRealtyRunning ||= check.activeSource === 'cityrealty-live';
+    if (Date.now() - started >= (cityRealtyRunning ? 13 * 60_000 : 150_000)) break;
+    await new Promise((resolve) => setTimeout(resolve, cityRealtyRunning ? 4000 : 1200));
     if (signal?.aborted) return check;
     check = await api('refresh', { token, signal });
     onProgress?.(check);
@@ -120,7 +124,7 @@ function Filters({ draft, setDraft, submit, busy, serverState, token, setToken, 
     {(panel === 'more' || panel === 'area') && <>
     <Text style={styles.fieldLabel}>Area</Text>
     <View style={styles.chipRow}>
-      {Object.entries({ all: REGIONS.all, nyc: REGIONS.nyc, nj: REGIONS.nj, ct: REGIONS.ct, li: REGIONS.li, metroNorth: REGIONS.metroNorth, ...NYC_SEARCH_AREAS }).map(([key, region]) => <Chip key={key} selected={draft.region === key}
+      {Object.entries({ all: REGIONS.all, nyc: REGIONS.nyc, nj: REGIONS.nj, ct: REGIONS.ct, li: REGIONS.li, metroNorth: REGIONS.metroNorth, westchester: REGIONS.westchester, ...NYC_SEARCH_AREAS }).map(([key, region]) => <Chip key={key} selected={draft.region === key}
         onPress={() => set('region')(key)}>{region.label}</Chip>)}
     </View>
     <Field label="ZIP code (optional)" placeholder="Any ZIP in this area" value={draft.zip}
@@ -764,8 +768,8 @@ function ApartmentSearch() {
                 geocode={serverState === 'ready' ? (address) => api('geocode', { body: { address }, token: activeToken }) : undefined} />}
               {adding === 'import' && <ImportListings
                 onImport={(listings) => {
-                  if (listings.some((listing) => !matchesRegion(listing, NYC_SEARCH_DEFAULT))) {
-                    throw new Error('Import listings with Manhattan or Brooklyn ZIP codes.');
+                  if (listings.some((listing) => !regionOf(listing))) {
+                    throw new Error('Import listings in NYC, New Jersey, Long Island, the Hudson Valley, Connecticut or eastern Pennsylvania.');
                   }
                   setSaved((current) => mergeListings([...listings, ...current]));
                   setAdding(false);

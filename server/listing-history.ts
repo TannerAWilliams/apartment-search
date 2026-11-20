@@ -6,8 +6,13 @@ export type ObservationHistory = { version: 1; entries: UnitHistory[]; truncated
 export const MAX_HISTORY_UNITS = 20000;
 export const MAX_PRICE_OBSERVATIONS = 24;
 
-/** Observations, not availability claims. Missing units remain unknown, never "delisted". */
-export function recordListingHistory(listings: any[], previous: ObservationHistory | undefined, sourceId: string, checkedAt: string): { listings: any[]; observationHistory: ObservationHistory } {
+/**
+ * Observations, not availability claims. Missing units remain unknown, never "delisted".
+ * Only listings in this observation keep their price history, unless keepUnseen is set for a
+ * partial observation that carries earlier listings forward.
+ */
+export function recordListingHistory(listings: any[], previous: ObservationHistory | undefined, sourceId: string, checkedAt: string,
+  { keepUnseen = false }: { keepUnseen?: boolean } = {}): { listings: any[]; observationHistory: ObservationHistory } {
   if (!sourceId || !Number.isFinite(Date.parse(checkedAt))) throw new Error('Invalid observation context.');
   if (previous && (previous.version !== 1 || !Array.isArray(previous.entries))) throw new Error('Unrecognized listing history.');
   if (previous?.lastCheckedAt && (!Number.isFinite(Date.parse(previous.lastCheckedAt)) || Date.parse(previous.lastCheckedAt) > Date.parse(checkedAt))) throw new Error('Observation predates saved history.');
@@ -42,7 +47,7 @@ export function recordListingHistory(listings: any[], previous: ObservationHisto
     entries.set(identity, history);
     return { ...clean, priceHistory: history };
   });
-  const retained = [...entries.values()].sort((a, b) => Date.parse(b.lastObservedAt) - Date.parse(a.lastObservedAt));
+  const retained = [...entries.values()].filter((entry) => keepUnseen || seen.has(entry.identity)).sort((a, b) => Date.parse(b.lastObservedAt) - Date.parse(a.lastObservedAt));
   return { listings: observed, observationHistory: { version: 1, lastCheckedAt: checkedAt, entries: retained.slice(0, MAX_HISTORY_UNITS),
     truncated: Boolean(previous?.truncated || retained.length > MAX_HISTORY_UNITS) } };
 }

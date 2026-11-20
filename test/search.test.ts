@@ -177,7 +177,9 @@ test('links from different sites are merged only for the same confirmed unit', (
 test('address searches are distinct from direct links and use the unit and ZIP', () => {
   const listing = normalize({ ...sample, listingUrl: 'https://www.zillow.com/homedetails/example/' });
   const searches = marketplaceAddressSearches(listing);
-  assert.equal(searches.length, 15);
+  for (const id of ['cityrealty', 'citysnap', 'craigslist']) {
+    assert.ok(searches.some(search => search.id === id));
+  }
   assert.equal(searches.some(({ id }) => id === 'zillow'), false);
   const link = new URL(required(searches.find(({ id }) => id === 'streeteasy')).url);
   assert.match(required(link.searchParams.get('q')), /site:streeteasy\.com "12 Grove Street" "2" 07302/);

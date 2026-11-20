@@ -1,0 +1,25 @@
+{
+  // Config for the live `apartment-search` Worker, written from deploy/cloudflare/README.md and the
+  // bindings in the deployed bundle. Before the first deploy from this file, compare it with the
+  // live Worker's settings (compatibility date, workers.dev, routes) so the deploy changes only code.
+  // Build: bun run build:web && bun build deploy/cloudflare/private.ts --target=node --format=esm \
+  //   --minify --external cloudflare:workers --outfile=dist/cloudflare/private.mjs
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "apartment-search",
+  "main": "../../dist/cloudflare/private.mjs",
+  "no_bundle": true,
+  "compatibility_date": "2026-11-18",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": { "directory": "../../web-build", "binding": "ASSETS", "run_worker_first": true },
+  "d1_databases": [
+    { "binding": "APARTMENTS", "database_name": "apartment-search-observations", "database_id": "c1e92bda-ec98-44c0-a15f-750b20b24455" }
+  ],
+  "workflows": [
+    // Runs the CityRealty and Openigloo complete syncs. Its name is kept for the existing instances.
+    // Concurrency 1 is set on the Workflow in the dashboard (deploy/cloudflare/README.md).
+    { "binding": "CITYREALTY_SYNC", "name": "apartment-cityrealty-sync", "class_name": "CityRealtySync" }
+  ],
+  "limits": { "cpu_ms": 30000 }, // full Zumper and CityRealty pages parse within one Workflow step
+  "observability": { "enabled": true }
+  // Secret, set with `wrangler secret put`: APP_ACCESS_TOKEN (must equal APARTMENT_BACKEND_KEY on apartment-search-access).
+}

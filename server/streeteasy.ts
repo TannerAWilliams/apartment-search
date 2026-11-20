@@ -6,7 +6,7 @@ import { assignedJson, deduplicatePublicRentals, fetchPublicHtml, jsonLd, public
 const MAX_STREETEASY_RENT = 2_147_483_647;
 const SOURCE = { id: 'streeteasy', name: 'StreetEasy', kind: 'feed', maxBedrooms: 100, maxRent: MAX_STREETEASY_RENT };
 const ORIGIN = 'https://streeteasy.com';
-const SEARCH_URL = 'https://api-v6.streeteasy.com/';
+export const STREETEASY_API_URL = 'https://api-v6.streeteasy.com/';
 const PAGE_SIZE = 500;
 const MAX_PAGES = 160;
 const RESULT_WINDOW = 1000;
@@ -86,7 +86,7 @@ export function parseStreetEasyPage(html: string, state: string, bedrooms: numbe
 
 export const STREETEASY_PUBLIC_TRANSPORT = 'public-search';
 export const STREETEASY_PUBLIC_COVERAGE = 'first page of the public NYC and New Jersey rental search';
-const PUBLIC_SEARCH_URL = ORIGIN + '/for-rent/nyc';
+export const STREETEASY_PUBLIC_SEARCH_URL = ORIGIN + '/for-rent/nyc';
 const PUBLIC_PAGE_LIMIT = 50;
 
 type SearchRental = {
@@ -104,7 +104,7 @@ type SearchRental = {
 };
 
 async function fetchPage(fetcher: FetchTransport, page: number, range?: PriceRange, signal?: AbortSignal) {
-  const response = await fetcher(SEARCH_URL, {
+  const response = await fetcher(STREETEASY_API_URL, {
     method: 'POST',
     headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
     body: JSON.stringify({ query: searchQuery(page, range) }),
@@ -222,12 +222,26 @@ function activeRentals(edges: { node?: SearchRental }[], checkedAt: string) {
   });
 }
 
-export function parseStreetEasyPublicSearch(html: string, now: Date) {
-  const payload = [...html.matchAll(/<script>self\.__next_f\.push\(([^]*?)\)<\/script>/g)]
-    .map(([, chunk]) => JSON.parse(chunk))
-    .filter((chunk) => chunk[0] === 1 && typeof chunk[1] === 'string')
-    .map(([, data]) => data as string).join('');
-  const page = assignedJson(payload, /"listingData":\s*(?=\{)/);
+export async function parseStreetEasyPublicSearch(html: string, now: Date) {
+  const payload: string[] = [];
+  let script = '';
+  const parsed = new HTMLRewriter().on('script', {
+    element(element) {
+      script = '';
+      element.onEndTag(() => {
+        const args = script.match(/^\s*self\.__next_f\.push\(([\s\S]*)\)\s*;?\s*$/)?.[1];
+        if (!args) return;
+        const chunk: unknown = JSON.parse(args);
+        if (Array.isArray(chunk) && chunk[0] === 1 && typeof chunk[1] === 'string') payload.push(chunk[1]);
+      });
+    },
+    text(chunk) {
+      script += chunk.text;
+    },
+  }).transform(new Response(html));
+  await parsed.body?.pipeTo(new WritableStream());
+
+  const page = assignedJson(payload.join(''), /"listingData":\s*(?=\{)/);
   if (page?.search?.criteria !== 'area:1|status:open' || !Number.isSafeInteger(page.totalCount) ||
       !Array.isArray(page.edges) || page.edges.length > PUBLIC_PAGE_LIMIT || page.totalCount < page.edges.length ||
       !page.edges.every((entry: unknown) => entry !== null && typeof entry === 'object')) {
@@ -241,5 +255,5 @@ export function parseStreetEasyPublicSearch(html: string, now: Date) {
 }
 
 export async function loadStreetEasyPublicSearch(fetcher: FetchTransport, now: Date) {
-  return parseStreetEasyPublicSearch(await fetchPublicHtml(fetcher, PUBLIC_SEARCH_URL, SOURCE.name), now);
+  return parseStreetEasyPublicSearch(await fetchPublicHtml(fetcher, STREETEASY_PUBLIC_SEARCH_URL, SOURCE.name), now);
 }

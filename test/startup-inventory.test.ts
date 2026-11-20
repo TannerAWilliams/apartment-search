@@ -2,6 +2,10 @@ import { test, expect } from 'bun:test';
 import { initializeInventory } from '../server/startup-inventory.ts';
 import { createMemoryBucket } from '../server/memory-bucket.ts';
 import { refreshStatus } from '../server/refresh.ts';
+import { openiglooPacing } from '../server/openigloo.ts';
+
+// Real syncs space Openigloo requests a second apart; these tests use a local fake.
+openiglooPacing.intervalMs = 0;
 
 test('startup respects disable and absence of storage without calling a provider', async () => {
   let calls = 0; const fetcher = async () => { calls++; throw new Error('unexpected'); };
@@ -36,7 +40,8 @@ test('successful empty startup seeds genuine adapter observations once and prese
     if (payload.method === 'initialize') return Response.json({id:payload.id,result:{protocolVersion:'2025-11-25'}});
     if (payload.method === 'notifications/initialized') return new Response(null,{status:204});
     const args = payload.params.arguments;
-    return Response.json({id:payload.id,result:{structuredContent:{total_matches:1,apartments: args.area === 'Manhattan' && args.bedrooms[0] === 1 ? [{id:'test-only',address:'12 Test Street, Manhattan, NY 10001',status:'for_rent',bedrooms:1,rent_per_month:2000,url:'https://www.openigloo.com/unit/nyc/test-only'}] : []}}});
+    const match = args.area === 'Manhattan' && args.bedrooms[0] === 1;
+    return Response.json({id:payload.id,result:{structuredContent:{total_matches:match ? 1 : 0,apartments: match ? [{id:'test-only',address:'12 Test Street, Manhattan, NY 10001',borough:'Manhattan',status:'for_rent',bedrooms:1,rent_per_month:2000,url:'https://www.openigloo.com/unit/nyc/test-only'}] : []}}});
   }});
   const before = await refreshStatus(bucket);
   expect(before.sources.find(source => source.id === 'openigloo')?.listingCount).toBe(1);

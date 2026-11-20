@@ -1,6 +1,6 @@
 import type { FetchTransport } from '../src/fetch-type.ts';
 import { normalizeListing } from '../src/listings.ts';
-import { searchBorough } from '../src/regions.ts';
+import { boroughKey, boroughLabel, searchBorough } from '../src/regions.ts';
 import { geocodeRentalAddresses } from './geocode-rentals.ts';
 import { loadPublicPages, publicListingUrl } from './public-rentals.ts';
 
@@ -9,13 +9,16 @@ const ORIGIN = 'https://www.affordablehousing.com';
 const PAGES = [
   ['new-york-ny', 'Manhattan'],
   ['brooklyn-ny', 'Brooklyn'],
+  ['queens-ny', 'Queens'],
+  ['bronx-ny', 'Bronx'],
+  ['staten-island-ny', 'Staten Island'],
 ].flatMap(([slug, city]) => ['', 'page-2/'].map((page) => ({
   url: `${ORIGIN}/${slug}/${page}`, city, state: 'NY', region: 'nyc',
 })));
 const listingUrl = (url: unknown) => publicListingUrl(url, ORIGIN, /^\/[a-z\d-]+\/[a-z\d-]+-\d+\/?$/i);
 
 export const AFFORDABLE_LIVE = {
-  ...SOURCE, id: 'affordablehousing-live', marketplace: SOURCE.id, coverage: 'Manhattan and Brooklyn',
+  ...SOURCE, id: 'affordablehousing-live', marketplace: SOURCE.id, coverage: 'the five NYC boroughs',
   regions: ['nyc'], minPages: PAGES.length, maxPages: PAGES.length, rowsPerPage: 50,
   listingUrl, load: loadAffordableRentals,
 };
@@ -34,11 +37,11 @@ export function parseAffordableRentals(html: string, market: {city:string; state
     const price = card.match(/\bclass=["'][^"']*card--price["'][^>]*>\s*\$([\d,]+)\s*</i)?.[1];
     const size = card.match(/card--details["'][^>]*>\s*<span>\s*(?:(\d+)\s*<span\b[^>]*>\s*beds?\s*<\/span>|Studio\s*<\/span>)/i);
     if (!url || !location || !price || !size ||
-        location[3] !== market.state || searchBorough({ state: location[3], zip: location[4] }) !== market.city.toLowerCase()) return [];
+        location[3] !== market.state || searchBorough({ state: location[3], zip: location[4] }) !== boroughKey(market.city)) return [];
 
     const [address, unit = ''] = location[1].split(/,\s*/, 2);
     const listing = normalizeListing({
-      id: url.match(/-(\d+)\/?$/)?.[1], url, address, unit, city: market.city, state: market.state,
+      id: url.match(/-(\d+)\/?$/)?.[1], url, address, unit, city: boroughLabel(market.city), state: market.state,
       region: market.region, zipCode: location[4], bedrooms: Number(size[1] ?? 0), rent: Number(price.replaceAll(',', '')),
       status: 'Active', updatedAt: checkedAt,
     }, SOURCE);

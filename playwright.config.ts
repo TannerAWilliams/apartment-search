@@ -12,5 +12,5 @@ export default defineConfig({
     // Chromium portrait emulation, not physical iPhone or Safari coverage.
     { name: 'iphone17-portrait-chromium', use: { ...devices['iPhone 17'], browserName: 'chromium' } },
   ],
-  webServer: { command: 'bun e2e/serve.mjs', url: 'http://127.0.0.1:4173', reuseExistingServer: false },
+  webServer: { command: 'bun e2e/serve.ts', url: 'http://127.0.0.1:4173', reuseExistingServer: false },
 });

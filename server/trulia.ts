@@ -1,6 +1,6 @@
 import type { FetchTransport } from '../src/fetch-type.ts';
 import { normalizeListing } from '../src/listings.ts';
-import { searchBorough } from '../src/regions.ts';
+import { boroughKey, boroughLabel, searchBorough } from '../src/regions.ts';
 import { loadPublicPages, publicListingUrl } from './public-rentals.ts';
 
 const SOURCE = { id: 'trulia', name: 'Trulia', kind: 'feed' };
@@ -8,8 +8,20 @@ const ORIGIN = 'https://www.trulia.com';
 export const TRULIA_MARKETS = [
   { city: 'Manhattan', state: 'NY', region: 'nyc' },
   { city: 'Brooklyn', state: 'NY', region: 'nyc' },
+  { city: 'Queens', state: 'NY', region: 'nyc' },
+  { city: 'Bronx', state: 'NY', region: 'nyc' },
+  { city: 'Staten Island', state: 'NY', region: 'nyc' },
   { city: 'Jersey City', state: 'NJ', region: 'nj' },
+  { city: 'Hoboken', state: 'NJ', region: 'nj' },
+  { city: 'Newark', state: 'NJ', region: 'nj' },
+  { city: 'Hempstead', state: 'NY', region: 'li' },
+  { city: 'Huntington', state: 'NY', region: 'li' },
+  { city: 'Yonkers', state: 'NY', region: 'metroNorth' },
+  { city: 'White Plains', state: 'NY', region: 'metroNorth' },
+  { city: 'New Rochelle', state: 'NY', region: 'metroNorth' },
   { city: 'Stamford', state: 'CT', region: 'ct' },
+  { city: 'Norwalk', state: 'CT', region: 'ct' },
+  { city: 'Greenwich', state: 'CT', region: 'ct' },
 ];
 const MARKETS = TRULIA_MARKETS.flatMap((market) => [1, 2].flatMap((bedrooms) =>
   ['', '2_p/'].map((page) => ({
@@ -19,8 +31,8 @@ const MARKETS = TRULIA_MARKETS.flatMap((market) => [1, 2].flatMap((bedrooms) =>
 const listingUrl = (url: unknown) => publicListingUrl(url, ORIGIN, /^\/(?:home|building)\/[^/]+-\d+\/?$/);
 
 export const TRULIA_LIVE = {
-  ...SOURCE, id: 'trulia-live', marketplace: SOURCE.id, coverage: 'first two one- and two-bedroom pages in Manhattan, Brooklyn, Jersey City and Stamford',
-  regions: ['nyc', 'nj', 'ct'], minPages: MARKETS.length, maxPages: MARKETS.length, rowsPerPage: 50,
+  ...SOURCE, id: 'trulia-live', marketplace: SOURCE.id, coverage: 'first two one- and two-bedroom pages in the five NYC boroughs, Jersey City, Hoboken, Newark, Hempstead, Huntington, Yonkers, White Plains, New Rochelle, Stamford, Norwalk and Greenwich',
+  regions: ['nyc', 'nj', 'li', 'metroNorth', 'ct'], minPages: MARKETS.length, maxPages: MARKETS.length, rowsPerPage: 50,
   listingUrl, load: (fetcher: FetchTransport, now: Date) => loadPublicPages(SOURCE, MARKETS, parseTruliaPage, fetcher, now),
 };
 
@@ -36,7 +48,7 @@ export function parseTruliaPage(html: string, market: {city:string; state:string
     if (!url || !address || row.metadata?.unifiedListingType !== 'RENTAL_SINGLE_UNIT' ||
         row.activeListing?.['__typename'] !== 'HOME_ForRentListing' ||
         location.stateCode !== market.state ||
-        (market.state === 'NY' ? searchBorough({ state: location.stateCode, zip: location.zipCode }) !== market.city.toLowerCase() :
+        (boroughKey(market.city) ? searchBorough({ state: location.stateCode, zip: location.zipCode }) !== boroughKey(market.city) :
           location.city?.trim().toLowerCase() !== market.city.toLowerCase()) ||
         !Number.isFinite(latitude) || !Number.isFinite(longitude) || !/^\d{5}$/.test(location.zipCode)) return [];
 
@@ -45,7 +57,7 @@ export function parseTruliaPage(html: string, market: {city:string; state:string
     if (Number(bedrooms) !== market.bedrooms) return [];
     const listing = normalizeListing({
       id: url.match(/-(\d+)\/?$/)?.[1], url, address: address[1], unit: address[2],
-      city: market.city, state: market.state, region: market.region, zipCode: location.zipCode, latitude, longitude,
+      city: boroughLabel(market.city), state: market.state, region: market.region, zipCode: location.zipCode, latitude, longitude,
       rent, bedrooms, status: 'Active', updatedAt: checkedAt,
     }, SOURCE);
     return listing ? [{ ...listing, priceIncludesFees: row.price?.typeDescription === 'Total price' }] : [];

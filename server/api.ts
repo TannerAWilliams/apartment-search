@@ -1,6 +1,8 @@
 import type { AppEnv, Bucket } from './contracts.ts';
 import type { ListingData, SourceStatus as SearchSource, SearchResult } from '../src/domain.ts';
 import type { SourceStatus } from './refresh.ts';
+import { CITYREALTY_COVERAGE, CITYREALTY_ID, CITYREALTY_TRANSPORT } from './cityrealty.ts';
+import { ZUMPER_COVERAGE, ZUMPER_TRANSPORT } from './zumper.ts';
 import { dashboardSnapshot } from './dashboard-snapshot.ts';
 import { retrieveBuildingRecords } from './building-records.ts';
 import { wholeSearchCheck } from './whole-search-check.ts';
@@ -8,7 +10,7 @@ import { relayConfig, type ListingTransports } from './relay-client.ts';
 import { companyCounts } from '../src/companies.ts';
 import { localWorkplace, matchListings, needsCommute, parseFilters, SearchInputError } from '../src/search.ts';
 import { formatSearch, RENT_GROUPINGS, rentAreas, SNAPSHOT_MONTH } from '../src/market.ts';
-import { NYC_SEARCH_AREAS, REGIONS } from '../src/regions.ts';
+import { parentRegion, REGIONS } from '../src/regions.ts';
 import { buildingKey, listingWithVerifiedLinks, mergeListings } from '../src/listings.ts';
 import { configuredFeeds, loadFeed, loadStreetEasyExport, STREETEASY_EXPORT_COVERAGE, STREETEASY_EXPORT_FORMAT } from './listings.ts';
 import { CommuteError, geocodeAddress, resolveWorkplace, routeCommutes, routingCredentials } from './commute.ts';
@@ -17,14 +19,14 @@ import { DIRECT_RENTAL_SOURCES } from './direct-rentals.ts';
 import { STREETEASY_LIVE, STREETEASY_PUBLIC_COVERAGE, STREETEASY_PUBLIC_TRANSPORT } from './streeteasy.ts';
 import { decodeSourceImport } from '../src/pull-sources.ts';
 import { type SourceFetch, refreshCatalog, refreshPlan, refreshSources, refreshStatus, sourceExpiresAt, sourceRecent, storedDirectRentals, storedFeed, storedHdcRerentals, storedHousing, storedMarket,
-  storedOpenigloo, storedRentHistory } from './refresh.ts';
+  storedOpenigloo, storedRentHistory, WORKFLOW_SOURCE_IDS } from './refresh.ts';
 
 const REQUEST_LIMIT = 4096;
 const IMPORT_LIMIT = 2 * 1024 * 1024;
 const API_PATHS = new Set(['/api/dashboard', '/api/building-report', '/api/config', '/api/search', '/api/search-check', '/api/geocode', '/api/market', '/api/housing', '/api/refresh']);
 
 export function appConfig(env: AppEnv) {
-  const feeds = configuredFeeds(env);
+  const feeds = configuredFeeds(env).filter(({ id }) => env.STREETEASY_SYNC_ENABLED !== 'false' || id !== STREETEASY_LIVE.marketplace);
   return {
     mode: feeds.length > 0 ? 'live' : 'snapshot',
     storageMode: env.TEMPORARY_CACHE === 'true' ? 'temporary' : env.BUCKET ? 'persistent' : 'none',
@@ -79,7 +81,8 @@ export async function search(rawFilters: Record<string, unknown>, env: AppEnv, f
   const credentials = routingCredentials(env);
   if (requireCommute && !credentials) throw new CommuteError('Automatic commute estimates are unavailable because the routing service is disconnected.');
   const configured = configuredFeeds(env);
-  const feeds = configured.filter(({ id }) => !env.BUCKET || id !== STREETEASY_LIVE.marketplace);
+  const feeds = configured.filter(({ id }) => id !== STREETEASY_LIVE.marketplace ||
+    (!env.BUCKET && env.STREETEASY_SYNC_ENABLED !== 'false'));
   const workplace = observationsOnly ? localWorkplace(filters) : await resolveWorkplace(filters, fetcher);
   const bucket = env.BUCKET;
   async function finish(listings: ListingData[], mode: string, sources: SearchSource[], notices: string[], snapshotMonth?: string) {
@@ -122,7 +125,7 @@ export async function search(rawFilters: Record<string, unknown>, env: AppEnv, f
   }
   const status = bucket ? await refreshStatus(bucket) : null;
   const observedAt = new Date();
-  const sourceRegion = Object.hasOwn(NYC_SEARCH_AREAS, filters.region) ? 'nyc' : filters.region;
+  const sourceRegion = parentRegion(filters.region);
   const directSources = DIRECT_RENTAL_SOURCES.filter(({ regions }) => sourceRegion === 'all' || regions.includes(sourceRegion));
   const [openigloo, direct, results] = await Promise.all([
     storedSample(status, OPENIGLOO.id, filters.liveOnly, () => storedOpenigloo(bucket), observationsOnly, filters.includeCached),
@@ -146,7 +149,7 @@ export async function search(rawFilters: Record<string, unknown>, env: AppEnv, f
     if (data) {
       listings.push(...rows);
       sources.push({ id: source.marketplace, name: source.name, status: recent ? 'searched' : 'cached',
-        sample: data.transport !== STREETEASY_EXPORT_FORMAT });
+        sample: data.transport !== STREETEASY_EXPORT_FORMAT && data.transport !== CITYREALTY_TRANSPORT && data.transport !== ZUMPER_TRANSPORT });
       const coverage = data.transport === STREETEASY_EXPORT_FORMAT ? STREETEASY_EXPORT_COVERAGE :
         data.transport === STREETEASY_PUBLIC_TRANSPORT ? STREETEASY_PUBLIC_COVERAGE :
         source.id === STREETEASY_LIVE.id && data.transport === 'partner-feed' ? 'the configured StreetEasy partner feed' : source.coverage;
@@ -200,7 +203,7 @@ function json(value: unknown, status = 200) {
   return Response.json(value, { status, headers: { 'Cache-Control': 'no-store' } });
 }
 
-export async function handleApi(request: Request, env: AppEnv, { privateAuthenticated = false, requireToken = false, fetcher = (url, options) => globalThis.fetch(url, options), waitUntil, prepareListingSources, listingTransports, backgroundRefresh = false }: { privateAuthenticated?: boolean; requireToken?: boolean; fetcher?: SourceFetch; waitUntil?: (work: Promise<unknown>) => void; prepareListingSources?: () => Promise<void>; listingTransports?: ListingTransports; backgroundRefresh?: boolean } = {}) {
+export async function handleApi(request: Request, env: AppEnv, { privateAuthenticated = false, requireToken = false, fetcher = (url, options) => globalThis.fetch(url, options), waitUntil, prepareListingSources, listingTransports, backgroundRefresh = false, cityRealtyJob }: { privateAuthenticated?: boolean; requireToken?: boolean; fetcher?: SourceFetch; waitUntil?: (work: Promise<unknown>) => void; prepareListingSources?: () => Promise<void>; listingTransports?: ListingTransports; backgroundRefresh?: boolean; cityRealtyJob?: { start(delay: boolean, sources?: string[]): Promise<void>; pending(): Promise<boolean> } } = {}) {
   const { pathname: path, searchParams } = new URL(request.url);
   if (!API_PATHS.has(path)) return json({ error: 'Endpoint not found.' }, 404);
   if (requireToken && request.headers.get('Authorization') !== `Bearer ${env.APP_ACCESS_TOKEN}`) {
@@ -223,9 +226,9 @@ export async function handleApi(request: Request, env: AppEnv, { privateAuthenti
       const liveSources = [
         ...DIRECT_RENTAL_SOURCES.map(({ marketplace, id, name }) => {
           const coverage = coverageById.get(id);
-          return { id: marketplace, name, coverage, sample: coverage !== STREETEASY_EXPORT_COVERAGE };
+          return { id: marketplace, name, coverage, sample: coverage !== STREETEASY_EXPORT_COVERAGE && coverage !== CITYREALTY_COVERAGE && coverage !== ZUMPER_COVERAGE };
         }),
-        { id: OPENIGLOO.id, name: OPENIGLOO.name, sample: true, coverage: 'NYC' },
+        { id: OPENIGLOO.id, name: OPENIGLOO.name, sample: false, coverage: coverageById.get(OPENIGLOO.id) ?? 'NYC' },
       ];
       const companies = companyCounts((await storedMarket(env.BUCKET)).listings);
       return json({ ...config, refresh, companies, sourceCatalog,
@@ -256,8 +259,8 @@ export async function handleApi(request: Request, env: AppEnv, { privateAuthenti
     try {
       const market = await storedMarket(env.BUCKET);
       const areas = rentAreas(market.listings, { region, grouping });
-      const scoped = Object.hasOwn(NYC_SEARCH_AREAS, region);
-      const history = await storedRentHistory(env.BUCKET, market.month, scoped ? 'nyc' : region, grouping);
+      const scoped = parentRegion(region) !== region;
+      const history = await storedRentHistory(env.BUCKET, market.month, parentRegion(region), grouping);
       const areaIds = new Set(areas.filter(({ id }) => id !== 'overall').map(({ id }) => id));
       return json({ month: market.month, areas, history: scoped ?
         history.map(([month, rows]) => [month, rows.filter(([id]) => areaIds.has(id))]) : history });
@@ -266,7 +269,8 @@ export async function handleApi(request: Request, env: AppEnv, { privateAuthenti
     }
   }
   if (path === '/api/refresh' && request.method === 'GET') {
-    return json(await refreshPlan(env.BUCKET));
+    const plan = await refreshPlan(env.BUCKET);
+    return json(plan.checking || !cityRealtyJob || !(await cityRealtyJob.pending()) ? plan : { ...plan, checking: true, activeSource: CITYREALTY_ID });
   }
   if (request.method !== 'POST') return json({ error: 'Use POST for this endpoint.' }, 405);
   if (path === '/api/refresh' && (!env.BUCKET || !request.headers.get('Content-Type')?.startsWith('application/json'))) {
@@ -288,10 +292,21 @@ export async function handleApi(request: Request, env: AppEnv, { privateAuthenti
     if (path === '/api/refresh') {
       if (body?.check === 'now') {
         if (body.source !== undefined && !refreshCatalog(env).some((source) => source.id === body.source && source.resyncable)) return json({ error: 'Unknown or disconnected refresh source.' }, 422);
+        if (cityRealtyJob && WORKFLOW_SOURCE_IDS.includes(body.source)) {
+          const current = await refreshPlan(env.BUCKET);
+          const previous = current.sources.find(item => item.id === body.source);
+          if (previous?.retryAt && Date.parse(previous.retryAt) > Date.now()) return json({ ...current, state: 'already_checked' });
+          if (!current.checking || current.activeSource !== body.source) await cityRealtyJob.start(Boolean(current.checking), [body.source]);
+          return json({ ...current, state: 'running', checking: true, activeSource: body.source }, 202);
+        }
         let started!: () => void;
         const starting = new Promise<void>(resolve => { started = resolve; });
         const work = refreshSources(env, { fetcher, listingTransports, onDemand: true, prepareListingSources,
-          sourceId: body.source, forceRefresh: body.sessionStart !== true, onStarted: started });
+          sourceId: body.source, forceRefresh: body.sessionStart !== true, onStarted: started, excludeCityRealty: Boolean(cityRealtyJob) });
+        if (cityRealtyJob && body.source === undefined && body.sessionStart !== true) {
+          try { await cityRealtyJob.start(true); }
+          catch (cause) { await work.catch(() => {}); throw cause; }
+        }
         waitUntil?.(work.catch(() => {}));
         if (backgroundRefresh) {
           // Bun keeps this process alive independently of the initiating HTTP request.
