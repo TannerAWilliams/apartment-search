@@ -18,7 +18,7 @@ import { DIRECT_RENTAL_SOURCES } from './direct-rentals.ts';
 import { STREETEASY_LIVE, STREETEASY_PUBLIC_COVERAGE, STREETEASY_PUBLIC_TRANSPORT } from './streeteasy.ts';
 import { decodeSourceImport } from '../src/pull-sources.ts';
 import { type SourceFetch, refreshCatalog, refreshPlan, refreshSources, refreshStatus, sourceExpiresAt, sourceRecent, storedDirectRentals, storedFeed, storedHdcRerentals, storedHousing, storedMarket,
-  storedOpenigloo, storedRentHistory } from './refresh.ts';
+  storedOpenigloo, storedRentHistory, WORKFLOW_SOURCE_IDS } from './refresh.ts';
 
 const REQUEST_LIMIT = 4096;
 const IMPORT_LIMIT = 2 * 1024 * 1024;
@@ -202,7 +202,7 @@ function json(value: unknown, status = 200) {
   return Response.json(value, { status, headers: { 'Cache-Control': 'no-store' } });
 }
 
-export async function handleApi(request: Request, env: AppEnv, { privateAuthenticated = false, requireToken = false, fetcher = (url, options) => globalThis.fetch(url, options), waitUntil, prepareListingSources, listingTransports, backgroundRefresh = false, cityRealtyJob }: { privateAuthenticated?: boolean; requireToken?: boolean; fetcher?: SourceFetch; waitUntil?: (work: Promise<unknown>) => void; prepareListingSources?: () => Promise<void>; listingTransports?: ListingTransports; backgroundRefresh?: boolean; cityRealtyJob?: { start(delay: boolean): Promise<void>; pending(): Promise<boolean> } } = {}) {
+export async function handleApi(request: Request, env: AppEnv, { privateAuthenticated = false, requireToken = false, fetcher = (url, options) => globalThis.fetch(url, options), waitUntil, prepareListingSources, listingTransports, backgroundRefresh = false, cityRealtyJob }: { privateAuthenticated?: boolean; requireToken?: boolean; fetcher?: SourceFetch; waitUntil?: (work: Promise<unknown>) => void; prepareListingSources?: () => Promise<void>; listingTransports?: ListingTransports; backgroundRefresh?: boolean; cityRealtyJob?: { start(delay: boolean, sources?: string[]): Promise<void>; pending(): Promise<boolean> } } = {}) {
   const { pathname: path, searchParams } = new URL(request.url);
   if (!API_PATHS.has(path)) return json({ error: 'Endpoint not found.' }, 404);
   if (requireToken && request.headers.get('Authorization') !== `Bearer ${env.APP_ACCESS_TOKEN}`) {
@@ -227,7 +227,7 @@ export async function handleApi(request: Request, env: AppEnv, { privateAuthenti
           const coverage = coverageById.get(id);
           return { id: marketplace, name, coverage, sample: coverage !== STREETEASY_EXPORT_COVERAGE && coverage !== CITYREALTY_COVERAGE };
         }),
-        { id: OPENIGLOO.id, name: OPENIGLOO.name, sample: true, coverage: 'NYC' },
+        { id: OPENIGLOO.id, name: OPENIGLOO.name, sample: false, coverage: coverageById.get(OPENIGLOO.id) ?? 'NYC' },
       ];
       const companies = companyCounts((await storedMarket(env.BUCKET)).listings);
       return json({ ...config, refresh, companies, sourceCatalog,
@@ -291,12 +291,12 @@ export async function handleApi(request: Request, env: AppEnv, { privateAuthenti
     if (path === '/api/refresh') {
       if (body?.check === 'now') {
         if (body.source !== undefined && !refreshCatalog(env).some((source) => source.id === body.source && source.resyncable)) return json({ error: 'Unknown or disconnected refresh source.' }, 422);
-        if (cityRealtyJob && body.source === CITYREALTY_ID) {
+        if (cityRealtyJob && WORKFLOW_SOURCE_IDS.includes(body.source)) {
           const current = await refreshPlan(env.BUCKET);
-          const previous = current.sources.find(item => item.id === CITYREALTY_ID);
+          const previous = current.sources.find(item => item.id === body.source);
           if (previous?.retryAt && Date.parse(previous.retryAt) > Date.now()) return json({ ...current, state: 'already_checked' });
-          if (!current.checking || current.activeSource !== CITYREALTY_ID) await cityRealtyJob.start(Boolean(current.checking));
-          return json({ ...current, state: 'running', checking: true, activeSource: CITYREALTY_ID }, 202);
+          if (!current.checking || current.activeSource !== body.source) await cityRealtyJob.start(Boolean(current.checking), [body.source]);
+          return json({ ...current, state: 'running', checking: true, activeSource: body.source }, 202);
         }
         let started!: () => void;
         const starting = new Promise<void>(resolve => { started = resolve; });

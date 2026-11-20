@@ -4,6 +4,7 @@ import { createD1Bucket, type D1Database } from './d1-bucket.ts';
 import { secretsEqual } from './private-session.ts';
 import { isPublicRefresh } from './public-access.ts';
 import { readRequestBody, RequestTooLarge } from './request-body.ts';
+import { WORKFLOW_SOURCE_IDS } from './refresh.ts';
 import { createListingSourceClient } from './relay-client.ts';
 export { CityRealtySync } from './cityrealty-workflow.ts';
 
@@ -11,7 +12,7 @@ type Environment = AppEnv & {
   APARTMENTS: D1Database;
   ASSETS: { fetch(request: Request): Promise<Response> };
   CITYREALTY_SYNC?: {
-    create(options: { id: string; params: { delay: boolean } }): Promise<unknown>;
+    create(options: { id: string; params: { delay: boolean; sources?: string[] } }): Promise<unknown>;
     get(id: string): Promise<{ status(): Promise<{ status: string }> }>;
   };
 };
@@ -49,17 +50,17 @@ export default {
       const workflowId = (offset = 0) => 'cityrealty-' + (Math.floor(Date.now() / 120_000) - offset);
       return await handleApi(apiRequest, appEnv, { ...client, privateAuthenticated: bearer,
         cityRealtyJob: workflow ? {
-          async start(delay) {
-            const id = workflowId();
-            try { await workflow.create({ id, params: { delay } }); }
+          async start(delay, sources) {
+            const id = workflowId() + (sources ? '-' + sources.join('-') : '');
+            try { await workflow.create({ id, params: { delay, ...(sources ? { sources } : {}) } }); }
             catch (error) {
               const existing = await workflow.get(id).then(instance => instance.status()).catch(() => { throw error; });
               if (existing.status === 'unknown') throw error;
             }
           },
           async pending() {
-            const statuses = await Promise.allSettled([0, 1].map(offset =>
-              workflow.get(workflowId(offset)).then(instance => instance.status())));
+            const ids = [0, 1].flatMap(offset => ['', ...WORKFLOW_SOURCE_IDS.map(source => '-' + source)].map(suffix => workflowId(offset) + suffix));
+            const statuses = await Promise.allSettled(ids.map(id => workflow.get(id).then(instance => instance.status())));
             return statuses.some(result => result.status === 'fulfilled' &&
               ['queued', 'running', 'waiting'].includes(result.value.status));
           },

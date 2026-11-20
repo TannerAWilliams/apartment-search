@@ -79,7 +79,7 @@ test('live search reports earliest contributing saved-source expiry without refr
     { id: 'streeteasy-live', name: 'StreetEasy', status: 'updated', transport: 'v6-daily', checkedAt: fresh, updatedAt: fresh },
   ] }));
   const result = await search({ liveOnly: true }, { BUCKET: bucket }, () => { throw new Error('No external requests permitted'); });
-  expect(result.inventoryExpiresAt).toBe(new Date(Date.parse(older) + 2 * 60 * 60_000).toISOString());
+  expect(result.inventoryExpiresAt).toBe(new Date(Date.parse(older) + 24 * 60 * 60_000).toISOString());
   expect(result.total).toBe(1);
 });
 
@@ -107,7 +107,7 @@ test('inventory deadline survives expiry while awaiting routing', async () => {
   const bucket = createMemoryBucket();
   const started = new Date('2026-11-17T12:00:00Z');
   const deadline = new Date(started.getTime() + 1_000);
-  const updatedAt = new Date(deadline.getTime() - 2 * 60 * 60_000).toISOString();
+  const updatedAt = new Date(deadline.getTime() - 24 * 60 * 60_000).toISOString();
   const listing = normalizeListing(selectedRows[0], { id: 'openigloo', name: 'Openigloo', kind: 'feed' });
   await bucket.put('rentals/openigloo.json.gz', gzipSync(strToU8(JSON.stringify({ listings: [listing] }))));
   await bucket.put('rentals/refresh.json', JSON.stringify({ sources: [
@@ -156,7 +156,7 @@ test('inventory refreshed during destination resolution retains its expiry', asy
       return Response.json({ result: { addressMatches: [{ matchedAddress: '350 Fifth Avenue', coordinates: { x: -73.9857, y: 40.7484 } }] } });
     });
     expect(result.total).toBe(1);
-    expect(result.inventoryExpiresAt).toBe(new Date(refreshed.getTime() + 2 * 60 * 60_000).toISOString());
+    expect(result.inventoryExpiresAt).toBe(new Date(refreshed.getTime() + 24 * 60 * 60_000).toISOString());
   } finally {
     setSystemTime();
   }

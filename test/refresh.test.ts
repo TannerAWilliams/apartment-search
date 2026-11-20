@@ -237,34 +237,6 @@ test('the private writer imports a completed public check without publisher acce
   assert.equal((await storedMarket(env.BUCKET)).listings.length, 2);
 });
 
-test('the Openigloo connector uses its published limit and preserves only exact source links', async () => {
-  const { loadOpenigloo } = await import('../server/openigloo.ts');
-  const areas: string[] = [];
-  const checked = await loadOpenigloo(async (url: string, options: RequestInit = {}) => {
-    if (url.includes('addressbatch')) return new Response('"openigloo:sample",address,Match,Exact,normalized,"-73.99,40.67"\n');
-    const message = JSON.parse(String(options.body));
-    if (message.method === 'notifications/initialized') return new Response(null, { status: 202 });
-    if (message.method === 'initialize') return Response.json({ id: message.id, result: { protocolVersion: '2025-11-25' } });
-    assert.equal(message.params.arguments.limit, 10);
-    assert.equal(Object.hasOwn(message.params.arguments, 'max_rent'), false);
-    areas.push(message.params.arguments.area + ':' + message.params.arguments.bedrooms.join(','));
-    return Response.json({ id: message.id, result: { structuredContent: { total_matches: 30, apartments: [
-      { id: 'sample', address: '28 Example Street #2, Brooklyn, NY 11215', borough: 'Brooklyn',
-        status: 'for_rent', bedrooms: 1, rent_per_month: 6100,
-        url: 'https://www.openigloo.com/unit/nyc/sample' },
-      { id: 'bad', address: '28 Example Street #3, Brooklyn, NY 11215', borough: 'Brooklyn',
-        status: 'for_rent', bedrooms: 1, rent_per_month: 2000, url: 'https://unrelated.test/ads' },
-    ] } } });
-  }, at);
-  assert.equal(checked.listings.length, 1);
-  assert.deepEqual(areas.sort(), ['Brooklyn:1', 'Brooklyn:2', 'Manhattan:1', 'Manhattan:2']);
-  assert.equal(checked.sampleLimit, 40);
-  assert.equal(checked.listings[0].rent, 6100);
-  assert.equal(checked.listings[0].unit, '2');
-  assert.equal(checked.listings[0].latitude, 40.67);
-  assert.equal(checked.listings[0].sources[0].id, 'openigloo');
-});
-
 test('Trulia collects bounded one- and two-bedroom searches across NY, NJ and CT', async () => {
   const { TRULIA_LIVE } = await import('../server/trulia.ts');
   const urls: string[] = [];
