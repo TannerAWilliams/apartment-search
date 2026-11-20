@@ -3,12 +3,12 @@ import React, { useState } from 'react';
 import { Text, View } from 'react-native';
 import { normalizeListing } from './listings.ts';
 import { safeListingUrl } from './marketplaces.ts';
-import { NYC_SEARCH_AREAS, NYC_SEARCH_DEFAULT, searchBorough } from './regions.ts';
+import { NYC_BOROUGHS, NYC_SEARCH_AREAS, NYC_SEARCH_DEFAULT, searchBorough } from './regions.ts';
 import { isPoint } from './search.ts';
 import { styles } from './styles.ts';
 import { Button, Chip, Field } from './ui.tsx';
 
-const BOROUGHS = ['manhattan', 'brooklyn'] as const;
+const BOROUGHS = NYC_BOROUGHS;
 const BEDROOMS = ['Studio', '1 BR', '2 BR', '3 BR', '4 BR'];
 
 export function AddListing({ initialRegion, onSave, onCancel, geocode }: { initialRegion: string; onSave: (listing: ListingData) => void; onCancel: () => void; geocode?: (address: string) => Promise<Point> }) {

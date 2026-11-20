@@ -9,7 +9,7 @@ import { relayConfig, type ListingTransports } from './relay-client.ts';
 import { companyCounts } from '../src/companies.ts';
 import { localWorkplace, matchListings, needsCommute, parseFilters, SearchInputError } from '../src/search.ts';
 import { formatSearch, RENT_GROUPINGS, rentAreas, SNAPSHOT_MONTH } from '../src/market.ts';
-import { NYC_SEARCH_AREAS, REGIONS } from '../src/regions.ts';
+import { parentRegion, REGIONS } from '../src/regions.ts';
 import { buildingKey, listingWithVerifiedLinks, mergeListings } from '../src/listings.ts';
 import { configuredFeeds, loadFeed, loadStreetEasyExport, STREETEASY_EXPORT_COVERAGE, STREETEASY_EXPORT_FORMAT } from './listings.ts';
 import { CommuteError, geocodeAddress, resolveWorkplace, routeCommutes, routingCredentials } from './commute.ts';
@@ -124,7 +124,7 @@ export async function search(rawFilters: Record<string, unknown>, env: AppEnv, f
   }
   const status = bucket ? await refreshStatus(bucket) : null;
   const observedAt = new Date();
-  const sourceRegion = Object.hasOwn(NYC_SEARCH_AREAS, filters.region) ? 'nyc' : filters.region;
+  const sourceRegion = parentRegion(filters.region);
   const directSources = DIRECT_RENTAL_SOURCES.filter(({ regions }) => sourceRegion === 'all' || regions.includes(sourceRegion));
   const [openigloo, direct, results] = await Promise.all([
     storedSample(status, OPENIGLOO.id, filters.liveOnly, () => storedOpenigloo(bucket), observationsOnly, filters.includeCached),
@@ -258,8 +258,8 @@ export async function handleApi(request: Request, env: AppEnv, { privateAuthenti
     try {
       const market = await storedMarket(env.BUCKET);
       const areas = rentAreas(market.listings, { region, grouping });
-      const scoped = Object.hasOwn(NYC_SEARCH_AREAS, region);
-      const history = await storedRentHistory(env.BUCKET, market.month, scoped ? 'nyc' : region, grouping);
+      const scoped = parentRegion(region) !== region;
+      const history = await storedRentHistory(env.BUCKET, market.month, parentRegion(region), grouping);
       const areaIds = new Set(areas.filter(({ id }) => id !== 'overall').map(({ id }) => id));
       return json({ month: market.month, areas, history: scoped ?
         history.map(([month, rows]) => [month, rows.filter(([id]) => areaIds.has(id))]) : history });

@@ -10,7 +10,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { NYC_COMPANIES } from './src/companies.ts';
-import { NYC_SEARCH_AREAS, NYC_SEARCH_DEFAULT, NYC_SEARCH_MARKETS, REGIONS, WORKPLACES, marketsForSearch, matchesRegion, searchBorough } from './src/regions.ts';
+import { NYC_SEARCH_AREAS, NYC_SEARCH_DEFAULT, NYC_SEARCH_MARKETS, REGIONS, WORKPLACES, marketsForSearch, matchesRegion, regionOf, searchBorough } from './src/regions.ts';
 import { MARKETPLACE_NAMES, marketplaceLinks } from './src/marketplaces.ts';
 import {
   DEFAULT_FILTERS, RESULT_SORTS, bedroomLabel, directionsLink, formatRent, localWorkplace, needsCommute, parseFilters,
@@ -124,7 +124,7 @@ function Filters({ draft, setDraft, submit, busy, serverState, token, setToken, 
     {(panel === 'more' || panel === 'area') && <>
     <Text style={styles.fieldLabel}>Area</Text>
     <View style={styles.chipRow}>
-      {Object.entries({ all: REGIONS.all, nyc: REGIONS.nyc, nj: REGIONS.nj, ct: REGIONS.ct, li: REGIONS.li, metroNorth: REGIONS.metroNorth, ...NYC_SEARCH_AREAS }).map(([key, region]) => <Chip key={key} selected={draft.region === key}
+      {Object.entries({ all: REGIONS.all, nyc: REGIONS.nyc, nj: REGIONS.nj, ct: REGIONS.ct, li: REGIONS.li, metroNorth: REGIONS.metroNorth, westchester: REGIONS.westchester, ...NYC_SEARCH_AREAS }).map(([key, region]) => <Chip key={key} selected={draft.region === key}
         onPress={() => set('region')(key)}>{region.label}</Chip>)}
     </View>
     <Field label="ZIP code (optional)" placeholder="Any ZIP in this area" value={draft.zip}
@@ -768,8 +768,8 @@ function ApartmentSearch() {
                 geocode={serverState === 'ready' ? (address) => api('geocode', { body: { address }, token: activeToken }) : undefined} />}
               {adding === 'import' && <ImportListings
                 onImport={(listings) => {
-                  if (listings.some((listing) => !matchesRegion(listing, NYC_SEARCH_DEFAULT))) {
-                    throw new Error('Import listings with Manhattan or Brooklyn ZIP codes.');
+                  if (listings.some((listing) => !regionOf(listing))) {
+                    throw new Error('Import listings in NYC, New Jersey, Long Island, the Hudson Valley, Connecticut or eastern Pennsylvania.');
                   }
                   setSaved((current) => mergeListings([...listings, ...current]));
                   setAdding(false);

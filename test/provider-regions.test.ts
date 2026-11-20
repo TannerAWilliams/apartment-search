@@ -23,8 +23,9 @@ for (const market of markets) {
  });
 }
 test('provider coverage advertises bounded pages rather than exhaustive inventory',()=>{
- assert.deepEqual(TRULIA_LIVE.regions,['nyc','nj','ct']);assert.equal(TRULIA_LIVE.maxPages,16);
- assert.deepEqual(ZUMPER_LIVE.regions,['nyc','nj','ct']);assert.equal(ZUMPER_LIVE.maxPages,12);
+ const regions=['nyc','nj','li','metroNorth','ct'];
+ assert.deepEqual(TRULIA_LIVE.regions,regions);assert.equal(TRULIA_LIVE.maxPages,64);
+ assert.deepEqual(ZUMPER_LIVE.regions,regions);assert.equal(ZUMPER_LIVE.maxPages,48);
  assert.match(TRULIA_LIVE.coverage,/first two/);assert.match(ZUMPER_LIVE.coverage,/three search pages/);
 });
 
