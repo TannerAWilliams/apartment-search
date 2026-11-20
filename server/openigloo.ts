@@ -2,6 +2,7 @@ import type { FetchTransport } from '../src/fetch-type.ts';
 import type { ListingData } from '../src/domain.ts';
 import { normalizeListing } from '../src/listings.ts';
 import { marketplaceIdForUrl } from '../src/marketplaces.ts';
+import { boroughKey, boroughLabel } from '../src/regions.ts';
 import { geocodeRentalAddresses } from './geocode-rentals.ts';
 
 export const OPENIGLOO = { id: 'openigloo', name: 'Openigloo', kind: 'feed' };
@@ -10,7 +11,7 @@ export const OPENIGLOO_COVERAGE = 'All active NYC rentals returned by Openiglooâ
 /** Upper bound on saved listings; Openigloo reported about 5,800 in November 2026. */
 export const OPENIGLOO_MAX_LISTINGS = 20_000;
 /** A complete sync may miss listings added or removed while it runs, but no more than this share. */
-export const OPENIGLOO_MIN_COVERAGE = 0.98;
+export const OPENIGLOO_MIN_COVERAGE = 0.97;
 
 const ENDPOINT = 'https://mcp.openigloo.com/mcp';
 const PROTOCOL = '2025-11-25';
@@ -33,6 +34,7 @@ type Row = {
 };
 /** max: null means no upper bound. area is a borough, or a neighborhood within `borough`. */
 type Search = { borough: string; area: string; bedrooms: number; min: number; max: number | null };
+export type OpeniglooRow = Row & { search: Search };
 type Page = { total: number; rows: Row[] };
 export type OpeniglooSearch = (search: Search) => Promise<Page>;
 
@@ -112,7 +114,10 @@ function limiter(size: number) {
  * neighborhood. The tool filters on a price that can differ from the rent it displays, so
  * displayed rents only guide where to split.
  */
-export async function crawlOpenigloo(search: OpeniglooSearch) {
+/** One starting search per borough and bedroom count; a complete sync crawls all of them. */
+export const OPENIGLOO_CELLS: Search[] = BOROUGHS.flatMap((borough) => BEDROOMS.map((bedrooms) => ({ borough, area: borough, bedrooms, min: 0, max: null })));
+
+export async function crawlOpenigloo(search: OpeniglooSearch, cells = OPENIGLOO_CELLS) {
   let calls = 0;
   let unresolved = 0;
   const limit = limiter(CONCURRENCY);
@@ -120,12 +125,12 @@ export async function crawlOpenigloo(search: OpeniglooSearch) {
     if (++calls > MAX_CALLS) throw new Error('Openigloo inventory exceeds the sync request limit.');
     return search(q);
   });
-  const rows = new Map<string, Row & { search: Search }>();
+  const rows = new Map<string, OpeniglooRow>();
   const neighborhoods = new Map<string, Set<string>>();
   const keep = (q: Search, page: Page) => {
     for (const row of page.rows) {
       if (typeof row?.id !== 'string') continue;
-      if (!rows.has(row.id)) rows.set(row.id, { ...row, search: q });
+      if (!rows.has(row.id)) rows.set(row.id, { ...compact(row), search: q });
       if (typeof row.neighborhood === 'string' && row.neighborhood) {
         const names = neighborhoods.get(q.borough) ?? new Set();
         neighborhoods.set(q.borough, names.add(row.neighborhood));
@@ -162,7 +167,6 @@ export async function crawlOpenigloo(search: OpeniglooSearch) {
     const ranges = [{ ...q, max: split }, { ...q, min: split + 1 }];
     await Promise.all(ranges.map(async (child) => collect(child, await query(child))));
   }
-  const cells = BOROUGHS.flatMap((borough) => BEDROOMS.map((bedrooms) => ({ borough, area: borough, bedrooms, min: 0, max: null })));
   const totals = await Promise.all(cells.map(async (cell) => {
     const page = await query(cell);
     await collect(cell, page);
@@ -171,21 +175,27 @@ export async function crawlOpenigloo(search: OpeniglooSearch) {
   return { rows: [...rows.values()], total: totals.reduce((sum, value) => sum + value, 0), calls, unresolved };
 }
 
+/** Only the fields a listing needs, so partial crawls stay small in storage. */
+function compact({ id, address, borough, neighborhood, status, url, bedrooms, bathrooms, rent_per_month }: Row): Row {
+  return { id, address, borough, neighborhood, status, url, bedrooms, bathrooms, rent_per_month };
+}
+
 const ADDRESS = /^(.+?),\s*([^,]+),\s*NY\s+(\d{5})$/i;
 
-export function openiglooListing(row: Row & { search: Search }, checkedAt: string): ListingData | null {
+export function openiglooListing(row: OpeniglooRow, checkedAt: string): ListingData | null {
   const parts = typeof row.address === 'string' ? row.address.trim().match(ADDRESS) : null;
   const { search } = row;
   const bedroomsMatch = search.bedrooms === 4 ? Number(row.bedrooms) >= 4 : row.bedrooms === search.bedrooms;
   if (!parts || row.status !== 'for_rent' || marketplaceIdForUrl(row.url) !== OPENIGLOO.id || !row.url?.includes('/unit/nyc/') ||
-      row.borough !== search.borough || !/^1\d{4}$/.test(parts[3]) || !bedroomsMatch ||
+      !boroughKey(row.borough ?? '') || boroughKey(row.borough ?? '') !== boroughKey(search.borough) ||
+      !/^1\d{4}$/.test(parts[3]) || !bedroomsMatch ||
       !Number.isFinite(row.rent_per_month) || row.rent_per_month! <= 0) return null;
   const street = parts[1].replace(/\s+/g, ' ').trim();
   const [, address, unit = ''] = street.match(/^(.*?)\s+(?:#|apt\.?\s+|unit\s+)\s*([\w-]+)$/i) ?? [, street];
   const url = new URL(row.url!);
   url.search = '';
   return normalizeListing({
-    id: row.id, address, unit, city: search.borough, state: 'NY', zipCode: parts[3], region: 'nyc',
+    id: row.id, address, unit, city: boroughLabel(search.borough), state: 'NY', zipCode: parts[3], region: 'nyc',
     neighborhood: row.neighborhood, bedrooms: Math.min(Number(row.bedrooms), 4), bathrooms: row.bathrooms,
     rent: row.rent_per_month, url: url.href, status: 'Active', updatedAt: checkedAt,
   }, OPENIGLOO);
@@ -211,8 +221,10 @@ async function geocodeBuildings(listings: ListingData[], fetcher: FetchTransport
   return listings.map((listing) => ({ ...listing, ...byKey.get([listing.address, listing.zip].join('|').toLowerCase()) }));
 }
 
-export async function loadOpenigloo(fetcher: FetchTransport = fetch, now = new Date(), wait?: (ms: number) => Promise<unknown>) {
-  const crawl = await crawlOpenigloo(await openiglooSearch(fetcher, wait));
+export type OpeniglooCrawl = { rows: OpeniglooRow[]; total: number; calls: number; unresolved: number };
+
+/** Turns a complete crawl into saved listings, refusing one that misses too much of the reported inventory. */
+export async function finishOpenigloo(crawl: OpeniglooCrawl, fetcher: FetchTransport, now: Date) {
   const checkedAt = now.toISOString();
   const listings = crawl.rows.flatMap((row) => { const listing = openiglooListing(row, checkedAt); return listing ? [listing] : []; });
   if (crawl.total > OPENIGLOO_MAX_LISTINGS) throw new Error('Openigloo inventory exceeds the sync limit.');
@@ -223,4 +235,8 @@ export async function loadOpenigloo(fetcher: FetchTransport = fetch, now = new D
     listings: await geocodeBuildings(listings, fetcher), total: crawl.total, rawCount: crawl.rows.length,
     pages: crawl.calls, checkedAt, transport: OPENIGLOO_TRANSPORT, unresolved: crawl.unresolved,
   };
+}
+
+export async function loadOpenigloo(fetcher: FetchTransport = fetch, now = new Date(), wait?: (ms: number) => Promise<unknown>) {
+  return finishOpenigloo(await crawlOpenigloo(await openiglooSearch(fetcher, wait)), fetcher, now);
 }

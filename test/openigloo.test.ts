@@ -43,7 +43,7 @@ function fakeOpenigloo(units: Unit[], { rateLimitOnce = false } = {}) {
     const shown = (matches.length ? matches : units.slice(0, 6)).slice(0, args.limit);
     return Response.json({ jsonrpc: '2.0', id: message.id, result: { structuredContent: { total_matches: matches.length, apartments: shown.map((unit) => ({
       id: unit.id, address: `${unit.id.slice(1)} Example Street #${unit.bedrooms}A, ${unit.borough}, NY ${ZIPS[unit.borough]}`,
-      borough: unit.borough, neighborhood: unit.neighborhood, status: 'for_rent', bedrooms: unit.bedrooms, bathrooms: 1,
+      borough: unit.borough === 'Bronx' ? 'The Bronx' : unit.borough, neighborhood: unit.neighborhood, status: 'for_rent', bedrooms: unit.bedrooms, bathrooms: 1,
       rent_per_month: unit.shownRent, url: `https://www.openigloo.com/unit/nyc/${unit.id}/example?utm_source=ai_assistant`,
     })) } } });
   };
@@ -79,6 +79,31 @@ test('Openigloo sync waits out a rate limit and saves normalized complete invent
   assert.equal(listing.city, 'Manhattan');
   assert.equal(listing.sources[0].url, 'https://www.openigloo.com/unit/nyc/u0/example');
   assert.ok(result.listings.every((item) => item.bedrooms <= 4));
+  assert.ok(result.listings.some((item) => item.city === 'The Bronx'), 'Openigloo labels the borough "The Bronx"');
+});
+
+test('the stepped Workflow sync saves complete inventory only from one run\'s parts', async () => {
+  const { createMemoryBucket } = await import('../server/memory-bucket.ts');
+  const { crawlOpeniglooCell, finishOpeniglooRun, OPENIGLOO_CELL_COUNT } = await import('../server/openigloo-sync.ts');
+  const { storedOpenigloo, refreshStatus } = await import('../server/refresh.ts');
+  const units = inventory();
+  const fake = fakeOpenigloo(units);
+  const fetcher = async (url: string, options?: RequestInit) => url.includes('addressbatch') ? new Response('') : fake.fetcher(url, options);
+  const bucket = createMemoryBucket();
+  const env = { BUCKET: bucket };
+  for (let index = 0; index < OPENIGLOO_CELL_COUNT; index++) await crawlOpeniglooCell(bucket, 'run-1', index, fetcher, noWait);
+  await crawlOpeniglooCell(bucket, 'run-2', 3, fetcher, noWait);
+  await assert.rejects(finishOpeniglooRun(env, 'run-2', fetcher), /step from this sync is missing; the saved inventory was kept/);
+  assert.equal(await storedOpenigloo(bucket), null);
+  await crawlOpeniglooCell(bucket, 'run-1', 3, fetcher, noWait);
+  const saved = await finishOpeniglooRun(env, 'run-1', fetcher, new Date('2026-11-20T12:00:00Z'));
+  assert.equal(saved.listingCount, units.length);
+  assert.equal((await storedOpenigloo(bucket))?.listings.length, units.length);
+  const status = (await refreshStatus(bucket)).sources.find(({ id }) => id === 'openigloo');
+  assert.equal(status?.status, 'updated');
+  assert.equal(status?.listingCount, units.length);
+  assert.equal(status?.total, units.length);
+  assert.equal(status?.transport, OPENIGLOO_TRANSPORT);
 });
 
 test('Openigloo sync keeps saved data when too much inventory is missing', async () => {
