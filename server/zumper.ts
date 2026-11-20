@@ -33,6 +33,8 @@ export const zumperPacing = { intervalMs: PAGE_INTERVAL_MS };
 const marketUrl = (market: { city: string; state: string }, page: number) => ORIGIN + '/apartments-for-rent/' +
   market.city.toLowerCase().replaceAll(' ', '-') + '-' + market.state.toLowerCase() + (page > 1 ? '?page=' + page : '');
 const listingUrl = (url: unknown) => publicListingUrl(url, ORIGIN, /^\/listings\/\d+p?\/[^/]+\/?$/);
+/** Apartment, condo and house rental types; other types (rooms, parking) are excluded by the search itself. */
+const RESIDENTIAL_TYPES = new Set([0, 1, 4, 9, 13]);
 const sharedRental = /\b(?:room[- ]for[- ]rent|private (?:bed)?room|shared (?:apartment|home|housing)|roommates?|roomates?|(?:small|medium|large) (?:size )?room|rent (?:a|one) room)\b/i;
 
 export const ZUMPER_LIVE = {
@@ -99,8 +101,12 @@ function zumperListings(rows: any[], market: {city:string; state:string; region:
   return rows.flatMap((row) => {
     const url = listingUrl(row?.url);
     const borough = searchBorough({ state: row?.state, zip: row?.zipcode });
-    if (!url || row.listing_status !== 1 || row.listing_type !== 1 || row.property_type !== 4 ||
-        row.state !== market.state || !/^\d{5}$/.test(row.zipcode) || !/^\d/.test(row.address ?? '') ||
+    // listing_type 3 is a broker listing whose building number Zumper hides ("E 13th St #3AB");
+    // it is kept when it names a unit, since its map position is still exact.
+    const address = String(row.address ?? '');
+    const identified = /^\d/.test(address) || (row.listing_type === 3 && /#\s*\w+$/.test(address));
+    if (!url || row.listing_status !== 1 || ![1, 3].includes(row.listing_type) || !RESIDENTIAL_TYPES.has(row.property_type) ||
+        row.state !== market.state || !/^\d{5}$/.test(row.zipcode) || !identified ||
         (market.borough ? borough !== market.borough : row.city?.trim().toLowerCase() !== market.city.toLowerCase()) || sharedRental.test(url + ' ' + (row.title ?? '') + ' ' + (row.description ?? '')) ||
         row.min_price !== row.max_price || row.min_bedrooms !== row.max_bedrooms || !(row.min_price > 0 && row.min_price <= 200_000) ||
         !Number.isFinite(row.lat) || !Number.isFinite(row.lng)) return [];

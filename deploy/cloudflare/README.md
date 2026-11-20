@@ -15,4 +15,4 @@ Apply `schema.sql` to the D1 database. Bind it as `APARTMENTS` and bind `web-bui
 
 Bind the CityRealty workflow as `CITYREALTY_SYNC` with workflow name `apartment-cityrealty-sync` and class `CityRealtySync`. Set its concurrency to one and the Worker's `limits.cpu_ms` to `5000` for the full-inventory refresh.
 
-The two `apartment_object*` tables implement the app's versioned snapshot storage with transactional compare-and-swap. The separate `rental_listing_*` tables preserve the imported listing history. Keep a saved snapshot's original observation timestamp during a migration so the frontend can label its freshness correctly.
+The two `apartment_object*` tables implement the app's versioned snapshot storage with transactional compare-and-swap, and are the only tables. Each source's snapshot holds its current listings and their price history only; nothing keeps records of past listings. (The earlier `rental_listing_*` and `source_observations` tables were dropped on 2026-11-20.) Keep a saved snapshot's original observation timestamp during a migration so the frontend can label its freshness correctly.

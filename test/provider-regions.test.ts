@@ -64,3 +64,16 @@ test('Zumper sync pages through every market until no more results and counts sk
   assert.deepEqual(result.listings.map(({ id }) => id).sort(), ['zumper:11', 'zumper:12', 'zumper:21', 'zumper:22', 'zumper:31', 'zumper:32']);
   assert.ok(result.listings.some(({ bedrooms }) => bedrooms === 6), 'large apartments are kept');
 });
+
+test('Zumper keeps broker listings with a hidden building number and non-apartment rental types, not floorplans or rooms', () => {
+  const base = { url: '/listings/65499665/6-bedroom-east-village-new-york-ny', listing_id: 65499665, listing_status: 1, listing_type: 3, property_type: 4,
+    state: 'NY', city: 'New York', zipcode: '10003', address: 'E 13th St #3AB', min_price: 14995, max_price: 14995, min_bedrooms: 6, max_bedrooms: 6, lat: 40.73, lng: -73.99 };
+  const market = { city: 'Manhattan', state: 'NY', region: 'nyc', borough: 'manhattan' };
+  const parse = (row: unknown) => parseZumperPage(zumperHtml(row), market, checkedAt);
+  assert.equal(parse(base)[0]?.address, 'E 13th St #3AB');
+  assert.equal(parse({ ...base, address: 'E 13th St' }).length, 0, 'no unit and no building number');
+  assert.equal(parse({ ...base, listing_type: 1, property_type: 1, address: '801 Riverside Dr #5A', zipcode: '10032' }).length, 1);
+  assert.equal(parse({ ...base, property_type: 16 }).length, 0);
+  assert.equal(parse({ ...base, url: '/apartment-buildings/p203911/pearl-pine' }).length, 0);
+  assert.equal(parse({ ...base, title: 'Private room in shared apartment' }).length, 0);
+});
