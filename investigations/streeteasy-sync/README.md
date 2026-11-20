@@ -54,7 +54,7 @@ Do not list an unexecuted experiment as failed or passed.
 
 - No spending, paid upgrades or unverified usage that could incur charges.
 - No contacting StreetEasy and no historical-listing fallback as the requested fix.
-- No scheduled listing refresh. Acquisition is user initiated.
+- Scheduled StreetEasy refresh runs only from the owner's own computer (`scripts/install-streeteasy-schedule.sh`).
 - Preserve saved inventory on a failed/incomplete refresh.
 - Never commit passwords, bearer tokens, cookies, account identifiers, private
   dashboard links, environment files or raw authentication/network dumps.

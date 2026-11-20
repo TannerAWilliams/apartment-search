@@ -36,3 +36,30 @@ test('external runner rejects missing, invalid and stale verification timestamps
     assert.equal(imported, true);
   }
 });
+
+test('external runner authenticates to the Worker with a bearer token', async () => {
+  const seen: (string | null)[] = [];
+  const fetcher = async (url: string, options?: RequestInit) => {
+    if (url === 'https://api-v6.streeteasy.com/') return Response.json({ data: { searchRentals: { totalCount: 0, edges: [] } } });
+    seen.push(new Headers(options?.headers).get('Authorization'));
+    return Response.json({ refresh: { sources: [{ id: 'streeteasy-live', status: 'updated', transport: 'v6-daily', listingCount: 0, updatedAt: new Date().toISOString() }] } });
+  };
+  await syncStreetEasy({ token: 'synthetic-test-token', origin: 'https://synthetic.example.invalid', fetcher });
+  assert.deepEqual(seen, ['Bearer synthetic-test-token']);
+});
+
+test('import body is refused before upload when it exceeds the Worker limit', async () => {
+  const { importBody, MAX_IMPORT_BYTES } = await import('../scripts/sync-streeteasy.ts');
+  const listings = Array.from({ length: 500 }, (_, index) => ({ id: 'streeteasy:' + index, address: crypto.randomUUID() }));
+  const { bytes } = importBody({ listings, total: listings.length });
+  assert.ok(bytes < MAX_IMPORT_BYTES);
+  assert.throws(() => importBody({ listings, total: listings.length }, false, bytes - 1), /upload limit/);
+  assert.doesNotThrow(() => importBody({ listings, total: listings.length }, false, bytes));
+});
+
+test('runner origin must be an HTTPS Worker URL', async () => {
+  const { appOrigin } = await import('../scripts/sync-streeteasy.ts');
+  assert.throws(() => appOrigin(undefined), /APARTMENT_SEARCH_ORIGIN/);
+  assert.throws(() => appOrigin('http://apartment-search.example.workers.dev'), /HTTPS/);
+  assert.equal(appOrigin('https://apartment-search.example.workers.dev/'), 'https://apartment-search.example.workers.dev');
+});

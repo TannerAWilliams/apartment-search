@@ -130,22 +130,40 @@ The response must be one JSON object with `schema: "streeteasy-complete-export-v
 
 This is the app's input contract for an authorized provider. Matching the count verifies delivery of the declared snapshot. Confirm the provider's actual coverage and display permission when setting up the connection.
 
-### External StreetEasy recovery runner
+### Daily StreetEasy sync from your own computer
 
-The owner-only Site serves `/_streeteasy-sync.mjs`. On an authorized Bun 1.4.4
-host with StreetEasy access, this runner downloads complete partitioned inventory
-and submits it through the authenticated import endpoint, then verifies saved
-counts. Pass a current owner service credential through stdin, not a command
-argument or a committed file. Use the host's approved secret delivery mechanism.
+Cloud hosts, including the Cloudflare Worker, get HTTP 403 from StreetEasy. The sync
+therefore runs on a computer you own and uploads the result to the Worker, which saves it
+in D1. The runner downloads the complete partitioned inventory with ordinary requests,
+requires the received count to reconcile with StreetEasy's reported total, uploads it
+through the authenticated `/api/refresh` import, and then confirms the saved count.
 
-Pass `--manual` to fetch on demand even when saved data is less than a day old. This mode updates only StreetEasy. No daily automation is needed or installed. The browser button calls the hosted Worker, which can use the configured authenticated Render relay described below. Without that relay, StreetEasy may reject the Worker with HTTP 403. Failed refreshes preserve stored listings. The runner respects retry times, retries inventory
-movement once, and does not solve CAPTCHAs or bypass authentication. Non-manual recovery
-affects only missing, failed, or day-old StreetEasy inventory; stale or incomplete receipts are rejected.
-The runner requires an accessible external host and credential delivery for each manual invocation. Publishing this file does **not** connect that host to the browser button. No daily schedule is configured.
+One-time setup on a Mac or Linux computer that is usually on (Bun 1.4.4 required):
+
+```sh
+git clone https://github.com/TannerAWilliams/apartment-search.git && cd apartment-search
+scripts/install-streeteasy-schedule.sh --origin=https://apartment-search.<subdomain>.workers.dev
+```
+
+Use the `apartment-search` Worker's own URL, not `apartments.5thof6.com`: that hostname
+requires an interactive Cloudflare Access sign-in. The installer asks for the Worker's
+`APP_ACCESS_TOKEN` and stores it in the macOS Keychain (or `~/.config/apartment-search/token`
+with mode 600 on Linux). It runs daily at 6:17 local time (`SYNC_HOUR`/`SYNC_MINUTE` change
+this); on a Mac, a run missed while asleep happens at wake. Logs go to
+`~/Library/Logs/apartment-search-streeteasy.log` or `~/.config/apartment-search/streeteasy.log`.
+Run once immediately with `scripts/streeteasy-daily.sh` (add `--manual` to fetch even when
+saved data is under a day old). Remove it with `scripts/install-streeteasy-schedule.sh --uninstall`.
+
+Failures leave saved listings unchanged. The runner skips work when saved StreetEasy data is
+under a day old, respects the source retry time, retries inventory movement once, and refuses
+an upload above the Worker's 2 MiB request limit instead of sending a truncated one. The
+StreetEasy import was about 1.9 MB in November 2026, so a much larger inventory will need a
+larger Worker limit. If StreetEasy starts refusing your home connection too, the run fails
+with that HTTP status in the log.
 
 ### Sources and manual refresh
 
-More → Sources & sync lists connected feeds and browse-only websites separately. It shows each source's last fetch attempt, last successful saved data, counts, coverage and failure. Individual resync targets only that source; Resync all connected providers respects source retry limits. Browse-only websites have disabled resync controls until a feed is configured. No automatic daily schedule is installed.
+More → Sources & sync lists connected feeds and browse-only websites separately. It shows each source's last fetch attempt, last successful saved data, counts, coverage and failure. Individual resync targets only that source; Resync all connected providers respects source retry limits. Browse-only websites have disabled resync controls until a feed is configured. The only scheduled job is the optional StreetEasy sync above, installed on your own computer.
 
 Trulia and Zumper now include bounded Jersey City and Stamford samples alongside Manhattan and Brooklyn. These are explicitly samples, not exhaustive NY/NJ/CT coverage.
 
