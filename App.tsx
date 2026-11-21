@@ -1,4 +1,6 @@
 import { searchAvailabilityMessage } from './src/search-availability.ts';
+import { createApi, type ApiConfig, type ConfigSource, type RefreshInfo } from './src/api-client.ts';
+import { ErrorBoundary } from './src/ErrorBoundary.tsx';
 import { inventoryExpired } from './src/inventory-freshness.ts';
 import { inventoryUnavailable } from './src/inventory-state.ts';
 import type { ListingData, SourceLink, SearchFilters, SearchResult } from './src/domain.ts';
@@ -39,10 +41,6 @@ type DraftFilters = Omit<SearchFilters, 'maxRent' | 'maxTransitMinutes' | 'maxDr
   maxRent: string | number | null; maxTransitMinutes: string | number | null; maxDrivingMinutes: string | number | null;
   minBathrooms: string | number | null; minSquareFeet: string | number | null; bestFitRentWeight: string | number;
 };
-type RefreshInfo = { sources: (SourceStatus & { month?: string; transport?: string })[]; checking?: boolean; activeSource?: string | null; state?: string; lastCheckedAt?: string; refreshRetryAt?: number; market?: { revision?: string; catalogEtag?: string; csvEtag?: string } | null };
-type ConfigSource = { id: string; name: string; sample?: boolean };
-type ApiConfig = { sources: ConfigSource[]; sourceCatalog?: SourceDefinition[]; commuteConfigured?: boolean; companies?: Record<string, number>; refresh?: RefreshInfo; refreshRetryAt?: number; browserImportAllowed?: boolean; dashboardAvailable?: boolean; storageMode?: string };
-type ApiOptions = { body?: object; token?: string; signal?: AbortSignal };
 const failureInfo = (value: unknown) => ({
   message: value instanceof Error ? value.message : '',
   commuteError: typeof value === 'object' && value !== null && 'commuteError' in value && value.commuteError === true,
@@ -70,30 +68,7 @@ const formDefaults = (): DraftFilters => ({
   maxDrivingMinutes: '',
 });
 
-function api(path: 'config', options?: ApiOptions): Promise<ApiConfig>;
-function api(path: 'refresh', options?: ApiOptions): Promise<RefreshInfo>;
-function api(path: 'search', options?: ApiOptions): Promise<SearchResult>;
-function api<T = unknown>(path: string, options?: ApiOptions): Promise<T>;
-async function api<T>(path: string, { body, token, signal }: ApiOptions = {}): Promise<T> {
-  const headers: Record<string, string> = {};
-  if (token) headers.Authorization = `Bearer ${token}`;
-  if (body) headers['Content-Type'] = 'application/json';
-  const response = await fetch(`${API_ORIGIN}/api/${path}`, {
-    method: body ? 'POST' : 'GET', headers, signal,
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  const data = await response.json();
-  const wait = Number(response.headers.get('X-Refresh-Retry-After') ?? (response.status === 429 ? response.headers.get('Retry-After') : 0));
-  const refreshRetryAt = Number.isFinite(wait) && wait > 0 ? Date.now() + wait * 1000 : 0;
-  data.refreshRetryAt = refreshRetryAt;
-  if (!response.ok) {
-    const error = Object.assign(new Error(data.error || 'Could not reach the apartment search server.'), {
-      refreshRetryAt, status: response.status, commuteError: data.commuteError === true,
-    });
-    throw error;
-  }
-  return data as T;
-}
+const api = createApi(API_ORIGIN);
 
 async function finishSourceCheck(check: RefreshInfo, token: string, signal?: AbortSignal, onProgress?: (check: RefreshInfo) => void) {
   const started = Date.now();
@@ -798,7 +773,7 @@ function ApartmentSearch() {
 }
 
 export default function App() {
-  return <SafeAreaProvider><ApartmentSearch /></SafeAreaProvider>;
+  return <SafeAreaProvider><ErrorBoundary><ApartmentSearch /></ErrorBoundary></SafeAreaProvider>;
 }
 
 

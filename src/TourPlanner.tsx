@@ -56,7 +56,7 @@ export function TourPlanner({ listings }: { listings: any[] }) {
       {!!message && <Text accessibilityLiveRegion="polite" style={styles.smallMuted}>{message}</Text>}
       {ready && <>
         <Text style={styles.fieldLabel}>{editing ? 'Edit appointment' : 'Choose a saved apartment'}</Text>
-        {!editing && <ScrollView style={{ maxHeight: 180 }} nestedScrollEnabled>{listings.map(l => { const key = listingKey(l); return <Pressable key={key} disabled={busy} accessibilityRole="radio" accessibilityState={{ selected: selected === key }} onPress={() => setSelected(key)} style={{ padding: 12, minHeight: 44 }}><Text>{selected === key ? '● ' : '○ '}{l.address}{l.unit ? ', ' + l.unit : ''}</Text></Pressable>; })}</ScrollView>}
+        {!editing && <ScrollView style={{ maxHeight: 180 }} nestedScrollEnabled>{listings.map(l => { const key = listingKey(l); return <Pressable key={key} disabled={busy} accessibilityRole="radio" accessibilityState={{ checked: selected === key }} aria-checked={selected === key} onPress={() => setSelected(key)} style={{ padding: 12, minHeight: 44 }}><Text>{selected === key ? '● ' : '○ '}{l.address}{l.unit ? ', ' + l.unit : ''}</Text></Pressable>; })}</ScrollView>}
         {!listings.length && !editing && <Text style={styles.smallMuted}>Save an apartment from Search to plan a tour.</Text>}
         <Field label="Tour date (YYYY-MM-DD)" value={date} onChangeText={value => { if (!saving.current) setDate(value); }} placeholder="2026-12-05" maxLength={10} />
         <Field label="Start time (HH:mm, 24-hour device time)" value={time} onChangeText={value => { if (!saving.current) setTime(value); }} placeholder="14:30" maxLength={5} />
@@ -83,7 +83,7 @@ export function TourPlanner({ listings }: { listings: any[] }) {
             <Button secondary disabled={busy} onPress={() => edit(t)}>Edit tour</Button>
             <Button secondary disabled={busy} onPress={async () => { if (await save(tours.filter(item => item.id !== t.id))) { if (editing === t.id) clearForm(); } }}>Remove tour</Button>
           </View>
-          {TOUR_CHECKLIST.map((item,index) => <Pressable key={item} disabled={busy} accessibilityRole="checkbox" accessibilityState={{ checked: t.checked.includes(index), disabled: busy }} onPress={() => save(tours.map(other => other.id === t.id ? { ...t, checked: t.checked.includes(index) ? t.checked.filter(n => n !== index) : [...t.checked,index] } : other))} style={{ padding: 8, minHeight: 44 }}><Text>{t.checked.includes(index) ? '☑ ' : '☐ '}{item}</Text></Pressable>)}
+          {TOUR_CHECKLIST.map((item,index) => <Pressable key={item} disabled={busy} accessibilityRole="checkbox" accessibilityState={{ checked: t.checked.includes(index), disabled: busy }} aria-checked={t.checked.includes(index)} aria-disabled={busy} onPress={() => save(tours.map(other => other.id === t.id ? { ...t, checked: t.checked.includes(index) ? t.checked.filter(n => n !== index) : [...t.checked,index] } : other))} style={{ padding: 8, minHeight: 44 }}><Text>{t.checked.includes(index) ? '☑ ' : '☐ '}{item}</Text></Pressable>)}
         </View>)}
       </>}
     </>}

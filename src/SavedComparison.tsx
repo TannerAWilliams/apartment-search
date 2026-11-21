@@ -22,7 +22,7 @@ export function SavedComparison({ listings }: { listings: any[] }) {
         {choices.slice(0, 50).map(listing => {
           const key = listingKey(listing), checked = keys.includes(key), disabled = !checked && selected.length >= MAX_COMPARISON;
           return <Pressable key={key} accessibilityRole="checkbox" accessibilityLabel={'Compare ' + comparisonTitle(listing)}
-            accessibilityState={{ checked, disabled }} disabled={disabled}
+            accessibilityState={{ checked, disabled }} aria-checked={checked} aria-disabled={disabled} disabled={disabled}
             onPress={() => setKeys(current => toggleComparison(current, key, available))}
             style={{ padding: 12, minHeight: 44, opacity: disabled ? 0.5 : 1 }}>
             <Text>{checked ? '☑ ' : '☐ '}{comparisonTitle(listing)}</Text>

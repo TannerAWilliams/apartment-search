@@ -62,7 +62,7 @@ function TrendPlot({ series, points, scale, selectedIndex, onMonth }: { series: 
     </View>
     <View style={[styles.trendMonths, { marginLeft: AXIS_WIDTH }]}>
       {points.map(({ month }, index) => <Pressable key={month} accessibilityRole="button"
-        accessibilityLabel={formatSnapshotMonth(month)} accessibilityState={{ selected: index === selectedIndex }}
+        accessibilityLabel={formatSnapshotMonth(month)} accessibilityState={{ selected: index === selectedIndex }} aria-selected={index === selectedIndex}
         onPress={() => onMonth(month)} style={[styles.trendMonth, index === selectedIndex && styles.trendMonthActive]}>
         <Text style={[styles.trendMonthText, index === selectedIndex && styles.trendMonthTextActive]}>{monthLabel(month)}</Text>
       </Pressable>)}
