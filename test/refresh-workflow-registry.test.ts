@@ -40,7 +40,7 @@ function fixture() {
       creates.push(request);
       await beforeCreate?.();
       if (createFailure) throw new Error('Private upstream create error');
-      if (existing.has(request.id)) throw new Error('Duplicate ID');
+      if (existing.has(request.id)) throw new Error('Duplicate ID (instance.already_exists)');
       existing.add(request.id);
     },
     async get(id) {
@@ -52,7 +52,8 @@ function fixture() {
   return { stored, bucket, creates, gets, manager: () => createRefreshWorkflow(bucket, binding, allowed, () => time),
     advance: (ms: number) => { time += ms; }, status: (value: string) => { currentStatus = value; },
     createFailure: (value: boolean) => { createFailure = value; }, statusFailure: (value: boolean) => { statusFailure = value; },
-    beforeCreate: (hook: () => Promise<void>) => { beforeCreate = hook; } };
+    beforeCreate: (hook: () => Promise<void>) => { beforeCreate = hook; },
+    seedExisting: (id: string) => { existing.add(id); } };
 }
 
 test('reload after 47 minutes tracks the exact Openigloo ID and does not create a replacement', async () => {
@@ -145,4 +146,21 @@ test('a completion receipt winning the create race is not overwritten or reporte
   const result = await f.manager().start(false, ['openigloo']);
   expect(result.status).toBe('complete');
   expect(await f.manager().status()).toEqual(result);
+});
+
+test('documented duplicate acknowledgement confirms existence without fabricating observable status', async () => {
+  const f = fixture();
+  f.createFailure(true);
+  const pending = await f.manager().start(false, ['openigloo']);
+  f.seedExisting(pending.id);
+  f.statusFailure(true);
+  f.createFailure(false);
+  f.advance(31_000);
+  expect(await f.manager().status()).toMatchObject({ id: pending.id, canRetryStart: true });
+  expect(await f.manager().retry(pending.id)).toEqual({ ...pending, status: 'unknown' });
+  f.advance(4 * 24 * 60 * 60_000);
+  expect(await f.manager().status()).toEqual({ ...pending, status: 'unknown' });
+  expect(await f.manager().start(false, ['zumper-live'])).toEqual({ ...pending, status: 'unknown' });
+  await f.manager().retry(pending.id);
+  expect(f.creates).toHaveLength(2);
 });

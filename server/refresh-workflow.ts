@@ -93,14 +93,18 @@ export function createRefreshWorkflow(bucket: Bucket, binding: RefreshWorkflowBi
   async function dispatch(claim: Stored): Promise<RefreshWorkflowJob> {
     const { record } = claim;
     let status: WorkflowStatus;
+    let confirmed = false;
     try {
       await binding.create({ id: record.id, params: { delay: record.delay, sources: record.sources } });
       status = 'queued';
-    } catch {
+    } catch (error) {
+      // Cloudflare documents this identifier for create only, not missing-instance reads.
+      confirmed = error instanceof Error && error.message.includes('(instance.already_exists)');
       // A lost create response is ambiguous. Inspect this same ID; never launch a replacement.
       status = await observe(record.id);
     }
-    if (status !== 'unknown' && !await save({ ...record, status }, claim)) {
+    const storedStatus = status === 'unknown' && confirmed ? 'queued' : status;
+    if (storedStatus !== 'unknown' && !await save({ ...record, status: storedStatus }, claim)) {
       const current = await read();
       if (current?.record.id === record.id && terminal(current.record.status)) return publicJob(current.record);
     }

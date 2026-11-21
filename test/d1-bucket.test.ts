@@ -84,3 +84,68 @@ test('a new Worker request recovers the same Openigloo instance from D1 without 
     sqlite.close();
   }
 });
+
+test('confirmed Workflow stays unknown during outage or after deletion; exact guarded reconciliation touches only its header', async () => {
+  const sqlite = new Database(':memory:');
+  try {
+    const database = await localD1(sqlite);
+    const bucket = createD1Bucket(database);
+    const key = 'rentals/complete-refresh-workflow.json';
+    const inventoryKey = 'rentals/openigloo.json.gz';
+    const freshnessKey = 'rentals/refresh.json';
+    await bucket.put(inventoryKey, new Uint8Array([0x1f, 0x8b, 0x00, 0x01]));
+    await bucket.put(freshnessKey, '{"lastCheckedAt":"2026-11-21T16:00:00Z"}');
+    const retained = async () => Promise.all([inventoryKey, freshnessKey].map(async item => {
+      const stored = (await bucket.get(item))!;
+      return { etag: stored.etag, bytes: new Uint8Array(await stored.arrayBuffer()) };
+    }));
+    const before = await retained();
+    let error: Error | undefined;
+    const created: string[] = [];
+    const binding = {
+      async create({ id }: { id: string }) { created.push(id); },
+      async get(id: string) {
+        expect(created).toContain(id);
+        if (error) throw error;
+        return { status: async () => ({ status: 'queued' }) };
+      },
+    };
+    const sources = ['openigloo', 'zumper-live'];
+    const manager = () => createRefreshWorkflow(createD1Bucket(database), binding, sources);
+    const first = await manager().start(false, ['openigloo']);
+    const lookup = sqlite.query<{ etag: string; body: string }, [string]>(
+      'SELECT h.etag, p.body FROM apartment_objects h JOIN apartment_object_parts p ON p.key = h.key AND p.etag = h.etag AND p.part = 0 WHERE h.key = ? AND h.part_count = 1');
+    const captured = lookup.get(key)!;
+    expect(JSON.parse(atob(captured.body))).toMatchObject({ id: first.id, status: 'queued' });
+    for (const message of ['Temporary Cloudflare service unavailable', 'Instance does not exist (instance.not_found)']) {
+      error = new Error(message);
+      expect(await manager().status()).toEqual({ ...first, status: 'unknown' });
+      expect(await manager().start(true, ['zumper-live'])).toEqual({ ...first, status: 'unknown' });
+      await manager().retry(first.id);
+      expect(created).toEqual([first.id]);
+      expect(lookup.get(key)).toEqual(captured);
+      expect(await retained()).toEqual(before);
+    }
+
+    // An operator would run this only after independent definitive absence verification.
+    const sql = await Bun.file(new URL('../deploy/cloudflare/reconcile-workflow.sql', import.meta.url)).text();
+    const reconcile = sqlite.query<unknown, [string, string]>(sql);
+    expect(reconcile.run('wrong-etag', captured.body).changes).toBe(0);
+    expect(reconcile.run(captured.etag, 'wrong-body').changes).toBe(0);
+    expect(lookup.get(key)).toEqual(captured);
+    expect(reconcile.run(captured.etag, captured.body).changes).toBe(1);
+    expect(await bucket.get(key)).toBeNull();
+    expect(sqlite.query('SELECT body FROM apartment_object_parts WHERE key = ?').get(key)).toEqual({ body: captured.body });
+    expect(created).toEqual([first.id]);
+    expect(await retained()).toEqual(before);
+    error = undefined;
+    const next = await manager().start(false, ['zumper-live']);
+    expect(next.id).not.toBe(first.id);
+    expect(created).toEqual([first.id, next.id]);
+    expect(JSON.parse(atob(lookup.get(key)!.body))).toMatchObject({ id: next.id });
+    expect(reconcile.run(captured.etag, captured.body).changes).toBe(0);
+    expect(await retained()).toEqual(before);
+  } finally {
+    sqlite.close();
+  }
+});
