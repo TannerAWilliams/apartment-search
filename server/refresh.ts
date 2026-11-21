@@ -15,8 +15,10 @@ import { AUTO_RENTAL_SOURCES, DIRECT_RENTAL_SOURCES } from './direct-rentals.ts'
 import { loadOpenigloo, OPENIGLOO_COVERAGE, OPENIGLOO_MAX_LISTINGS, OPENIGLOO_MIN_COVERAGE, OPENIGLOO_TRANSPORT } from './openigloo.ts';
 import { requestForRefresh, retrySchedule } from './source-requests.ts';
 import { MARKETPLACE_NAMES } from '../src/marketplaces.ts';
-import { CITYREALTY_ID, CITYREALTY_TRANSPORT } from './cityrealty.ts';
-import { ZUMPER_LIVE, ZUMPER_TRANSPORT } from './zumper.ts';
+import { CITYREALTY_ID } from './cityrealty.ts';
+import { COMPLETE_SYNC_LIFETIME, completeSync, isCompleteSnapshot, WORKFLOW_SOURCE_IDS } from './source-registry.ts';
+
+export { WORKFLOW_SOURCE_IDS };
 import type { SourceDefinition } from '../src/source-status.ts';
 
 import { loadStreetEasyPublicSearch, STREETEASY_LIVE, STREETEASY_PUBLIC_COVERAGE, STREETEASY_PUBLIC_TRANSPORT } from './streeteasy.ts';
@@ -41,14 +43,7 @@ const HOUSING_KEY = 'rentals/housing-connect.json';
 const HDC_KEY = 'rentals/hdc-rerentals.json';
 const FEED_PREFIX = 'rentals/feeds/';
 const LOCK_TIMEOUT = 5 * 60_000;
-export const CITYREALTY_TIMEOUT = 12 * 60_000;
-/** A complete Openigloo sync is paced to about one request a second, roughly 20 minutes. */
-export const OPENIGLOO_TIMEOUT = 28 * 60_000;
-/** Sources whose complete sync runs in the Cloudflare Workflow rather than an API request. */
-export const ZUMPER_TIMEOUT = 25 * 60_000;
-export const WORKFLOW_SOURCE_IDS = [CITYREALTY_ID, 'openigloo', ZUMPER_LIVE.id];
-const workflowTimeout = (id: string | null | undefined) =>
-  id === 'openigloo' ? OPENIGLOO_TIMEOUT : id === ZUMPER_LIVE.id ? ZUMPER_TIMEOUT : CITYREALTY_TIMEOUT;
+
 const LIVE_MAX_AGE = 2 * 60 * 60_000;
 const FEED_REQUIRED_IDS = ['bhs', 'citysnap', 'craigslist', 'rebny-rls'] as const;
 const PAGE_FETCH_TIMEOUT = 25_000;
@@ -103,7 +98,8 @@ type RefreshOptions = {
   sourceId?: string;
   forceRefresh?: boolean;
   fallback?: boolean;
-  excludeCityRealty?: boolean;
+  /** Skip the complete syncs because the Workflow runs them. */
+  excludeWorkflowSources?: boolean;
   prepareListingSources?: () => Promise<void>;
   onStarted?: () => void;
 };
@@ -171,8 +167,8 @@ async function readState(bucket: Bucket | undefined): Promise<{ value: RefreshSt
 }
 
 function checkInProgress(state: RefreshState, now: Date) {
-  return state.running && now.getTime() - Date.parse(state.startedAt ?? '') <
-    (WORKFLOW_SOURCE_IDS.includes(state.activeSource ?? '') ? workflowTimeout(state.activeSource) + 30_000 : LOCK_TIMEOUT);
+  const sync = completeSync(state.activeSource);
+  return state.running && now.getTime() - Date.parse(state.startedAt ?? '') < (sync ? sync.timeoutMs + 30_000 : LOCK_TIMEOUT);
 }
 
 function publicStatus(state: RefreshState, now = new Date()) {
@@ -194,7 +190,7 @@ function checkedDuring(sources: SourceStatus[] | undefined, ids: string[], hour:
 const coolingDown = (source: SourceStatus | undefined, now: Date) => Date.parse(source?.retryAt ?? '') > now.getTime();
 
 const sourceLifetime = (id: string, transport: string | undefined) =>
-  WORKFLOW_SOURCE_IDS.includes(id) ? 24 * 60 * 60_000 :
+  completeSync(id) ? COMPLETE_SYNC_LIFETIME :
   id === STREETEASY_LIVE.id && transport === STREETEASY_EXPORT_FORMAT ? STREETEASY_EXPORT_MAX_AGE :
   id === STREETEASY_LIVE.id && (transport === STREETEASY_TRANSPORT || transport === STREETEASY_PARTNER_TRANSPORT || transport === STREETEASY_PUBLIC_TRANSPORT)
     ? STREETEASY_SYNC_INTERVAL : LIVE_MAX_AGE;
@@ -357,11 +353,11 @@ async function refreshOpenigloo(bucket: Bucket, result: RentalSnapshot, at: stri
 }
 
 async function refreshDirectRentals(bucket: Bucket, source: typeof DIRECT_RENTAL_SOURCES[number], result: RentalSnapshot, at: string, verifiedPartner = false) {
-  const verifiedCityRealty = (source.id === CITYREALTY_ID && result?.transport === CITYREALTY_TRANSPORT) ||
-    (source.id === ZUMPER_LIVE.id && result?.transport === ZUMPER_TRANSPORT);
-  if (source.id === CITYREALTY_ID && (!verifiedCityRealty || !Number.isSafeInteger(result.total) ||
+  const complete = completeSync(source.id);
+  const verifiedComplete = isCompleteSnapshot(source.id, result?.transport);
+  if (complete && (!verifiedComplete || !Number.isSafeInteger(result.total) ||
       result.rawCount !== result.total || result.listings.length > result.rawCount!)) {
-    throw new Error('CityRealty did not return a verifiable complete inventory.');
+    throw new Error(complete.name + ' did not return a verifiable complete inventory.');
   }
   const verifiedStreetEasy = source.id === STREETEASY_LIVE.id && result?.transport === STREETEASY_TRANSPORT;
   if (verifiedStreetEasy && (!Number.isSafeInteger(result.total) || result.total! < 0 || result.total! > 20000 ||
@@ -392,10 +388,10 @@ async function refreshDirectRentals(bucket: Bucket, source: typeof DIRECT_RENTAL
   return { status: 'updated', updatedAt: at, listingCount: result.listings.length, pages: result.pages, total: result.total,
     ...(validPartial ? { partial: true, requestedPages: result.requestedPages, failedPages: result.failedPages } : {}),
     ...(result.sampleLimit !== undefined ? { sampleLimit: result.sampleLimit } : {}),
-    ...(verifiedStreetEasy || verifiedPartner || verifiedCityRealty ? { transport: result.transport } : {}) };
+    ...(verifiedStreetEasy || verifiedPartner || verifiedComplete ? { transport: result.transport } : {}) };
 }
 
-export async function refreshSources(env: AppEnv, { fetcher = fetch, now = new Date(), imports, onDemand = false, fallback = false, skipStreetEasy = false, onlyStreetEasy = false, sourceId, forceRefresh = false, listingTransports, prepareListingSources, onStarted, excludeCityRealty = false }: RefreshOptions = {}) {
+export async function refreshSources(env: AppEnv, { fetcher = fetch, now = new Date(), imports, onDemand = false, fallback = false, skipStreetEasy = false, onlyStreetEasy = false, sourceId, forceRefresh = false, listingTransports, prepareListingSources, onStarted, excludeWorkflowSources = false }: RefreshOptions = {}) {
   const selected = sourceId ?? (onlyStreetEasy ? STREETEASY_LIVE.id : null);
   if (selected && !refreshCatalog(env).some((source) => source.id === selected && source.resyncable)) throw new Error('Unknown or disconnected refresh source.');
   const bucket = env.BUCKET;
@@ -415,8 +411,7 @@ export async function refreshSources(env: AppEnv, { fetcher = fetch, now = new D
     env.STREETEASY_PUBLIC_SEARCH === 'true' ? STREETEASY_PUBLIC_TRANSPORT : STREETEASY_TRANSPORT;
   const ready = (id: string) => {
     const prior = previousById.get(id);
-    // excludeCityRealty: the Workflow, when bound, runs every long complete sync.
-    if (WORKFLOW_SOURCE_IDS.includes(id)) return !excludeCityRealty && !coolingDown(prior, now) &&
+    if (completeSync(id)) return !excludeWorkflowSources && !coolingDown(prior, now) &&
       (forceRefresh || selected === id || !sourceRecent({ sources: prior ? [prior] : [] }, id, now));
     if (id !== STREETEASY_LIVE.id) return !coolingDown(prior, now);
     if (env.STREETEASY_SYNC_ENABLED === 'false') return false;
@@ -452,8 +447,8 @@ export async function refreshSources(env: AppEnv, { fetcher = fetch, now = new D
   onStarted?.();
 
   const sourceFetch = onDemand ? requestForRefresh(fetcher, AbortSignal.timeout(ids.includes(STREETEASY_LIVE.id) ? 120_000 : PAGE_FETCH_TIMEOUT)) : fetcher;
-  const liveData = <T>(id: string, load: (fetcher: SourceFetch, now: Date) => T): T => onDemand ? load(WORKFLOW_SOURCE_IDS.includes(id) ?
-    requestForRefresh(fetcher, AbortSignal.timeout(workflowTimeout(id))) : sourceFetch, now) : imports?.[id];
+  const liveData = <T>(id: string, load: (fetcher: SourceFetch, now: Date) => T): T => onDemand ? load(completeSync(id) ?
+    requestForRefresh(fetcher, AbortSignal.timeout(completeSync(id)!.timeoutMs)) : sourceFetch, now) : imports?.[id];
   let preparation: Promise<void> | undefined;
   const prepare = () => preparation ??= Promise.resolve().then(() => prepareListingSources?.());
   const candidates: { id: string; name: string; work: () => Promise<CheckResult> }[] = [
@@ -513,7 +508,7 @@ export async function refreshSources(env: AppEnv, { fetcher = fetch, now = new D
       item.transport = onDemand ? streetEasyTransport : STREETEASY_TRANSPORT;
       if (onDemand && streetEasyTransport !== STREETEASY_TRANSPORT) item.requestTransport = streetEasyTransport;
     }
-    if ((id === CITYREALTY_ID || id === ZUMPER_LIVE.id) && next?.transport) item.transport = next.transport;
+    if (completeSync(id) && id !== 'openigloo' && next?.transport) item.transport = next.transport;
     if (id === HDC_RERENTALS.id) item.listingCount = next?.listingCount ?? older?.listingCount;
     if (id === 'firstmover') {
       item.month = next?.month ?? older?.month ?? SNAPSHOT_MONTH;

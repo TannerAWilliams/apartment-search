@@ -4,7 +4,7 @@ import { createD1Bucket, type D1Database } from './d1-bucket.ts';
 import { secretsEqual } from './private-session.ts';
 import { isPublicRefresh } from './public-access.ts';
 import { readRequestBody, RequestTooLarge } from './request-body.ts';
-import { WORKFLOW_SOURCE_IDS } from './refresh.ts';
+import { WORKFLOW_SOURCE_IDS } from './source-registry.ts';
 import { createListingSourceClient } from './relay-client.ts';
 export { CityRealtySync } from './cityrealty-workflow.ts';
 
