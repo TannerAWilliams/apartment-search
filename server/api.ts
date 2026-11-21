@@ -95,7 +95,7 @@ export async function search(rawFilters: Record<string, unknown>, env: AppEnv, f
         // apartments the user excluded. Preserve the full inventory for counts.
         const selectedIndexes = matched.flatMap((listing, index) => !filters.source ||
           listing.sources.some(source => source.id === filters.source && source.url) ? [index] : []);
-        const selected = await routeCommutes(selectedIndexes.map(index => matched[index]), workplace, credentials, fetcher);
+        const selected = await routeCommutes(selectedIndexes.map(index => matched[index]), workplace, credentials, fetcher, new Date(), bucket);
         const byIndex = new Map(selectedIndexes.map((index, position) => [index, selected[position]]));
         routed = matched.map((listing, index) => byIndex.get(index) ?? {
           ...listing, transitSeconds: null, drivingSeconds: null, commuteEstimate: undefined,
