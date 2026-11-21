@@ -1,6 +1,7 @@
 import { required } from './test-values.ts';
 import { test, spyOn } from 'bun:test';
 import assert from 'node:assert/strict';
+import { gzipSync, strToU8 } from 'fflate';
 import { parseFirstMoverCsv } from '../server/firstmover.ts';
 import { housingDate } from '../server/housing.ts';
 import { refreshSources, saveObservedSnapshot, refreshStatus, sourceRecent, storedDirectRentals, storedFeed, storedHousing, storedMarket } from '../server/refresh.ts';
@@ -763,4 +764,18 @@ test('overlapping source snapshot writes reject stale history instead of overwri
   const winner = await storedDirectRentals(bucket, STREETEASY_LIVE);
   assert.equal(required(winner).listings[0].rent, 2300);
   assert.equal(required(required(winner).listings[0].priceHistory).observations.some(o => o.rent === 2400), false);
+});
+
+test('saved snapshots are reused until a sync replaces them, and are read-only', async () => {
+  const { createMemoryBucket } = await import('../server/memory-bucket.ts');
+  const bucket = createMemoryBucket();
+  const key = 'rentals/' + ZUMPER_LIVE.id + '.json.gz';
+  const save = (rent: number) => bucket.put(key, gzipSync(strToU8(JSON.stringify({ listings: [{ id: 'zumper:1', rent }] }))));
+  await save(2500);
+  const first = required(await storedDirectRentals(bucket, ZUMPER_LIVE));
+  assert.equal(await storedDirectRentals(bucket, ZUMPER_LIVE), first, 'unchanged snapshots are not parsed again');
+  assert.throws(() => { (first.listings[0] as { rent: number }).rent = 1; }, TypeError);
+  await save(2400);
+  assert.equal(required(await storedDirectRentals(bucket, ZUMPER_LIVE)).listings[0].rent, 2400, 'a new save is read');
+  assert.equal(await storedDirectRentals(createMemoryBucket(), ZUMPER_LIVE), null, 'another bucket does not share the cache');
 });

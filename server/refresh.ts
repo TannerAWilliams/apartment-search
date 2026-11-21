@@ -137,6 +137,34 @@ let cachedMarket: { bucket: Bucket; etag: string; market: { month: string; listi
 const compressed = (value: unknown) => gzipSync(strToU8(JSON.stringify(value)));
 const unpack = async (object: BucketObject) => JSON.parse(strFromU8(gunzipSync(new Uint8Array(await object.arrayBuffer()))));
 
+function deepFreeze<T>(value: T): T {
+  if (value && typeof value === 'object' && !Object.isFrozen(value)) {
+    Object.freeze(value);
+    for (const child of Object.values(value)) deepFreeze(child);
+  }
+  return value;
+}
+
+/**
+ * Parsed source snapshots, reused while their version tag is unchanged. Snapshots change only
+ * when a sync saves, but every search reads them; parsing was most of a search's CPU time.
+ * Values are frozen because every request shares them.
+ */
+const snapshotCache = new WeakMap<Bucket, Map<string, { etag: string; value: unknown }>>();
+async function readSnapshot<T>(bucket: Bucket, key: string): Promise<T | null> {
+  const head = await bucket.head(key);
+  if (!head) return null;
+  const cache = snapshotCache.get(bucket) ?? new Map<string, { etag: string; value: unknown }>();
+  snapshotCache.set(bucket, cache);
+  const hit = cache.get(key);
+  if (hit?.etag === head.etag) return hit.value as T;
+  const object = await bucket.get(key);
+  if (!object) { cache.delete(key); return null; }
+  const value = deepFreeze(await unpack(object));
+  cache.set(key, { etag: object.etag, value });
+  return value as T;
+}
+
 async function readState(bucket: Bucket | undefined): Promise<{ value: RefreshState; etag: string | null }> {
   const object = await bucket?.get(STATE_KEY);
   return object ? { value: await object.json(), etag: object.etag } : { value: {}, etag: null };
@@ -186,13 +214,11 @@ export function sourceExpiresAt(status: { sources: SourceStatus[] } | null | und
 }
 
 export async function storedOpenigloo(bucket: Bucket | undefined): Promise<StoredRentalSnapshot | null> {
-  const object = await bucket?.get(OPENIGLOO_KEY);
-  return object ? unpack(object) : null;
+  return bucket ? readSnapshot<StoredRentalSnapshot>(bucket, OPENIGLOO_KEY) : null;
 }
 
 export async function storedDirectRentals(bucket: Bucket | undefined, source: { id: string }): Promise<StoredRentalSnapshot | null> {
-  const object = await bucket?.get('rentals/' + source.id + '.json.gz');
-  return object ? unpack(object) : null;
+  return bucket ? readSnapshot<StoredRentalSnapshot>(bucket, 'rentals/' + source.id + '.json.gz') : null;
 }
 
 export async function refreshPlan(bucket: Bucket | undefined, now = new Date()) {
@@ -227,9 +253,9 @@ export async function storedRentHistory(bucket: Bucket | undefined, latest: stri
 }
 
 export async function storedFeed(bucket: Bucket, feed: { id: string }): Promise<StoredRentalSnapshot> {
-  const object = await bucket.get(FEED_PREFIX + feed.id + '.json.gz');
-  if (!object) throw new Error('This feed has not completed its first refresh.');
-  return unpack(object);
+  const snapshot = await readSnapshot<StoredRentalSnapshot>(bucket, FEED_PREFIX + feed.id + '.json.gz');
+  if (!snapshot) throw new Error('This feed has not completed its first refresh.');
+  return snapshot;
 }
 
 function marketBaseline(object: BucketHead | null | undefined, previous: RefreshState['market']): ({ month: string; revision: string; updatedAt: string; catalogEtag?: string; csvEtag?: string }) | null {

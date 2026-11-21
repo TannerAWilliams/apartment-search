@@ -33,8 +33,13 @@ function headFrom(row: StoredObject): BucketHead {
   return { etag: row.etag, customMetadata: JSON.parse(row.metadata) };
 }
 
+/** One bucket per database binding, so caches keyed by bucket survive across requests in an isolate. */
+const buckets = new WeakMap<D1Database, Bucket>();
+
 export function createD1Bucket(database: D1Database): Bucket {
-  return {
+  const existing = buckets.get(database);
+  if (existing) return existing;
+  const bucket: Bucket = {
     async head(key) {
       const row = await database.prepare(HEAD).bind(key).first<StoredObject>();
       return row ? headFrom(row) : null;
@@ -77,4 +82,6 @@ export function createD1Bucket(database: D1Database): Bucket {
       return updated.meta?.changes === 1 ? { etag } : null;
     },
   };
+  buckets.set(database, bucket);
+  return bucket;
 }
