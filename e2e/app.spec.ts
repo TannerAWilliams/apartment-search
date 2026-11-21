@@ -588,3 +588,62 @@ test('an open result expires without a provider request and saved apartments rem
   await expect(page.getByText('12 Grove Street', { exact: true }).first()).toBeVisible();
   expect(requests.filter(request => request.path === '/api/refresh')).toHaveLength(0);
 });
+
+test('durable source run resumes after reload and stays pending beyond four minutes', async ({ page }) => {
+  await mockApp(page);
+  await page.clock.install();
+  let started = false;
+  let complete = false;
+  let posts = 0;
+  let pollFailed = false;
+  let recoverable = false;
+  const job = () => ({ checking: started && !complete, activeSource: started && !complete ? 'openigloo' : null, sources: [], workflow: started ? {
+    id: 'fixture-durable-run', sources: ['openigloo'], status: complete ? 'complete' : recoverable ? 'unknown' : 'running', startedAt: now, canRetryStart: recoverable,
+  } : { id: 'fixture-prior-run', sources: ['openigloo'], status: 'complete', startedAt: now } });
+  await page.route('**/api/config', route => route.fulfill({ json: {
+    sources: [], sourceCatalog: [{ id: 'openigloo', name: 'Openigloo', coverage: 'Synthetic fixture', resyncable: true }],
+    commuteConfigured: false, browserImportAllowed: false, refresh: job(),
+  } }));
+  await page.route('**/api/refresh', route => {
+    if (route.request().method() === 'POST') {
+      const body = route.request().postDataJSON();
+      if (body?.sessionStart) return route.fulfill({ json: job() });
+      posts++;
+      if (body?.check === 'resume') {
+        expect(body).toEqual({ check: 'resume', workflowId: 'fixture-durable-run' });
+        recoverable = false;
+        return route.fulfill({ status: 202, json: job() });
+      }
+      expect(body).toEqual({ check: 'now', sessionStart: false, source: 'openigloo' });
+      started = true;
+      return route.fulfill({ status: 202, json: job() });
+    }
+    if (!pollFailed) {
+      pollFailed = true;
+      return route.fulfill({ status: 503, json: { error: 'Synthetic status outage' } });
+    }
+    return route.fulfill({ json: job() });
+  });
+  await page.goto('/#sources');
+  await expect(page.getByText(/Background sync fixture-prior-run: complete/)).toBeVisible();
+  await page.getByRole('button', { name: 'Resync Openigloo', exact: true }).click();
+  await expect(page.getByText(/Background sync fixture-durable-run: running/)).toBeVisible();
+  await page.clock.fastForward(13_000);
+  await expect(page.getByText(/Background sync fixture-durable-run: unknown/)).toBeVisible();
+  await page.clock.fastForward(241_000);
+  await expect(page.getByText(/Background sync fixture-durable-run: running/)).toBeVisible();
+  await expect(page.getByText('The source check is still running.', { exact: true })).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByText(/Background sync fixture-durable-run: running/)).toBeVisible();
+  expect(posts).toBe(1);
+  recoverable = true;
+  await page.clock.fastForward(13_000);
+  await expect(page.getByText(/Background sync fixture-durable-run: unknown/)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Resync Openigloo', exact: true })).toBeDisabled();
+  await page.getByRole('button', { name: 'Retry this background run', exact: true }).click();
+  await expect(page.getByText(/Background sync fixture-durable-run: running/)).toBeVisible();
+  complete = true;
+  await page.clock.fastForward(13_000);
+  await expect(page.getByText(/Background sync fixture-durable-run: complete/)).toBeVisible();
+  expect(posts).toBe(2);
+});

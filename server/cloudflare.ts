@@ -5,16 +5,14 @@ import { secretsEqual } from './private-session.ts';
 import { isPublicRefresh } from './public-access.ts';
 import { readRequestBody, RequestTooLarge } from './request-body.ts';
 import { WORKFLOW_SOURCE_IDS } from './refresh.ts';
+import { createRefreshWorkflow, type RefreshWorkflowBinding } from './refresh-workflow.ts';
 import { createListingSourceClient } from './relay-client.ts';
 export { CityRealtySync } from './cityrealty-workflow.ts';
 
 type Environment = AppEnv & {
   APARTMENTS: D1Database;
   ASSETS: { fetch(request: Request): Promise<Response> };
-  CITYREALTY_SYNC?: {
-    create(options: { id: string; params: { delay: boolean; sources?: string[] } }): Promise<unknown>;
-    get(id: string): Promise<{ status(): Promise<{ status: string }> }>;
-  };
+  CITYREALTY_SYNC?: RefreshWorkflowBinding;
 };
 
 const headers = { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' };
@@ -47,24 +45,8 @@ export default {
       const client = createListingSourceClient(appEnv, (target, options) =>
         fetch(target, options?.redirect === 'error' ? { ...options, redirect: 'manual' } : options));
       const workflow = env.CITYREALTY_SYNC;
-      const workflowId = (offset = 0) => 'cityrealty-' + (Math.floor(Date.now() / 120_000) - offset);
       return await handleApi(apiRequest, appEnv, { ...client, privateAuthenticated: bearer,
-        cityRealtyJob: workflow ? {
-          async start(delay, sources) {
-            const id = workflowId() + (sources ? '-' + sources.join('-') : '');
-            try { await workflow.create({ id, params: { delay, ...(sources ? { sources } : {}) } }); }
-            catch (error) {
-              const existing = await workflow.get(id).then(instance => instance.status()).catch(() => { throw error; });
-              if (existing.status === 'unknown') throw error;
-            }
-          },
-          async pending() {
-            const ids = [0, 1].flatMap(offset => ['', ...WORKFLOW_SOURCE_IDS.map(source => '-' + source)].map(suffix => workflowId(offset) + suffix));
-            const statuses = await Promise.allSettled(ids.map(id => workflow.get(id).then(instance => instance.status())));
-            return statuses.some(result => result.status === 'fulfilled' &&
-              ['queued', 'running', 'waiting'].includes(result.value.status));
-          },
-        } : undefined,
+        refreshWorkflow: workflow ? createRefreshWorkflow(appEnv.BUCKET, workflow, WORKFLOW_SOURCE_IDS) : undefined,
       });
     } catch (cause) {
       if (cause instanceof RequestTooLarge) return error('The request is too large.', 413);

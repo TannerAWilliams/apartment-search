@@ -4,6 +4,7 @@ import { CITYREALTY_ID } from './cityrealty.ts';
 import { createD1Bucket, type D1Database } from './d1-bucket.ts';
 import { crawlOpeniglooCell, finishOpeniglooRun, OPENIGLOO_CELL_COUNT } from './openigloo-sync.ts';
 import { refreshSources, WORKFLOW_SOURCE_IDS } from './refresh.ts';
+import { recordRefreshWorkflowOutcome } from './refresh-workflow.ts';
 
 type Environment = AppEnv & { APARTMENTS: D1Database };
 /** sources: which complete syncs to run, in order; all of them when omitted. */
@@ -15,14 +16,29 @@ const STEP_TIMEOUTS: Record<string, '13 minutes' | '25 minutes'> = { [CITYREALTY
 /** Runs the complete-inventory syncs that are too long for an API request. Named for its first source. */
 export class CityRealtySync extends WorkflowEntrypoint<Environment, RefreshParameters> {
   async run(event: WorkflowEvent<RefreshParameters>, step: WorkflowStep) {
-    if (event.payload.delay) await step.sleep('Give other sources time to start', '3 seconds');
-    const sources = (event.payload.sources ?? WORKFLOW_SOURCE_IDS).filter((id) => WORKFLOW_SOURCE_IDS.includes(id));
     const outcomes: Record<string, { state: string; listingCount?: number; error?: string }> = {};
-    for (const sourceId of sources) {
-      outcomes[sourceId] = sourceId === 'openigloo' ? await this.syncOpenigloo(event.instanceId, step) : await this.sync(sourceId, step);
+    let failure: { cause: unknown } | undefined;
+    try {
+      if (event.payload.delay) await step.sleep('Give other sources time to start', '3 seconds');
+      const sources = (event.payload.sources ?? WORKFLOW_SOURCE_IDS).filter((id) => WORKFLOW_SOURCE_IDS.includes(id));
+      for (const sourceId of sources) {
+        outcomes[sourceId] = sourceId === 'openigloo' ? await this.syncOpenigloo(event.instanceId, step) : await this.sync(sourceId, step);
+      }
+      const failed = Object.entries(outcomes).filter(([, outcome]) => outcome.error);
+      if (failed.length) throw new Error(failed.map(([id, outcome]) => NAMES[id] + ': ' + outcome.error).join(' '));
+    } catch (cause) {
+      failure = { cause };
     }
-    const failed = Object.entries(outcomes).filter(([, outcome]) => outcome.error);
-    if (failed.length) throw new Error(failed.map(([id, outcome]) => NAMES[id] + ': ' + outcome.error).join(' '));
+    // This receipt supports reload even after Cloudflare has aged out its instance status.
+    // Failure to write it must not recast a successfully published inventory as a failed check.
+    await step.do('Record the result of this complete inventory check',
+      { timeout: '1 minute', retries: { limit: 2, delay: '1 second' } },
+      async () => {
+        await recordRefreshWorkflowOutcome(createD1Bucket(this.env.APARTMENTS), WORKFLOW_SOURCE_IDS,
+          event.instanceId, failure ? 'errored' : 'complete');
+        return true;
+      }).catch(() => {});
+    if (failure) throw failure.cause;
     return outcomes;
   }
 
@@ -37,7 +53,7 @@ export class CityRealtySync extends WorkflowEntrypoint<Environment, RefreshParam
         }));
       if (result.state !== 'running') {
         const status = result.sources.find(({ id }) => id === sourceId);
-        const error = result.state !== 'already_checked' && status?.status === 'failed' ? status.error ?? `${NAMES[sourceId]} refresh failed.` : undefined;
+        const error = result.state === 'superseded' ? 'Inventory publication was superseded by another check.' : result.state !== 'already_checked' && status?.status === 'failed' ? status.error ?? `${NAMES[sourceId]} refresh failed.` : undefined;
         return { state: result.state, listingCount: status?.listingCount, ...(error ? { error } : {}) };
       }
       await step.sleep(`Wait for active refresh before ${NAMES[sourceId]} ${attempt + 1}`, '15 seconds');
@@ -64,7 +80,7 @@ export class CityRealtySync extends WorkflowEntrypoint<Environment, RefreshParam
         () => finishOpeniglooRun({ ...this.env, BUCKET: bucket }, run, fetcher).catch((cause: unknown) =>
           ({ state: 'failed', error: cause instanceof Error ? cause.message : 'Openigloo inventory could not be saved.' })));
       if (result.state !== 'running') {
-        const error = 'error' in result ? result.error : result.status?.status === 'failed' ? result.status.error ?? 'Openigloo refresh failed.' : undefined;
+        const error = 'error' in result ? result.error : result.state === 'superseded' ? 'Inventory publication was superseded by another check.' : result.status?.status === 'failed' ? result.status.error ?? 'Openigloo refresh failed.' : undefined;
         return { state: result.state, ...('listingCount' in result ? { listingCount: result.listingCount } : {}), ...(error ? { error } : {}) };
       }
       await step.sleep(`Wait for active refresh before saving Openigloo ${attempt + 1}`, '15 seconds');

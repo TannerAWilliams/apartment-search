@@ -1,3 +1,5 @@
+import { isRefreshWorkflowId } from './refresh-workflow.ts';
+
 /** Process-local limits for the single free Render instance. Reset on restart. */
 export function createPublicRequestLimits(now = Date.now) {
   let refreshAfter = 0;
@@ -24,6 +26,7 @@ export function createPublicRequestLimits(now = Date.now) {
 export function isPublicRefresh(body: unknown): boolean {
   if (!body || typeof body !== 'object' || Array.isArray(body)) return false;
   const value = body as Record<string, unknown>;
+  if (value.check === 'resume') return isRefreshWorkflowId(value.workflowId) && Object.keys(value).every(key => key === 'check' || key === 'workflowId');
   return value.check === 'now' && Object.keys(value).every((key) => ['check', 'source', 'sessionStart'].includes(key))
     && (value.source === undefined || typeof value.source === 'string')
     && (value.sessionStart === undefined || typeof value.sessionStart === 'boolean');

@@ -1,7 +1,8 @@
 import type { AppEnv, Bucket } from './contracts.ts';
 import type { ListingData, SourceStatus as SearchSource, SearchResult } from '../src/domain.ts';
 import type { SourceStatus } from './refresh.ts';
-import { CITYREALTY_COVERAGE, CITYREALTY_ID, CITYREALTY_TRANSPORT } from './cityrealty.ts';
+import { isRefreshWorkflowId, type RefreshWorkflow, type RefreshWorkflowJob } from './refresh-workflow.ts';
+import { CITYREALTY_COVERAGE, CITYREALTY_TRANSPORT } from './cityrealty.ts';
 import { ZUMPER_COVERAGE, ZUMPER_TRANSPORT } from './zumper.ts';
 import { dashboardSnapshot } from './dashboard-snapshot.ts';
 import { retrieveBuildingRecords } from './building-records.ts';
@@ -203,7 +204,18 @@ function json(value: unknown, status = 200) {
   return Response.json(value, { status, headers: { 'Cache-Control': 'no-store' } });
 }
 
-export async function handleApi(request: Request, env: AppEnv, { privateAuthenticated = false, requireToken = false, fetcher = (url, options) => globalThis.fetch(url, options), waitUntil, prepareListingSources, listingTransports, backgroundRefresh = false, cityRealtyJob }: { privateAuthenticated?: boolean; requireToken?: boolean; fetcher?: SourceFetch; waitUntil?: (work: Promise<unknown>) => void; prepareListingSources?: () => Promise<void>; listingTransports?: ListingTransports; backgroundRefresh?: boolean; cityRealtyJob?: { start(delay: boolean, sources?: string[]): Promise<void>; pending(): Promise<boolean> } } = {}) {
+const workflowPending = (job: RefreshWorkflowJob) => !['complete', 'errored', 'terminated'].includes(job.status);
+
+function withRefreshWorkflow<T extends { checking?: boolean; activeSource?: string | null }>(
+  plan: T, job?: RefreshWorkflowJob | null,
+) {
+  if (!job) return plan;
+  return { ...plan, workflow: job, ...(workflowPending(job) ? {
+    checking: true, activeSource: plan.checking && plan.activeSource ? plan.activeSource : job.sources.length === 1 ? job.sources[0] : null,
+  } : {}) };
+}
+
+export async function handleApi(request: Request, env: AppEnv, { privateAuthenticated = false, requireToken = false, fetcher = (url, options) => globalThis.fetch(url, options), waitUntil, prepareListingSources, listingTransports, backgroundRefresh = false, refreshWorkflow }: { privateAuthenticated?: boolean; requireToken?: boolean; fetcher?: SourceFetch; waitUntil?: (work: Promise<unknown>) => void; prepareListingSources?: () => Promise<void>; listingTransports?: ListingTransports; backgroundRefresh?: boolean; refreshWorkflow?: RefreshWorkflow } = {}) {
   const { pathname: path, searchParams } = new URL(request.url);
   if (!API_PATHS.has(path)) return json({ error: 'Endpoint not found.' }, 404);
   if (requireToken && request.headers.get('Authorization') !== `Bearer ${env.APP_ACCESS_TOKEN}`) {
@@ -220,7 +232,7 @@ export async function handleApi(request: Request, env: AppEnv, { privateAuthenti
     try {
       const config = appConfig(env);
       if (!env.BUCKET) return json(config);
-      const refresh = await refreshStatus(env.BUCKET);
+      const refresh = withRefreshWorkflow(await refreshStatus(env.BUCKET), await refreshWorkflow?.status());
       const sourceCatalog = refreshCatalog(env);
       const coverageById = new Map(sourceCatalog.map((source) => [source.id, source.coverage]));
       const liveSources = [
@@ -270,7 +282,7 @@ export async function handleApi(request: Request, env: AppEnv, { privateAuthenti
   }
   if (path === '/api/refresh' && request.method === 'GET') {
     const plan = await refreshPlan(env.BUCKET);
-    return json(plan.checking || !cityRealtyJob || !(await cityRealtyJob.pending()) ? plan : { ...plan, checking: true, activeSource: CITYREALTY_ID });
+    return json(withRefreshWorkflow(plan, await refreshWorkflow?.status()));
   }
   if (request.method !== 'POST') return json({ error: 'Use POST for this endpoint.' }, 405);
   if (path === '/api/refresh' && (!env.BUCKET || !request.headers.get('Content-Type')?.startsWith('application/json'))) {
@@ -290,21 +302,33 @@ export async function handleApi(request: Request, env: AppEnv, { privateAuthenti
   }
   try {
     if (path === '/api/refresh') {
+      if (body?.check === 'resume') {
+        if (!refreshWorkflow || !isRefreshWorkflowId(body.workflowId)) return json({ error: 'Send the unconfirmed background check ID.' }, 422);
+        const job = await refreshWorkflow.retry(body.workflowId);
+        if (!job) return json({ error: 'This is no longer the current background check.' }, 409);
+        const pending = workflowPending(job);
+        return json({ ...withRefreshWorkflow(await refreshPlan(env.BUCKET), job),
+          state: pending ? 'running' : job.status === 'complete' ? 'complete' : 'partial' }, pending ? 202 : 200);
+      }
       if (body?.check === 'now') {
         if (body.source !== undefined && !refreshCatalog(env).some((source) => source.id === body.source && source.resyncable)) return json({ error: 'Unknown or disconnected refresh source.' }, 422);
-        if (cityRealtyJob && WORKFLOW_SOURCE_IDS.includes(body.source)) {
+        if (refreshWorkflow && WORKFLOW_SOURCE_IDS.includes(body.source)) {
           const current = await refreshPlan(env.BUCKET);
           const previous = current.sources.find(item => item.id === body.source);
-          if (previous?.retryAt && Date.parse(previous.retryAt) > Date.now()) return json({ ...current, state: 'already_checked' });
-          if (!current.checking || current.activeSource !== body.source) await cityRealtyJob.start(Boolean(current.checking), [body.source]);
-          return json({ ...current, state: 'running', checking: true, activeSource: body.source }, 202);
+          if (previous?.retryAt && Date.parse(previous.retryAt) > Date.now()) {
+            return json({ ...withRefreshWorkflow(current, await refreshWorkflow.status()), state: 'already_checked' });
+          }
+          const job = await refreshWorkflow.start(Boolean(current.checking), [body.source]);
+          const pending = workflowPending(job);
+          return json({ ...withRefreshWorkflow(current, job), state: pending ? 'running' : job.status === 'complete' ? 'complete' : 'partial' }, pending ? 202 : 200);
         }
         let started!: () => void;
         const starting = new Promise<void>(resolve => { started = resolve; });
         const work = refreshSources(env, { fetcher, listingTransports, onDemand: true, prepareListingSources,
-          sourceId: body.source, forceRefresh: body.sessionStart !== true, onStarted: started, excludeCityRealty: Boolean(cityRealtyJob) });
-        if (cityRealtyJob && body.source === undefined && body.sessionStart !== true) {
-          try { await cityRealtyJob.start(true); }
+          sourceId: body.source, forceRefresh: body.sessionStart !== true, onStarted: started, excludeCityRealty: Boolean(refreshWorkflow) });
+        let job: RefreshWorkflowJob | undefined;
+        if (refreshWorkflow && body.source === undefined && body.sessionStart !== true) {
+          try { job = await refreshWorkflow.start(true); }
           catch (cause) { await work.catch(() => {}); throw cause; }
         }
         waitUntil?.(work.catch(() => {}));
@@ -317,7 +341,15 @@ export async function handleApi(request: Request, env: AppEnv, { privateAuthenti
           ]);
           return json(outcome.result, outcome.status);
         }
-        return json(await work);
+        const result = await work;
+        if (job) {
+          // Short refreshes may finish first, including when the complete job was already running.
+          const latest = await refreshWorkflow?.status();
+          const observed = latest?.id === job.id ? latest : job;
+          return json({ ...withRefreshWorkflow(result, observed), state: workflowPending(observed) ? 'running' : result.state },
+            workflowPending(observed) ? 202 : 200);
+        }
+        return json(result);
       }
       let imports;
       try { imports = decodeSourceImport(body); }

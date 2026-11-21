@@ -26,6 +26,7 @@ import { AddListing } from './src/AddListing.tsx';
 import { ImportListings } from './src/ImportListings.tsx';
 import { ListingMap } from './src/ListingMap';
 import { SourcesPage } from './src/SourcesPage.tsx';
+import { workflowPending, type RefreshWorkflow } from './src/refresh-workflow.ts';
 import { refreshSummary } from './src/source-status.ts';
 import { LAUNDRY_LABELS } from './src/discovery.ts';
 import { SavedSearches } from './src/SavedSearches.tsx';
@@ -39,7 +40,7 @@ type DraftFilters = Omit<SearchFilters, 'maxRent' | 'maxTransitMinutes' | 'maxDr
   maxRent: string | number | null; maxTransitMinutes: string | number | null; maxDrivingMinutes: string | number | null;
   minBathrooms: string | number | null; minSquareFeet: string | number | null; bestFitRentWeight: string | number;
 };
-type RefreshInfo = { sources: (SourceStatus & { month?: string; transport?: string })[]; checking?: boolean; activeSource?: string | null; state?: string; lastCheckedAt?: string; refreshRetryAt?: number; market?: { revision?: string; catalogEtag?: string; csvEtag?: string } | null };
+type RefreshInfo = { workflow?: RefreshWorkflow; sources: (SourceStatus & { month?: string; transport?: string })[]; checking?: boolean; activeSource?: string | null; state?: string; lastCheckedAt?: string; refreshRetryAt?: number; market?: { revision?: string; catalogEtag?: string; csvEtag?: string } | null };
 type ConfigSource = { id: string; name: string; sample?: boolean };
 type ApiConfig = { sources: ConfigSource[]; sourceCatalog?: SourceDefinition[]; commuteConfigured?: boolean; companies?: Record<string, number>; refresh?: RefreshInfo; refreshRetryAt?: number; browserImportAllowed?: boolean; dashboardAvailable?: boolean; storageMode?: string };
 type ApiOptions = { body?: object; token?: string; signal?: AbortSignal };
@@ -96,17 +97,34 @@ async function api<T>(path: string, { body, token, signal }: ApiOptions = {}): P
 }
 
 async function finishSourceCheck(check: RefreshInfo, token: string, signal?: AbortSignal, onProgress?: (check: RefreshInfo) => void) {
+  let observedWorkflow = workflowPending(check.workflow) ? check.workflow : undefined;
   const started = Date.now();
   let cityRealtyRunning = false;
-  while (check.checking) {
+  while (check.checking || workflowPending(check.workflow)) {
     cityRealtyRunning ||= check.activeSource === 'cityrealty-live';
-    if (Date.now() - started >= (cityRealtyRunning ? 13 * 60_000 : 150_000)) break;
-    await new Promise((resolve) => setTimeout(resolve, cityRealtyRunning ? 4000 : 1200));
+    if (!observedWorkflow && Date.now() - started >= (cityRealtyRunning ? 13 * 60_000 : 150_000)) break;
+    await new Promise((resolve) => setTimeout(resolve, observedWorkflow ? 12000 : cityRealtyRunning ? 4000 : 1200));
     if (signal?.aborted) return check;
-    check = await api('refresh', { token, signal });
+    if (observedWorkflow && (Platform.OS === 'web' ? typeof document !== 'undefined' && document.hidden : AppState.currentState === 'background')) continue;
+    try {
+      const next = await api('refresh', { token, signal });
+      if (observedWorkflow && next.workflow?.id !== observedWorkflow.id) {
+        // Do not claim another run's outcome as this one. A missing status is transient.
+        if (!next.workflow) throw new Error('Background run status unavailable');
+        return { ...next, state: 'workflow_superseded' };
+      }
+      if (workflowPending(next.workflow)) observedWorkflow = next.workflow;
+      check = next;
+    } catch (error) {
+      if (signal?.aborted) return check;
+      if (!workflowPending(check.workflow)) throw error;
+      // Losing this tab's connection is not evidence that the durable job failed.
+      onProgress?.({ ...check, workflow: { ...check.workflow!, status: 'unknown' } });
+      continue;
+    }
     onProgress?.(check);
   }
-  if (check.checking) throw new Error('The source check is still running.');
+  // A foreground observation window ending does not cancel or fail a server job.
   return check;
 }
 
@@ -398,6 +416,8 @@ function ApartmentSearch() {
   const [sourceCatalog, setSourceCatalog] = useState<SourceDefinition[]>([]);
   const [refresh, setRefresh] = useState<RefreshInfo | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [retryingWorkflow, setRetryingWorkflow] = useState(false);
+  const workflowRetry = useRef<AbortSignal | null>(null);
   const [refreshRetryAt, setRefreshRetryAt] = useState(0);
   const refreshRetryAtRef = useRef(0);
   refreshRetryAtRef.current = refreshRetryAt;
@@ -487,17 +507,18 @@ function ApartmentSearch() {
     browserImportAllowed.current = config.browserImportAllowed === true;
   }, []);
 
-  const checkSources = useCallback(async (sessionStart = false, source: string | null = null) => {
+  const checkSources = useCallback(async (sessionStart = false, source: string | null = null, resume?: RefreshInfo) => {
     const signal = sourceSession.current;
     if (!signal || signal.aborted || checking.current === signal) return;
-    if (Date.now() < refreshRetryAtRef.current) return;
+    if (!resume && Date.now() < refreshRetryAtRef.current) return;
     checking.current = signal;
     setRefreshing(true);
     setRefreshError('');
     try {
-      const request = await api('refresh', { body: { check: 'now', sessionStart, ...(source ? { source } : {}) }, token: activeToken, signal });
+      const request = resume ?? await api('refresh', { body: { check: 'now', sessionStart, ...(source ? { source } : {}) }, token: activeToken, signal });
       setRefreshClock(Date.now());
       setRefreshRetryAt(request.refreshRetryAt ?? 0);
+      setRefresh(request);
       let lastProgress = '';
       const check = await finishSourceCheck(request, activeToken, signal, (progress) => {
         setRefresh(progress);
@@ -513,6 +534,27 @@ function ApartmentSearch() {
           .catch(() => {});
       });
       if (signal?.aborted) return;
+      if (check.state === 'workflow_superseded') {
+        setRefresh(check);
+        setRefreshError('A newer background source check is now listed. The outcome of the earlier run could not be confirmed.');
+        if (workflowPending(check.workflow)) {
+          // Keep following the visible newer run, without starting another one.
+          const latest = await finishSourceCheck(check, activeToken, signal, progress => { if (!signal.aborted) setRefresh(progress); });
+          if (!signal.aborted) setRefresh(latest);
+        }
+        return;
+      }
+      if (check.checking || workflowPending(check.workflow)) {
+        setRefresh(check);
+        setRefreshError('The source check continues in the background. Reopen Sources to check its progress.');
+        return;
+      }
+      if (check.workflow && request.workflow?.id === check.workflow.id &&
+          (check.workflow.status === 'errored' || check.workflow.status === 'terminated')) {
+        setRefresh(check);
+        setRefreshError('The background source check ' + check.workflow.status + '. Previously saved listings are preserved.');
+        return;
+      }
       const failedExports = source ? [] : retryablePublicSources(check);
       if (failedExports.length && browserImportAllowed.current) {
         const plan = await api('refresh', { token: activeToken, signal });
@@ -555,12 +597,35 @@ function ApartmentSearch() {
     }
   }, [activeToken, updateConfig]);
 
+  const retryWorkflowStart = useCallback(async (workflowId: string) => {
+    const signal = sourceSession.current;
+    if (!signal || signal.aborted || workflowRetry.current === signal ||
+        refresh?.workflow?.id !== workflowId || !refresh.workflow.canRetryStart) return;
+    workflowRetry.current = signal;
+    setRetryingWorkflow(true);
+    setRefreshError('');
+    try {
+      const outcome = await api('refresh', { body: { check: 'resume', workflowId }, token: activeToken, signal });
+      if (!signal.aborted && outcome.workflow?.id === workflowId) {
+        setRefresh(current => current?.workflow?.id === workflowId && workflowPending(current.workflow) ? outcome : current);
+      }
+    } catch {
+      if (!signal.aborted) setRefreshError('Could not confirm the retry for this background run. Its status is still being checked.');
+    } finally {
+      if (workflowRetry.current === signal) {
+        workflowRetry.current = null;
+        if (!signal.aborted) setRetryingWorkflow(false);
+      }
+    }
+  }, [activeToken, refresh]);
+
   useEffect(() => {
     if (API_ORIGIN === null) return;
     setServerState('checking');
     const controller = new AbortController();
     sourceSession.current = controller.signal;
     setRefreshing(false);
+    setRetryingWorkflow(false);
     api('config', { token: activeToken, signal: controller.signal }).then((config) => {
       if (controller.signal.aborted) return;
       setServerState('ready');
@@ -574,7 +639,9 @@ function ApartmentSearch() {
           .catch((failure) => { if (!controller.signal.aborted) setError(failure.message || 'Saved inventory could not be loaded. Please try again.'); });
       }
       // Opening Search shows saved results immediately, then checks the sources.
-      if (config.refresh) void checkSources(true);
+      if (config.refresh?.checking || workflowPending(config.refresh?.workflow)) {
+        void checkSources(true, config.refresh?.activeSource ?? null, config.refresh);
+      } else if (config.refresh) void checkSources(true);
 
     }).catch((failure) => {
       if (controller.signal.aborted) return;
@@ -775,7 +842,7 @@ function ApartmentSearch() {
                   setAdding(false);
                 }}
                 onCancel={() => setAdding(false)} />}
-              <SourcesPage catalog={sourceCatalog} refresh={refresh} refreshing={refreshing} cooldownSeconds={cooldownSeconds} onResync={(id) => checkSources(false, id ?? null)} />
+              <SourcesPage catalog={sourceCatalog} refresh={refresh} refreshing={refreshing} cooldownSeconds={cooldownSeconds} onResync={(id) => checkSources(false, id ?? null)} retryingWorkflow={retryingWorkflow} onRetryWorkflow={retryWorkflowStart} refreshNotice={refreshError} />
             </>}
             {tab === 'marketplaces' && <Marketplaces filters={applied} sources={result.sources}
               configuredSources={configuredSources} companies={companies} onCompany={searchCompany} refresh={refresh} refreshing={refreshing} cooldownSeconds={cooldownSeconds}
