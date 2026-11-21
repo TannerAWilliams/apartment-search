@@ -1,13 +1,14 @@
 import { searchAvailabilityMessage } from './src/search-availability.ts';
 import { createApi, type ApiConfig, type ConfigSource, type RefreshInfo } from './src/api-client.ts';
 import { ErrorBoundary } from './src/ErrorBoundary.tsx';
+import { useHashNavigation, useInventoryClock, useRetryCooldown } from './src/app-hooks.ts';
 import { inventoryExpired } from './src/inventory-freshness.ts';
 import { inventoryUnavailable } from './src/inventory-state.ts';
 import type { ListingData, SourceLink, SearchFilters, SearchResult } from './src/domain.ts';
 import type { SourceDefinition, SourceStatus } from './src/source-status.ts';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  AppState, Modal, Platform, Pressable, ScrollView, StatusBar, Text, View, useWindowDimensions,
+Modal, Platform, Pressable, ScrollView, StatusBar, Text, View, useWindowDimensions,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
@@ -345,22 +346,7 @@ function ApartmentSearch() {
   const [draft, setDraft] = useState(formDefaults);
   const [applied, setApplied] = useState(SEARCH_DEFAULTS);
   const [result, setResult] = useState<SearchResult>(() => localSearch([], SEARCH_DEFAULTS, localWorkplace(SEARCH_DEFAULTS), 'live'));
-  const [inventoryClock, setInventoryClock] = useState(Date.now);
-  useEffect(() => {
-    if (result.mode !== 'live' || result.inventoryExpiresAt === undefined) return;
-    const check = () => setInventoryClock(Date.now());
-    check();
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const schedule = () => {
-      const remaining = Date.parse(result.inventoryExpiresAt!) - Date.now();
-      if (!Number.isFinite(remaining) || remaining < 0) { check(); return; }
-      timer = setTimeout(() => { check(); schedule(); }, Math.min(2_147_483_647, remaining + 1));
-    };
-    schedule();
-    const subscription = AppState.addEventListener('change', state => { if (state === 'active') check(); });
-    if (Platform.OS === 'web') window.addEventListener('focus', check);
-    return () => { if (timer !== undefined) clearTimeout(timer); subscription.remove(); if (Platform.OS === 'web') window.removeEventListener('focus', check); };
-  }, [result]);
+  const inventoryClock = useInventoryClock(result);
   const staleInventory = inventoryExpired(result, inventoryClock);
   const [saved, setSaved] = useState<ListingData[]>([]);
   const [visible, setVisible] = useState(PAGE_SIZE);
@@ -373,16 +359,7 @@ function ApartmentSearch() {
   const [sourceCatalog, setSourceCatalog] = useState<SourceDefinition[]>([]);
   const [refresh, setRefresh] = useState<RefreshInfo | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [refreshRetryAt, setRefreshRetryAt] = useState(0);
-  const refreshRetryAtRef = useRef(0);
-  refreshRetryAtRef.current = refreshRetryAt;
-  const [refreshClock, setRefreshClock] = useState(Date.now);
-  const cooldownSeconds = Math.max(0, Math.ceil((refreshRetryAt - refreshClock) / 1000));
-  useEffect(() => {
-    if (!refreshRetryAt) return;
-    const timer = setInterval(() => setRefreshClock(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, [refreshRetryAt]);
+  const { refreshRetryAt, setRefreshRetryAt, refreshRetryAtRef, cooldownSeconds, setRefreshClock } = useRetryCooldown();
   const [refreshError, setRefreshError] = useState('');
   const browserImportAllowed = useRef(false);
   const checking = useRef<AbortSignal | null>(null);
@@ -395,29 +372,8 @@ function ApartmentSearch() {
   const [commuteConfigured, setCommuteConfigured] = useState(false);
   const [dashboardAvailable, setDashboardAvailable] = useState(false);
   const [temporaryStorage, setTemporaryStorage] = useState(false);
-  const [tab, setTab] = useState('results');
-  useEffect(() => {
-    if (Platform.OS !== 'web') return;
-    const restore = () => {
-      const next = window.location.hash.slice(1);
-      setExpanded('');
-      setScope(next === 'saved' ? 'saved' : 'market');
-      setTab(['results', 'saved', 'more', 'sources', 'chart', 'marketplaces', 'affordable'].includes(next) ? next : 'results');
-    };
-    restore();
-    window.addEventListener('popstate', restore);
-    window.addEventListener('hashchange', restore);
-    return () => { window.removeEventListener('popstate', restore); window.removeEventListener('hashchange', restore); };
-  }, []);
-  const navigateTab = (next: string) => {
-    if (Platform.OS === 'web' && window.location.hash !== '#' + next) window.history.pushState(null, '', '#' + next);
-    setScope(next === 'saved' ? 'saved' : 'market');
-    setExpanded('');
-    setTab(next);
-  };
-  const [scope, setScope] = useState('market');
+  const { tab, setTab, navigateTab, scope, setScope, expanded, setExpanded } = useHashNavigation();
   const [adding, setAdding] = useState<false | 'single' | 'import'>(false);
-  const [expanded, setExpanded] = useState('');
   const [mapView, setMapView] = useState(false);
   const scrollRef = useRef<React.ElementRef<typeof ScrollView>>(null);
   const scrollPositions = useRef<Record<string, number>>({});
