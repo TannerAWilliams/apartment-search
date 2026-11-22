@@ -29,7 +29,7 @@ import { AddListing } from './src/AddListing.tsx';
 import { ImportListings } from './src/ImportListings.tsx';
 import { ListingMap } from './src/ListingMap';
 import { SourcesPage } from './src/SourcesPage.tsx';
-import { refreshSummary } from './src/source-status.ts';
+import { LONG_SYNC_LIMITS, LONG_SYNC_POLL_MS, refreshSummary } from './src/source-status.ts';
 import { LAUNDRY_LABELS } from './src/discovery.ts';
 import { SavedSearches } from './src/SavedSearches.tsx';
 import { ObservedChanges } from './src/ObservedChanges.tsx';
@@ -83,11 +83,12 @@ const api = createApi(API_ORIGIN);
 
 async function finishSourceCheck(check: RefreshInfo, token: string, signal?: AbortSignal, onProgress?: (check: RefreshInfo) => void) {
   const started = Date.now();
-  let cityRealtyRunning = false;
+  // A background complete sync (CityRealty, Openigloo, Zumper) can take many minutes; check on it less often.
+  let longSyncLimit = 0;
   while (check.checking) {
-    cityRealtyRunning ||= check.activeSource === 'cityrealty-live';
-    if (Date.now() - started >= (cityRealtyRunning ? 13 * 60_000 : 150_000)) break;
-    await new Promise((resolve) => setTimeout(resolve, cityRealtyRunning ? 4000 : 1200));
+    longSyncLimit = Math.max(longSyncLimit, LONG_SYNC_LIMITS[check.activeSource ?? ''] ?? 0);
+    if (Date.now() - started >= (longSyncLimit || 150_000)) break;
+    await new Promise((resolve) => setTimeout(resolve, longSyncLimit ? LONG_SYNC_POLL_MS : 1200));
     if (signal?.aborted) return check;
     check = await api('refresh', { token, signal });
     onProgress?.(check);

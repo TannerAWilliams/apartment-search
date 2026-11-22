@@ -30,6 +30,8 @@ export const COMPLETE_SYNCS: readonly CompleteSync[] = [
 
 export const WORKFLOW_SOURCE_IDS = COMPLETE_SYNCS.map(({ id }) => id);
 export const COMPLETE_SYNC_LIFETIME = 24 * 60 * 60_000;
+/** Which complete sync the Workflow is on, so status can name it between steps that hold no refresh lock. */
+export const SYNC_PROGRESS_KEY = 'rentals/sync-progress.json';
 
 export const completeSync = (id: string | null | undefined) => COMPLETE_SYNCS.find((source) => source.id === id);
 

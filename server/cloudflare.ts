@@ -4,7 +4,7 @@ import { createD1Bucket, type D1Database } from './d1-bucket.ts';
 import { secretsEqual } from './private-session.ts';
 import { isPublicRefresh } from './public-access.ts';
 import { readRequestBody, RequestTooLarge } from './request-body.ts';
-import { WORKFLOW_SOURCE_IDS } from './source-registry.ts';
+import { SYNC_PROGRESS_KEY, WORKFLOW_SOURCE_IDS } from './source-registry.ts';
 import { createListingSourceClient } from './relay-client.ts';
 export { CityRealtySync } from './cityrealty-workflow.ts';
 
@@ -58,11 +58,16 @@ export default {
               if (existing.status === 'unknown') throw error;
             }
           },
+          /** The source the running sync Workflow is on, or null when none runs. */
           async pending() {
             const ids = [0, 1].flatMap(offset => ['', ...WORKFLOW_SOURCE_IDS.map(source => '-' + source)].map(suffix => workflowId(offset) + suffix));
             const statuses = await Promise.allSettled(ids.map(id => workflow.get(id).then(instance => instance.status())));
-            return statuses.some(result => result.status === 'fulfilled' &&
-              ['queued', 'running', 'waiting'].includes(result.value.status));
+            const running = ids.filter((_, index) => { const result = statuses[index];
+              return result.status === 'fulfilled' && ['queued', 'running', 'waiting'].includes(result.value.status); });
+            if (!running.length) return null;
+            const progress = await appEnv.BUCKET.get(SYNC_PROGRESS_KEY).then(object => object?.json()).catch(() => null) as { source?: string } | null;
+            if (progress?.source && WORKFLOW_SOURCE_IDS.includes(progress.source)) return progress.source;
+            return WORKFLOW_SOURCE_IDS.find(source => running[0].endsWith('-' + source)) ?? WORKFLOW_SOURCE_IDS[0];
           },
         } : undefined,
       });

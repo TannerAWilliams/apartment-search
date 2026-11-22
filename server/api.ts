@@ -203,7 +203,7 @@ function json(value: unknown, status = 200) {
   return Response.json(value, { status, headers: { 'Cache-Control': 'no-store' } });
 }
 
-export async function handleApi(request: Request, env: AppEnv, { privateAuthenticated = false, requireToken = false, fetcher = (url, options) => globalThis.fetch(url, options), waitUntil, prepareListingSources, listingTransports, backgroundRefresh = false, cityRealtyJob }: { privateAuthenticated?: boolean; requireToken?: boolean; fetcher?: SourceFetch; waitUntil?: (work: Promise<unknown>) => void; prepareListingSources?: () => Promise<void>; listingTransports?: ListingTransports; backgroundRefresh?: boolean; cityRealtyJob?: { start(delay: boolean, sources?: string[]): Promise<void>; pending(): Promise<boolean> } } = {}) {
+export async function handleApi(request: Request, env: AppEnv, { privateAuthenticated = false, requireToken = false, fetcher = (url, options) => globalThis.fetch(url, options), waitUntil, prepareListingSources, listingTransports, backgroundRefresh = false, cityRealtyJob }: { privateAuthenticated?: boolean; requireToken?: boolean; fetcher?: SourceFetch; waitUntil?: (work: Promise<unknown>) => void; prepareListingSources?: () => Promise<void>; listingTransports?: ListingTransports; backgroundRefresh?: boolean; cityRealtyJob?: { start(delay: boolean, sources?: string[]): Promise<void>; pending(): Promise<string | boolean | null> } } = {}) {
   const { pathname: path, searchParams } = new URL(request.url);
   if (!API_PATHS.has(path)) return json({ error: 'Endpoint not found.' }, 404);
   if (requireToken && request.headers.get('Authorization') !== `Bearer ${env.APP_ACCESS_TOKEN}`) {
@@ -270,7 +270,9 @@ export async function handleApi(request: Request, env: AppEnv, { privateAuthenti
   }
   if (path === '/api/refresh' && request.method === 'GET') {
     const plan = await refreshPlan(env.BUCKET);
-    return json(plan.checking || !cityRealtyJob || !(await cityRealtyJob.pending()) ? plan : { ...plan, checking: true, activeSource: CITYREALTY_ID });
+    const running = plan.checking || !cityRealtyJob ? null : await cityRealtyJob.pending();
+    // The Workflow names the source it is on; a job that only reports "running" is CityRealty's.
+    return json(running ? { ...plan, checking: true, activeSource: typeof running === 'string' ? running : CITYREALTY_ID } : plan);
   }
   if (request.method !== 'POST') return json({ error: 'Use POST for this endpoint.' }, 405);
   if (path === '/api/refresh' && (!env.BUCKET || !request.headers.get('Content-Type')?.startsWith('application/json'))) {

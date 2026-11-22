@@ -21,3 +21,9 @@ test('only the recorded transport marks a snapshot complete', () => {
   assert.ok(isCompleteCoverage(first.coverage));
   assert.ok(!isCompleteCoverage('first two pages'));
 });
+
+test('the app knows every background complete sync and checks on it at least as long as it can run', async () => {
+  const { LONG_SYNC_LIMITS } = await import('../src/source-status.ts');
+  assert.deepEqual(Object.keys(LONG_SYNC_LIMITS).sort(), COMPLETE_SYNCS.map(({ id }) => id).sort());
+  for (const sync of COMPLETE_SYNCS) assert.ok(LONG_SYNC_LIMITS[sync.id] >= sync.timeoutMs, `${sync.id} is checked long enough`);
+});

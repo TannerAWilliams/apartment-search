@@ -1,5 +1,12 @@
 export type SourceStatus = { id: string; name?: string; marketplace?: string; status?: string; checkedAt?: string; updatedAt?: string; retryAt?: string; error?: string; listingCount?: number; total?: number; pages?: number; sampleLimit?: number; partial?: boolean; requestedPages?: number; failedPages?: number };
 export type SourceDefinition = { id: string; name: string; marketplace?: string; coverage?: string; resyncable: boolean; paused?: boolean };
+/**
+ * Complete syncs that run in the background Workflow, with how long the app keeps checking on
+ * them. Mirrors server/source-registry.ts (a test keeps them in step) without bundling server code.
+ */
+export const LONG_SYNC_LIMITS: Record<string, number> = { 'cityrealty-live': 13 * 60_000, openigloo: 50 * 60_000, 'zumper-live': 25 * 60_000 };
+export const LONG_SYNC_POLL_MS = 15_000;
+
 export function sourceRows(catalog: SourceDefinition[], statuses: SourceStatus[], browseNames: Record<string, string>, now = Date.now()) {
   const definitions = new Map(catalog.map((source) => [source.id, source]));
   const represented = new Set(catalog.map((source) => source.marketplace ?? source.id.replace(/-live$/, '')));

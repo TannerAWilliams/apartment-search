@@ -69,3 +69,11 @@ test('Cloudflare queues manual CityRealty refresh and reports a pending job whil
   expect(await (await handleApi(new Request(url), env, { cityRealtyJob: job })).json())
     .toMatchObject({ checking: true, activeSource: CITYREALTY_ID });
 });
+
+test('a running sync job reports the source it is on, not always CityRealty', async () => {
+  const env = { BUCKET: createMemoryBucket() };
+  const status = async (job: { start: () => Promise<void>; pending: () => Promise<string | boolean | null> }) =>
+    (await handleApi(new Request('https://app.test/api/refresh'), env, { cityRealtyJob: job })).json();
+  expect(await status({ start: async () => {}, pending: async () => 'openigloo' })).toMatchObject({ checking: true, activeSource: 'openigloo' });
+  expect((await status({ start: async () => {}, pending: async () => null })).checking).toBeFalsy();
+});
