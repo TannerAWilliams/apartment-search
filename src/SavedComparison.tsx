@@ -4,16 +4,20 @@ import { listingKey } from './listings.ts';
 import { comparisonOptions, comparisonRows, comparisonTitle, MAX_COMPARISON, toggleComparison } from './comparison.ts';
 import { Button, Field } from './ui.tsx';
 import { styles } from './styles.ts';
-export function SavedComparison({ listings }: { listings: any[] }) {
-  const [open, setOpen] = useState(false);
+/** When `open` is given, the parent shows the toggle (a tool chip) and this renders only the panel. */
+export function SavedComparison({ listings, open: shown }: { listings: any[]; open?: boolean }) {
+  const [ownOpen, setOpen] = useState(false);
+  const open = shown ?? ownOpen;
   const [keys, setKeys] = useState<string[]>([]);
   const [query, setQuery] = useState('');
   const available = useMemo(() => listings.map(listingKey), [listings]);
   useEffect(() => { setKeys(current => current.filter(key => available.includes(key))); }, [available]);
   const choices = comparisonOptions(listings, query);
   const selected = keys.map(key => listings.find(listing => listingKey(listing) === key)).filter(Boolean);
+  // Controlled and closed: render nothing, so the parent's spacing does not leave a gap.
+  if (shown === false) return null;
   return <View style={{ gap: 10 }}>
-    <Button secondary onPress={() => setOpen(!open)}>{open ? 'Hide comparison' : 'Compare saved apartments'}</Button>
+    {shown === undefined && <Button secondary onPress={() => setOpen(!open)}>{open ? 'Hide comparison' : 'Compare saved apartments'}</Button>}
     {open && <>
       <Text accessibilityRole="header" style={styles.panelTitle}>Compare saved apartments</Text>
       <Text style={styles.smallMuted}>Choose up to four. Selection is temporary on this device. These are saved observations, not fresh availability checks. Advertised prices with different fee bases are not comparable total costs.</Text>

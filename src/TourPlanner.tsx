@@ -6,8 +6,10 @@ import { styles } from './styles.ts';
 import { listingKey } from './listings.ts';
 import { TOUR_KEY, MAX_TOURS, TOUR_CHECKLIST, parseTours, validateTours, localTourStart, moveTour, chronologicalTours, overlappingTourIds, tourRoute, tourDay, toursOnDay, exportTours, type Tour } from './tour-planner.ts';
 
-export function TourPlanner({ listings }: { listings: any[] }) {
-  const [open, setOpen] = useState(false), [tours, setTours] = useState<Tour[]>([]), [ready, setReady] = useState(false);
+/** When `open` is given, the parent shows the toggle (a tool chip) and this renders only the panel. */
+export function TourPlanner({ listings, open: shown }: { listings: any[]; open?: boolean }) {
+  const [ownOpen, setOpen] = useState(false), [tours, setTours] = useState<Tour[]>([]), [ready, setReady] = useState(false);
+  const open = shown ?? ownOpen;
   const [error, setError] = useState(''), [message, setMessage] = useState(''), [busy, setBusy] = useState(false);
   const [selected, setSelected] = useState(''), [date, setDate] = useState(''), [time, setTime] = useState(''), [duration, setDuration] = useState('30'), [notes, setNotes] = useState('');
   const [routeDay, setRouteDay] = useState('');
@@ -47,8 +49,10 @@ export function TourPlanner({ listings }: { listings: any[] }) {
   const selectedDay = days.includes(routeDay) ? routeDay : days[0] ?? '';
   const routeTours = toursOnDay(tours, selectedDay);
   const overlaps = overlappingTourIds(tours), route = tourRoute(routeTours);
+  // Controlled and closed: render nothing, so the parent's spacing does not leave a gap.
+  if (shown === false) return null;
   return <View style={{ gap: 10 }}>
-    <Button secondary onPress={() => setOpen(!open)}>{open ? 'Hide tour planner' : 'Plan apartment tours'}</Button>
+    {shown === undefined && <Button secondary onPress={() => setOpen(!open)}>{open ? 'Hide tour planner' : 'Plan apartment tours'}</Button>}
     {open && <>
       <Text style={styles.panelTitle}>Apartment tours</Text>
       <Text style={styles.smallMuted}>Personal plans, not confirmed bookings. Stored only on this device. Use one tab: concurrent tabs can overwrite tour edits. No broker messages are sent. Times use your device timezone: {Intl.DateTimeFormat().resolvedOptions().timeZone}. Calendar export includes your notes. Hiding this panel keeps unsaved form edits until you leave Saved; leaving Saved discards unsaved edits.</Text>

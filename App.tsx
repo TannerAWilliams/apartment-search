@@ -54,6 +54,16 @@ const WEB_MAP = Platform.OS === 'web';
 const SEARCH_DEFAULTS: SearchFilters = { ...DEFAULT_FILTERS, region: 'all', bedrooms: null, maxRent: null, source: '', includeMap: WEB_MAP, liveOnly: true, includeCached: true };
 const BEDROOMS = [null, 0, 1, 2, 3, 4];
 const PAGE_SIZE = 12;
+/** Area chips under headings: the city and its boroughs, then the surrounding regions. */
+const AREA_GROUPS: [string, (keyof typeof REGIONS)[]][] = [
+  ['New York City', ['nyc', 'manhattan-brooklyn', 'manhattan', 'brooklyn', 'queens', 'bronx', 'staten-island']],
+  ['Around NYC', ['nj', 'li', 'westchester', 'metroNorth', 'ct']],
+];
+/** Secondary tools per tab, as [id, chip label, accessible name]. */
+const TOOLS: Record<'results' | 'saved', [string, string, string][]> = {
+  results: [['searches', 'Saved searches', 'Saved searches and whole-search checks'], ['changes', 'Price changes', 'Local price and discovery changes']],
+  saved: [['compare', 'Compare', 'Compare saved apartments'], ['tours', 'Plan tours', 'Plan apartment tours']],
+};
 const EMPTY_POINTS: NonNullable<SearchResult['mapPoints']> = [];
 const SAVED_KEY = 'apartment-search:saved-listings:v1';
 const SAVED_FILTERS = { ...SEARCH_DEFAULTS, bedrooms: null, maxRent: null, liveOnly: false };
@@ -100,9 +110,15 @@ function Filters({ draft, setDraft, submit, busy, serverState, token, setToken, 
     {(panel === 'more' || panel === 'area') && <>
     <Text style={styles.fieldLabel}>Area</Text>
     <View style={styles.chipRow}>
-      {Object.entries({ all: REGIONS.all, nyc: REGIONS.nyc, nj: REGIONS.nj, ct: REGIONS.ct, li: REGIONS.li, metroNorth: REGIONS.metroNorth, westchester: REGIONS.westchester, ...NYC_SEARCH_AREAS }).map(([key, region]) => <Chip key={key} selected={draft.region === key}
-        onPress={() => set('region')(key)}>{region.label}</Chip>)}
+      <Chip selected={draft.region === 'all'} onPress={() => set('region')('all')}>{REGIONS.all.label}</Chip>
     </View>
+    {AREA_GROUPS.map(([heading, keys]) => <React.Fragment key={heading}>
+      <Text style={styles.smallMuted}>{heading}</Text>
+      <View style={styles.chipRow}>
+        {keys.map((key) => <Chip key={key} selected={draft.region === key}
+          onPress={() => set('region')(key)}>{key === 'nyc' ? 'All five boroughs' : REGIONS[key].label}</Chip>)}
+      </View>
+    </React.Fragment>)}
     <Field label="ZIP code (optional)" placeholder="Any ZIP in this area" value={draft.zip}
       onChangeText={set('zip')} keyboardType="number-pad" maxLength={5} />
     </>}
@@ -260,6 +276,9 @@ function Results({ visible, setVisible, result, applied, sort, onSort, onPage, p
 }) {
   const { matches } = result;
   const savedView = result.mode === 'saved';
+  // A sort with only one option (saved apartments without routing) is not a choice, so it is not shown.
+  const sortOptions = Object.entries(RESULT_SORTS).filter(([id]) => id === 'rent' || (!savedView && id === 'best') ||
+    (!savedView && commuteConfigured && id !== 'recent'));
   const unavailable = inventoryUnavailable(result);
   const summary = savedView ? 'Saved on this device · All apartment sizes' : [
     (Object.entries(REGIONS).find(([key]) => key === applied.region)?.[1].label ?? applied.region), bedroomLabel(applied.bedrooms), applied.zip, applied.company, MARKETPLACE_NAMES[applied.source],
@@ -276,11 +295,9 @@ function Results({ visible, setVisible, result, applied, sort, onSort, onPage, p
         <Text style={styles.smallMuted}>{summary}</Text>
         <Text style={styles.smallMuted}>To {result.workplace.label}</Text>
       </View>
-      <View style={styles.chipRow}>
-        {Object.entries(RESULT_SORTS).filter(([id]) => id === 'rent' || (!savedView && id === 'best') ||
-          (!savedView && commuteConfigured && id !== 'recent')).map(([id, label]) =>
-          <Chip key={id} selected={sort === id} onPress={() => onSort(id)}>{label}</Chip>)}
-      </View>
+      {sortOptions.length > 1 && <View style={styles.chipRow}>
+        {sortOptions.map(([id, label]) => <Chip key={id} selected={sort === id} onPress={() => onSort(id)}>{label}</Chip>)}
+      </View>}
     </View>
     {result.commute && <Text style={styles.smallMuted}>Weekday-morning estimates from TravelTime.</Text>}
     {result.commuteNotice && <Text style={styles.smallMuted}>{result.commuteNotice}</Text>}
@@ -373,6 +390,8 @@ function ApartmentSearch() {
   const [dashboardAvailable, setDashboardAvailable] = useState(false);
   const [temporaryStorage, setTemporaryStorage] = useState(false);
   const { tab, setTab, navigateTab, scope, setScope, expanded, setExpanded } = useHashNavigation();
+  /** The open tool panel below the commute box: one at a time. */
+  const [tool, setTool] = useState('');
   const [adding, setAdding] = useState<false | 'single' | 'import'>(false);
   const [mapView, setMapView] = useState(false);
   const scrollRef = useRef<React.ElementRef<typeof ScrollView>>(null);
@@ -635,9 +654,11 @@ function ApartmentSearch() {
       {WEB_MAP && <Button secondary onPress={() => setMapView(!mapView)}>{mapView ? 'List' : 'Map'}</Button>}
     </View>}
     {(tab === 'results' || tab === 'saved') && <View style={{ paddingHorizontal: 12, paddingVertical: 8, gap: 6, borderBottomWidth: 1, borderColor: colors.border }}>
-      <Text style={styles.fieldLabel}>Commute to: {result.workplace.label}</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <Text style={[styles.fieldLabel, { flex: 1, minWidth: 0 }]} numberOfLines={2}>Commute to: {result.workplace.label}</Text>
+        <Button secondary disabled={busy} onPress={() => { setError(''); toggleFilter('commute'); }}>Change destination</Button>
+      </View>
       <Text style={styles.smallMuted}>{tab === 'saved' ? 'Directions use this destination. Automatic travel times are not recalculated on your saved list.' : busy ? 'Updating search. Previous destination and results remain until it succeeds.' : result.commute ? 'Weekday-morning provider estimates; missing routes stay unavailable.' : result.commuteNotice || 'Automatic travel times unavailable. Open a listing’s directions link to check a route.'}</Text>
-      <Button secondary disabled={busy} onPress={() => { setError(''); toggleFilter('commute'); }}>Change destination</Button>
     </View>}
     <Modal visible={Boolean(expanded)} transparent animationType="slide" onRequestClose={() => setExpanded('')}>
       <View style={mobileStyles.overlay}><View style={[mobileStyles.sheet, wide && mobileStyles.wideSheet]} accessibilityViewIsModal>
@@ -654,11 +675,15 @@ function ApartmentSearch() {
         <View style={styles.results}>
             {error !== '' && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
             {(tab === 'results' || tab === 'saved') && <>
-              {tab === 'saved' && <SavedComparison listings={saved} />}
-              {tab === 'saved' && <TourPlanner listings={saved} />}
-              {tab === 'results' && <SavedSearches filters={applied} disabled={busy} apply={filters => { const next = { ...filters, includeMap: WEB_MAP }; setDraft({ ...formDefaults(), ...next }); submit(next); }} check={filters => { if (serverState !== 'ready') return Promise.reject(new Error('Connect to the inventory server before checking a saved search.')); return api('search-check', { body: filters, token: activeToken }); }} />}
+              <View style={styles.chipRow}>
+                {TOOLS[tab].filter(([id]) => id !== 'changes' || !staleInventory).map(([id, short, full]) =>
+                  <Chip key={id} label={full} selected={tool === id} onPress={() => setTool(tool === id ? '' : id)}>{short}</Chip>)}
+              </View>
+              {tab === 'saved' && <SavedComparison listings={saved} open={tool === 'compare'} />}
+              {tab === 'saved' && <TourPlanner listings={saved} open={tool === 'tours'} />}
+              {tab === 'results' && <SavedSearches open={tool === 'searches'} filters={applied} disabled={busy} apply={filters => { const next = { ...filters, includeMap: WEB_MAP }; setDraft({ ...formDefaults(), ...next }); submit(next); }} check={filters => { if (serverState !== 'ready') return Promise.reject(new Error('Connect to the inventory server before checking a saved search.')); return api('search-check', { body: filters, token: activeToken }); }} />}
               {tab === 'results' && temporaryStorage && <Text style={styles.noticeLine}>Temporary listing storage: source checks are lost when the server restarts or redeploys. Your device-saved apartments are separate.</Text>}
-              {tab === 'results' && !staleInventory && <ObservedChanges listings={result.matches} />}
+              {tab === 'results' && !staleInventory && <ObservedChanges listings={result.matches} open={tool === 'changes'} />}
               {tab === 'results' && <Pressable accessibilityRole="button" accessibilityLabel="View source freshness and coverage" onPress={() => navigateTab('sources')}>
                 <Text style={mobileStyles.freshness}>{refreshing ? 'Refreshing sources…' : failedSources.length ? 'Partial coverage · Some sources unavailable' : refresh?.lastCheckedAt ? 'Saved results · ' + CHECK_TIME.format(new Date(refresh.lastCheckedAt)) : 'Saved results · Not yet refreshed'} · Details</Text>
               </Pressable>}
