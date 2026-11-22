@@ -28,23 +28,35 @@ const pointKey = ({ latitude, longitude }: Point) => `${latitude},${longitude}`;
 export const COMMUTE_CACHE_DAYS = 7;
 const COMMUTE_CACHE_LIMIT = 60_000;
 type CachedTimes = { transit: number | null; driving: number | null; checkedAt: string };
-type CommuteCache = { version: 1; entries: Record<string, CachedTimes> };
-const cacheKey = (workplace: Point) => `commutes/${workplace.latitude.toFixed(5)},${workplace.longitude.toFixed(5)}.json.gz`;
+type CommuteCache = { version: 1; workplace?: string; entries: Record<string, CachedTimes> };
+/**
+ * Workplaces can be any coordinates a user enters, and storage has no delete, so caches live in
+ * a fixed number of slots chosen by a hash of the workplace. A new workplace may evict another's
+ * cache; storage stays bounded either way.
+ */
+const COMMUTE_CACHE_SLOTS = 16;
+const workplaceId = (workplace: Point) => `${workplace.latitude.toFixed(5)},${workplace.longitude.toFixed(5)}`;
+function cacheKey(workplace: Point) {
+  let hash = 0;
+  for (const character of workplaceId(workplace)) hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
+  return `commutes/slot-${hash % COMMUTE_CACHE_SLOTS}.json.gz`;
+}
 
 async function readCommuteCache(bucket: Bucket, workplace: Point): Promise<CommuteCache> {
   try {
     const object = await bucket.get(cacheKey(workplace));
     const value = object ? JSON.parse(strFromU8(gunzipSync(new Uint8Array(await object.arrayBuffer())))) : null;
-    return value?.version === 1 && value.entries && typeof value.entries === 'object' ? value : { version: 1, entries: {} };
+    return value?.version === 1 && value.workplace === workplaceId(workplace) && value.entries && typeof value.entries === 'object' ?
+      value : { version: 1, workplace: workplaceId(workplace), entries: {} };
   } catch {
-    return { version: 1, entries: {} };
+    return { version: 1, workplace: workplaceId(workplace), entries: {} };
   }
 }
 
 async function writeCommuteCache(bucket: Bucket, workplace: Point, cache: CommuteCache) {
   const newest = Object.entries(cache.entries).sort(([, a], [, b]) => Date.parse(b.checkedAt) - Date.parse(a.checkedAt)).slice(0, COMMUTE_CACHE_LIMIT);
   // Best effort: a failed or concurrent write only means those origins are routed again.
-  await bucket.put(cacheKey(workplace), gzipSync(strToU8(JSON.stringify({ version: 1, entries: Object.fromEntries(newest) })))).catch(() => null);
+  await bucket.put(cacheKey(workplace), gzipSync(strToU8(JSON.stringify({ version: 1, workplace: workplaceId(workplace), entries: Object.fromEntries(newest) })))).catch(() => null);
 }
 
 export async function routeCommutes<T extends { latitude?: unknown; longitude?: unknown }>(listings: T[], workplace: unknown, credentials: ReturnType<typeof routingCredentials>, fetcher: SourceFetch, now = new Date(), cache?: Bucket) {

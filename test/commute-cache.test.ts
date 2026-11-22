@@ -47,3 +47,17 @@ test('commute routing without a cache still routes every origin', async () => {
   await routeCommutes([point(1)], workplace, credentials, api.fetcher);
   assert.deepEqual(api.sent, [1, 1]);
 });
+
+test('commute caches use a bounded number of storage slots however many workplaces are searched', async () => {
+  const bucket = createMemoryBucket();
+  const keys = new Set<string>();
+  const tracked = { ...bucket, put: (key: string, ...rest: Parameters<typeof bucket.put> extends [string, ...infer R] ? R : never) => { keys.add(key); return bucket.put(key, ...rest); } };
+  const api = traveltime();
+  for (let n = 0; n < 60; n++) {
+    await routeCommutes([point(1)], { label: 'Custom ' + n, latitude: 40.6 + n / 1000, longitude: -73.9 }, credentials, api.fetcher, new Date(), tracked);
+  }
+  assert.ok(keys.size <= 16, `${keys.size} cache objects`);
+  const before = api.sent.length;
+  await routeCommutes([point(1)], { label: 'Custom 59', latitude: 40.6 + 59 / 1000, longitude: -73.9 }, credentials, api.fetcher, new Date(), tracked);
+  assert.equal(api.sent.length, before, 'the most recent workplace is still cached');
+});
