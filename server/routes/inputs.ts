@@ -8,7 +8,6 @@ import { RENT_GROUPINGS } from '../../src/market.ts';
 import { REGIONS } from '../../src/regions.ts';
 import { VITAL_NAMES } from '../../src/web-vitals-report.ts';
 import { DASHBOARD_FILES } from '../../src/dashboard-data.ts';
-import { DASHBOARD_AREAS } from '../data/dashboard-catalog.ts';
 
 /** GET /api/market */
 const REGION_AND_GROUPING = 'Choose a valid region and grouping.';
@@ -36,7 +35,7 @@ const AreaIdSchema = v.pipe(
   v.transform(Number),
   v.integer(),
   v.minValue(1, 'Choose areas from the market history catalog.'),
-  v.maxValue(DASHBOARD_AREAS.length, 'Choose areas from the market history catalog.'),
+  v.maxValue(9999, 'Choose areas from the market history catalog.'),
 );
 
 /** GET /api/history/values: up to six series for up to eight areas, over a range of months. */
@@ -118,7 +117,7 @@ export const AlertRequestSchema = v.variant(
 );
 
 /** POST /api/geocode */
-const FULL_ADDRESS = 'Enter a full street address with city, state and ZIP.';
+const FULL_ADDRESS = 'Enter an address or place name of 4 to 160 characters.';
 export const GeocodeRequestSchema = v.object(
   {
     address: v.pipe(

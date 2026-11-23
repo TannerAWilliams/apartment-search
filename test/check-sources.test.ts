@@ -36,3 +36,13 @@ test('every quick source is checked, and the long complete syncs are not', () =>
   expect(ids).toContain('westchester-homeseeker');
   for (const id of ['cityrealty-live', 'zumper-live', 'openigloo']) expect(ids).not.toContain(id);
 });
+
+test('the market history check reads one of StreetEasy’s dashboard files', async () => {
+  const { unzipSync } = await import('fflate');
+  const archive = unzipSync(await Bun.file(new URL('../public/data/streeteasy-dashboard-2026-11-17.zip', import.meta.url)).bytes());
+  const check = CHECKS.find(({ id }) => id === 'streeteasy-dashboard')!;
+  const served = (url: string) => new Response(new Uint8Array(archive[url.split('/').at(-1)!]!));
+  expect(await check.run(async (url) => served(url), new Date())).toBe(182);
+  const [refused] = await checkSources([check], async () => new Response('', { status: 403 }));
+  expect(refused?.state).toBe('blocked');
+});

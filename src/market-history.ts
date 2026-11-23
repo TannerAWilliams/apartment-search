@@ -21,6 +21,8 @@ export type HistoryArea = { id: number; name: string; borough: string; type: 'ci
 export type HistoryCatalog = {
   provenance: { source: string; url: string; downloadedAt: string; note: string };
   latestMonth: string;
+  /** When the figures were last downloaded from StreetEasy; null while they are the bundled copy. */
+  refreshedAt: string | null;
   series: HistorySeries[];
   areas: HistoryArea[];
 };

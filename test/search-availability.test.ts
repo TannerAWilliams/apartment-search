@@ -9,6 +9,6 @@ test('only a ready server allows an active-inventory search', () => {
 });
 test('pending, locked and offline states provide an explicit recovery action', () => {
   expect(searchAvailabilityMessage('checking')).toContain('Wait for the connection');
-  expect(searchAvailabilityMessage('locked')).toContain('Unlock');
+  expect(searchAvailabilityMessage('locked')).toContain('Sign in');
   expect(searchAvailabilityMessage('offline')).toContain('Retry the connection');
 });

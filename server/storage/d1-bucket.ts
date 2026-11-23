@@ -139,6 +139,7 @@ export function createD1Bucket(database: D1Database): Bucket {
   const existing = buckets.get(database);
   if (existing) return existing;
   const bucket: Bucket = {
+    database,
     snapshots: d1Snapshots(database),
     async head(key) {
       const row = await database.prepare(HEAD).bind(key).first<StoredObject>();

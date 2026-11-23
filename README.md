@@ -149,6 +149,21 @@ Before the first deploy from this file, set the `ACCESS_ALLOWED_EMAILS` secret, 
 
 `apartments.5thof6.com` used to be served by a separate gate Worker, `apartment-search-access`, which checked a Cloudflare Access sign-in and forwarded requests with the app token. This Worker checks sign-in itself, and the gate Worker was deleted on 2026-11-23.
 
+## Alerts when something breaks
+
+Three things watch the app; two need a minute in the Cloudflare dashboard, because alert recipients are account settings rather than code.
+
+- **Sources (already on).** Every Monday, `.github/workflows/sources.yml` reads each source live. If a reader stops recognizing its site, the run fails and GitHub emails you (GitHub → your avatar → Settings → Notifications → Actions: keep "Only notify for failed workflows" on).
+- **Worker failures: Issues (on, in `wrangler.jsonc`).** Cloudflare groups uncaught errors, 5xx replies and logged errors on **Workers & Pages → apartment-search → Issues**. Issues sends automations to webhooks, chat, coding agents or incident tools, not email.
+- **An email when errors appear: a Monitor (set up once, by hand).**
+  1. In the Cloudflare dashboard, go to **Observability → Alerts → Monitors → Create a Monitor**.
+  2. Choose **Threshold**.
+  3. Query: dataset **Workers Logs** (Workers Observability), metric **COUNT**, filters **service = apartment-search** and **level = error**.
+  4. Evaluation window **15m**, comparison **greater than 0**.
+  5. Name it "Apartment Search errors", add your email as the destination, and set the repeat interval to **24h** so one bad night sends one email.
+  6. Select **Create**. Use **Preview** first to check the query matches the Worker's logs.
+- **Billing (optional).** **Billing → Spend limits** emails you at 80% and 100% of a monthly amount you choose for Workers.
+
 ## Email alerts
 
 Notifications work as soon as the Worker is deployed. Email needs two settings in Cloudflare first, because Email Service only sends from a domain with Email Routing, and free sends go to verified addresses:

@@ -36,6 +36,7 @@ import {
 } from '../sources/streeteasy.ts';
 import { WESTCHESTER_HOMESEEKER, refreshHomeSeeker } from '../sources/westchester-homeseeker.ts';
 import { refreshMarket } from './market.ts';
+import { refreshMarketHistory } from '../storage/market-history.ts';
 import {
   FEED_PREFIX,
   HDC_KEY,
@@ -442,6 +443,31 @@ export const SOURCES: readonly RefreshSource[] = [
       resyncable: true,
     }),
     check: (run) => refreshHomeSeeker(run.bucket, run.fetch, run.now, run.at),
+  },
+  {
+    id: 'streeteasy-dashboard',
+    name: 'StreetEasy Data Dashboard',
+    kind: 'reference',
+    catalog: () => ({
+      id: 'streeteasy-dashboard',
+      name: 'StreetEasy Data Dashboard',
+      coverage: 'Monthly market figures since 2010 for Market history (rents, inventory, price cuts, sales), not listings',
+      resyncable: true,
+    }),
+    async check(run) {
+      if (!run.bucket.database) throw new Error('StreetEasy Data Dashboard: market history needs the D1 database.');
+      const result = await refreshMarketHistory(run.bucket.database, run.fetch, run.now);
+      return { status: result.changed ? 'updated' : 'current', updatedAt: run.at, listingCount: result.changed, total: result.files };
+    },
+    describe(item, next, older, failure) {
+      if (next) Object.assign(item, { listingCount: next.listingCount, total: next.total });
+      else
+        item.error =
+          failure instanceof Error && failure.message.startsWith('StreetEasy Data Dashboard')
+            ? failure.message
+            : 'The StreetEasy Data Dashboard files could not be downloaded.';
+      if (!next && older?.total !== undefined) item.total = older.total;
+    },
   },
   {
     id: 'openigloo',

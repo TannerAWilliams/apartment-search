@@ -95,6 +95,8 @@ export const styles = StyleSheet.create({
   buttonTextSecondary: { color: colors.green },
   pressed: { opacity: 0.66 },
   tokenForm: { gap: 8 },
+  signInScreen: { flexGrow: 1, padding: 20, alignItems: 'center' },
+  signInCard: { ...panel, width: '100%', maxWidth: 440, padding: 20, gap: 12, marginTop: 24 },
   submit: { gap: 3, marginTop: 5 },
   reset: { alignSelf: 'center', paddingVertical: 10, paddingHorizontal: 10 },
   tabLabel: { fontSize: 15, color: colors.muted, fontWeight: weight },

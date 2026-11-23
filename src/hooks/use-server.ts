@@ -42,7 +42,6 @@ export function useServer({ appliedFilters, searchVersion, submitted, setResult,
   const browserImportAllowed = useRef(false);
   const checking = useRef<AbortSignal | null>(null);
   const sourceSession = useRef<AbortSignal | null>(null);
-  const [token, setToken] = useState('');
   const [activeToken, setActiveToken] = useState('');
   const [commuteConfigured, setCommuteConfigured] = useState(false);
   const [dashboardAvailable, setDashboardAvailable] = useState(false);
@@ -234,11 +233,8 @@ export function useServer({ appliedFilters, searchVersion, submitted, setResult,
     [activeToken],
   );
 
-  /** Connects again, with the typed token when the server asked for one. */
-  const connect = () => {
-    if (serverState === 'locked') setActiveToken(token.trim());
-    setConnectionAttempt((attempt) => attempt + 1);
-  };
+  /** Tries the server again after it could not be reached. */
+  const connect = () => setConnectionAttempt((attempt) => attempt + 1);
   /** Connects again after an email-code sign-in. The native app keeps its session token for next time. */
   const signedIn = (sessionToken: string) => {
     if (sessionToken) {
@@ -280,8 +276,6 @@ export function useServer({ appliedFilters, searchVersion, submitted, setResult,
     refreshing,
     refreshError,
     cooldownSeconds,
-    token,
-    setToken,
     activeToken,
     commuteConfigured,
     dashboardAvailable,

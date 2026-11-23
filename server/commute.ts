@@ -204,7 +204,50 @@ export async function routeCommutes<T extends { latitude?: unknown; longitude?: 
 }
 
 /** One Census geocoder match for a street address (already checked by GeocodeRequestSchema or SearchFiltersSchema). */
+/** The NY, NJ and CT area the app covers, as Nominatim's west,north,east,south viewbox. */
+const METRO_VIEWBOX = '-75.6,41.7,-71.7,39.9';
+/**
+ * OpenStreetMap's Nominatim finds places by name (Empire State Building, Hoboken PATH) as well as addresses.
+ * Its usage policy asks for an identifying User-Agent, at most one request a second and caching; searches
+ * repeat the same destination, so answers are kept for 30 days in Cloudflare's cache (where there is one), and
+ * the API's lookup limit bounds the rest.
+ */
+async function nominatim(query: string, fetcher: SourceFetch) {
+  const params = new URLSearchParams({ q: query, format: 'jsonv2', limit: '1', countrycodes: 'us', viewbox: METRO_VIEWBOX, bounded: '1' });
+  const url = `https://nominatim.openstreetmap.org/search?${params}`;
+  const cache = (globalThis as { caches?: { default?: Cache } }).caches?.default;
+  const cached = await cache?.match(url);
+  const response =
+    cached ??
+    (await fetcher(url, {
+      headers: { 'User-Agent': 'ApartmentSearch/1.0 (personal apartment search app)', Accept: 'application/json' },
+      redirect: 'manual',
+      signal: AbortSignal.timeout(8000),
+    }));
+  if (!response.ok) throw new Error('OpenStreetMap search is temporarily unavailable.');
+  if (cache && !cached) {
+    const body = await response.clone().text();
+    await cache.put(url, new Response(body, { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'max-age=2592000' } }));
+  }
+  const matches = (await response.json()) as { display_name?: unknown; lat?: unknown; lon?: unknown }[] | null;
+  const match = Array.isArray(matches) ? matches[0] : undefined;
+  if (!match) return null;
+  const point = {
+    // "Empire State Building, 350, 5th Avenue, Koreatown, …" → its first three parts.
+    label: typeof match.display_name === 'string' ? match.display_name.split(', ').slice(0, 3).join(', ') : query,
+    latitude: Number(match.lat),
+    longitude: Number(match.lon),
+  };
+  return isPoint(point) ? point : null;
+}
+
+/** A destination typed as an address or a place name: OpenStreetMap first, then the U.S. Census geocoder. */
 export async function geocodeAddress(address: string, fetcher: SourceFetch = fetch) {
+  return (await nominatim(address.trim(), fetcher).catch(() => null)) ?? censusAddress(address, fetcher);
+}
+
+/** The U.S. Census geocoder: exact street addresses only, one match or none. */
+async function censusAddress(address: string, fetcher: SourceFetch) {
   const query = new URLSearchParams({
     address,
     benchmark: 'Public_AR_Current',
@@ -220,7 +263,7 @@ export async function geocodeAddress(address: string, fetcher: SourceFetch = fet
   } | null;
   const matches = body?.result?.addressMatches;
   if (!Array.isArray(matches) || matches.length !== 1 || !matches[0]?.coordinates) {
-    throw new SearchInputError('Use a full street address with city, state, and ZIP, or enter coordinates.');
+    throw new SearchInputError('That place could not be found. Try a street address with the city, or a landmark name.');
   }
   const { matchedAddress, coordinates } = matches[0];
   const point = { label: matchedAddress || address, latitude: coordinates.y, longitude: coordinates.x };

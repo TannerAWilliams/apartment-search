@@ -1,5 +1,4 @@
-import React from 'react';
-import { SignIn } from './SignIn.tsx';
+import React, { useState } from 'react';
 import { type ConfigSource } from '../api-client.ts';
 import type { SearchFilters, SearchResult } from '../domain.ts';
 
@@ -18,12 +17,10 @@ export function Filters({
   submit,
   busy,
   serverState,
-  token,
-  setToken,
   connect,
-  onSignedIn,
   account,
   onSignOut,
+  lookUp,
   panel,
   commuteConfigured,
 }: {
@@ -32,14 +29,12 @@ export function Filters({
   submit: () => void;
   busy: boolean;
   serverState: string;
-  token: string;
-  setToken: (value: string) => void;
   connect: () => void;
-  /** After an email-code sign-in, with the session token for the native app. */
-  onSignedIn: (token: string) => void;
   /** The email signed in with a code, with a way to sign out. */
   account: string | null;
   onSignOut: () => void;
+  /** Finds a typed destination, so it can be checked before it is applied. */
+  lookUp?: (place: string) => Promise<{ label: string; latitude: number; longitude: number }>;
   panel: string;
   commuteConfigured: boolean;
 }) {
@@ -172,14 +167,6 @@ export function Filters({
             ))}
           </View>
 
-          <Field
-            label="Listing company (optional)"
-            placeholder="Compass, SERHANT., Corcoran…"
-            value={draft.company}
-            onChangeText={set('company')}
-            maxLength={80}
-          />
-
           <View style={styles.divider} />
         </>
       )}
@@ -187,9 +174,9 @@ export function Filters({
         <>
           <SectionTitle index="02">Commute destination</SectionTitle>
           <Text style={styles.smallMuted}>
-            Choose a preset or enter a custom destination. Editing stays on this device until you apply. Applying an address sends it to the
-            U.S. Census geocoder; when estimates are enabled, apartment and destination coordinates are sent to TravelTime. Directions links
-            open only when you tap them.
+            Choose a preset or type any address or place. Editing stays on this device until you apply. A typed destination is looked up
+            with OpenStreetMap (and the U.S. Census geocoder for exact addresses); when estimates are enabled, apartment and destination
+            coordinates are sent to TravelTime. Directions links open only when you tap them.
           </Text>
           <Text style={styles.fieldLabel}>Destination</Text>
           <View style={styles.chipRow}>
@@ -203,13 +190,7 @@ export function Filters({
             </Chip>
           </View>
           {draft.workplace === 'custom' && (
-            <Field
-              label="Workplace street address or coordinates"
-              placeholder={serverState === 'ready' ? 'Street, city, state, ZIP' : '40.75874, -73.97867'}
-              value={draft.customWorkplace}
-              onChangeText={set('customWorkplace')}
-              maxLength={160}
-            />
+            <DestinationField value={draft.customWorkplace} onChange={set('customWorkplace')} lookUp={lookUp} />
           )}
           {commuteConfigured ? (
             <>
@@ -259,11 +240,6 @@ export function Filters({
               )}
             </>
           )}
-          {serverState !== 'ready' && (
-            <Text style={styles.smallMuted}>
-              Search and destination changes need the search server. Draft edits remain on this device until you apply after reconnecting.
-            </Text>
-          )}
         </>
       )}
       {serverState === 'offline' && (
@@ -276,23 +252,6 @@ export function Filters({
           <Text style={styles.smallMuted}>Signed in as {account}</Text>
           <Button secondary onPress={onSignOut}>
             Sign out
-          </Button>
-        </View>
-      )}
-      {serverState === 'locked' && <SignIn onSignedIn={onSignedIn} />}
-      {serverState === 'locked' && (
-        <View style={styles.tokenForm}>
-          <Text style={styles.smallMuted}>Or connect with the server access token.</Text>
-          <Field
-            label="Server access token"
-            placeholder="Enter your server token"
-            value={token}
-            onChangeText={setToken}
-            secureTextEntry
-            maxLength={256}
-          />
-          <Button secondary onPress={connect}>
-            Connect to server
           </Button>
         </View>
       )}
@@ -316,6 +275,60 @@ export function Filters({
   );
 }
 
+/** A typed destination: an address or a place name, with a check that shows what it was matched to. */
+function DestinationField({
+  value,
+  onChange,
+  lookUp,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  lookUp?: (place: string) => Promise<{ label: string; latitude: number; longitude: number }>;
+}) {
+  const [found, setFound] = useState<{ text: string; message: string; error: boolean } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const check = async () => {
+    if (!lookUp || value.trim().length < 4) return;
+    setBusy(true);
+    try {
+      const place = await lookUp(value.trim());
+      setFound({
+        text: value,
+        message: `Found: ${place.label} (${place.latitude.toFixed(4)}, ${place.longitude.toFixed(4)})`,
+        error: false,
+      });
+    } catch (caught) {
+      setFound({ text: value, message: caught instanceof Error ? caught.message : 'That place could not be found.', error: true });
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <View style={styles.tokenForm}>
+      <Field
+        label="Destination address or place"
+        placeholder="Empire State Building, or 350 5th Ave, New York"
+        value={value}
+        onChangeText={(text) => {
+          onChange(text);
+          setFound(null);
+        }}
+        maxLength={160}
+      />
+      {lookUp && (
+        <Button secondary onPress={() => void check()} disabled={busy || value.trim().length < 4}>
+          {busy ? 'Looking up…' : 'Check address'}
+        </Button>
+      )}
+      {found && found.text === value && (
+        <Text accessibilityRole={found.error ? 'alert' : undefined} style={found.error ? styles.error : styles.smallMuted}>
+          {found.message}
+        </Text>
+      )}
+    </View>
+  );
+}
+
 export function WebsiteFilter({
   result,
   applied,
@@ -334,6 +347,9 @@ export function WebsiteFilter({
     if (!counts.some(({ id }) => id === source.id)) counts.push({ ...source, count: 0, checkedCount: 0 });
   const streetEasy = counts.find(({ id }) => id === 'streeteasy');
   const areas = marketsForSearch(applied);
+  // Only websites with listings to show, and the one already chosen; nothing to choose between, no filter.
+  const choices = counts.filter(({ id, count }) => count > 0 || applied.source === id);
+  if (choices.length < 2 && !applied.source) return null;
 
   return (
     <View style={styles.websiteFilter}>
@@ -342,16 +358,11 @@ export function WebsiteFilter({
         <Chip selected={!applied.source} onPress={() => onSelect('')}>
           All websites
         </Chip>
-        <Chip selected={applied.source === 'streeteasy'} onPress={() => onSelect('streeteasy')}>
-          {'StreetEasy' + (streetEasy ? ' (' + streetEasy.count.toLocaleString('en-US') + ')' : '')}
-        </Chip>
-        {counts
-          .filter(({ id }) => id !== 'streeteasy')
-          .map(({ id, name, count }) => (
-            <Chip key={id} selected={applied.source === id} onPress={() => onSelect(id)}>
-              {name + ' (' + count.toLocaleString('en-US') + ')'}
-            </Chip>
-          ))}
+        {choices.map(({ id, name, count }) => (
+          <Chip key={id} selected={applied.source === id} onPress={() => onSelect(id)}>
+            {name + ' (' + count.toLocaleString('en-US') + ')'}
+          </Chip>
+        ))}
       </ScrollView>
       {applied.source === 'streeteasy' && (
         <View style={styles.actionLinks}>

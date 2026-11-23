@@ -42,7 +42,7 @@ test('address geocoding refuses input that cannot be a street address without a 
       { fetcher },
     );
     expect(response.status).toBe(422);
-    expect((await readJson<ErrorBody>(response)).error).toMatch(/full street address/);
+    expect((await readJson<ErrorBody>(response)).error).toMatch(/address or place name/);
   }
   expect(requests).toBe(0);
 });

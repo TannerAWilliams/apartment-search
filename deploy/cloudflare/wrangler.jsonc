@@ -54,7 +54,9 @@
     { "name": "LOOKUP_LIMIT", "namespace_id": "1002", "simple": { "limit": 20, "period": 60 } }
   ],
   "limits": { "cpu_ms": 30000 }, // full Zumper and CityRealty pages parse within one Workflow step
-  "observability": { "enabled": true },
+  // Workers Logs, and Issues: failures (uncaught errors, 5xx replies, error logs) grouped on the Worker's Issues
+  // page. Kept here because a deploy from this file would otherwise turn Issues off.
+  "observability": { "enabled": true, "issues": { "enabled": true } },
   // Stack traces in Workers Logs then point at the TypeScript source (server/log.ts writes them).
   "upload_source_maps": true
   // Secrets, set with `wrangler secret put`: ACCESS_ALLOWED_EMAILS (required for sign-in; comma-separated),

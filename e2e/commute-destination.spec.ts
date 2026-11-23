@@ -27,7 +27,7 @@ test('destination editing stays local until Apply and remains accessible without
   await expect.poll(() => requests.length).toBe(1);
   await page.getByRole('button', { name: 'Change destination', exact: true }).click();
   await page.getByRole('button', { name: 'Custom', exact: true }).click();
-  await page.getByLabel('Workplace street address or coordinates').fill('40.75, -73.98');
+  await page.getByLabel('Destination address or place').fill('40.75, -73.98');
   await expect(page.getByText('Automatic transit and driving estimates are unavailable.', { exact: false })).toBeVisible();
   expect(requests).toHaveLength(1);
   await page.getByRole('button', { name: 'Cancel', exact: true }).click();
@@ -35,13 +35,13 @@ test('destination editing stays local until Apply and remains accessible without
   await expect(page.getByText('Commute to: Custom workplace', { exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Change destination', exact: true }).click();
   await page.getByRole('button', { name: 'Custom', exact: true }).click();
-  await page.getByLabel('Workplace street address or coordinates').fill('40.75, -73.98');
+  await page.getByLabel('Destination address or place').fill('40.75, -73.98');
   await page.getByRole('button', { name: 'Apply destination', exact: true }).click();
   await expect.poll(() => requests.length).toBe(2);
   expect(requests[1]).toEqual({ workplace: 'custom', customWorkplace: '40.75, -73.98' });
   await expect(page.getByText('Commute to: Custom workplace', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Change destination', exact: true }).click();
-  await page.getByLabel('Workplace street address or coordinates').fill('Unmatched test address');
+  await page.getByLabel('Destination address or place').fill('Unmatched test address');
   expect(requests).toHaveLength(2);
   await page.getByRole('button', { name: 'Apply destination', exact: true }).click();
   await expect(page.getByText('Destination was not changed; previous results are still shown.', { exact: false }).first()).toBeVisible();

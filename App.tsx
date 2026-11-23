@@ -28,6 +28,7 @@ import {
   api,
 } from './src/app-shared.ts';
 import { Filters, WebsiteFilter } from './src/components/Filters.tsx';
+import { SignIn } from './src/components/SignIn.tsx';
 import { Marketplaces } from './src/screens/Marketplaces.tsx';
 import { Results } from './src/screens/Results.tsx';
 import { useServer } from './src/hooks/use-server.ts';
@@ -96,8 +97,6 @@ function ApartmentSearch() {
     refreshing,
     refreshError,
     cooldownSeconds,
-    token,
-    setToken,
     activeToken,
     commuteConfigured,
     dashboardAvailable,
@@ -218,8 +217,8 @@ function ApartmentSearch() {
   const listVisible = !WEB_MAP || !mapView || wide;
   const marketArea = Object.entries(REGIONS).find(([key]) => key === applied.region)?.[1].label ?? applied.region;
 
-  return (
-    <SafeAreaView style={styles.safe}>
+  const topBar = (
+    <>
       <StatusBar barStyle="light-content" {...{ backgroundColor: colors.navy }} />
       <View style={styles.topBar}>
         <View style={styles.brand}>
@@ -230,6 +229,29 @@ function ApartmentSearch() {
         </View>
         <Text style={styles.topLabel}>NYC METRO</Text>
       </View>
+    </>
+  );
+
+  // Signed out, the app is only its sign-in form: nothing else works until the server knows who you are.
+  if (serverState === 'locked')
+    return (
+      <SafeAreaView style={styles.safe}>
+        {topBar}
+        <ScrollView contentContainerStyle={styles.signInScreen}>
+          <View style={styles.signInCard}>
+            <Text accessibilityRole="header" style={styles.chartTitle}>
+              Sign in
+            </Text>
+            <Text style={styles.bodyText}>Apartment Search is private. Enter your email and we’ll send you a six-digit code.</Text>
+            <SignIn onSignedIn={signedIn} />
+          </View>
+        </ScrollView>
+      </SafeAreaView>
+    );
+
+  return (
+    <SafeAreaView style={styles.safe}>
+      {topBar}
       {(tab === 'results' || tab === 'saved') && (
         <View style={mobileStyles.searchBar}>
           <View style={mobileStyles.summary}>
@@ -306,13 +328,11 @@ function ApartmentSearch() {
                 submit={() => submit()}
                 busy={busy}
                 serverState={serverState}
-                token={token}
-                setToken={setToken}
                 commuteConfigured={commuteConfigured}
                 connect={connect}
-                onSignedIn={signedIn}
                 account={account}
                 onSignOut={() => void signOut()}
+                lookUp={serverState === 'ready' ? (place) => api('geocode', { body: { address: place }, token: activeToken }) : undefined}
               />
               {expanded !== 'commute' && (
                 <WebsiteFilter

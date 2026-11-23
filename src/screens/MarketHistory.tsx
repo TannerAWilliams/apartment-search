@@ -230,8 +230,11 @@ export function MarketHistory({ load }: { load?: LoadHistory }) {
           individual listings.
         </Text>
         <Text style={styles.smallMuted}>
-          Through {monthLabel(latestMonth)}; downloaded {data?.provenance.downloadedAt ?? '2026-11-17'}. Blank months are unknown, never
-          zero.
+          Through {monthLabel(latestMonth)}.{' '}
+          {data?.refreshedAt
+            ? `Downloaded from StreetEasy ${new Date(data.refreshedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}.`
+            : `From the copy downloaded ${data?.provenance.downloadedAt ?? '2026-11-17'}.`}{' '}
+          StreetEasy publishes a new month early each month; Sources & sync → Resync all downloads it. Blank months are unknown, never zero.
         </Text>
         <Link label="StreetEasy Data Dashboard (source and methodology)" url={DASHBOARD_URL} />
       </View>

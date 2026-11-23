@@ -23,7 +23,7 @@ An opt-in, transparent ordering. The rent weight runs from 0 to 100 (default 60)
 
 With `TRAVELTIME_APP_ID` and `TRAVELTIME_API_KEY` set, searches calculate typical weekday-morning transit and driving times from geocoded rentals to the workplace using the [TravelTime matrix](https://docs.traveltime.com/api/reference/time-filter-fast). Only coordinates are sent. Routed times are reused per workplace for 7 days, and each estimate shows its destination, arrival period and when it was routed. Estimates over three hours, or routes the provider cannot find, show as unavailable. Selecting a listing website limits which origins are routed. Without credentials, rent and map search still work and the commute limits are hidden.
 
-A custom workplace address is geocoded with the free [U.S. Census Geocoder](https://geocoding.geo.census.gov/geocoder/Geocoding_Services_API.html) and not stored. The default workplace is Rockefeller Center.
+A typed destination can be an address or a place name ("Empire State Building", "Hoboken PATH", "350 5th Ave"). It is looked up with OpenStreetMap's [Nominatim](https://nominatim.org/) within the NY, NJ and CT area, and with the free [U.S. Census Geocoder](https://geocoding.geo.census.gov/geocoder/Geocoding_Services_API.html) when OpenStreetMap finds nothing (exact street addresses only). **Check address** shows the place it matched before you apply it. Answers from OpenStreetMap are kept in Cloudflare's cache for 30 days, as its usage policy asks; nothing is stored in the app. The default workplace is Rockefeller Center.
 
 ## Saved apartments (this device only)
 
@@ -69,7 +69,7 @@ Six months of median initial asking rents for studios through four bedrooms, fro
 
 **Where the data lives.** The archive (downloaded 2026-11-17, SHA-256 `05d017d90302883339eca32fe920b6b170d85a3583d6f436bd78a720bc6adfdc`) is published with the web app's static files as `public/data/streeteasy-dashboard-2026-11-17.zip`; the Worker refuses direct requests for it. The figures are queried from four D1 tables (`deploy/cloudflare/migrations/0002_market_history.sql`): `market_areas`, `market_series`, `market_values` (one row per series, area and month) and `market_imports`. A series is loaded into them from the archive, after its checksum is verified, the first time anyone asks for it, in one transaction; when the archive is replaced, each series is reloaded the next time it is read. `server/storage/market-history.ts` does the loading and the queries; `server/routes/history.ts` serves them:
 
-- `GET /api/history`: the catalog (series, areas with their ids, provenance).
+- `GET /api/history`: the catalog (series with their latest month, areas with their ids, provenance, and when the figures were last downloaded from StreetEasy).
 - `GET /api/history/values?series=…&areas=…&from=YYYY-MM&to=YYYY-MM`: up to six series for up to eight areas, month by month.
 - `GET /api/history/month?series=…&month=YYYY-MM`: every area's value in one month and a year earlier.
 
@@ -88,7 +88,7 @@ The routes answer only someone signed in (or anyone, when the app is public).
 
 Every chart has a table view with every value. Colors follow a validated palette (`src/chart-colors.ts`): four series colors in a fixed order, gray for context, and blue-to-red through gray for change. Negative days-on-market values in the source are kept in the database and left off the charts.
 
-**A new month of data.** StreetEasy updates the dashboard monthly. Download the Master Report from the dashboard page, save it as `public/data/streeteasy-dashboard-<date>.zip`, update `DASHBOARD_ARCHIVE_PATH` and its checksum in `server/dashboard-snapshot.ts`, run `bun scripts/dashboard-catalog.ts` to rebuild the series and area catalog, and deploy; each series reloads from the new archive the first time it is read.
+**A new month of data.** StreetEasy publishes each series as its own file at `cdn-charts.streeteasy.com` (for example `rentals/OneBd/medianAskingRent_OneBd.zip` and `sales/All/priceIndex_All.zip`; the archive's files are byte-for-byte the same). **Sources & sync → Resync all** (or resyncing the **StreetEasy Data Dashboard** source alone) downloads all 45, compares each file's SHA-256 with the one loaded, and replaces only the series that changed, each in one transaction; a file that cannot be read is reported and its saved figures kept. New areas get the next free number. The page shows the latest month and when the figures were last downloaded. The bundled archive stays as the starting copy, so the page works before the first resync. Downloading all 45 files takes a few seconds; loading a new month for all of them, under 30. The weekly live check also downloads one of these files, so a moved download link is noticed.
 
 ## Affordable housing
 

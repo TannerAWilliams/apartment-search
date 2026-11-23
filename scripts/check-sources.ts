@@ -14,6 +14,7 @@ import { loadHdcRerentals } from '../server/sources/hdc-rerentals.ts';
 import { loadHousingConnect } from '../server/sources/housing.ts';
 import { loadJerseyAffordable } from '../server/sources/jersey-affordable.ts';
 import { completeSync } from '../server/sources/source-registry.ts';
+import { dashboardFileUrl, parseSeriesZip } from '../server/dashboard-snapshot.ts';
 import { loadHomeSeeker } from '../server/sources/westchester-homeseeker.ts';
 import type { FetchTransport } from '../src/fetch-type.ts';
 
@@ -29,6 +30,15 @@ export const CHECKS: Check[] = [
   { id: 'hdc-rerentals', run: async (fetcher) => (await loadHdcRerentals(fetcher)).results.length },
   { id: 'jersey-affordable', run: async (fetcher, now) => (await loadJerseyAffordable(fetcher, now)).notices.length },
   { id: 'westchester-homeseeker', run: async (fetcher, now) => (await loadHomeSeeker(fetcher, now)).opportunities.length },
+  {
+    // One of the 45 market history files: if StreetEasy moves them, Resync all would start failing.
+    id: 'streeteasy-dashboard',
+    run: async (fetcher) => {
+      const response = await fetcher(dashboardFileUrl('medianAskingRent_All.csv'), { redirect: 'manual' });
+      if (!response.ok) throw Object.assign(new Error(`StreetEasy returned HTTP ${response.status}.`), { httpStatus: response.status });
+      return parseSeriesZip('medianAskingRent_All.csv', new Uint8Array(await response.arrayBuffer())).areas.length;
+    },
+  },
 ];
 
 /** Whether a failure is the site refusing us, which is reported but is not something the code can fix. */

@@ -1,3 +1,4 @@
+import type { D1Database } from './storage/d1-bucket.ts';
 import type { HdcSnapshot, StoredHousing } from './storage/stored-documents.ts';
 import type { JerseySnapshot } from './sources/jersey-affordable.ts';
 import type { HomeSeekerSnapshot } from './sources/westchester-homeseeker.ts';
@@ -34,6 +35,8 @@ export type Bucket = {
   ): Promise<{ etag: string } | null>;
   /** Listing snapshots: one row per listing and per unit's price history in D1. */
   snapshots: SnapshotStore;
+  /** The D1 database itself, for the tables that are not documents (market history); absent in memory stores. */
+  database?: D1Database;
 };
 export type AppEnv = {
   BUCKET?: Bucket;
