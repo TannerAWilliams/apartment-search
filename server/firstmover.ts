@@ -10,23 +10,49 @@ const PUBLISHED_CATALOG = 'https://www.firstmovernyc.com/open-data';
 const MONTHLY_FILE = /^20\d{2}-(0[1-9]|1[0-2])\.csv$/;
 const MAX_CSV_BYTES = 32 * 1024 * 1024;
 const NYC_COUNTIES = {
-  Manhattan: 'New York', Brooklyn: 'Kings', Queens: 'Queens', Bronx: 'Bronx', 'Staten Island': 'Richmond',
+  Manhattan: 'New York',
+  Brooklyn: 'Kings',
+  Queens: 'Queens',
+  Bronx: 'Bronx',
+  'Staten Island': 'Richmond',
 };
 export const NJ_ZIPS: Record<string, [string, string]> = {
-  '07002': ['Bayonne', 'Hudson'], '07010': ['Cliffside Park', 'Bergen'],
-  '07020': ['Edgewater', 'Bergen'], '07024': ['Fort Lee', 'Bergen'],
-  '07029': ['Harrison', 'Hudson'], '07030': ['Hoboken', 'Hudson'],
-  '07032': ['Kearny', 'Hudson'], '07047': ['North Bergen', 'Hudson'],
-  '07086': ['Weehawken', 'Hudson'], '07087': ['Union City', 'Hudson'],
-  '07093': ['West New York', 'Hudson'], '07094': ['Secaucus', 'Hudson'],
-  '07302': ['Jersey City', 'Hudson'], '07304': ['Jersey City', 'Hudson'],
-  '07305': ['Jersey City', 'Hudson'], '07306': ['Jersey City', 'Hudson'],
-  '07307': ['Jersey City', 'Hudson'], '07310': ['Jersey City', 'Hudson'],
+  '07002': ['Bayonne', 'Hudson'],
+  '07010': ['Cliffside Park', 'Bergen'],
+  '07020': ['Edgewater', 'Bergen'],
+  '07024': ['Fort Lee', 'Bergen'],
+  '07029': ['Harrison', 'Hudson'],
+  '07030': ['Hoboken', 'Hudson'],
+  '07032': ['Kearny', 'Hudson'],
+  '07047': ['North Bergen', 'Hudson'],
+  '07086': ['Weehawken', 'Hudson'],
+  '07087': ['Union City', 'Hudson'],
+  '07093': ['West New York', 'Hudson'],
+  '07094': ['Secaucus', 'Hudson'],
+  '07302': ['Jersey City', 'Hudson'],
+  '07304': ['Jersey City', 'Hudson'],
+  '07305': ['Jersey City', 'Hudson'],
+  '07306': ['Jersey City', 'Hudson'],
+  '07307': ['Jersey City', 'Hudson'],
+  '07310': ['Jersey City', 'Hudson'],
   '07311': ['Jersey City', 'Hudson'],
 };
 const EXCLUDED = new Set(['HOUSE', 'TOWNHOUSE', 'COMMERCIAL', 'LAND']);
-const COLUMNS = ['id', 'street', 'unit', 'state', 'zip_code', 'neighborhood',
-  'latitude', 'longitude', 'bedrooms', 'price', 'url', 'created_at_utc', 'building_type'];
+const COLUMNS = [
+  'id',
+  'street',
+  'unit',
+  'state',
+  'zip_code',
+  'neighborhood',
+  'latitude',
+  'longitude',
+  'bedrooms',
+  'price',
+  'url',
+  'created_at_utc',
+  'building_type',
+];
 
 export function nycBorough(zip: string): keyof typeof NYC_COUNTIES | null {
   const prefix = zip.slice(0, 3);
@@ -48,9 +74,20 @@ function packedRow(row: Record<string, string>): MarketRow | null {
   const latitude = Math.round(Number(row.latitude) * 1e6) / 1e6;
   const longitude = Math.round(Number(row.longitude) * 1e6) / 1e6;
   const path = row.url.match(/^https:\/\/streeteasy\.com(\/(?:building|rental)\/[^?#]+)(?:[?#].*)?$/)?.[1];
-  if (!row.id || !address || !neighborhood || !/^\d{5}$/.test(zip) || !path || EXCLUDED.has(row.building_type) ||
-      !Number.isInteger(bedrooms) || bedrooms < 0 || bedrooms > 4 || !(rent > 0 && rent <= 100000) ||
-      !(latitude >= 40 && latitude <= 42 && longitude >= -75 && longitude <= -72)) return null;
+  if (
+    !row.id ||
+    !address ||
+    !neighborhood ||
+    !/^\d{5}$/.test(zip) ||
+    !path ||
+    EXCLUDED.has(row.building_type) ||
+    !Number.isInteger(bedrooms) ||
+    bedrooms < 0 ||
+    bedrooms > 4 ||
+    !(rent > 0 && rent <= 100000) ||
+    !(latitude >= 40 && latitude <= 42 && longitude >= -75 && longitude <= -72)
+  )
+    return null;
 
   let city;
   let county;
@@ -62,8 +99,23 @@ function packedRow(row: Record<string, string>): MarketRow | null {
     if (zip === '07093' && neighborhood === 'Guttenberg') city = 'Guttenberg';
   }
   if (!city) return null;
-  return [row.id, address, row.unit.trim(), city, county ?? '', state, zip, neighborhood, latitude,
-    longitude, bedrooms, rent, path, row.created_at_utc.slice(0, 10), row.source_group?.trim().slice(0, 160) ?? ''];
+  return [
+    row.id,
+    address,
+    row.unit.trim(),
+    city,
+    county ?? '',
+    state,
+    zip,
+    neighborhood,
+    latitude,
+    longitude,
+    bedrooms,
+    rent,
+    path,
+    row.created_at_utc.slice(0, 10),
+    row.source_group?.trim().slice(0, 160) ?? '',
+  ];
 }
 
 export function parseFirstMoverCsv(csv: string, month: string) {
@@ -73,7 +125,7 @@ export function parseFirstMoverCsv(csv: string, month: string) {
     max_record_size: 65536,
     columns: (headers) => {
       if (!COLUMNS.every((column) => headers.includes(column))) throw new Error('The FirstMover CSV columns changed.');
-      return headers.map((header) => COLUMNS.includes(header) || header === 'source_group' ? header : false);
+      return headers.map((header) => (COLUMNS.includes(header) || header === 'source_group' ? header : false));
     },
   });
   const paths = new Set<string>();
@@ -101,10 +153,19 @@ export async function checkFirstMover(previous: FirstMoverState | null | undefin
   if (!response.ok) throw new Error(`FirstMover catalog returned HTTP ${response.status}.`);
   const entries = await response.json();
   if (!Array.isArray(entries)) throw new Error('The FirstMover catalog was invalid.');
-  const entry = entries.filter((file): file is CatalogFile => isRecord(file) && file.type === 'file' &&
-    typeof file.name === 'string' && MONTHLY_FILE.test(file.name)).sort((a, b) => b.name.localeCompare(a.name))[0];
-  if (!entry || typeof entry.sha !== 'string' || !/^[a-f0-9]{40}$/.test(entry.sha) ||
-      typeof entry.size !== 'number' || !(entry.size > 0 && entry.size <= MAX_CSV_BYTES)) {
+  const entry = entries
+    .filter(
+      (file): file is CatalogFile =>
+        isRecord(file) && file.type === 'file' && typeof file.name === 'string' && MONTHLY_FILE.test(file.name),
+    )
+    .sort((a, b) => b.name.localeCompare(a.name))[0];
+  if (
+    !entry ||
+    typeof entry.sha !== 'string' ||
+    !/^[a-f0-9]{40}$/.test(entry.sha) ||
+    typeof entry.size !== 'number' ||
+    !(entry.size > 0 && entry.size <= MAX_CSV_BYTES)
+  ) {
     throw new Error('The latest FirstMover CSV is unavailable or too large.');
   }
 
@@ -141,8 +202,10 @@ export async function checkPublishedFirstMover(previous: FirstMoverState | null 
   if (!page.ok) throw new Error(`FirstMover catalog returned HTTP ${page.status}.`);
   const html = await page.text();
   const file = [...html.matchAll(/\bhref=["']([^"']+)["']/gi)]
-    .map(([, href]) => href.startsWith(CSV_ROOT) ? href.slice(CSV_ROOT.length) : '')
-    .filter((name) => MONTHLY_FILE.test(name)).sort().at(-1);
+    .map(([, href]) => (href.startsWith(CSV_ROOT) ? href.slice(CSV_ROOT.length) : ''))
+    .filter((name) => MONTHLY_FILE.test(name))
+    .sort()
+    .at(-1);
   if (!file) throw new Error('The latest FirstMover CSV is unavailable.');
 
   const month = file.slice(0, 7);

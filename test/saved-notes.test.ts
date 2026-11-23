@@ -1,7 +1,8 @@
 import { expect, test } from 'bun:test';
 import { emptySavedNote, NOTE_LIMIT, parseSavedNote, savedNoteKey, VIEWING_STATUSES } from '../src/saved-notes.ts';
 test('notes default independently and round-trip all viewing statuses', () => {
-  const empty = emptySavedNote(); empty.text = 'changed';
+  const empty = emptySavedNote();
+  empty.text = 'changed';
   expect(parseSavedNote(null)).toStrictEqual({ text: '', status: 'Considering' });
   for (const status of VIEWING_STATUSES) {
     const note = { text: 'Quiet?\nAsk about utilities 🏡', status };
@@ -10,7 +11,14 @@ test('notes default independently and round-trip all viewing statuses', () => {
   expect(parseSavedNote(JSON.stringify({ text: 'x'.repeat(NOTE_LIMIT), status: 'Applied' })).text.length).toBe(NOTE_LIMIT);
 });
 test('invalid stored notes fail closed rather than silently erase data', () => {
-  for (const value of ['{', 'null', '{}', '{"text":4}', JSON.stringify({ text: 'x'.repeat(NOTE_LIMIT + 1), status: 'Applied' }), JSON.stringify({ text: '', status: 'Invented' })]) {
+  for (const value of [
+    '{',
+    'null',
+    '{}',
+    '{"text":4}',
+    JSON.stringify({ text: 'x'.repeat(NOTE_LIMIT + 1), status: 'Applied' }),
+    JSON.stringify({ text: '', status: 'Invented' }),
+  ]) {
     expect(() => parseSavedNote(value)).toThrow();
   }
 });

@@ -7,7 +7,7 @@ type JsonSource = { json(): Promise<unknown> };
  * body with another shape fails the test.
  */
 export async function readJson<T>(source: JsonSource | Promise<JsonSource>): Promise<T> {
-  return await (await source).json() as T;
+  return (await (await source).json()) as T;
 }
 
 /** The body of an error response. */
@@ -21,7 +21,9 @@ export const sentJson = <T>(body: BodyInit | null | undefined) => JSON.parse(Str
 
 /** A JSON-RPC request to the Openigloo MCP server: the fields the fake servers read. */
 export type RpcRequest = {
-  jsonrpc: '2.0'; /** Absent on notifications, which the fakes answer without reading it. */ id: number; method: string;
+  jsonrpc: '2.0' /** Absent on notifications, which the fakes answer without reading it. */;
+  id: number;
+  method: string;
   params: { name?: string; arguments: { area: string; bedrooms: number[]; min_rent?: number; max_rent?: number; limit: number } };
 };
 

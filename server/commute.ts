@@ -18,7 +18,11 @@ export class CommuteError extends Error {
 
 export function routingCredentials(env: AppEnv) {
   const values = { appId: env.TRAVELTIME_APP_ID, apiKey: env.TRAVELTIME_API_KEY };
-  return typeof values.appId === 'string' && typeof values.apiKey === 'string' && [values.appId, values.apiKey].every((value) => /^[\x21-\x7e]{1,256}$/.test(value)) ? { appId: values.appId, apiKey: values.apiKey } : null;
+  return typeof values.appId === 'string' &&
+    typeof values.apiKey === 'string' &&
+    [values.appId, values.apiKey].every((value) => /^[\x21-\x7e]{1,256}$/.test(value))
+    ? { appId: values.appId, apiKey: values.apiKey }
+    : null;
 }
 
 const coords = ({ latitude: lat, longitude: lng }: Point) => ({ lat, lng });
@@ -30,8 +34,17 @@ const COMMUTE_CACHE_LIMIT = 60_000;
 /** A TravelTime time-filter request: every listing to one workplace, by transit and by car. */
 export type TravelTimeRequest = {
   locations: { id: string; coords: { lat: number; lng: number } }[];
-  arrival_searches: { many_to_one: { id: string; arrival_location_id: string; departure_location_ids: string[]; transportation: { type: string };
-    travel_time: number; arrival_time_period: string; properties: string[] }[] };
+  arrival_searches: {
+    many_to_one: {
+      id: string;
+      arrival_location_id: string;
+      departure_location_ids: string[];
+      transportation: { type: string };
+      travel_time: number;
+      arrival_time_period: string;
+      properties: string[];
+    }[];
+  };
 };
 type CachedTimes = { transit: number | null; driving: number | null; checkedAt: string };
 type CommuteCache = { version: 1; workplace?: string; entries: Record<string, CachedTimes> };
@@ -52,70 +65,117 @@ async function readCommuteCache(bucket: Bucket, workplace: Point): Promise<Commu
   try {
     const object = await bucket.get(cacheKey(workplace));
     // Written by saveCommuteCache below.
-    const value = object ? JSON.parse(strFromU8(gunzipSync(new Uint8Array(await object.arrayBuffer())))) as Partial<CommuteCache> | null : null;
-    return value?.version === 1 && value.workplace === workplaceId(workplace) && isRecord(value.entries) ?
-      { version: 1, workplace: value.workplace, entries: value.entries } : { version: 1, workplace: workplaceId(workplace), entries: {} };
+    const value = object
+      ? (JSON.parse(strFromU8(gunzipSync(new Uint8Array(await object.arrayBuffer())))) as Partial<CommuteCache> | null)
+      : null;
+    return value?.version === 1 && value.workplace === workplaceId(workplace) && isRecord(value.entries)
+      ? { version: 1, workplace: value.workplace, entries: value.entries }
+      : { version: 1, workplace: workplaceId(workplace), entries: {} };
   } catch {
     return { version: 1, workplace: workplaceId(workplace), entries: {} };
   }
 }
 
 async function writeCommuteCache(bucket: Bucket, workplace: Point, cache: CommuteCache) {
-  const newest = Object.entries(cache.entries).sort(([, a], [, b]) => Date.parse(b.checkedAt) - Date.parse(a.checkedAt)).slice(0, COMMUTE_CACHE_LIMIT);
+  const newest = Object.entries(cache.entries)
+    .sort(([, a], [, b]) => Date.parse(b.checkedAt) - Date.parse(a.checkedAt))
+    .slice(0, COMMUTE_CACHE_LIMIT);
   // Best effort: a failed or concurrent write only means those origins are routed again.
-  await bucket.put(cacheKey(workplace), gzipSync(strToU8(JSON.stringify({ version: 1, workplace: workplaceId(workplace), entries: Object.fromEntries(newest) })))).catch(() => null);
+  await bucket
+    .put(
+      cacheKey(workplace),
+      gzipSync(strToU8(JSON.stringify({ version: 1, workplace: workplaceId(workplace), entries: Object.fromEntries(newest) }))),
+    )
+    .catch(() => null);
 }
 
-export async function routeCommutes<T extends { latitude?: unknown; longitude?: unknown }>(listings: T[], workplace: unknown, credentials: ReturnType<typeof routingCredentials>, fetcher: SourceFetch, now = new Date(), cache?: Bucket) {
+export async function routeCommutes<T extends { latitude?: unknown; longitude?: unknown }>(
+  listings: T[],
+  workplace: unknown,
+  credentials: ReturnType<typeof routingCredentials>,
+  fetcher: SourceFetch,
+  now = new Date(),
+  cache?: Bucket,
+) {
   if (!credentials) throw new CommuteError('Automatic commute estimates are unavailable because the routing service is disconnected.');
-  if (!isPoint(workplace) || !('label' in workplace) || typeof workplace.label !== 'string' || !workplace.label || workplace.label.length > 200 || !Number.isFinite(now.getTime())) throw new CommuteError('Choose a valid workplace before calculating commute times.', 422);
+  if (
+    !isPoint(workplace) ||
+    !('label' in workplace) ||
+    typeof workplace.label !== 'string' ||
+    !workplace.label ||
+    workplace.label.length > 200 ||
+    !Number.isFinite(now.getTime())
+  )
+    throw new CommuteError('Choose a valid workplace before calculating commute times.', 422);
   const origins = new Map();
   for (const listing of listings) {
     if (isPoint(listing) && !origins.has(pointKey(listing))) {
       origins.set(pointKey(listing), { id: String(origins.size), coords: coords(listing) });
     }
   }
-  if (!origins.size) return listings.map(listing => ({ ...listing, transitSeconds: null, drivingSeconds: null, commuteEstimate: null }));
+  if (!origins.size) return listings.map((listing) => ({ ...listing, transitSeconds: null, drivingSeconds: null, commuteEstimate: null }));
   if (origins.size > 100_000) throw new CommuteError('Choose a smaller area or a lower rent limit to calculate commute times.', 422);
   const saved = cache ? await readCommuteCache(cache, workplace as Point) : null;
   const fresh = (entry: CachedTimes | undefined) => entry && now.getTime() - Date.parse(entry.checkedAt) < COMMUTE_CACHE_DAYS * 86_400_000;
   const known = new Map<string, CachedTimes>();
-  for (const key of origins.keys()) { const entry = saved?.entries[key]; if (fresh(entry)) known.set(key, entry!); }
+  for (const key of origins.keys()) {
+    const entry = saved?.entries[key];
+    if (fresh(entry)) known.set(key, entry!);
+  }
   const locations = [...origins.entries()].filter(([key]) => !known.has(key)).map(([, origin]) => origin);
   const departure_location_ids = locations.map(({ id }) => id);
   const searches = Object.entries(MODES).map(([id, type]) => ({
-    id, arrival_location_id: 'workplace', departure_location_ids,
-    transportation: { type }, travel_time: 10800, arrival_time_period: 'weekday_morning', properties: ['travel_time'],
+    id,
+    arrival_location_id: 'workplace',
+    departure_location_ids,
+    transportation: { type },
+    travel_time: 10800,
+    arrival_time_period: 'weekday_morning',
+    properties: ['travel_time'],
   }));
-  const body: TravelTimeRequest = { locations: [...locations, { id: 'workplace', coords: coords(workplace) }],
-    arrival_searches: { many_to_one: searches } };
+  const body: TravelTimeRequest = {
+    locations: [...locations, { id: 'workplace', coords: coords(workplace) }],
+    arrival_searches: { many_to_one: searches },
+  };
 
   let results: { search_id?: string; locations?: { id: string; properties?: { travel_time?: number } }[] }[] = [];
-  if (locations.length) try {
-    const response = await fetcher(TRAVELTIME_URL, {
-      method: 'POST', redirect: 'manual', signal: AbortSignal.timeout(20000),
-      headers: { 'Content-Type': 'application/json', 'X-Application-Id': credentials.appId, 'X-Api-Key': credentials.apiKey },
-      body: JSON.stringify(body),
-    });
-    if ([401, 403].includes(response.status)) throw new CommuteError('The routing service rejected the server credentials.');
-    if (response.status === 429) throw new CommuteError('TravelTime reached its request limit. Try the commute search again later.');
-    if (!response.ok) throw new Error('Routing request failed');
-    const routed = await response.json() as { results?: typeof results } | null;
-    if (!Array.isArray(routed?.results)) throw new Error('Invalid routing response');
-    results = routed.results;
-  } catch (error) {
-    if (error instanceof CommuteError) throw error;
-    throw new CommuteError('TravelTime couldn’t calculate routes. Try again, or search without commute times.');
-  }
-  const timesByMode = Object.fromEntries(searches.map(({ id }) => {
-    if (!locations.length) return [id, new Map()];
-    const result = results.find((entry) => entry?.search_id === id);
-    if (!Array.isArray(result?.locations)) throw new CommuteError('TravelTime returned incomplete commute estimates. Try again.');
-    return [id, new Map(result.locations.flatMap((location) => {
-      const seconds = location?.properties?.travel_time;
-      return typeof seconds === 'number' && Number.isFinite(seconds) && seconds >= 0 && seconds <= 10800 ? [[location.id, seconds]] : [];
-    }))];
-  }));
+  if (locations.length)
+    try {
+      const response = await fetcher(TRAVELTIME_URL, {
+        method: 'POST',
+        redirect: 'manual',
+        signal: AbortSignal.timeout(20000),
+        headers: { 'Content-Type': 'application/json', 'X-Application-Id': credentials.appId, 'X-Api-Key': credentials.apiKey },
+        body: JSON.stringify(body),
+      });
+      if ([401, 403].includes(response.status)) throw new CommuteError('The routing service rejected the server credentials.');
+      if (response.status === 429) throw new CommuteError('TravelTime reached its request limit. Try the commute search again later.');
+      if (!response.ok) throw new Error('Routing request failed');
+      const routed = (await response.json()) as { results?: typeof results } | null;
+      if (!Array.isArray(routed?.results)) throw new Error('Invalid routing response');
+      results = routed.results;
+    } catch (error) {
+      if (error instanceof CommuteError) throw error;
+      throw new CommuteError('TravelTime couldn’t calculate routes. Try again, or search without commute times.');
+    }
+  const timesByMode = Object.fromEntries(
+    searches.map(({ id }) => {
+      if (!locations.length) return [id, new Map()];
+      const result = results.find((entry) => entry?.search_id === id);
+      if (!Array.isArray(result?.locations)) throw new CommuteError('TravelTime returned incomplete commute estimates. Try again.');
+      return [
+        id,
+        new Map(
+          result.locations.flatMap((location) => {
+            const seconds = location?.properties?.travel_time;
+            return typeof seconds === 'number' && Number.isFinite(seconds) && seconds >= 0 && seconds <= 10800
+              ? [[location.id, seconds]]
+              : [];
+          }),
+        ),
+      ];
+    }),
+  );
   const checkedAt = now.toISOString();
   const keyById = new Map([...origins.entries()].map(([key, origin]) => [origin.id, key]));
   for (const { id } of locations) {
@@ -126,7 +186,20 @@ export async function routeCommutes<T extends { latitude?: unknown; longitude?: 
   }
   return listings.map((listing) => {
     const times = isPoint(listing) ? known.get(pointKey(listing)) : undefined;
-    return { ...listing, commuteEstimate: times === undefined ? null : { provider: 'TravelTime', arrivalPeriod: 'weekday_morning', checkedAt: times.checkedAt, destination: { label: workplace.label, latitude: workplace.latitude, longitude: workplace.longitude } }, transitSeconds: times?.transit ?? null, drivingSeconds: times?.driving ?? null };
+    return {
+      ...listing,
+      commuteEstimate:
+        times === undefined
+          ? null
+          : {
+              provider: 'TravelTime',
+              arrivalPeriod: 'weekday_morning',
+              checkedAt: times.checkedAt,
+              destination: { label: workplace.label, latitude: workplace.latitude, longitude: workplace.longitude },
+            },
+      transitSeconds: times?.transit ?? null,
+      drivingSeconds: times?.driving ?? null,
+    };
   });
 }
 
@@ -142,7 +215,9 @@ export async function geocodeAddress(address: string, fetcher: SourceFetch = fet
     signal: AbortSignal.timeout(8000),
   });
   if (!response.ok) throw new Error('Address geocoding is temporarily unavailable.');
-  const body = await response.json() as { result?: { addressMatches?: ({ matchedAddress?: string; coordinates?: { x?: unknown; y?: unknown } } | null)[] } } | null;
+  const body = (await response.json()) as {
+    result?: { addressMatches?: ({ matchedAddress?: string; coordinates?: { x?: unknown; y?: unknown } } | null)[] };
+  } | null;
   const matches = body?.result?.addressMatches;
   if (!Array.isArray(matches) || matches.length !== 1 || !matches[0]?.coordinates) {
     throw new SearchInputError('Use a full street address with city, state, and ZIP, or enter coordinates.');

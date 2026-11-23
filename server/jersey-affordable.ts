@@ -9,14 +9,17 @@ import { fetchPublicHtml } from './public-rentals.ts';
 import type { SourceFetch } from './refresh.ts';
 
 export const JERSEY_AFFORDABLE = { id: 'jersey-affordable', name: 'Jersey City affordable housing' };
-export const JERSEY_PAGE = 'https://www.jerseycitynj.gov/CityHall/HousingAndDevelopment/affordable_housing/recent_affordable_housing_postings';
+export const JERSEY_PAGE =
+  'https://www.jerseycitynj.gov/CityHall/HousingAndDevelopment/affordable_housing/recent_affordable_housing_postings';
 export const JERSEY_APPLICATION = 'https://affordablehousingjc.com/';
 const KEY = 'rentals/jersey-affordable.json';
 const SIZES = ['studio', 'one-bedroom', 'two-bedroom', 'three-bedroom', 'four-bedroom'] as const;
 const COUNT = /(\d+|a) (studio|one-bedroom|two-bedroom|three-bedroom|four-bedroom) apartments?/gi;
 
 const JerseyNoticeSchema = v.object({
-  id: v.string(), name: v.string(), address: v.string(),
+  id: v.string(),
+  name: v.string(),
+  address: v.string(),
   /** Apartments described for each size: studio, 1, 2, 3 and 4 bedrooms. */
   sizes: v.pipe(v.array(v.pipe(v.number(), v.integer(), v.minValue(0))), v.length(SIZES.length)),
   total: v.pipe(v.number(), v.integer(), v.minValue(1)),
@@ -33,8 +36,14 @@ export const JerseySnapshotSchema = v.object({
 export type JerseyNotice = v.InferOutput<typeof JerseyNoticeSchema>;
 export type JerseySnapshot = v.InferOutput<typeof JerseySnapshotSchema>;
 
-const plain = (html: string) => html.replace(/<[^>]*>/g, ' ').replace(/&nbsp;|&#160;/gi, ' ').replace(/&quot;|&#34;/gi, '"')
-  .replace(/&amp;/gi, '&').replace(/\s+/g, ' ').trim();
+const plain = (html: string) =>
+  html
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&nbsp;|&#160;/gi, ' ')
+    .replace(/&quot;|&#34;/gi, '"')
+    .replace(/&amp;/gi, '&')
+    .replace(/\s+/g, ' ')
+    .trim();
 
 /** The apartments one notice describes by size. Throws on wording it does not recognize, rather than guess. */
 function sizesOf(text: string) {
@@ -42,7 +51,7 @@ function sizesOf(text: string) {
   const counts = [...text.matchAll(COUNT)];
   if (!counts.length || text.replace(COUNT, '').replace(/\band\b|[,\s]/gi, '')) throw new Error('Unrecognized Jersey City bedroom counts.');
   for (const [, amount, size] of counts) {
-    const index = SIZES.indexOf(size.toLowerCase() as typeof SIZES[number]);
+    const index = SIZES.indexOf(size.toLowerCase() as (typeof SIZES)[number]);
     const count = amount.toLowerCase() === 'a' ? 1 : Number(amount);
     if (sizes[index] || !Number.isSafeInteger(count) || count < 1 || count > 10_000) throw new Error('Invalid Jersey City bedroom count.');
     sizes[index] = count;
@@ -55,14 +64,18 @@ function sizesOf(text: string) {
  * without recognizable notices throws: an empty or changed page is unknown, never a confirmed zero.
  */
 export function parseJerseyAffordable(html: string, now = new Date()): JerseySnapshot {
-  const section = html.match(/<h4\b[^>]*>(?:\s|<span\b[^>]*>)*Current Affordable Housing Postings(?:\s|<\/span>|<span\b[^>]*>)*<\/h4>([\s\S]*?)<\/div>/i)?.[1];
+  const section = html.match(
+    /<h4\b[^>]*>(?:\s|<span\b[^>]*>)*Current Affordable Housing Postings(?:\s|<\/span>|<span\b[^>]*>)*<\/h4>([\s\S]*?)<\/div>/i,
+  )?.[1];
   if (!section?.includes(JERSEY_APPLICATION)) throw new Error('Jersey City postings structure is unavailable.');
   const date = plain(section).match(/Updated (\d{2})-(\d{2})-(\d{4});/);
   if (!date) throw new Error('Jersey City revision is unavailable.');
   const revision = `${date[3]}-${date[1]}-${date[2]}`;
   const parsed = new Date(revision + 'T00:00:00Z');
-  if (!Number.isFinite(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== revision || parsed > now) throw new Error('Invalid Jersey City revision.');
-  const paragraphs = [...section.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)].map(([, body]) => plain(body))
+  if (!Number.isFinite(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== revision || parsed > now)
+    throw new Error('Invalid Jersey City revision.');
+  const paragraphs = [...section.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)]
+    .map(([, body]) => plain(body))
     .filter((text) => /is located at|This building has/i.test(text));
   if (!paragraphs.length) throw new Error('No recognized Jersey City notices; empty coverage is unconfirmed.');
   const notices = paragraphs.map((text): JerseyNotice => {
@@ -73,8 +86,14 @@ export function parseJerseyAffordable(html: string, now = new Date()): JerseySna
     return { id: address.toLowerCase(), name, address, sizes, total: sizes.reduce((sum, count) => sum + count, 0) };
   });
   if (new Set(notices.map(({ id }) => id)).size !== notices.length) throw new Error('Duplicate Jersey City notice.');
-  return { revision, checkedAt: now.toISOString(), notices, total: notices.reduce((sum, { total }) => sum + total, 0),
-    sourceUrl: JERSEY_PAGE, applicationUrl: JERSEY_APPLICATION };
+  return {
+    revision,
+    checkedAt: now.toISOString(),
+    notices,
+    total: notices.reduce((sum, { total }) => sum + total, 0),
+    sourceUrl: JERSEY_PAGE,
+    applicationUrl: JERSEY_APPLICATION,
+  };
 }
 
 export async function loadJerseyAffordable(fetcher: SourceFetch, now = new Date()) {

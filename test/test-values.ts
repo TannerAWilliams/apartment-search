@@ -14,7 +14,11 @@ export function instanceOf<T>(value: unknown, type: abstract new (...args: never
 
 /** The error a promise rejects with; fails if it resolves instead. */
 export async function rejection(promise: Promise<unknown>) {
-  try { await promise; } catch (error) { return error; }
+  try {
+    await promise;
+  } catch (error) {
+    return error;
+  }
   throw new Error('Expected the promise to reject');
 }
 

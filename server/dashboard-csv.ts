@@ -21,24 +21,30 @@ export function parseDashboardCsv(name: string, csv: string): DashboardFile {
   const [metric, segment] = name.slice(0, -4).split('_') as [keyof typeof METRICS, string];
   const rows: string[][] = parse(csv, { bom: true, skip_empty_lines: true, max_record_size: 100000 });
   const header = rows.shift();
-  if (!header || !rows.length || rows.length > 5000 || rows.some(row => row.length !== header.length)) throw new Error('Invalid CSV dimensions.');
+  if (!header || !rows.length || rows.length > 5000 || rows.some((row) => row.length !== header.length))
+    throw new Error('Invalid CSV dimensions.');
   let months: string[];
   let areas: DashboardFile['areas'];
   if (metric.endsWith('Index')) {
     if (header.join(',') !== 'month,Brooklyn,Manhattan,NYC,Queens') throw new Error('Unexpected index schema.');
-    months = rows.map(row => row[0]);
-    areas = header.slice(1).map((name, i) => ({ name, borough: name === 'NYC' ? '' : name,
-      type: name === 'NYC' ? 'city' : 'borough', values: rows.map(row => value(row[i + 1], METRICS[metric][1])) }));
+    months = rows.map((row) => row[0]);
+    areas = header.slice(1).map((name, i) => ({
+      name,
+      borough: name === 'NYC' ? '' : name,
+      type: name === 'NYC' ? 'city' : 'borough',
+      values: rows.map((row) => value(row[i + 1], METRICS[metric][1])),
+    }));
   } else {
     if (header.slice(0, 3).join(',') !== 'areaName,Borough,areaType') throw new Error('Unexpected area schema.');
     months = header.slice(3);
     const seen = new Set<string>();
-    areas = rows.map(row => {
+    areas = rows.map((row) => {
       const [name, borough, type] = row;
       const key = JSON.stringify(row.slice(0, 3));
-      if (!name || name.length > 200 || borough.length > 100 || !type || type.length > 100 || seen.has(key)) throw new Error('Invalid or duplicate area.');
+      if (!name || name.length > 200 || borough.length > 100 || !type || type.length > 100 || seen.has(key))
+        throw new Error('Invalid or duplicate area.');
       seen.add(key);
-      return { name, borough, type, values: row.slice(3).map(v => value(v, METRICS[metric][1])) };
+      return { name, borough, type, values: row.slice(3).map((v) => value(v, METRICS[metric][1])) };
     });
   }
   validateMonths(months);

@@ -1,5 +1,11 @@
 import { expect, test } from 'bun:test';
-import { JERSEY_AFFORDABLE, JERSEY_PAGE, loadJerseyAffordable, parseJerseyAffordable, storedJerseyAffordable } from '../server/jersey-affordable.ts';
+import {
+  JERSEY_AFFORDABLE,
+  JERSEY_PAGE,
+  loadJerseyAffordable,
+  parseJerseyAffordable,
+  storedJerseyAffordable,
+} from '../server/jersey-affordable.ts';
 import { configuredFeeds } from '../server/listings.ts';
 import { refreshSources } from '../server/refresh.ts';
 import type { HousingResponse } from '../server/contracts.ts';
@@ -31,16 +37,27 @@ test('notices keep the bedroom counts the city publishes, without prices or dead
 });
 
 test('an empty or changed page, or an impossible or future revision, fails rather than reporting zero', () => {
-  for (const value of [page(''), page().replace('Current Affordable Housing Postings', 'Unavailable'), page().replace(JERSEY_PAGE, '').replace('https://affordablehousingjc.com/', 'https://example.com'),
-    page(undefined, '02-30-2026'), page(undefined, '12-01-2026'), page().replace('Updated', 'Posted')]) {
+  for (const value of [
+    page(''),
+    page().replace('Current Affordable Housing Postings', 'Unavailable'),
+    page().replace(JERSEY_PAGE, '').replace('https://affordablehousingjc.com/', 'https://example.com'),
+    page(undefined, '02-30-2026'),
+    page(undefined, '12-01-2026'),
+    page().replace('Updated', 'Posted'),
+  ]) {
     expect(() => parseJerseyAffordable(value, now)).toThrow();
   }
 });
 
 test('duplicate, partial or unfamiliar counts fail closed', () => {
-  for (const value of [page(notices[0] + notices[0]), page().replace('7 studio apartments', 'seven studio apartments'), page().replace('7 studio apartments', '0 studio apartments'),
-    page().replace('7 studio apartments', '1 studio apartment and 7 studio apartments'), page().replace('07302. This building', 'invalid. This building'),
-    page().replace('is located at 40', 'stands at 40')]) {
+  for (const value of [
+    page(notices[0] + notices[0]),
+    page().replace('7 studio apartments', 'seven studio apartments'),
+    page().replace('7 studio apartments', '0 studio apartments'),
+    page().replace('7 studio apartments', '1 studio apartment and 7 studio apartments'),
+    page().replace('07302. This building', 'invalid. This building'),
+    page().replace('is located at 40', 'stands at 40'),
+  ]) {
     expect(() => parseJerseyAffordable(value, now)).toThrow();
   }
 });
@@ -52,7 +69,8 @@ test('a heading elsewhere on the page cannot supply the revision or the applicat
 });
 
 test('the loader reads only the official page and refuses errors and other content types', async () => {
-  for (const response of [new Response('blocked', { status: 403 }), Response.json({})]) await expect(loadJerseyAffordable(() => response, now)).rejects.toThrow();
+  for (const response of [new Response('blocked', { status: 403 }), Response.json({})])
+    await expect(loadJerseyAffordable(() => response, now)).rejects.toThrow();
   const data = await loadJerseyAffordable((url, init) => {
     expect(url).toBe(JERSEY_PAGE);
     expect(init?.redirect).toBe('manual');
@@ -69,12 +87,23 @@ test('a refresh saves the postings, the housing API returns them, and a failed c
   const saved = required(await storedJerseyAffordable(bucket));
   expect(saved.total).toBe(37);
 
-  const housing = await readJson<HousingResponse>(handleApi(new Request('https://app.test/api/housing'), env, { fetcher: () => { throw new Error('The API reads saved data only.'); } }));
+  const housing = await readJson<HousingResponse>(
+    handleApi(new Request('https://app.test/api/housing'), env, {
+      fetcher: () => {
+        throw new Error('The API reads saved data only.');
+      },
+    }),
+  );
   expect(housing.jersey).toEqual(saved);
 
   const failures = [new Response('down', { status: 503 }), html('<html>No postings</html>'), html(page(undefined, '11-15-2026'))];
   for (const [index, reply] of failures.entries()) {
-    const failed = await refreshSources(env, { onDemand: true, sourceId: JERSEY_AFFORDABLE.id, now: new Date(`2026-11-${20 + index}T12:00:00Z`), fetcher: () => reply });
+    const failed = await refreshSources(env, {
+      onDemand: true,
+      sourceId: JERSEY_AFFORDABLE.id,
+      now: new Date(`2026-11-${20 + index}T12:00:00Z`),
+      fetcher: () => reply,
+    });
     expect(failed.sources?.find(({ id }) => id === JERSEY_AFFORDABLE.id)?.status).toBe('failed');
     expect(await storedJerseyAffordable(bucket)).toEqual(saved);
   }
@@ -88,5 +117,9 @@ test('a saved copy that is not recognized reads as nothing saved', async () => {
 });
 
 test('a partner feed cannot take the Jersey City source ID', () => {
-  expect(() => configuredFeeds({ FREE_PARTNER_FEEDS_JSON: JSON.stringify([{ id: JERSEY_AFFORDABLE.id, name: 'Collision', url: 'https://example.com/feed.json' }]) })).toThrow();
+  expect(() =>
+    configuredFeeds({
+      FREE_PARTNER_FEEDS_JSON: JSON.stringify([{ id: JERSEY_AFFORDABLE.id, name: 'Collision', url: 'https://example.com/feed.json' }]),
+    }),
+  ).toThrow();
 });

@@ -15,7 +15,7 @@ test('stored byte views are isolated from caller mutations and backing array off
   expect(required(snapshot).etag).toBe(required(stored).etag);
   const read = new Uint8Array(await required(snapshot).arrayBuffer());
   read.fill(0);
-  expect(await required((await bucket.get('source'))).text()).toBe('original');
+  expect(await required(await bucket.get('source')).text()).toBe('original');
 });
 
 test('an oversized replacement preserves saved bytes and ETag', async () => {

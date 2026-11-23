@@ -9,7 +9,9 @@ export type LogRecord = Fields & { level: Level; event: string; error?: string; 
 
 export const log = {
   /** Where lines go; tests replace it to keep output quiet or to inspect what was logged. */
-  sink: (level: Level, line: string) => { (level === 'error' ? console.error : level === 'warn' ? console.warn : console.log)(line); },
+  sink: (level: Level, line: string) => {
+    (level === 'error' ? console.error : level === 'warn' ? console.warn : console.log)(line);
+  },
   error(event: string, cause: unknown, fields: Fields = {}) {
     log.sink('error', JSON.stringify({ level: 'error', event, ...fields, ...describe(cause) }));
   },
@@ -23,5 +25,12 @@ export const log = {
 
 function describe(cause: unknown) {
   if (!(cause instanceof Error)) return { error: String(cause) };
-  return { error: `${cause.name}: ${cause.message}`, stack: cause.stack?.split('\n').slice(1, 6).map((line) => line.trim()).join(' | ') };
+  return {
+    error: `${cause.name}: ${cause.message}`,
+    stack: cause.stack
+      ?.split('\n')
+      .slice(1, 6)
+      .map((line) => line.trim())
+      .join(' | '),
+  };
 }

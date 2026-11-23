@@ -11,7 +11,17 @@ import { Button, Chip, Field } from './ui.tsx';
 const BOROUGHS = NYC_BOROUGHS;
 const BEDROOMS = ['Studio', '1 BR', '2 BR', '3 BR', '4 BR'];
 
-export function AddListing({ initialRegion, onSave, onCancel, geocode }: { initialRegion: string; onSave: (listing: ListingData) => void; onCancel: () => void; geocode?: (address: string) => Promise<Point> }) {
+export function AddListing({
+  initialRegion,
+  onSave,
+  onCancel,
+  geocode,
+}: {
+  initialRegion: string;
+  onSave: (listing: ListingData) => void;
+  onCancel: () => void;
+  geocode?: (address: string) => Promise<Point>;
+}) {
   const [region, setRegion] = useState(initialRegion === NYC_SEARCH_DEFAULT ? 'manhattan' : initialRegion);
   const [bedrooms, setBedrooms] = useState(1);
   const [fields, setFields] = useState({ url: '', address: '', unit: '', zip: '', neighborhood: '', rent: '', coordinates: '' });
@@ -40,8 +50,19 @@ export function AddListing({ initialRegion, onSave, onCancel, geocode }: { initi
       }
     }
 
-    const listing = normalizeListing({ ...fields, url, bedrooms, city: NYC_SEARCH_AREAS[region as keyof typeof NYC_SEARCH_AREAS]?.label ?? region, state: 'NY', region: 'nyc',
-      updatedAt: new Date().toISOString(), ...point }, { id: 'saved', name: 'Saved listing', kind: 'saved' });
+    const listing = normalizeListing(
+      {
+        ...fields,
+        url,
+        bedrooms,
+        city: NYC_SEARCH_AREAS[region as keyof typeof NYC_SEARCH_AREAS]?.label ?? region,
+        state: 'NY',
+        region: 'nyc',
+        updatedAt: new Date().toISOString(),
+        ...point,
+      },
+      { id: 'saved', name: 'Saved listing', kind: 'saved' },
+    );
     if (!listing) {
       setError('Enter the street address and a positive monthly asking rent.');
       return;
@@ -60,24 +81,46 @@ export function AddListing({ initialRegion, onSave, onCancel, geocode }: { initi
     onSave(listing);
   }
 
-  return <View style={styles.chartCard}>
-    <Text accessibilityRole="header" style={styles.panelTitle}>Add a rental listing</Text>
-    <Text style={styles.smallMuted}>Use the unit number to group links for the same apartment across sites.</Text>
-    <Field label="Listing URL" placeholder="https://…" value={fields.url} onChangeText={set('url')} maxLength={2000} />
-    <Field label="Street address" value={fields.address} onChangeText={set('address')} maxLength={140} />
-    <Field label="Unit (if listed)" value={fields.unit} onChangeText={set('unit')} maxLength={45} />
-    <Field label="ZIP code" value={fields.zip} onChangeText={set('zip')} maxLength={5} keyboardType="number-pad" />
-    <Field label="Neighborhood (optional)" value={fields.neighborhood} onChangeText={set('neighborhood')} maxLength={80} />
-    <Text style={styles.fieldLabel}>Borough</Text>
-    <View style={styles.chipRow}>{BOROUGHS.map((id) =>
-      <Chip key={id} selected={region === id} onPress={() => setRegion(id)}>{NYC_SEARCH_AREAS[id].label}</Chip>)}</View>
-    <Text style={styles.fieldLabel}>Bedrooms</Text>
-    <View style={styles.chipRow}>{BEDROOMS.map((label, count) =>
-      <Chip key={label} selected={bedrooms === count} onPress={() => setBedrooms(count)}>{label}</Chip>)}</View>
-    <Field label="Monthly asking rent ($)" value={fields.rent} onChangeText={set('rent')} maxLength={9} keyboardType="decimal-pad" />
-    <Field label="Latitude, longitude (optional)" value={fields.coordinates} onChangeText={set('coordinates')} maxLength={48} />
-    {error !== '' && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
-    <Button onPress={submit} disabled={busy}>{busy ? 'Saving…' : 'Save apartment'}</Button>
-    <Button secondary onPress={onCancel} disabled={busy}>Cancel</Button>
-  </View>;
+  return (
+    <View style={styles.chartCard}>
+      <Text accessibilityRole="header" style={styles.panelTitle}>
+        Add a rental listing
+      </Text>
+      <Text style={styles.smallMuted}>Use the unit number to group links for the same apartment across sites.</Text>
+      <Field label="Listing URL" placeholder="https://…" value={fields.url} onChangeText={set('url')} maxLength={2000} />
+      <Field label="Street address" value={fields.address} onChangeText={set('address')} maxLength={140} />
+      <Field label="Unit (if listed)" value={fields.unit} onChangeText={set('unit')} maxLength={45} />
+      <Field label="ZIP code" value={fields.zip} onChangeText={set('zip')} maxLength={5} keyboardType="number-pad" />
+      <Field label="Neighborhood (optional)" value={fields.neighborhood} onChangeText={set('neighborhood')} maxLength={80} />
+      <Text style={styles.fieldLabel}>Borough</Text>
+      <View style={styles.chipRow}>
+        {BOROUGHS.map((id) => (
+          <Chip key={id} selected={region === id} onPress={() => setRegion(id)}>
+            {NYC_SEARCH_AREAS[id].label}
+          </Chip>
+        ))}
+      </View>
+      <Text style={styles.fieldLabel}>Bedrooms</Text>
+      <View style={styles.chipRow}>
+        {BEDROOMS.map((label, count) => (
+          <Chip key={label} selected={bedrooms === count} onPress={() => setBedrooms(count)}>
+            {label}
+          </Chip>
+        ))}
+      </View>
+      <Field label="Monthly asking rent ($)" value={fields.rent} onChangeText={set('rent')} maxLength={9} keyboardType="decimal-pad" />
+      <Field label="Latitude, longitude (optional)" value={fields.coordinates} onChangeText={set('coordinates')} maxLength={48} />
+      {error !== '' && (
+        <Text accessibilityRole="alert" style={styles.error}>
+          {error}
+        </Text>
+      )}
+      <Button onPress={submit} disabled={busy}>
+        {busy ? 'Saving…' : 'Save apartment'}
+      </Button>
+      <Button secondary onPress={onCancel} disabled={busy}>
+        Cancel
+      </Button>
+    </View>
+  );
 }

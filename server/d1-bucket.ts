@@ -56,7 +56,7 @@ export function createD1Bucket(database: D1Database): Bucket {
       if (parts.length !== row.part_count || parts.some((part, index) => part.etag !== row.etag || part.part !== index)) {
         throw new Error('The stored listing snapshot is incomplete.');
       }
-      const decoded = parts.map(part => toByteArray(part.body));
+      const decoded = parts.map((part) => toByteArray(part.body));
       const bytes = new Uint8Array(decoded.reduce((total, part) => total + part.length, 0));
       let offset = 0;
       for (const part of decoded) {
@@ -71,8 +71,16 @@ export function createD1Bucket(database: D1Database): Bucket {
       const parts = Math.max(1, Math.ceil(bytes.length / PART_BYTES));
       const etag = crypto.randomUUID();
       const statements = [
-        database.prepare(WRITE_HEAD).bind(key, etag, JSON.stringify(options?.customMetadata ?? {}), parts,
-          options?.onlyIf?.etagMatches ?? null, options?.onlyIf?.etagDoesNotMatch === '*' ? 1 : 0),
+        database
+          .prepare(WRITE_HEAD)
+          .bind(
+            key,
+            etag,
+            JSON.stringify(options?.customMetadata ?? {}),
+            parts,
+            options?.onlyIf?.etagMatches ?? null,
+            options?.onlyIf?.etagDoesNotMatch === '*' ? 1 : 0,
+          ),
         database.prepare(REMOVE_PARTS).bind(key, etag),
       ];
       for (let part = 0; part < parts; part++) {

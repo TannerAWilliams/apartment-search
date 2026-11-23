@@ -18,14 +18,14 @@ export async function savedOrigin(argv: string[], env: Env, dir: string) {
   const flag = argv.find((value) => value.startsWith('--origin='))?.slice('--origin='.length);
   if (flag || env.APARTMENT_SEARCH_ORIGIN) return appOrigin(flag || env.APARTMENT_SEARCH_ORIGIN);
   const file = Bun.file(`${dir}/origin`);
-  return appOrigin(await file.exists() ? (await file.text()).trim() : undefined);
+  return appOrigin((await file.exists()) ? (await file.text()).trim() : undefined);
 }
 
 /** The app access token, from the macOS Keychain or the installer's token file (mode 600). */
 export async function savedToken(dir: string, platform: string = process.platform) {
   if (platform === 'darwin') return (await $`security find-generic-password -s ${KEYCHAIN_SERVICE} -w`.quiet().text()).trim();
   const file = Bun.file(`${dir}/token`);
-  if (!await file.exists()) throw new Error('No app access token found. Run bun scripts/install-streeteasy-schedule.ts first.');
+  if (!(await file.exists())) throw new Error('No app access token found. Run bun scripts/install-streeteasy-schedule.ts first.');
   return (await file.text()).trim();
 }
 
@@ -36,7 +36,9 @@ if (import.meta.main) {
     const result = await syncStreetEasy({ token: await savedToken(dir), origin, manual: Bun.argv.includes('--manual') });
     console.log(JSON.stringify({ at: new Date().toISOString(), ...result }));
   } catch (error) {
-    console.error(JSON.stringify({ at: new Date().toISOString(), state: 'failed', error: error instanceof Error ? error.message : String(error) }));
+    console.error(
+      JSON.stringify({ at: new Date().toISOString(), state: 'failed', error: error instanceof Error ? error.message : String(error) }),
+    );
     process.exit(1);
   }
 }

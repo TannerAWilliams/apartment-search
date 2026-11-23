@@ -27,10 +27,20 @@ test('links say whether they open the live listing or an earlier copy', () => {
 
 test('address geocoding refuses input that cannot be a street address without a request', async () => {
   let requests = 0;
-  const fetcher = async () => { requests++; return new Response('{}'); };
+  const fetcher = async () => {
+    requests++;
+    return new Response('{}');
+  };
   for (const address of [undefined, 42, 'NY', 'x'.repeat(161)]) {
-    const response = await handleApi(new Request('https://app.test/api/geocode', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ address }) }), {}, { fetcher });
+    const response = await handleApi(
+      new Request('https://app.test/api/geocode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ address }),
+      }),
+      {},
+      { fetcher },
+    );
     expect(response.status).toBe(422);
     expect((await readJson<ErrorBody>(response)).error).toMatch(/full street address/);
   }
@@ -44,10 +54,24 @@ test('an unreadable commute cache is ignored and rebuilt rather than failing the
   let routed = 0;
   const fetcher = async (_url: string, options?: RequestInit) => {
     routed++;
-    const ids = sentJson<TravelTimeRequest>(options?.body).locations.filter((location) => location.id !== 'workplace').map(({ id }) => id);
-    return Response.json({ results: ['transit', 'driving'].map((search_id) => ({ search_id, locations: ids.map((id: string) => ({ id, properties: { travel_time: 900 } })) })) });
+    const ids = sentJson<TravelTimeRequest>(options?.body)
+      .locations.filter((location) => location.id !== 'workplace')
+      .map(({ id }) => id);
+    return Response.json({
+      results: ['transit', 'driving'].map((search_id) => ({
+        search_id,
+        locations: ids.map((id: string) => ({ id, properties: { travel_time: 900 } })),
+      })),
+    });
   };
-  const [listing] = await routeCommutes([{ latitude: 40.7, longitude: -73.95 }], workplace, { appId: 'a', apiKey: 'b' }, fetcher, new Date(), bucket);
+  const [listing] = await routeCommutes(
+    [{ latitude: 40.7, longitude: -73.95 }],
+    workplace,
+    { appId: 'a', apiKey: 'b' },
+    fetcher,
+    new Date(),
+    bucket,
+  );
   expect(listing.transitSeconds).toBe(900);
   expect(routed).toBe(1);
 });

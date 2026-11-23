@@ -56,29 +56,46 @@ function workflowJob(workflow: Workflow, bucket: Bucket): SyncJob {
   return {
     async start(delay, sources) {
       const id = workflowId() + (sources ? '-' + sources.join('-') : '');
-      try { await workflow.create({ id, params: { delay, ...(sources ? { sources } : {}) } }); }
-      catch (error) {
-        const existing = await workflow.get(id).then(instance => instance.status()).catch(() => { throw error; });
+      try {
+        await workflow.create({ id, params: { delay, ...(sources ? { sources } : {}) } });
+      } catch (error) {
+        const existing = await workflow
+          .get(id)
+          .then((instance) => instance.status())
+          .catch(() => {
+            throw error;
+          });
         if (existing.status === 'unknown') throw error;
       }
     },
     /** The source the running sync Workflow is on, or null when none runs. */
     async pending() {
-      const ids = [0, 1].flatMap(offset => ['', ...WORKFLOW_SOURCE_IDS.map(source => '-' + source)].map(suffix => workflowId(offset) + suffix));
-      const statuses = await Promise.allSettled(ids.map(id => workflow.get(id).then(instance => instance.status())));
-      const running = ids.filter((_, index) => { const result = statuses[index];
-        return result.status === 'fulfilled' && ['queued', 'running', 'waiting'].includes(result.value.status); });
+      const ids = [0, 1].flatMap((offset) =>
+        ['', ...WORKFLOW_SOURCE_IDS.map((source) => '-' + source)].map((suffix) => workflowId(offset) + suffix),
+      );
+      const statuses = await Promise.allSettled(ids.map((id) => workflow.get(id).then((instance) => instance.status())));
+      const running = ids.filter((_, index) => {
+        const result = statuses[index];
+        return result.status === 'fulfilled' && ['queued', 'running', 'waiting'].includes(result.value.status);
+      });
       if (!running.length) return null;
-      const progress = await bucket.get(SYNC_PROGRESS_KEY).then(object => object?.json<{ source?: string }>()).catch(() => null);
+      const progress = await bucket
+        .get(SYNC_PROGRESS_KEY)
+        .then((object) => object?.json<{ source?: string }>())
+        .catch(() => null);
       if (progress?.source && WORKFLOW_SOURCE_IDS.includes(progress.source)) return progress.source;
-      return WORKFLOW_SOURCE_IDS.find(source => running[0].endsWith('-' + source)) ?? WORKFLOW_SOURCE_IDS[0];
+      return WORKFLOW_SOURCE_IDS.find((source) => running[0].endsWith('-' + source)) ?? WORKFLOW_SOURCE_IDS[0];
     },
   };
 }
 
 /** The ExecutionContext, which tests calling the Worker directly do not pass. */
 function executionContext(c: Context) {
-  try { return c.executionCtx; } catch { return undefined; }
+  try {
+    return c.executionCtx;
+  } catch {
+    return undefined;
+  }
 }
 
 const app = new Hono<Worker>();
@@ -91,10 +108,16 @@ app.use(securityHeaders);
 // assets included, needs one of them. PUBLIC_APP opens the app for local development.
 app.use(async (c, next) => {
   const env = c.env;
-  const bearer = Boolean(env.APP_ACCESS_TOKEN && await timingSafeEqual(c.req.header('Authorization') ?? '', 'Bearer ' + env.APP_ACCESS_TOKEN));
+  const bearer = Boolean(
+    env.APP_ACCESS_TOKEN && (await timingSafeEqual(c.req.header('Authorization') ?? '', 'Bearer ' + env.APP_ACCESS_TOKEN)),
+  );
   const access = bearer ? null : accessSettings(env);
-  const accessEmail = access ? await verifyAccessToken(c.req.header('Cf-Access-Jwt-Assertion') ?? null, access)
-    .catch((cause) => { log.error('access_check_failed', cause); return null; }) : null;
+  const accessEmail = access
+    ? await verifyAccessToken(c.req.header('Cf-Access-Jwt-Assertion') ?? null, access).catch((cause) => {
+        log.error('access_check_failed', cause);
+        return null;
+      })
+    : null;
   const signedIn = bearer || accessEmail !== null;
   if (env.PUBLIC_APP !== 'true' && !signedIn) return fail(c, 401, 'Sign in to the private apartment app.');
   // An Access session rides on a browser cookie, so changes must come from the app's own pages.
@@ -131,7 +154,10 @@ app.post('/api/refresh', async (c, next) => {
   if (c.req.header('Origin') !== new URL(c.req.url).origin) return fail(c, 403, 'Cross-origin request rejected.');
   return publicBodies(c, async () => {
     // A copy, so the API still reads the body itself.
-    const body: unknown = await c.req.raw.clone().json().catch(() => undefined);
+    const body: unknown = await c.req.raw
+      .clone()
+      .json()
+      .catch(() => undefined);
     if (body === undefined) return void (c.res = fail(c, 400, 'Send a JSON request.'));
     if (!v.is(RefreshCheckSchema, body)) return void (c.res = fail(c, 403, 'Public refresh cannot import listing data.'));
     await next();

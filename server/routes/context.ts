@@ -33,8 +33,10 @@ export const fail = <S extends ContentfulStatusCode>(c: Context, status: S, erro
 
 type Checked = { success: boolean; issues?: readonly { message: string }[] };
 /** A validator hook that refuses input not matching the route's schema, with the first problem. */
-export const refuseWith = <S extends ContentfulStatusCode>(status: S) => (result: Checked, c: Context) =>
-  result.success ? undefined : fail(c, status, result.issues?.[0]?.message ?? 'Check the request and try again.');
+export const refuseWith =
+  <S extends ContentfulStatusCode>(status: S) =>
+  (result: Checked, c: Context) =>
+    result.success ? undefined : fail(c, status, result.issues?.[0]?.message ?? 'Check the request and try again.');
 export const refuse = refuseWith(422);
 
 const REQUEST_LIMIT = 4096;
@@ -46,21 +48,30 @@ const JSON_TYPE = /^application\/([a-z-.]+\+)?json(;\s*[a-zA-Z0-9-]+=([^;]+))*$/
  * A POST body is JSON, within the route's size limit (Hono's body-limit middleware), so a body that is too
  * large is refused before the route reads it. Requiring the JSON type also stops cross-site form posts.
  */
-export const jsonBodies = (limit: (path: string) => number) => createMiddleware(async (c, next) => {
-  if (!JSON_TYPE.test(c.req.header('Content-Type') ?? '')) return fail(c, 400, 'Send a JSON request.');
-  const limiter = bodyLimit({ maxSize: limit(c.req.path), onError: (c) => fail(c, 413, 'The request is too large.') });
-  // Reading a body that breaks off fails before the route runs; errors from the route itself are Hono's to handle.
-  let reached = false;
-  try { return await limiter(c, () => { reached = true; return next(); }); }
-  catch (cause) { if (reached) throw cause; return fail(c, 400, 'Send a JSON request.'); }
-});
+export const jsonBodies = (limit: (path: string) => number) =>
+  createMiddleware(async (c, next) => {
+    if (!JSON_TYPE.test(c.req.header('Content-Type') ?? '')) return fail(c, 400, 'Send a JSON request.');
+    const limiter = bodyLimit({ maxSize: limit(c.req.path), onError: (c) => fail(c, 413, 'The request is too large.') });
+    // Reading a body that breaks off fails before the route runs; errors from the route itself are Hono's to handle.
+    let reached = false;
+    try {
+      return await limiter(c, () => {
+        reached = true;
+        return next();
+      });
+    } catch (cause) {
+      if (reached) throw cause;
+      return fail(c, 400, 'Send a JSON request.');
+    }
+  });
 /** The API's limits: 2 MiB for a source import, 4 KB for everything else. */
-export const apiBodies = jsonBodies((path) => path === '/api/refresh' ? IMPORT_LIMIT : REQUEST_LIMIT);
+export const apiBodies = jsonBodies((path) => (path === '/api/refresh' ? IMPORT_LIMIT : REQUEST_LIMIT));
 
 /** Routes that need saved storage refuse without it, before reading the request; their handlers get it as `c.var.bucket`. */
-export const needsStorage = (message: string) => createMiddleware<ApiEnv & { Variables: { bucket: Bucket } }>(async (c, next) => {
-  const bucket = c.var.appEnv.BUCKET;
-  if (!bucket) return fail(c, 400, message);
-  c.set('bucket', bucket);
-  return next();
-});
+export const needsStorage = (message: string) =>
+  createMiddleware<ApiEnv & { Variables: { bucket: Bucket } }>(async (c, next) => {
+    const bucket = c.var.appEnv.BUCKET;
+    if (!bucket) return fail(c, 400, message);
+    c.set('bucket', bucket);
+    return next();
+  });

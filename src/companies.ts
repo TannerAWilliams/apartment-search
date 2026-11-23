@@ -27,10 +27,19 @@ const companies = [
   ['stuytown', 'StuyTown', 'www.stuytown.com', '/nyc-apartments-for-rent', 'Owner or manager'],
 ];
 
-const companyText = (name: unknown) => String(name ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().replace(/^the /, '');
+const companyText = (name: unknown) =>
+  String(name ?? '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .replace(/^the /, '');
 
 export const NYC_COMPANIES = companies.map(([id, name, domain, path, type]) => ({
-  id, name, domain: domain.replace(/^www\./, ''), type, url: 'https://' + domain + path,
+  id,
+  name,
+  domain: domain.replace(/^www\./, ''),
+  type,
+  url: 'https://' + domain + path,
 }));
 
 export function matchCompany(name: unknown) {

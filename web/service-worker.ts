@@ -9,7 +9,11 @@ import { alertFromPush } from './alert-message.ts';
 function showAlert(scope: ServiceWorkerGlobalScope, data: { json(): unknown } | null) {
   const alert = alertFromPush(data);
   return scope.registration.showNotification(alert.title, {
-    body: alert.body, tag: alert.tag, icon: '/icons/icon-192.png', badge: '/icons/icon-192.png', data: { url: alert.url },
+    body: alert.body,
+    tag: alert.tag,
+    icon: '/icons/icon-192.png',
+    badge: '/icons/icon-192.png',
+    data: { url: alert.url },
   });
 }
 
@@ -24,7 +28,9 @@ async function openAlert(scope: ServiceWorkerGlobalScope, path: unknown) {
 }
 
 export function register(scope: ServiceWorkerGlobalScope) {
-  scope.addEventListener('install', () => { void scope.skipWaiting(); });
+  scope.addEventListener('install', () => {
+    void scope.skipWaiting();
+  });
   scope.addEventListener('activate', (event) => event.waitUntil(scope.clients.claim()));
   scope.addEventListener('push', (event) => event.waitUntil(showAlert(scope, event.data)));
   scope.addEventListener('notificationclick', (event) => {

@@ -8,20 +8,42 @@ const SOURCE = { id: 'apartmentlist', name: 'Apartment List', kind: 'feed' };
 const ORIGIN = 'https://www.apartmentlist.com';
 const PAGES = [{ url: ORIGIN + '/ny/new-york' }];
 const listingUrl = (url: unknown) => publicListingUrl(url, ORIGIN, /^\/ny\/new-york\/[^/]+$/);
-const plain = (html: string) => html.replace(/<[^>]*>/g, '').replaceAll('&amp;', '&').replaceAll('&#x27;', "'").replaceAll('&#39;', "'");
+const plain = (html: string) =>
+  html
+    .replace(/<[^>]*>/g, '')
+    .replaceAll('&amp;', '&')
+    .replaceAll('&#x27;', "'")
+    .replaceAll('&#39;', "'");
 
 export const APARTMENTLIST_LIVE = {
-  ...SOURCE, id: 'apartmentlist-live', marketplace: SOURCE.id,
+  ...SOURCE,
+  id: 'apartmentlist-live',
+  marketplace: SOURCE.id,
   coverage: 'NYC first search page; individually identified units marked available now',
-  regions: ['nyc'], minPages: 1, maxPages: 1, rowsPerPage: 150,
-  listingUrl, load: (fetcher: FetchTransport, now: Date) => loadPublicPages(SOURCE, PAGES, parseApartmentListPage, fetcher, now),
+  regions: ['nyc'],
+  minPages: 1,
+  maxPages: 1,
+  rowsPerPage: 150,
+  listingUrl,
+  load: (fetcher: FetchTransport, now: Date) => loadPublicPages(SOURCE, PAGES, parseApartmentListPage, fetcher, now),
 };
 
-type ApartmentListUnit = { unit_rental_id?: unknown; unitTitle?: string; unitType?: string; availableNow?: unknown; price?: unknown; isTotalPrice?: unknown };
+type ApartmentListUnit = {
+  unit_rental_id?: unknown;
+  unitTitle?: string;
+  unitType?: string;
+  availableNow?: unknown;
+  price?: unknown;
+  isTotalPrice?: unknown;
+};
 
 export function parseApartmentListPage(html: string, _market: unknown, checkedAt: string) {
   const flight = [...html.matchAll(/self\.__next_f\.push\((\[[\s\S]*?\])\)<\/script>/g)]
-    .map((match) => { const chunk = JSON.parse(match[1]); return Array.isArray(chunk) && typeof chunk[1] === 'string' ? chunk[1] : ''; }).join('');
+    .map((match) => {
+      const chunk = JSON.parse(match[1]);
+      return Array.isArray(chunk) && typeof chunk[1] === 'string' ? chunk[1] : '';
+    })
+    .join('');
   const properties = new Map<string, { slug: string }>();
   const units = new Map<string, ApartmentListUnit[]>();
   function visit(value: unknown) {
@@ -32,7 +54,8 @@ export function parseApartmentListPage(html: string, _market: unknown, checkedAt
       if (status === 'success' && isRecord(data)) {
         for (const [id, rows] of Object.entries(data)) {
           // Unit rows carry these fields; normalizeListing checks each one it keeps.
-          if (Array.isArray(rows) && rows.some((row) => isRecord(row) && row.unit_rental_id)) units.set(id, rows.filter(isRecord) as ApartmentListUnit[]);
+          if (Array.isArray(rows) && rows.some((row) => isRecord(row) && row.unit_rental_id))
+            units.set(id, rows.filter(isRecord) as ApartmentListUnit[]);
         }
       }
     }
@@ -41,7 +64,11 @@ export function parseApartmentListPage(html: string, _market: unknown, checkedAt
   for (const line of flight.split('\n')) {
     const content = line.slice(line.indexOf(':') + 1);
     let value: unknown;
-    try { value = JSON.parse(content); } catch { continue; }
+    try {
+      value = JSON.parse(content);
+    } catch {
+      continue;
+    }
     visit(value);
   }
   if (!properties.size || !units.size) throw new Error('Apartment List did not return a recognized rental page.');
@@ -57,9 +84,23 @@ export function parseApartmentListPage(html: string, _market: unknown, checkedAt
       const number = unit.unitTitle?.match(/^Unit\s+([\w-]+)$/)?.[1];
       const beds = unit.unitType === 'Studio' ? 0 : Number(unit.unitType?.match(/^(\d+) Beds?$/)?.[1]);
       if (unit.availableNow !== true || !number || !Number.isInteger(beds) || !Number.isFinite(unit.price)) return [];
-      const listing = normalizeListing({ id: unit.unit_rental_id, url, address: address[1], unit: number,
-        city, state: 'NY', region: 'nyc', zipCode: address[2], bedrooms: beds, rent: unit.price,
-        status: 'Active', updatedAt: checkedAt }, SOURCE);
+      const listing = normalizeListing(
+        {
+          id: unit.unit_rental_id,
+          url,
+          address: address[1],
+          unit: number,
+          city,
+          state: 'NY',
+          region: 'nyc',
+          zipCode: address[2],
+          bedrooms: beds,
+          rent: unit.price,
+          status: 'Active',
+          updatedAt: checkedAt,
+        },
+        SOURCE,
+      );
       return listing ? [{ ...listing, priceIncludesFees: unit.isTotalPrice === true }] : [];
     });
   });

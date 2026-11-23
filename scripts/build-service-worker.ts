@@ -2,7 +2,9 @@
 const result = await Bun.build({
   entrypoints: [new URL('../web/service-worker.ts', import.meta.url).pathname],
   // A classic script: browsers register /sw.js without type: 'module', where `export` would not parse.
-  target: 'browser', format: 'iife', minify: true,
+  target: 'browser',
+  format: 'iife',
+  minify: true,
 });
 if (!result.success || result.outputs.length !== 1) throw new AggregateError(result.logs, 'The service worker did not build.');
 await Bun.write(new URL('../web-build/sw.js', import.meta.url), result.outputs[0]);

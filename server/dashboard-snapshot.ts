@@ -5,9 +5,14 @@ import { DASHBOARD_CATALOG } from './data/dashboard-catalog.ts';
 /** Where the archive is published with the web app's static files; the Worker refuses direct requests for it. */
 export const DASHBOARD_ARCHIVE_PATH = '/data/streeteasy-dashboard-2026-11-17.zip';
 const ARCHIVE_SHA256 = '05d017d90302883339eca32fe920b6b170d85a3583d6f436bd78a720bc6adfdc';
-const PROVENANCE = { source: 'StreetEasy Data Dashboard', url: 'https://streeteasy.com/blog/data-dashboard/',
-  downloadedAt: '2026-11-17', sourceArchive: 'https://cdn-charts.streeteasy.com/Master%20Report.zip', sha256: ARCHIVE_SHA256,
-  note: 'Frozen historical aggregate snapshot, not live listings. No automatic refresh. Source anomalies retained and labeled.' };
+const PROVENANCE = {
+  source: 'StreetEasy Data Dashboard',
+  url: 'https://streeteasy.com/blog/data-dashboard/',
+  downloadedAt: '2026-11-17',
+  sourceArchive: 'https://cdn-charts.streeteasy.com/Master%20Report.zip',
+  sha256: ARCHIVE_SHA256,
+  note: 'Frozen historical aggregate snapshot, not live listings. No automatic refresh. Source anomalies retained and labeled.',
+};
 
 export type ArchiveLoader = () => Promise<Uint8Array<ArrayBuffer>>;
 type Archive = { files: Promise<Record<string, Uint8Array>>; series: Map<string, ReturnType<typeof parseDashboardCsv>> };
@@ -35,13 +40,16 @@ function archiveFor(load: ArchiveLoader) {
 /** The catalog, or one parsed series by file name (null when unknown). The archive is read only for a series. */
 export async function dashboardSnapshot(name: string | undefined, loadArchive: ArchiveLoader) {
   if (name === undefined) return { provenance: PROVENANCE, files: DASHBOARD_CATALOG };
-  if (!DASHBOARD_CATALOG.some(file => file.name === name)) return null;
+  if (!DASHBOARD_CATALOG.some((file) => file.name === name)) return null;
   const { files, series } = archiveFor(loadArchive);
   let file = series.get(name);
   if (!file) {
     const extracted = unzipSync((await files)[name.replace(/\.csv$/, '.zip')]);
     file = parseDashboardCsv(name, strFromU8(extracted[name]));
-    if (series.size >= 3) { const oldest = series.keys().next(); if (!oldest.done) series.delete(oldest.value); }
+    if (series.size >= 3) {
+      const oldest = series.keys().next();
+      if (!oldest.done) series.delete(oldest.value);
+    }
     series.set(name, file);
   }
   return { provenance: PROVENANCE, file };

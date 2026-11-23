@@ -1,7 +1,10 @@
 import { test, expect } from 'bun:test';
 import { DASHBOARD_FILES, type DashboardFile } from '../src/dashboard-data.ts';
 import { dashboardChoices, dashboardMarket, dashboardSegmentLabel, selectDashboardMetric } from '../src/dashboard-selection.ts';
-const catalog = DASHBOARD_FILES.map(name => { const [metric, segment] = name.slice(0, -4).split('_'); return { name, metric: metric as DashboardFile['metric'], segment }; });
+const catalog = DASHBOARD_FILES.map((name) => {
+  const [metric, segment] = name.slice(0, -4).split('_');
+  return { name, metric: metric as DashboardFile['metric'], segment };
+});
 test('all 45 stored series remain reachable through market, metric and segment controls', () => {
   expect(catalog).toHaveLength(45);
   for (const file of catalog) {
@@ -18,7 +21,12 @@ test('metric transitions preserve compatible segment and fall back without inven
   expect(selectDashboardMetric([], 'rentalIndex')).toBeUndefined();
   expect(dashboardChoices([], 'missing').metrics).toEqual([]);
   expect(dashboardChoices(catalog.slice(0, 1), 'missing').current).toEqual(catalog[0]);
-  expect(dashboardChoices(catalog.filter(file => file.metric === 'medianAskingRent'), 'missing').markets).toEqual(['Rentals']);
+  expect(
+    dashboardChoices(
+      catalog.filter((file) => file.metric === 'medianAskingRent'),
+      'missing',
+    ).markets,
+  ).toEqual(['Rentals']);
   expect(dashboardSegmentLabel('ThreePlusBd')).toBe('3+ bedrooms');
   expect(dashboardSegmentLabel('custom')).toBe('custom');
 });

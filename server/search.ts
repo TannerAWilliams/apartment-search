@@ -14,11 +14,24 @@ import { CommuteError, resolveWorkplace, routeCommutes, routingCredentials } fro
 import { OPENIGLOO } from './openigloo.ts';
 import { DIRECT_RENTAL_SOURCES } from './direct-rentals.ts';
 import { STREETEASY_LIVE, STREETEASY_PUBLIC_COVERAGE, STREETEASY_PUBLIC_TRANSPORT } from './streeteasy.ts';
-import { type SourceFetch, type SourceStatus, refreshCatalog, refreshStatus, sourceExpiresAt, sourceRecent, storedDirectRentals, storedFeed,
-  storedHousing, storedMarket, storedOpenigloo } from './refresh.ts';
+import {
+  type SourceFetch,
+  type SourceStatus,
+  refreshCatalog,
+  refreshStatus,
+  sourceExpiresAt,
+  sourceRecent,
+  storedDirectRentals,
+  storedFeed,
+  storedHousing,
+  storedMarket,
+  storedOpenigloo,
+} from './refresh.ts';
 
 /** For checks that must read saved inventory only, such as alerts and whole-search checks. */
-export const offline: SourceFetch = () => { throw new Error('Alerts and saved-search checks read saved inventory only.'); };
+export const offline: SourceFetch = () => {
+  throw new Error('Alerts and saved-search checks read saved inventory only.');
+};
 
 async function withHousingLinks<T extends { matches: ListingData[] }>(result: T, bucket: Bucket | undefined) {
   if (!bucket || !result.matches.some(({ region }) => region === 'nyc')) return result;
@@ -36,19 +49,42 @@ async function withHousingLinks<T extends { matches: ListingData[] }>(result: T,
       byAddress.get(key)!.push({ name, url });
     }
   }
-  return { ...result, matches: result.matches.map((listing) => {
-    const buildingLinks = byAddress.get(buildingKey(listing));
-    return buildingLinks ? { ...listing, buildingLinks } : listing;
-  }) };
+  return {
+    ...result,
+    matches: result.matches.map((listing) => {
+      const buildingLinks = byAddress.get(buildingKey(listing));
+      return buildingLinks ? { ...listing, buildingLinks } : listing;
+    }),
+  };
 }
 
-async function storedSample(status: { sources: SourceStatus[] } | null, id: string, liveOnly: boolean, load: () => ReturnType<typeof storedOpenigloo>, strict = false, includeCached = false) {
+async function storedSample(
+  status: { sources: SourceStatus[] } | null,
+  id: string,
+  liveOnly: boolean,
+  load: () => ReturnType<typeof storedOpenigloo>,
+  strict = false,
+  includeCached = false,
+) {
   const sourceStatus = status?.sources.find((source) => source.id === id);
   const recent = sourceRecent(status, id);
-  const data = recent || ((!liveOnly || includeCached) && sourceStatus?.updatedAt) ? await load().catch(error => { if (strict) throw error; return null; }) : null;
-  const listings = data?.listings.map((listing) => recent ? listing : {
-    ...listing, kind: 'cached', sources: listing.sources.map((source) => ({ ...source, kind: 'cached' })),
-  }) ?? [];
+  const data =
+    recent || ((!liveOnly || includeCached) && sourceStatus?.updatedAt)
+      ? await load().catch((error) => {
+          if (strict) throw error;
+          return null;
+        })
+      : null;
+  const listings =
+    data?.listings.map((listing) =>
+      recent
+        ? listing
+        : {
+            ...listing,
+            kind: 'cached',
+            sources: listing.sources.map((source) => ({ ...source, kind: 'cached' })),
+          },
+    ) ?? [];
   return { sourceStatus, recent, data, listings };
 }
 
@@ -56,14 +92,21 @@ type SearchResponse = SearchResult & { snapshotMonth?: string; commute?: boolean
 type ObservationResponse = { matches: ListingData[]; sources: SearchSource[]; notices: string[] };
 /** Searches with checked filters (see SearchFiltersSchema). With observationsOnly, returns the matches alone, from saved inventory. */
 export function search(filters: SearchFilters, env: AppEnv, fetcher?: SourceFetch, observationsOnly?: false): Promise<SearchResponse>;
-export function search(filters: SearchFilters, env: AppEnv, fetcher: SourceFetch | undefined, observationsOnly: true): Promise<ObservationResponse>;
+export function search(
+  filters: SearchFilters,
+  env: AppEnv,
+  fetcher: SourceFetch | undefined,
+  observationsOnly: true,
+): Promise<ObservationResponse>;
 export async function search(filters: SearchFilters, env: AppEnv, fetcher: SourceFetch = fetch, observationsOnly = false) {
   const requireCommute = needsCommute(filters);
   const credentials = routingCredentials(env);
-  if (requireCommute && !credentials) throw new CommuteError('Automatic commute estimates are unavailable because the routing service is disconnected.');
+  if (requireCommute && !credentials)
+    throw new CommuteError('Automatic commute estimates are unavailable because the routing service is disconnected.');
   const configured = configuredFeeds(env);
-  const feeds = configured.filter(({ id }) => id !== STREETEASY_LIVE.marketplace ||
-    (!env.BUCKET && env.STREETEASY_SYNC_ENABLED !== 'false'));
+  const feeds = configured.filter(
+    ({ id }) => id !== STREETEASY_LIVE.marketplace || (!env.BUCKET && env.STREETEASY_SYNC_ENABLED !== 'false'),
+  );
   const workplace = observationsOnly ? localWorkplace(filters) : await resolveWorkplace(filters, fetcher);
   const bucket = env.BUCKET;
   async function finish(listings: ListingData[], mode: string, sources: SearchSource[], notices: string[], snapshotMonth?: string) {
@@ -74,15 +117,32 @@ export async function search(filters: SearchFilters, env: AppEnv, fetcher: Sourc
       try {
         // Source selection is a privacy boundary: do not transmit origins for
         // apartments the user excluded. Preserve the full inventory for counts.
-        const selectedIndexes = matched.flatMap((listing, index) => !filters.source ||
-          listing.sources.some(source => source.id === filters.source && source.url) ? [index] : []);
-        const selected = await routeCommutes(selectedIndexes.map(index => matched[index]), workplace, credentials, fetcher, new Date(), bucket);
+        const selectedIndexes = matched.flatMap((listing, index) =>
+          !filters.source || listing.sources.some((source) => source.id === filters.source && source.url) ? [index] : [],
+        );
+        const selected = await routeCommutes(
+          selectedIndexes.map((index) => matched[index]),
+          workplace,
+          credentials,
+          fetcher,
+          new Date(),
+          bucket,
+        );
         const byIndex = new Map(selectedIndexes.map((index, position) => [index, selected[position]]));
-        routed = matched.map((listing, index) => byIndex.get(index) ?? {
-          ...listing, transitSeconds: null, drivingSeconds: null, commuteEstimate: undefined,
-        });
+        routed = matched.map(
+          (listing, index) =>
+            byIndex.get(index) ?? {
+              ...listing,
+              transitSeconds: null,
+              drivingSeconds: null,
+              commuteEstimate: undefined,
+            },
+        );
         if (filters.source && (filters.maxTransitMinutes != null || filters.maxDrivingMinutes != null)) {
-          notices = [...notices, 'Commute limits and eligible counts use only routes for the selected website. Other websites were not routed; their unknown travel times are excluded.'];
+          notices = [
+            ...notices,
+            'Commute limits and eligible counts use only routes for the selected website. Other websites were not routed; their unknown travel times are excluded.',
+          ];
         }
         commute.commute = true;
       } catch (error) {
@@ -90,19 +150,30 @@ export async function search(filters: SearchFilters, env: AppEnv, fetcher: Sourc
         commute.commuteNotice = error.message;
       }
     }
-    if (observationsOnly) return { matches: filters.source ? routed.filter(listing => listing.sources.some(source => source.id === filters.source && source.url)) : routed, sources, notices };
+    if (observationsOnly)
+      return {
+        matches: filters.source
+          ? routed.filter((listing) => listing.sources.some((source) => source.id === filters.source && source.url))
+          : routed,
+        sources,
+        notices,
+      };
     const result = formatSearch(routed, filters, workplace!, mode, sources, notices);
     // The client may warn when any contributing live inventory ages out, without
     // initiating another search or transmitting a destination in the background.
-    const searched = new Set(sources.filter(source => source.status === 'searched').map(source => source.id));
-    const expires = refreshCatalog(env).flatMap(definition => {
-      if (!searched.has(definition.marketplace ?? definition.id) && !searched.has(definition.id)) return [];
-      const at = sourceExpiresAt(status, definition.id, observedAt);
-      return at ? [at] : [];
-    }).sort();
+    const searched = new Set(sources.filter((source) => source.status === 'searched').map((source) => source.id));
+    const expires = refreshCatalog(env)
+      .flatMap((definition) => {
+        if (!searched.has(definition.marketplace ?? definition.id) && !searched.has(definition.id)) return [];
+        const at = sourceExpiresAt(status, definition.id, observedAt);
+        return at ? [at] : [];
+      })
+      .sort();
     const inventoryExpiresAt = filters.liveOnly && !filters.includeCached ? expires[0] : undefined;
-    return withHousingLinks({ ...result, ...(snapshotMonth ? { snapshotMonth } : {}), ...commute,
-      ...(inventoryExpiresAt ? { inventoryExpiresAt } : {}) }, bucket);
+    return withHousingLinks(
+      { ...result, ...(snapshotMonth ? { snapshotMonth } : {}), ...commute, ...(inventoryExpiresAt ? { inventoryExpiresAt } : {}) },
+      bucket,
+    );
   }
   const status = bucket ? await refreshStatus(bucket) : null;
   const observedAt = new Date();
@@ -110,30 +181,58 @@ export async function search(filters: SearchFilters, env: AppEnv, fetcher: Sourc
   const directSources = DIRECT_RENTAL_SOURCES.filter(({ regions }) => sourceRegion === 'all' || regions.includes(sourceRegion));
   const [openigloo, direct, results] = await Promise.all([
     storedSample(status, OPENIGLOO.id, filters.liveOnly, () => storedOpenigloo(bucket), observationsOnly, filters.includeCached),
-    Promise.all(directSources.map(async (source) => ({
-      source,
-      ...await storedSample(status, source.id, filters.liveOnly, () => storedDirectRentals(bucket, source), observationsOnly, filters.includeCached),
-    }))),
-    Promise.allSettled(feeds.map(async (feed) => {
-      if (bucket) return storedSample(status, feed.id, filters.liveOnly, () => storedFeed(bucket, feed), observationsOnly, filters.includeCached);
-      const data = feed.format === STREETEASY_EXPORT_FORMAT ? await loadStreetEasyExport(feed, fetcher, observedAt) :
-        await loadFeed(feed, fetcher);
-      return { data, listings: data.listings, recent: true };
-    })),
+    Promise.all(
+      directSources.map(async (source) => ({
+        source,
+        ...(await storedSample(
+          status,
+          source.id,
+          filters.liveOnly,
+          () => storedDirectRentals(bucket, source),
+          observationsOnly,
+          filters.includeCached,
+        )),
+      })),
+    ),
+    Promise.allSettled(
+      feeds.map(async (feed) => {
+        if (bucket)
+          return storedSample(status, feed.id, filters.liveOnly, () => storedFeed(bucket, feed), observationsOnly, filters.includeCached);
+        const data =
+          feed.format === STREETEASY_EXPORT_FORMAT ? await loadStreetEasyExport(feed, fetcher, observedAt) : await loadFeed(feed, fetcher);
+        return { data, listings: data.listings, recent: true };
+      }),
+    ),
   ]);
   const listings: ListingData[] = [...openigloo.listings];
-  const sources: { id: string; name: string; status: string; sample?: boolean }[] = openigloo.data ? [{ id: OPENIGLOO.id, name: OPENIGLOO.name, status: openigloo.recent ? 'searched' : 'cached' }] : [];
-  const notices = openigloo.data ? [
-    'Openigloo · ' + openigloo.listings.length + ' apartments from ' + (openigloo.recent ? 'its recent check.' : 'its last saved check.'),
-  ] : [];
+  const sources: { id: string; name: string; status: string; sample?: boolean }[] = openigloo.data
+    ? [{ id: OPENIGLOO.id, name: OPENIGLOO.name, status: openigloo.recent ? 'searched' : 'cached' }]
+    : [];
+  const notices = openigloo.data
+    ? [
+        'Openigloo · ' +
+          openigloo.listings.length +
+          ' apartments from ' +
+          (openigloo.recent ? 'its recent check.' : 'its last saved check.'),
+      ]
+    : [];
   for (const { source, sourceStatus, recent, data, listings: rows } of direct) {
     if (data) {
       listings.push(...rows);
-      sources.push({ id: source.marketplace, name: source.name, status: recent ? 'searched' : 'cached',
-        sample: data.transport !== STREETEASY_EXPORT_FORMAT && !isCompleteSnapshot(source.id, data.transport) });
-      const coverage = data.transport === STREETEASY_EXPORT_FORMAT ? STREETEASY_EXPORT_COVERAGE :
-        data.transport === STREETEASY_PUBLIC_TRANSPORT ? STREETEASY_PUBLIC_COVERAGE :
-        source.id === STREETEASY_LIVE.id && data.transport === 'partner-feed' ? 'the configured StreetEasy partner feed' : source.coverage;
+      sources.push({
+        id: source.marketplace,
+        name: source.name,
+        status: recent ? 'searched' : 'cached',
+        sample: data.transport !== STREETEASY_EXPORT_FORMAT && !isCompleteSnapshot(source.id, data.transport),
+      });
+      const coverage =
+        data.transport === STREETEASY_EXPORT_FORMAT
+          ? STREETEASY_EXPORT_COVERAGE
+          : data.transport === STREETEASY_PUBLIC_TRANSPORT
+            ? STREETEASY_PUBLIC_COVERAGE
+            : source.id === STREETEASY_LIVE.id && data.transport === 'partner-feed'
+              ? 'the configured StreetEasy partner feed'
+              : source.coverage;
       notices.push(source.name + ' · ' + rows.length + (recent ? ' apartments checked in ' : ' saved apartments in ') + coverage + '.');
     }
     if (sourceStatus?.status === 'failed') {
@@ -160,22 +259,35 @@ export async function search(filters: SearchFilters, env: AppEnv, fetcher: Sourc
   const hasSavedSamples = openigloo.data || direct.some(({ data }) => data) || sources.some(({ status }) => status === 'cached');
   if (!hasLive && !filters.liveOnly && !hasSavedSamples) {
     const market = await storedMarket(bucket);
-    return finish(market.listings, 'snapshot', [{ id: 'streeteasy', name: 'StreetEasy', status: 'snapshot' }, ...sources], notices, market.month);
+    return finish(
+      market.listings,
+      'snapshot',
+      [{ id: 'streeteasy', name: 'StreetEasy', status: 'snapshot' }, ...sources],
+      notices,
+      market.month,
+    );
   }
   if (!hasLive && filters.liveOnly && !(filters.includeCached && hasSavedSamples)) {
     return finish([], 'live', sources, [...notices, 'No sources have recently confirmed active rentals.']);
   }
   if (!filters.liveOnly && (bucket || hasSavedSamples)) {
     const market = await storedMarket(bucket);
-    const historical = new Map<string | null | undefined, { id: string; company?: string }>(market.listings.map((listing) => [listing.sources[0].url, listing]));
+    const historical = new Map<string | null | undefined, { id: string; company?: string }>(
+      market.listings.map((listing) => [listing.sources[0].url, listing]),
+    );
     const live = mergeListings(listings.filter(({ kind }) => kind === 'feed'));
     const cached = mergeListings(listings.filter(({ kind }) => kind === 'cached'));
     const current = mergeListings([...live, ...cached], { preferFirst: true }).map((listing) => {
       const prior = historical.get(listing.sources.find(({ id }) => id === 'streeteasy')?.url);
       return prior ? { ...listing, id: prior.id, companyFromSnapshot: !listing.company && Boolean(prior.company) } : listing;
     });
-    return finish(mergeListings([...current, ...market.listings], { preferFirst: true }), 'mixed',
-      [{ id: 'firstmover', name: 'FirstMover (StreetEasy)', status: 'snapshot' }, ...sources], notices, market.month);
+    return finish(
+      mergeListings([...current, ...market.listings], { preferFirst: true }),
+      'mixed',
+      [{ id: 'firstmover', name: 'FirstMover (StreetEasy)', status: 'snapshot' }, ...sources],
+      notices,
+      market.month,
+    );
   }
   return finish(mergeListings(listings), 'live', sources, notices);
 }

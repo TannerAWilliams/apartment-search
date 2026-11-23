@@ -4,7 +4,14 @@
   "packageRules": [
     {
       "description": "Expo SDK 58 pins these (node_modules/expo/bundledNativeModules.json); update them together with the SDK, not one by one.",
-      "matchPackageNames": ["react", "react-dom", "react-native", "react-native-web", "react-native-safe-area-context", "@react-native-async-storage/async-storage"],
+      "matchPackageNames": [
+        "react",
+        "react-dom",
+        "react-native",
+        "react-native-web",
+        "react-native-safe-area-context",
+        "@react-native-async-storage/async-storage"
+      ],
       "enabled": false
     },
     {

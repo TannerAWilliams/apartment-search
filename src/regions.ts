@@ -18,7 +18,7 @@ export const NYC_SEARCH_AREAS = {
 export const NYC_SEARCH_DEFAULT = 'manhattan-brooklyn';
 /** Borough keys, as returned by searchBorough. */
 export const NYC_BOROUGHS = ['manhattan', 'brooklyn', 'queens', 'bronx', 'staten-island'] as const;
-type NycBorough = typeof NYC_BOROUGHS[number];
+type NycBorough = (typeof NYC_BOROUGHS)[number];
 /** Areas inside a broader region, searched by county or ZIP prefix. */
 const SUB_REGIONS: Record<string, { parent: string; state: string; counties: string[]; zipPrefixes: number[] }> = {
   westchester: { parent: 'metroNorth', state: 'NY', counties: ['westchester'], zipPrefixes: [105, 106, 107, 108] },
@@ -27,10 +27,10 @@ const SUB_REGIONS: Record<string, { parent: string; state: string; counties: str
 export const REGIONS = {
   ...NYC_SEARCH_AREAS,
   all: { label: 'All regions', center: [40.81, -73.53, 99], color: '#27604f' },
-  nyc: { label: 'New York City', center: [40.70, -73.96, 24], color: '#27725a' },
-  nj: { label: 'New Jersey', center: [40.70, -74.44, 58], color: '#a4482b' },
-  li: { label: 'Long Island', center: [40.87, -72.90, 65], color: '#2c6196' },
-  metroNorth: { label: 'Metro-North NY', center: [41.30, -73.91, 56], color: '#68519a' },
+  nyc: { label: 'New York City', center: [40.7, -73.96, 24], color: '#27725a' },
+  nj: { label: 'New Jersey', center: [40.7, -74.44, 58], color: '#a4482b' },
+  li: { label: 'Long Island', center: [40.87, -72.9, 65], color: '#2c6196' },
+  metroNorth: { label: 'Metro-North NY', center: [41.3, -73.91, 56], color: '#68519a' },
   westchester: { label: 'Westchester County', center: [41.12, -73.78, 28], color: '#5a4a8f' },
   ct: { label: 'Connecticut', center: [41.23, -73.27, 51], color: '#815e16' },
   pa: { label: 'Eastern Pennsylvania', center: [40.62, -75.33, 52], color: '#7a415e' },
@@ -81,13 +81,13 @@ const NYC_SEARCH_MARKETS = MARKETS.filter(({ region, label }) => region === 'nyc
 
 /** The region a search area belongs to: a borough's is nyc, Westchester's is metroNorth. */
 export function parentRegion(region: string) {
-  return Object.hasOwn(NYC_SEARCH_AREAS, region) ? 'nyc' : SUB_REGIONS[region]?.parent ?? region;
+  return Object.hasOwn(NYC_SEARCH_AREAS, region) ? 'nyc' : (SUB_REGIONS[region]?.parent ?? region);
 }
 
 /** Borough key for a market or city name such as "The Bronx" or "Staten Island". */
 export function boroughKey(city: string): NycBorough | null {
   const key = city.trim().toLowerCase().replace(/^the /, '').replace(/\s+/g, '-');
-  return (NYC_BOROUGHS as readonly string[]).includes(key) ? key as NycBorough : null;
+  return (NYC_BOROUGHS as readonly string[]).includes(key) ? (key as NycBorough) : null;
 }
 
 /** Display name for a borough market ("Bronx" becomes "The Bronx"); other cities are unchanged. */
@@ -99,23 +99,41 @@ export function boroughLabel(city: string) {
 function inSubRegion(listing: Location, region: string) {
   const area = SUB_REGIONS[region];
   if (!area || listing.state !== area.state) return false;
-  const county = (listing.county ?? '').toLowerCase().trim().replace(/ county$/, '');
+  const county = (listing.county ?? '')
+    .toLowerCase()
+    .trim()
+    .replace(/ county$/, '');
   if (county) return area.counties.includes(county);
   return /^\d{5}$/.test(listing.zip ?? '') && area.zipPrefixes.includes(Number(listing.zip!.slice(0, 3)));
 }
 
 const COUNTY_BOROUGHS: Record<string, NycBorough> = {
-  'new york': 'manhattan', kings: 'brooklyn', queens: 'queens', bronx: 'bronx', richmond: 'staten-island',
+  'new york': 'manhattan',
+  kings: 'brooklyn',
+  queens: 'queens',
+  bronx: 'bronx',
+  richmond: 'staten-island',
 };
 const ZIP_BOROUGHS: Record<string, NycBorough> = {
-  100: 'manhattan', 101: 'manhattan', 102: 'manhattan', 103: 'staten-island', 104: 'bronx',
-  111: 'queens', 112: 'brooklyn', 113: 'queens', 114: 'queens', 116: 'queens',
+  100: 'manhattan',
+  101: 'manhattan',
+  102: 'manhattan',
+  103: 'staten-island',
+  104: 'bronx',
+  111: 'queens',
+  112: 'brooklyn',
+  113: 'queens',
+  114: 'queens',
+  116: 'queens',
 };
 
 /** The NYC borough of a New York location, from its county, else its ZIP code, else its city. */
 export function searchBorough({ state, county = '', zip = '', city = '' }: Location): NycBorough | null {
   if (state !== 'NY') return null;
-  const normalizedCounty = county.toLowerCase().trim().replace(/ county$/, '');
+  const normalizedCounty = county
+    .toLowerCase()
+    .trim()
+    .replace(/ county$/, '');
   if (normalizedCounty) return COUNTY_BOROUGHS[normalizedCounty] ?? null;
   if (/^1100[45]$/.test(zip)) return 'queens';
   if (/^\d{5}$/.test(zip)) return ZIP_BOROUGHS[zip.slice(0, 3)] ?? null;
@@ -146,33 +164,58 @@ const COUNTIES: Record<string, Record<string, string[]>> = {
     metroNorth: ['westchester', 'rockland', 'putnam', 'dutchess', 'orange'],
   },
   NJ: {
-    nj: ['bergen', 'essex', 'hudson', 'hunterdon', 'mercer', 'middlesex', 'monmouth',
-      'morris', 'passaic', 'somerset', 'sussex', 'union', 'warren'],
+    nj: [
+      'bergen',
+      'essex',
+      'hudson',
+      'hunterdon',
+      'mercer',
+      'middlesex',
+      'monmouth',
+      'morris',
+      'passaic',
+      'somerset',
+      'sussex',
+      'union',
+      'warren',
+    ],
   },
-  CT: { ct: ['fairfield', 'new haven', 'western connecticut', 'greater bridgeport',
-    'south central connecticut', 'naugatuck valley'] },
+  CT: { ct: ['fairfield', 'new haven', 'western connecticut', 'greater bridgeport', 'south central connecticut', 'naugatuck valley'] },
   PA: { pa: ['bucks', 'carbon', 'lehigh', 'monroe', 'montgomery', 'northampton', 'philadelphia', 'pike'] },
 };
 
 const REGION_STATES: Record<string, string> = { nyc: 'NY', nj: 'NJ', li: 'NY', metroNorth: 'NY', ct: 'CT', pa: 'PA' };
 
-export function regionOf({ city = '', state, county = '', zip = '', region }: { city?: string; state: string; county?: string; zip?: string; region?: string }) {
+export function regionOf({
+  city = '',
+  state,
+  county = '',
+  zip = '',
+  region,
+}: {
+  city?: string;
+  state: string;
+  county?: string;
+  zip?: string;
+  region?: string;
+}) {
   if (region && REGION_STATES[region] === state) return region;
-  const normalizedCounty = county.toLowerCase().trim().replace(/ (county|planning region)$/, '');
+  const normalizedCounty = county
+    .toLowerCase()
+    .trim()
+    .replace(/ (county|planning region)$/, '');
   const stateRegions: Record<string, string[]> = COUNTIES[state] ?? {};
   for (const [region, counties] of Object.entries(stateRegions)) {
     if (counties.includes(normalizedCounty)) return region;
   }
   if (normalizedCounty) return null;
 
-  const knownMarket = MARKETS.find((market) => market.state === state &&
-    market.city.toLowerCase() === city.toLowerCase());
+  const knownMarket = MARKETS.find((market) => market.state === state && market.city.toLowerCase() === city.toLowerCase());
   if (knownMarket) return knownMarket.region;
 
   const prefix = Number(zip.slice(0, 3));
   if (state === 'NY') {
-    if ([100, 101, 102, 103, 104, 111, 112, 113, 114, 116].includes(prefix) ||
-        /^1100[45]$/.test(zip)) return 'nyc';
+    if ([100, 101, 102, 103, 104, 111, 112, 113, 114, 116].includes(prefix) || /^1100[45]$/.test(zip)) return 'nyc';
     if ([110, 115, 117, 118, 119].includes(prefix)) return 'li';
     if ([105, 106, 107, 108, 109, 125, 126].includes(prefix)) return 'metroNorth';
   }

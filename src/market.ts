@@ -10,38 +10,83 @@ export { SNAPSHOT_MONTH };
 export const SNAPSHOT_SOURCE = 'https://www.firstmovernyc.com/open-data';
 export const RENT_GROUPINGS = { neighborhood: 'Neighborhood', city: 'Borough / city', zip: 'ZIP code' };
 const MONTH_FORMAT = new Intl.DateTimeFormat('en-US', {
-  month: 'long', year: 'numeric', timeZone: 'UTC',
+  month: 'long',
+  year: 'numeric',
+  timeZone: 'UTC',
 });
 export const formatSnapshotMonth = (month = SNAPSHOT_MONTH) => MONTH_FORMAT.format(new Date(month + '-01T00:00:00Z'));
 
-export type MarketRow = [string | number, string, string, string, string, string, string, string, number, number, number, number, string, string, string?];
+export type MarketRow = [
+  string | number,
+  string,
+  string,
+  string,
+  string,
+  string,
+  string,
+  string,
+  number,
+  number,
+  number,
+  number,
+  string,
+  string,
+  string?,
+];
 
 export function decodeMarketRows(rows: MarketRow[]) {
-  const listings: ListingData[] = rows.map(([
-    id, address, unit, city, county, state, zip, neighborhood,
-    latitude, longitude, bedrooms, rent, path, seenAt, company = '',
-  ]) => ({
-    id: 'streeteasy:' + id, address, unit, city, county, state, zip, neighborhood,
-    latitude, longitude, bedrooms, rent, seenAt, company,
-    region: state === 'NJ' ? 'nj' : 'nyc',
-    kind: 'snapshot',
-    sources: [{ id: 'streeteasy', name: 'StreetEasy', url: 'https://streeteasy.com' + path, kind: 'snapshot' }],
-  }));
+  const listings: ListingData[] = rows.map(
+    ([id, address, unit, city, county, state, zip, neighborhood, latitude, longitude, bedrooms, rent, path, seenAt, company = '']) => ({
+      id: 'streeteasy:' + id,
+      address,
+      unit,
+      city,
+      county,
+      state,
+      zip,
+      neighborhood,
+      latitude,
+      longitude,
+      bedrooms,
+      rent,
+      seenAt,
+      company,
+      region: state === 'NJ' ? 'nj' : 'nyc',
+      kind: 'snapshot',
+      sources: [{ id: 'streeteasy', name: 'StreetEasy', url: 'https://streeteasy.com' + path, kind: 'snapshot' }],
+    }),
+  );
   return mergeListings(listings, { preferFirst: true });
 }
 
-
-export function localSearch(listings: ListingData[], filters: SearchFilters, workplace: Workplace | null | undefined, mode: string, sources: SourceStatus[] = [], notices: string[] = []) {
+export function localSearch(
+  listings: ListingData[],
+  filters: SearchFilters,
+  workplace: Workplace | null | undefined,
+  mode: string,
+  sources: SourceStatus[] = [],
+  notices: string[] = [],
+) {
   if (!workplace) throw new SearchInputError('Use a workplace preset or enter latitude, longitude when offline.');
   return formatSearch(matchListings(listings, filters, workplace), filters, workplace, mode, sources, notices);
 }
 
-export function formatSearch(listings: ListingData[], filters: SearchFilters, workplace: Workplace, mode: string, sources: SourceStatus[], notices: string[]) {
-  const eligible = listings.filter(({ transitSeconds, drivingSeconds }) =>
-    (filters.maxTransitMinutes == null || (transitSeconds ?? Infinity) <= filters.maxTransitMinutes * 60) &&
-    (filters.maxDrivingMinutes == null || (drivingSeconds ?? Infinity) <= filters.maxDrivingMinutes * 60))
+export function formatSearch(
+  listings: ListingData[],
+  filters: SearchFilters,
+  workplace: Workplace,
+  mode: string,
+  sources: SourceStatus[],
+  notices: string[],
+) {
+  const eligible = listings
+    .filter(
+      ({ transitSeconds, drivingSeconds }) =>
+        (filters.maxTransitMinutes == null || (transitSeconds ?? Infinity) <= filters.maxTransitMinutes * 60) &&
+        (filters.maxDrivingMinutes == null || (drivingSeconds ?? Infinity) <= filters.maxDrivingMinutes * 60),
+    )
     .map(listingWithVerifiedLinks)
-    .map(listing => ({ ...listing, bestFit: filters.sort === 'best' ? bestFit(listing, filters, workplace) : undefined }));
+    .map((listing) => ({ ...listing, bestFit: filters.sort === 'best' ? bestFit(listing, filters, workplace) : undefined }));
   const bySource = new Map();
   for (const listing of eligible) {
     const links = listing.sources.filter(({ url }) => url);
@@ -53,25 +98,46 @@ export function formatSearch(listings: ListingData[], filters: SearchFilters, wo
       bySource.set(id, entry);
     }
   }
-  const matches = filters.source ? eligible.filter((listing) => listing.sources.some(({ id, url }) => id === filters.source && url)) : eligible;
+  const matches = filters.source
+    ? eligible.filter((listing) => listing.sources.some(({ id, url }) => id === filters.source && url))
+    : eligible;
   matches.sort((first, second) => compareResults(first, second, filters.sort));
-  const mapPoints = filters.includeMap ? matches.filter(isPoint).map((listing) => {
-    const [original, ...additionalLinks] = orderedListingLinks(listing.sources, filters.source);
-    return { latitude: listing.latitude, longitude: listing.longitude, rent: listing.rent, bedrooms: listing.bedrooms,
-      title: [listing.address, listing.unit && '#' + listing.unit.replace(/^#/, '')].filter(Boolean).join(' '),
-      name: original?.name, url: original?.url, kind: listing.kind, linkKind: original?.kind,
-      ...(additionalLinks.length ? { additionalLinks } : {}),
-      transitSeconds: listing.transitSeconds, drivingSeconds: listing.drivingSeconds };
-  }) : undefined;
+  const mapPoints = filters.includeMap
+    ? matches.filter(isPoint).map((listing) => {
+        const [original, ...additionalLinks] = orderedListingLinks(listing.sources, filters.source);
+        return {
+          latitude: listing.latitude,
+          longitude: listing.longitude,
+          rent: listing.rent,
+          bedrooms: listing.bedrooms,
+          title: [listing.address, listing.unit && '#' + listing.unit.replace(/^#/, '')].filter(Boolean).join(' '),
+          name: original?.name,
+          url: original?.url,
+          kind: listing.kind,
+          linkKind: original?.kind,
+          ...(additionalLinks.length ? { additionalLinks } : {}),
+          transitSeconds: listing.transitSeconds,
+          drivingSeconds: listing.drivingSeconds,
+        };
+      })
+    : undefined;
   const offset = filters.offset ?? 0;
   const pageSize = 100;
-  return { mode, workplace, matches: matches.slice(offset, offset + pageSize), offset, pageSize,
+  return {
+    mode,
+    workplace,
+    matches: matches.slice(offset, offset + pageSize),
+    offset,
+    pageSize,
     nextOffset: offset + pageSize < matches.length ? offset + pageSize : null,
-    total: matches.length, eligibleTotal: eligible.length,
+    total: matches.length,
+    eligibleTotal: eligible.length,
     sourceCounts: [...bySource.values()].sort((a, b) => b.checkedCount - a.checkedCount || b.count - a.count),
-    sources, notices, ...(mapPoints ? { mapPoints } : {}) };
+    sources,
+    notices,
+    ...(mapPoints ? { mapPoints } : {}),
+  };
 }
-
 
 export function median(values: number[]) {
   if (values.length === 0) return null;
@@ -90,7 +156,9 @@ function areaOf(listing: ListingData, grouping: string) {
 
 function summarize(area: { id: string; label: string; detail: string; values: number[][] }): RentArea {
   return {
-    id: area.id, label: area.label, detail: area.detail,
+    id: area.id,
+    label: area.label,
+    detail: area.detail,
     count: area.values.reduce((total, prices) => total + prices.length, 0),
     sizes: area.values.map((prices) => ({ median: median(prices), count: prices.length })),
   };
@@ -102,27 +170,38 @@ export function rentAreas(listings: ListingData[], { region = 'all', zip = '', g
   const areas = new Map<string, { id: string; label: string; detail: string; values: number[][] }>();
   const overall = { id: 'overall', label: 'All covered areas', detail: '', values: sizeGroups() };
   for (const listing of listings) {
-    if (!matchesRegion(listing, region) || (zip && listing.zip !== zip) ||
-        !Number.isInteger(listing.bedrooms) || listing.bedrooms < 0 || listing.bedrooms > 4 ||
-        !Number.isFinite(listing.rent) || listing.rent <= 0) continue;
+    if (
+      !matchesRegion(listing, region) ||
+      (zip && listing.zip !== zip) ||
+      !Number.isInteger(listing.bedrooms) ||
+      listing.bedrooms < 0 ||
+      listing.bedrooms > 4 ||
+      !Number.isFinite(listing.rent) ||
+      listing.rent <= 0
+    )
+      continue;
     const area = areaOf(listing, grouping);
     if (!areas.has(area.id)) areas.set(area.id, { ...area, values: sizeGroups() });
     areas.get(area.id)!.values[listing.bedrooms].push(listing.rent);
     overall.values[listing.bedrooms].push(listing.rent);
   }
   if (areas.size === 0) return [];
-  const sorted = [...areas.values()].map(summarize).sort((first, second) =>
-    first.label.localeCompare(second.label, 'en', { numeric: true }) || first.detail.localeCompare(second.detail));
+  const sorted = [...areas.values()]
+    .map(summarize)
+    .sort((first, second) => first.label.localeCompare(second.label, 'en', { numeric: true }) || first.detail.localeCompare(second.detail));
   return [summarize(overall), ...sorted];
 }
 
 export function packRentMonth(listings: ListingData[]): Record<string, Record<string, PackedRentRow[]>> {
-  return Object.fromEntries(['all', 'nyc', 'nj'].map((region) => [
-    region,
-    Object.fromEntries(Object.keys(RENT_GROUPINGS).map((grouping) => [
-      grouping, rentAreas(listings, { region, grouping }).map(({ id, sizes }) => [
-        id, ...sizes.flatMap(({ median, count }) => [median, count]),
-      ]),
-    ])),
-  ]));
+  return Object.fromEntries(
+    ['all', 'nyc', 'nj'].map((region) => [
+      region,
+      Object.fromEntries(
+        Object.keys(RENT_GROUPINGS).map((grouping) => [
+          grouping,
+          rentAreas(listings, { region, grouping }).map(({ id, sizes }) => [id, ...sizes.flatMap(({ median, count }) => [median, count])]),
+        ]),
+      ),
+    ]),
+  );
 }

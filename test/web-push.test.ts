@@ -6,12 +6,18 @@ import { sentJson } from './fixtures/json.ts';
 const encoder = new TextEncoder();
 /** A browser's side of a subscription: its key pair and auth secret, plus RFC 8291 decryption. */
 async function device(endpoint = 'https://web.push.apple.com/QGf9example') {
-  const pair = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']) as CryptoKeyPair;
-  const publicKey = new Uint8Array(await crypto.subtle.exportKey('raw', pair.publicKey) as ArrayBuffer);
+  const pair = (await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits'])) as CryptoKeyPair;
+  const publicKey = new Uint8Array((await crypto.subtle.exportKey('raw', pair.publicKey)) as ArrayBuffer);
   const auth = crypto.getRandomValues(new Uint8Array(16));
   const subscription = { endpoint, keys: { p256dh: toBase64Url(publicKey), auth: toBase64Url(auth) } };
-  const hkdf = async (salt: Uint8Array<ArrayBuffer>, secret: Uint8Array<ArrayBuffer>, info: Uint8Array<ArrayBuffer>, bytes: number) => new Uint8Array(await crypto.subtle.deriveBits(
-    { name: 'HKDF', hash: 'SHA-256', salt, info }, await crypto.subtle.importKey('raw', secret, 'HKDF', false, ['deriveBits']), bytes * 8));
+  const hkdf = async (salt: Uint8Array<ArrayBuffer>, secret: Uint8Array<ArrayBuffer>, info: Uint8Array<ArrayBuffer>, bytes: number) =>
+    new Uint8Array(
+      await crypto.subtle.deriveBits(
+        { name: 'HKDF', hash: 'SHA-256', salt, info },
+        await crypto.subtle.importKey('raw', secret, 'HKDF', false, ['deriveBits']),
+        bytes * 8,
+      ),
+    );
   async function decrypt(body: Uint8Array<ArrayBuffer>) {
     const salt = body.slice(0, 16);
     const keyLength = body[20];
@@ -20,7 +26,13 @@ async function device(endpoint = 'https://web.push.apple.com/QGf9example') {
     const shared = new Uint8Array(await crypto.subtle.deriveBits({ name: 'ECDH', public: serverKey }, pair.privateKey, 256));
     const info = new Uint8Array([...encoder.encode('WebPush: info\0'), ...publicKey, ...serverPublic]);
     const ikm = await hkdf(auth, shared, info, 32);
-    const key = await crypto.subtle.importKey('raw', await hkdf(salt, ikm, encoder.encode('Content-Encoding: aes128gcm\0'), 16), 'AES-GCM', false, ['decrypt']);
+    const key = await crypto.subtle.importKey(
+      'raw',
+      await hkdf(salt, ikm, encoder.encode('Content-Encoding: aes128gcm\0'), 16),
+      'AES-GCM',
+      false,
+      ['decrypt'],
+    );
     const nonce = await hkdf(salt, ikm, encoder.encode('Content-Encoding: nonce\0'), 12);
     const plain = new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: nonce }, key, body.slice(21 + keyLength)));
     expect(plain.at(-1), 'last-record delimiter').toBe(2);
@@ -51,11 +63,17 @@ test('a message is encrypted so that only the subscribed device can read it', as
 });
 
 test('delivery is signed with the VAPID key for the push service, and an expired device is reported', async () => {
-  const vapid = { ...await generateVapidKeys(), subject: 'https://apartments.example' };
+  const vapid = { ...(await generateVapidKeys()), subject: 'https://apartments.example' };
   const { subscription, decrypt } = await device();
   const now = Date.parse('2026-11-23T12:00:00Z');
   let request: { url: string; init: RequestInit } | null = null;
-  const result = await sendPush(subscription, { title: 'Hello' }, vapid, { now, fetcher: async (url, init) => { request = { url, init }; return new Response(null, { status: 201 }); } });
+  const result = await sendPush(subscription, { title: 'Hello' }, vapid, {
+    now,
+    fetcher: async (url, init) => {
+      request = { url, init };
+      return new Response(null, { status: 201 });
+    },
+  });
   expect(result).toStrictEqual({ ok: true, gone: false, status: 201 });
   const { url, init } = request!;
   expect(url).toBe(subscription.endpoint);
@@ -65,9 +83,17 @@ test('delivery is signed with the VAPID key for the push service, and an expired
   const [, jwt, key] = headers.Authorization.match(/^vapid t=([^,]+), k=(.+)$/)!;
   expect(key).toBe(vapid.publicKey);
   const [head, claims, signature] = jwt.split('.');
-  expect(JSON.parse(new TextDecoder().decode(fromBase64Url(claims)))).toStrictEqual({ aud: 'https://web.push.apple.com', exp: now / 1000 + 43200, sub: 'https://apartments.example' });
-  const verifier = await crypto.subtle.importKey('raw', fromBase64Url(vapid.publicKey), { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify']);
-  expect(await crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, verifier, fromBase64Url(signature), encoder.encode(head + '.' + claims))).toBe(true);
+  expect(JSON.parse(new TextDecoder().decode(fromBase64Url(claims)))).toStrictEqual({
+    aud: 'https://web.push.apple.com',
+    exp: now / 1000 + 43200,
+    sub: 'https://apartments.example',
+  });
+  const verifier = await crypto.subtle.importKey('raw', fromBase64Url(vapid.publicKey), { name: 'ECDSA', namedCurve: 'P-256' }, false, [
+    'verify',
+  ]);
+  expect(
+    await crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, verifier, fromBase64Url(signature), encoder.encode(head + '.' + claims)),
+  ).toBe(true);
 
   const gone = await sendPush(subscription, {}, vapid, { fetcher: async () => new Response(null, { status: 410 }) });
   expect(gone).toStrictEqual({ ok: false, gone: true, status: 410 });

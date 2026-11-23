@@ -4,15 +4,23 @@ import { parse } from 'csv-parse/browser/esm/sync';
 
 const csvField = (value: unknown) => '"' + String(value).replaceAll('"', '""') + '"';
 
-export async function geocodeRentalAddresses<T extends Pick<ListingData, 'id' | 'address' | 'city' | 'state' | 'zip'>>(listings: T[], fetcher: SourceFetch, timeout = 14000) {
+export async function geocodeRentalAddresses<T extends Pick<ListingData, 'id' | 'address' | 'city' | 'state' | 'zip'>>(
+  listings: T[],
+  fetcher: SourceFetch,
+  timeout = 14000,
+) {
   if (!listings.length) return listings;
-  const data = listings.map(({ id, address, city, state, zip }) =>
-    [id, address, city === 'Manhattan' ? 'New York' : city, state, zip].map(csvField).join(',')).join('\n');
+  const data = listings
+    .map(({ id, address, city, state, zip }) => [id, address, city === 'Manhattan' ? 'New York' : city, state, zip].map(csvField).join(','))
+    .join('\n');
   const form = new FormData();
   form.set('addressFile', new Blob([data], { type: 'text/csv' }), 'apartments.csv');
   form.set('benchmark', 'Public_AR_Current');
   const response = await fetcher('https://geocoding.geo.census.gov/geocoder/locations/addressbatch', {
-    method: 'POST', body: form, redirect: 'manual', signal: AbortSignal.timeout(timeout),
+    method: 'POST',
+    body: form,
+    redirect: 'manual',
+    signal: AbortSignal.timeout(timeout),
   });
   if (!response.ok) return listings;
   const points = new Map();

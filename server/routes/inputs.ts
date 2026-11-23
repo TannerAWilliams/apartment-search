@@ -24,22 +24,36 @@ export const VitalMetricSchema = v.object({
   value: v.pipe(v.number(), v.finite(), v.minValue(0), v.maxValue(600_000)),
   rating: v.picklist(['good', 'needs-improvement', 'poor']),
   /** Kept when it is text, cut to 20 characters; anything else is dropped. */
-  navigationType: v.fallback(v.optional(v.pipe(v.string(), v.transform((type) => type.slice(0, 20)))), undefined),
+  navigationType: v.fallback(
+    v.optional(
+      v.pipe(
+        v.string(),
+        v.transform((type) => type.slice(0, 20)),
+      ),
+    ),
+    undefined,
+  ),
 });
 
 /** POST /api/vitals: the open tab and up to one of each measurement. */
-export const VitalsReportSchema = v.object({
-  page: v.fallback(v.pipe(v.string(), v.regex(/^[a-z-]{1,20}$/)), 'other'),
-  metrics: v.fallback(v.array(v.unknown()), []),
-}, 'Send Core Web Vitals measurements.');
+export const VitalsReportSchema = v.object(
+  {
+    page: v.fallback(v.pipe(v.string(), v.regex(/^[a-z-]{1,20}$/)), 'other'),
+    metrics: v.fallback(v.array(v.unknown()), []),
+  },
+  'Send Core Web Vitals measurements.',
+);
 
 /** A check the app asks for: every source, or one. Anyone may send this to a public app. */
-export const RefreshCheckSchema = v.strictObject({
-  check: v.literal('now'),
-  source: v.optional(v.string('Unknown or disconnected refresh source.')),
-  /** Sent by pages loaded before the app stopped checking on open; nothing is fetched. */
-  sessionStart: v.optional(v.boolean()),
-}, 'Public refresh cannot import listing data.');
+export const RefreshCheckSchema = v.strictObject(
+  {
+    check: v.literal('now'),
+    source: v.optional(v.string('Unknown or disconnected refresh source.')),
+    /** Sent by pages loaded before the app stopped checking on open; nothing is fetched. */
+    sessionStart: v.optional(v.boolean()),
+  },
+  'Public refresh cannot import listing data.',
+);
 
 /** Saved inventory uploaded by a script with the app token, such as the StreetEasy home sync. */
 const SourceImportSchema = v.object({
@@ -50,25 +64,44 @@ const SourceImportSchema = v.object({
 });
 
 /** POST /api/refresh */
-export const RefreshRequestSchema = v.union([v.object(RefreshCheckSchema.entries), SourceImportSchema], 'Send a source check or a valid compressed source import.');
+export const RefreshRequestSchema = v.union(
+  [v.object(RefreshCheckSchema.entries), SourceImportSchema],
+  'Send a source check or a valid compressed source import.',
+);
 
 /** POST /api/alerts: the details of each action are checked by server/alerts.ts. */
-export const AlertRequestSchema = v.variant('action', [
-  v.object({ action: v.literal('add-rule'), rule: v.unknown() }),
-  v.object({ action: v.literal('delete-rule'), id: v.string('Choose an alert to remove.') }),
-  v.object({ action: v.literal('add-device'), subscription: v.unknown(), label: v.optional(v.string()) }),
-  v.object({ action: v.literal('remove-device'), endpoint: v.string('Choose a device to remove.') }),
-  v.object({ action: v.literal('test') }),
-], 'Unknown alert action.');
+export const AlertRequestSchema = v.variant(
+  'action',
+  [
+    v.object({ action: v.literal('add-rule'), rule: v.unknown() }),
+    v.object({ action: v.literal('delete-rule'), id: v.string('Choose an alert to remove.') }),
+    v.object({ action: v.literal('add-device'), subscription: v.unknown(), label: v.optional(v.string()) }),
+    v.object({ action: v.literal('remove-device'), endpoint: v.string('Choose a device to remove.') }),
+    v.object({ action: v.literal('test') }),
+  ],
+  'Unknown alert action.',
+);
 
 /** POST /api/geocode */
 const FULL_ADDRESS = 'Enter a full street address with city, state and ZIP.';
-export const GeocodeRequestSchema = v.object({
-  address: v.pipe(v.string(FULL_ADDRESS), v.check((address) => address.trim().length >= 4 && address.length <= 160, FULL_ADDRESS)),
-}, FULL_ADDRESS);
+export const GeocodeRequestSchema = v.object(
+  {
+    address: v.pipe(
+      v.string(FULL_ADDRESS),
+      v.check((address) => address.trim().length >= 4 && address.length <= 160, FULL_ADDRESS),
+    ),
+  },
+  FULL_ADDRESS,
+);
 
 /** POST /api/building-report: whether this is one exact NYC building is decided by server/building-records.ts. */
-export const BuildingAddressSchema = v.object({
-  address: v.optional(v.string()), city: v.optional(v.string()), county: v.optional(v.string()),
-  state: v.optional(v.string()), zip: v.optional(v.string()),
-}, 'Send the building’s street address and ZIP.');
+export const BuildingAddressSchema = v.object(
+  {
+    address: v.optional(v.string()),
+    city: v.optional(v.string()),
+    county: v.optional(v.string()),
+    state: v.optional(v.string()),
+    zip: v.optional(v.string()),
+  },
+  'Send the building’s street address and ZIP.',
+);

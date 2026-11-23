@@ -4,10 +4,7 @@
     "allowImportingTsExtensions": true,
     "allowJs": false,
     "noEmit": true,
-    "types": [
-      "bun",
-      "react"
-    ],
+    "types": ["bun", "react"],
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,

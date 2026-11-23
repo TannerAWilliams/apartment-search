@@ -1,7 +1,12 @@
 import { expect, test } from 'bun:test';
 import { sourceRows } from '../src/source-status.ts';
 test('source rows distinguish failed attempts, retained data and browse-only providers', () => {
-  const rows = sourceRows([{ id: 'streeteasy-live', marketplace: 'streeteasy', name: 'StreetEasy', resyncable: true }], [{ id: 'streeteasy-live', status: 'failed', updatedAt: '2026-01-01', checkedAt: '2026-01-02', retryAt: '2026-01-03' }], { streeteasy: 'StreetEasy', zillow: 'Zillow' }, Date.parse('2026-01-02'));
+  const rows = sourceRows(
+    [{ id: 'streeteasy-live', marketplace: 'streeteasy', name: 'StreetEasy', resyncable: true }],
+    [{ id: 'streeteasy-live', status: 'failed', updatedAt: '2026-01-01', checkedAt: '2026-01-02', retryAt: '2026-01-03' }],
+    { streeteasy: 'StreetEasy', zillow: 'Zillow' },
+    Date.parse('2026-01-02'),
+  );
   expect(rows.length).toBe(2);
   expect(rows[0].state).toBe('Last attempt failed');
   expect(rows[0].coolingDown).toBe(true);
@@ -14,7 +19,6 @@ test('a connected but never fetched provider remains actionable and is not label
   expect(row.state).toBe('Not fetched yet');
   expect(row.coolingDown).toBe(false);
 });
-
 
 test('partial refresh summary names blocked providers without claiming complete coverage', async () => {
   const { refreshSummary } = await import('../src/source-status.ts');
@@ -77,4 +81,3 @@ test('failed attempts label retained coverage as the last saved snapshot', async
   expect(sourceCoverage({ id: 'unknown', total: NaN, pages: -1, sampleLimit: Infinity })).toBe('');
   expect(sourceCoverage()).toBe('');
 });
-

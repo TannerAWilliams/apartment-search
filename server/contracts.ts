@@ -5,7 +5,11 @@ export type BucketObject = BucketHead & { arrayBuffer(): Promise<ArrayBuffer>; t
 export type Bucket = {
   get(key: string): Promise<BucketObject | null>;
   head(key: string): Promise<BucketHead | null>;
-  put(key: string, body: string | Uint8Array, options?: { customMetadata?: Record<string, string>; onlyIf?: { etagMatches?: string; etagDoesNotMatch?: string } }): Promise<{ etag: string } | null>;
+  put(
+    key: string,
+    body: string | Uint8Array,
+    options?: { customMetadata?: Record<string, string>; onlyIf?: { etagMatches?: string; etagDoesNotMatch?: string } },
+  ): Promise<{ etag: string } | null>;
 };
 export type AppEnv = {
   BUCKET?: Bucket;
@@ -28,8 +32,27 @@ export type AppEnv = {
   VAPID_PRIVATE_KEY?: string;
   VAPID_SUBJECT?: string;
 };
-type HousingOpportunity = { id: string; name: string; borough: string; closes: string; sizes: number[]; addresses: string[]; buildingKeys: string[]; url: string };
+type HousingOpportunity = {
+  id: string;
+  name: string;
+  borough: string;
+  closes: string;
+  sizes: number[];
+  addresses: string[];
+  buildingKeys: string[];
+  url: string;
+};
 export type HousingSnapshot = { publishedAt: string | null; checkedAt: string | null; opportunities: HousingOpportunity[] };
-type HdcOpportunity = { id: string; name: string; url: string; address: string; borough: string; rent: string; bedrooms: string; age: string; accessibility: string };
+type HdcOpportunity = {
+  id: string;
+  name: string;
+  url: string;
+  address: string;
+  borough: string;
+  rent: string;
+  bedrooms: string;
+  age: string;
+  accessibility: string;
+};
 export type HdcSnapshot = { results: HdcOpportunity[]; total: number; limited: boolean; checkedAt?: string };
 export type HousingResponse = HousingSnapshot & { rerentals: HdcSnapshot | null; jersey: JerseySnapshot | null };

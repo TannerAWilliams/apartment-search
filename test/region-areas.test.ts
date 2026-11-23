@@ -36,7 +36,11 @@ test('Westchester County is searchable inside Metro-North', () => {
   expect(matchesRegion(ny('10701'), 'metroNorth'), 'Metro-North still includes Westchester').toBeTruthy();
   expect(parentRegion('westchester')).toBe('metroNorth');
   expect(parentRegion('queens')).toBe('nyc');
-  expect(marketsForSearch({ region: 'westchester' }).map(({ city }) => city).sort()).toStrictEqual(['Mount Vernon', 'New Rochelle', 'Tarrytown', 'White Plains', 'Yonkers']);
+  expect(
+    marketsForSearch({ region: 'westchester' })
+      .map(({ city }) => city)
+      .sort(),
+  ).toStrictEqual(['Mount Vernon', 'New Rochelle', 'Tarrytown', 'White Plains', 'Yonkers']);
 });
 
 test('market names map to borough keys', () => {

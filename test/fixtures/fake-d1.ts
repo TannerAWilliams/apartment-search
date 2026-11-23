@@ -21,12 +21,14 @@ export async function fakeD1() {
       return statement;
     },
     async batch<T>(batch: D1Statement[]) {
-      return sqlite.transaction(() => batch.map(item => {
-        const { sql, values } = statements.get(item)!;
-        const statement = sqlite.query(sql);
-        if (sql.startsWith('SELECT')) return { results: statement.all(...values) as T[] };
-        return { results: [] as T[], meta: { changes: statement.run(...values).changes } };
-      }))();
+      return sqlite.transaction(() =>
+        batch.map((item) => {
+          const { sql, values } = statements.get(item)!;
+          const statement = sqlite.query(sql);
+          if (sql.startsWith('SELECT')) return { results: statement.all(...values) as T[] };
+          return { results: [] as T[], meta: { changes: statement.run(...values).changes } };
+        }),
+      )();
     },
   };
   return { d1, sqlite };

@@ -2,7 +2,8 @@ import { malformed, required } from './test-values.ts';
 import { expect, test } from 'bun:test';
 import { recordListingHistory, MAX_HISTORY_UNITS, type ObservationHistory } from '../server/listing-history.ts';
 import { testListing } from './fixtures/listing.ts';
-const unit = (rent = 2000, id = 'feed:1') => testListing({ id, address: '12 Grove Street', unit: '2', city: 'Jersey City', state: 'NJ', zip: '07302', rent });
+const unit = (rent = 2000, id = 'feed:1') =>
+  testListing({ id, address: '12 Grove Street', unit: '2', city: 'Jersey City', state: 'NJ', zip: '07302', rent });
 const at = (day: number) => new Date(Date.UTC(2026, 0, day)).toISOString();
 test('records only successful observations and price/basis changes, with first/last check timestamps', () => {
   const first = recordListingHistory([unit()], undefined, 'feed', at(1));
@@ -45,7 +46,12 @@ test('bounded rolling price history labels truncation', () => {
   expect(required(history).listings[0].priceHistory?.observations.length).toBe(24);
   expect(required(history).listings[0].priceHistory?.truncated).toBe(true);
   expect(required(history).listings[0].priceHistory?.firstObservedAt).toBe(at(1));
-  const many = recordListingHistory(Array.from({ length: MAX_HISTORY_UNITS + 1 }, (_, i) => unit(2000, `feed:${i}`)), undefined, 'feed', at(1));
+  const many = recordListingHistory(
+    Array.from({ length: MAX_HISTORY_UNITS + 1 }, (_, i) => unit(2000, `feed:${i}`)),
+    undefined,
+    'feed',
+    at(1),
+  );
   expect(many.observationHistory.entries.length).toBe(MAX_HISTORY_UNITS);
   expect(many.observationHistory.truncated).toBe(true);
 });
@@ -56,11 +62,23 @@ test('invalid timestamps, schema and malformed history fail closed', () => {
   expect(() => recordListingHistory([], malformed<ObservationHistory>({ version: 1, entries: null }), 'feed', at(1))).toThrow();
   const first = recordListingHistory([unit()], undefined, 'feed', at(2));
   expect(() => recordListingHistory([unit()], first.observationHistory, 'feed', at(1))).toThrow();
-  for (const patch of [{ identity: '' }, { observations: null }, { firstObservedAt: 'bad' }, { lastObservedAt: 'bad' },
+  for (const patch of [
+    { identity: '' },
+    { observations: null },
+    { firstObservedAt: 'bad' },
+    { lastObservedAt: 'bad' },
     { observations: [{ rent: -1, checkedAt: at(1), priceIncludesFees: false }] },
     { observations: [{ rent: 2000, checkedAt: 'bad', priceIncludesFees: false }] },
-    { observations: [{ rent: 2000, checkedAt: at(1), priceIncludesFees: 'yes' }] }]) {
-    expect(() => recordListingHistory([], malformed<ObservationHistory>({ ...first.observationHistory, entries: [{ ...first.observationHistory.entries[0], ...patch }] }), 'feed', at(3))).toThrow();
+    { observations: [{ rent: 2000, checkedAt: at(1), priceIncludesFees: 'yes' }] },
+  ]) {
+    expect(() =>
+      recordListingHistory(
+        [],
+        malformed<ObservationHistory>({ ...first.observationHistory, entries: [{ ...first.observationHistory.entries[0], ...patch }] }),
+        'feed',
+        at(3),
+      ),
+    ).toThrow();
   }
 });
 test('duplicate unit identities cannot create conflicting observations in one refresh', () => {

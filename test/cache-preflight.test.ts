@@ -7,7 +7,10 @@ test('oversized binary writes are rejected before copying the payload', async ()
   const prior = await bucket.put('inventory', 'old');
   const payload = new Uint8Array(5);
   let copied = false;
-  payload[Symbol.iterator] = function () { copied = true; return [1, 2, 3, 4, 5].values(); };
+  payload[Symbol.iterator] = function () {
+    copied = true;
+    return [1, 2, 3, 4, 5].values();
+  };
   await expect(bucket.put('inventory', payload)).rejects.toThrow(/capacity exceeded/);
   expect(copied).toBe(false);
   const saved = await bucket.get('inventory');
@@ -20,7 +23,7 @@ test('string preflight counts UTF-8 bytes, including replacement characters', as
     const bytes = new TextEncoder().encode(text).byteLength;
     const exact = createMemoryBucket(bytes);
     await exact.put('inventory', text);
-    expect((await required((await exact.get('inventory'))).arrayBuffer()).byteLength).toBe(bytes);
+    expect((await required(await exact.get('inventory')).arrayBuffer()).byteLength).toBe(bytes);
     const short = createMemoryBucket(bytes - 1);
     await expect(short.put('inventory', text)).rejects.toThrow(/capacity exceeded/);
     expect(await short.get('inventory')).toBeNull();
@@ -36,5 +39,5 @@ test('preflight credits only the replaced object and preserves conditional write
   await bucket.put('inventory', 'é', { onlyIf: { etagMatches: required(prior).etag } });
   await bucket.put('remaining', 'x');
   await expect(bucket.put('overflow', 'x')).rejects.toThrow(/capacity exceeded/);
-  expect(await required((await bucket.get('other'))).text()).toBe('123');
+  expect(await required(await bucket.get('other')).text()).toBe('123');
 });

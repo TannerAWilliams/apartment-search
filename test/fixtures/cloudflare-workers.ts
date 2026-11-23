@@ -3,5 +3,10 @@
 import { mock } from 'bun:test';
 
 mock.module('cloudflare:workers', () => ({
-  WorkflowEntrypoint: class { env: unknown; constructor(_ctx: unknown, env: unknown) { this.env = env; } },
+  WorkflowEntrypoint: class {
+    env: unknown;
+    constructor(_ctx: unknown, env: unknown) {
+      this.env = env;
+    }
+  },
 }));

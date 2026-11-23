@@ -7,7 +7,9 @@ export function alertFromPush(data: { json(): unknown } | null): PushedAlert {
   try {
     const parsed = data?.json();
     if (parsed && typeof parsed === 'object') value = parsed as Record<string, unknown>;
-  } catch { /* not JSON: use the defaults */ }
+  } catch {
+    /* not JSON: use the defaults */
+  }
   return {
     title: typeof value.title === 'string' ? value.title : 'Apartment Search',
     body: typeof value.body === 'string' ? value.body : 'A saved search has new matches.',

@@ -34,17 +34,22 @@ const searchQuery = (page: number, range?: PriceRange) => `query SearchRentals {
   }
 }`;
 export const STREETEASY_LIVE = {
-  ...SOURCE, id: 'streeteasy-live', marketplace: SOURCE.id,
+  ...SOURCE,
+  id: 'streeteasy-live',
+  marketplace: SOURCE.id,
   coverage: 'all active rentals returned by StreetEasy across its markets',
   // Preserve support for previously imported NYC and NJ batches.
-  regions: ['nyc', 'nj', 'li', 'metroNorth', 'ct'], minPages: 1, maxPages: MAX_PAGES,
-  rowsPerPage: PAGE_SIZE, listingUrl: streetEasyListingUrl, load: loadStreetEasy,
+  regions: ['nyc', 'nj', 'li', 'metroNorth', 'ct'],
+  minPages: 1,
+  maxPages: MAX_PAGES,
+  rowsPerPage: PAGE_SIZE,
+  listingUrl: streetEasyListingUrl,
+  load: loadStreetEasy,
 };
 
 export function streetEasyListingUrl(value: unknown) {
   return publicListingUrl(value, ORIGIN, /^\/(?:rental\/\d+|building\/[^/]+\/(?:[^/]+|rental\/\d+))$/);
 }
-
 
 export const STREETEASY_PUBLIC_TRANSPORT = 'public-search';
 export const STREETEASY_PUBLIC_COVERAGE = 'first page of the public NYC and New Jersey rental search';
@@ -74,13 +79,19 @@ async function fetchPage(fetcher: FetchTransport, page: number, range?: PriceRan
     signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(9000)]) : AbortSignal.timeout(9000),
   });
   if (!response.ok) throw Object.assign(new Error('StreetEasy returned HTTP ' + response.status + '.'), { httpStatus: response.status });
-  const payload = await response.json() as {
+  const payload = (await response.json()) as {
     errors?: unknown[];
     data?: { searchRentals?: { totalCount: number; edges: { node?: SearchRental }[] } };
   };
   const result = payload?.data?.searchRentals;
-  if (!result || payload?.errors?.length || !Number.isSafeInteger(result?.totalCount) || result.totalCount < 0 ||
-      !Array.isArray(result?.edges) || result.edges.length > PAGE_SIZE) {
+  if (
+    !result ||
+    payload?.errors?.length ||
+    !Number.isSafeInteger(result?.totalCount) ||
+    result.totalCount < 0 ||
+    !Array.isArray(result?.edges) ||
+    result.edges.length > PAGE_SIZE
+  ) {
     throw new Error('StreetEasy v6 did not return rental results.');
   }
   return result;
@@ -104,8 +115,11 @@ export async function loadStreetEasy(fetcher: FetchTransport = fetch, now = new 
       failure ??= error;
       controller.abort();
       throw error;
+    } finally {
+      const next = waiting.shift();
+      if (next) next();
+      else active--;
     }
-    finally { const next = waiting.shift(); if (next) next(); else active--; }
   }
   const first = await page(1);
   if (first.totalCount > MAX_INVENTORY) throw new Error('StreetEasy inventory exceeds the sync limit.');
@@ -136,20 +150,25 @@ export async function loadStreetEasy(fetcher: FetchTransport = fetch, now = new 
       return complete(edges, result.totalCount);
     }
     if (range.lower === range.upper) throw new Error('StreetEasy has too many rentals at one price to verify a complete sync.');
-    const prices = result.edges.map(({ node }) => node?.price)
+    const prices = result.edges
+      .map(({ node }) => node?.price)
       .filter((price): price is number => Number.isSafeInteger(price) && price! >= range.lower && price! <= range.upper)
       .sort((a, b) => a - b);
     const median = prices[Math.floor(prices.length / 2)];
     const middle = median !== undefined && median < range.upper ? median : Math.floor((range.lower + range.upper) / 2);
-    const ranges = [{ lower: range.lower, upper: middle }, { lower: middle + 1, upper: range.upper }];
+    const ranges = [
+      { lower: range.lower, upper: middle },
+      { lower: middle + 1, upper: range.upper },
+    ];
     const children = await Promise.all(ranges.map(async (child) => collect(child, await page(1, child))));
     // StreetEasy can match both gross and discounted rent, so ranges overlap by
     // listing ID. Deduplicate the union before comparing it with the parent count.
     return complete(children.flat(), result.totalCount);
   }
   let edges: Result['edges'];
-  try { edges = await collect({ lower: 0, upper: MAX_STREETEASY_RENT }, first); }
-  catch (error) {
+  try {
+    edges = await collect({ lower: 0, upper: MAX_STREETEASY_RENT }, first);
+  } catch (error) {
     failure ??= error;
     controller.abort();
     throw error;
@@ -172,14 +191,27 @@ function activeRentals(edges: { node?: SearchRental }[], checkedAt: string) {
     const nj = NJ_ZIPS[zip];
     const state = borough ? 'NY' : /^0[78]\d{3}$/.test(zip) ? 'NJ' : /^06\d{3}$/.test(zip) ? 'CT' : /^1\d{4}$/.test(zip) ? 'NY' : null;
     if (!url || !state) return [];
-    const listing = normalizeListing({
-      id: node.id, url, address: node.street, unit: node.unit?.replace(/^#\s*/, ''), zipCode: node.zipCode,
-      city: borough ?? nj?.[0] ?? (state === 'NJ' ? 'New Jersey' : state === 'CT' ? 'Connecticut' : 'New York State'),
-      state, county: nj?.[1], region: state === 'NJ' ? 'nj' : state === 'CT' ? 'ct' : undefined,
-      neighborhood: node.areaName, bedrooms: node.bedroomCount, rent: node.price,
-      latitude: node.geoPoint?.latitude, longitude: node.geoPoint?.longitude,
-      status: 'Active', updatedAt: checkedAt,
-    }, SOURCE);
+    const listing = normalizeListing(
+      {
+        id: node.id,
+        url,
+        address: node.street,
+        unit: node.unit?.replace(/^#\s*/, ''),
+        zipCode: node.zipCode,
+        city: borough ?? nj?.[0] ?? (state === 'NJ' ? 'New Jersey' : state === 'CT' ? 'Connecticut' : 'New York State'),
+        state,
+        county: nj?.[1],
+        region: state === 'NJ' ? 'nj' : state === 'CT' ? 'ct' : undefined,
+        neighborhood: node.areaName,
+        bedrooms: node.bedroomCount,
+        rent: node.price,
+        latitude: node.geoPoint?.latitude,
+        longitude: node.geoPoint?.longitude,
+        status: 'Active',
+        updatedAt: checkedAt,
+      },
+      SOURCE,
+    );
     return listing ? [listing] : [];
   });
 }
@@ -187,34 +219,47 @@ function activeRentals(edges: { node?: SearchRental }[], checkedAt: string) {
 export async function parseStreetEasyPublicSearch(html: string, now: Date) {
   const payload: string[] = [];
   let script = '';
-  const parsed = new HTMLRewriter().on('script', {
-    element(element) {
-      script = '';
-      element.onEndTag(() => {
-        const args = script.match(/^\s*self\.__next_f\.push\(([\s\S]*)\)\s*;?\s*$/)?.[1];
-        if (!args) return;
-        const chunk: unknown = JSON.parse(args);
-        if (Array.isArray(chunk) && chunk[0] === 1 && typeof chunk[1] === 'string') payload.push(chunk[1]);
-      });
-    },
-    text(chunk) {
-      script += chunk.text;
-    },
-  }).transform(new Response(html));
+  const parsed = new HTMLRewriter()
+    .on('script', {
+      element(element) {
+        script = '';
+        element.onEndTag(() => {
+          const args = script.match(/^\s*self\.__next_f\.push\(([\s\S]*)\)\s*;?\s*$/)?.[1];
+          if (!args) return;
+          const chunk: unknown = JSON.parse(args);
+          if (Array.isArray(chunk) && chunk[0] === 1 && typeof chunk[1] === 'string') payload.push(chunk[1]);
+        });
+      },
+      text(chunk) {
+        script += chunk.text;
+      },
+    })
+    .transform(new Response(html));
   await parsed.body?.pipeTo(new WritableStream());
 
-  const page = assignedJson(payload.join(''), /"listingData":\s*(?=\{)/) as { search?: { criteria?: unknown }; totalCount?: unknown; edges?: unknown } | null;
-  const total = page?.totalCount, edges = page?.edges;
-  if (page?.search?.criteria !== 'area:1|status:open' || typeof total !== 'number' || !Number.isSafeInteger(total) ||
-      !Array.isArray(edges) || edges.length > PUBLIC_PAGE_LIMIT || total < edges.length || !edges.every(isRecord)) {
+  const page = assignedJson(payload.join(''), /"listingData":\s*(?=\{)/) as {
+    search?: { criteria?: unknown };
+    totalCount?: unknown;
+    edges?: unknown;
+  } | null;
+  const total = page?.totalCount,
+    edges = page?.edges;
+  if (
+    page?.search?.criteria !== 'area:1|status:open' ||
+    typeof total !== 'number' ||
+    !Number.isSafeInteger(total) ||
+    !Array.isArray(edges) ||
+    edges.length > PUBLIC_PAGE_LIMIT ||
+    total < edges.length ||
+    !edges.every(isRecord)
+  ) {
     throw new Error('StreetEasy did not return its public active rental search.');
   }
   const checkedAt = now.toISOString();
   // Rows have the search API's shape; normalizeListing checks every field it keeps.
   const listings = deduplicatePublicRentals(activeRentals(edges as Parameters<typeof activeRentals>[0], checkedAt));
   if (!listings.length && total !== 0) throw new Error('StreetEasy public search returned no supported rentals.');
-  return { listings, pages: 1, total, checkedAt, sampleLimit: PUBLIC_PAGE_LIMIT,
-    limited: true, transport: STREETEASY_PUBLIC_TRANSPORT };
+  return { listings, pages: 1, total, checkedAt, sampleLimit: PUBLIC_PAGE_LIMIT, limited: true, transport: STREETEASY_PUBLIC_TRANSPORT };
 }
 
 export async function loadStreetEasyPublicSearch(fetcher: FetchTransport, now: Date) {

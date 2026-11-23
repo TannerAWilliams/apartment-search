@@ -102,7 +102,11 @@ async function uninstall(dir: string) {
     await $`security delete-generic-password -s ${KEYCHAIN_SERVICE}`.quiet().nothrow();
   } else {
     const current = await $`crontab -l`.quiet().nothrow().text();
-    await $`crontab - < ${new Response(withoutSyncJob(current).map((line) => line + '\n').join(''))}`;
+    await $`crontab - < ${new Response(
+      withoutSyncJob(current)
+        .map((line) => line + '\n')
+        .join(''),
+    )}`;
     await $`rm -f ${dir}/token`;
   }
   console.log('Removed the daily StreetEasy sync.');
@@ -121,8 +125,11 @@ async function install(origin: string, dir: string) {
   console.log('Paste the app access token (APP_ACCESS_TOKEN on the Worker) when asked.');
   if (process.platform === 'darwin') {
     // -w last makes security prompt, so the token never appears in a process list.
-    const prompt = Bun.spawn(['security', 'add-generic-password', '-U', '-a', (await $`id -un`.text()).trim(), '-s', KEYCHAIN_SERVICE, '-w'], { stdio: ['inherit', 'inherit', 'inherit'] });
-    if (await prompt.exited !== 0) throw new Error('The token was not saved to the Keychain.');
+    const prompt = Bun.spawn(
+      ['security', 'add-generic-password', '-U', '-a', (await $`id -un`.text()).trim(), '-s', KEYCHAIN_SERVICE, '-w'],
+      { stdio: ['inherit', 'inherit', 'inherit'] },
+    );
+    if ((await prompt.exited) !== 0) throw new Error('The token was not saved to the Keychain.');
     const log = `${HOME}/Library/Logs/apartment-search-streeteasy.log`;
     await $`mkdir -p ${LAUNCH_AGENTS}`;
     await Bun.write(PLIST, launchdPlist({ repo: REPO, bun, hour, minute, log }));

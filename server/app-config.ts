@@ -37,7 +37,11 @@ export async function savedAppConfig(env: AppEnv & { BUCKET: Bucket }, config: R
     { id: OPENIGLOO.id, name: OPENIGLOO.name, sample: false, coverage: coverageById.get(OPENIGLOO.id) ?? 'NYC' },
   ];
   const companies = companyCounts((await storedMarket(env.BUCKET)).listings);
-  return { ...config, refresh, companies, sourceCatalog,
+  return {
+    ...config,
+    refresh,
+    companies,
+    sourceCatalog,
     mode: refresh.sources.some(({ id }) => sourceRecent(refresh, id)) ? 'live' : config.mode,
     sources: [...liveSources, ...config.sources.filter(({ id }) => !liveSources.some((item) => item.id === id))],
     snapshotMonth: refresh.sources.find(({ id }) => id === 'firstmover')?.month ?? SNAPSHOT_MONTH,

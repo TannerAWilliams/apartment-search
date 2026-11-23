@@ -15,8 +15,13 @@ import { searchRoutes } from './routes/search.ts';
 import { sourceRoutes } from './routes/sources.ts';
 import { vitalsRoutes } from './routes/vitals.ts';
 
-export const api = factory.createApp().basePath('/api')
-  .use(async (c, next) => { await next(); c.header('Cache-Control', 'no-store'); })
+export const api = factory
+  .createApp()
+  .basePath('/api')
+  .use(async (c, next) => {
+    await next();
+    c.header('Cache-Control', 'no-store');
+  })
   .route('/', sourceRoutes)
   .route('/', searchRoutes)
   .route('/', dataRoutes)
@@ -28,12 +33,20 @@ export type ApiRoutes = typeof api;
 
 // A known path asked with the wrong method gets a 405 that says which methods to use (Hono's method-not-allowed
 // middleware, which also sets the Allow header); anything else is a 404.
-api.use(methodNotAllowed({ app: api, onMethodNotAllowed: (c, methods) =>
-  c.json({ error: `Use ${methods.filter((method) => method !== 'HEAD').join(' or ')} for this endpoint.` }, 405, { Allow: methods.join(', ') }) }));
+api.use(
+  methodNotAllowed({
+    app: api,
+    onMethodNotAllowed: (c, methods) =>
+      c.json({ error: `Use ${methods.filter((method) => method !== 'HEAD').join(' or ')} for this endpoint.` }, 405, {
+        Allow: methods.join(', '),
+      }),
+  }),
+);
 api.all('*', (c) => fail(c, 404, 'Endpoint not found.'));
 
 api.onError((error, c) => {
-  if (error instanceof HTTPException) return error.status === 413 ? fail(c, 413, 'The request is too large.') : fail(c, 400, 'Send a JSON request.');
+  if (error instanceof HTTPException)
+    return error.status === 413 ? fail(c, 413, 'The request is too large.') : fail(c, 400, 'Send a JSON request.');
   if (error instanceof CommuteError) return c.json({ error: error.message, commuteError: true }, error.status as ContentfulStatusCode);
   if (error instanceof SearchInputError) return fail(c, 422, error.message);
   log.error('request_failed', error, { path: c.req.path, method: c.req.method });

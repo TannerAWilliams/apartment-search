@@ -7,9 +7,16 @@ const limit = 16 * 1024 * 1024;
 
 test('oversized declared feed body is canceled before reading or parsing', async () => {
   let canceled = false;
-  const response = new Response(new ReadableStream({ cancel() { canceled = true; } }), {
-    headers: { 'Content-Length': String(limit + 1) },
-  });
+  const response = new Response(
+    new ReadableStream({
+      cancel() {
+        canceled = true;
+      },
+    }),
+    {
+      headers: { 'Content-Length': String(limit + 1) },
+    },
+  );
   response.json = async () => []; // Regression guard: the old unbounded parser would accept this.
   await expect(loadFeed(feed, async () => response)).rejects.toMatchObject({ code: 'incomplete_feed' });
   expect(canceled).toBe(true);
@@ -18,10 +25,17 @@ test('oversized declared feed body is canceled before reading or parsing', async
 test('missing or understated content length cannot bypass the decoded-byte cap', async () => {
   for (const headers of [new Headers(), new Headers({ 'Content-Length': '2' })]) {
     let canceled = false;
-    const response = new Response(new ReadableStream({
-      start(controller) { controller.enqueue(new Uint8Array(limit + 1)); },
-      cancel() { canceled = true; },
-    }), { headers });
+    const response = new Response(
+      new ReadableStream({
+        start(controller) {
+          controller.enqueue(new Uint8Array(limit + 1));
+        },
+        cancel() {
+          canceled = true;
+        },
+      }),
+      { headers },
+    );
     response.json = async () => [];
     await expect(loadFeed(feed, async () => response)).rejects.toMatchObject({ code: 'incomplete_feed' });
     expect(canceled).toBe(true);
@@ -32,19 +46,38 @@ test('an oversized refresh preserves the prior saved partner inventory', async (
   const { refreshSources, storedFeed } = await import('../server/refresh.ts');
   const { createMemoryBucket } = await import('./fixtures/memory-bucket.ts');
   const env = { BUCKET: createMemoryBucket(), FREE_PARTNER_FEEDS_JSON: JSON.stringify([feed]) };
-  const row = { id: 'one', address: '12 Grove Street', unit: '3', city: 'Jersey City', state: 'NJ',
-    zip: '07302', county: 'Hudson', status: 'active', bedrooms: 2, rent: 2400 };
-  const first = await refreshSources(env, { sourceId: feed.id, onDemand: true,
-    now: new Date('2026-11-13T12:00:00Z'), fetcher: async (url: string) => {
-      expect(String(url)).toBe(feed.url); return Response.json([row]);
-    } });
+  const row = {
+    id: 'one',
+    address: '12 Grove Street',
+    unit: '3',
+    city: 'Jersey City',
+    state: 'NJ',
+    zip: '07302',
+    county: 'Hudson',
+    status: 'active',
+    bedrooms: 2,
+    rent: 2400,
+  };
+  const first = await refreshSources(env, {
+    sourceId: feed.id,
+    onDemand: true,
+    now: new Date('2026-11-13T12:00:00Z'),
+    fetcher: async (url: string) => {
+      expect(String(url)).toBe(feed.url);
+      return Response.json([row]);
+    },
+  });
   expect(required(first.sources.find((source) => source.id === feed.id)).status).toBe('updated');
   const saved = await storedFeed(env.BUCKET, feed);
-  const second = await refreshSources(env, { sourceId: feed.id, onDemand: true,
-    now: new Date('2026-11-13T13:00:00Z'), fetcher: async (url: string) => {
+  const second = await refreshSources(env, {
+    sourceId: feed.id,
+    onDemand: true,
+    now: new Date('2026-11-13T13:00:00Z'),
+    fetcher: async (url: string) => {
       expect(String(url)).toBe(feed.url);
       return new Response('[]', { headers: { 'Content-Length': String(limit + 1) } });
-    } });
+    },
+  });
   expect(required(second.sources.find((source) => source.id === feed.id)).status).toBe('failed');
   expect(await storedFeed(env.BUCKET, feed)).toStrictEqual(saved);
 });
@@ -54,20 +87,27 @@ test('exact byte limit remains accepted and multibyte text spans chunks correctl
   expect(await loadFeed(feed, async () => exact)).toStrictEqual({ listings: [], pages: 1 });
   const raw = JSON.stringify({ listings: [], total: 0, note: 'Apartment 🏠' });
   const bytes = new TextEncoder().encode(raw);
-  const response = new Response(new ReadableStream({ start(controller) {
-    for (const byte of bytes) controller.enqueue(Uint8Array.of(byte));
-    controller.close();
-  } }));
+  const response = new Response(
+    new ReadableStream({
+      start(controller) {
+        for (const byte of bytes) controller.enqueue(Uint8Array.of(byte));
+        controller.close();
+      },
+    }),
+  );
   expect(await loadFeed(feed, async () => response)).toStrictEqual({ listings: [], pages: 1 });
 });
 
 test('oversized later page rejects the entire feed instead of returning a partial result', async () => {
   const urls: string[] = [];
-  await expect(loadFeed(feed, async (url: string) => {
-    urls.push(url);
-    return urls.length === 1 ? Response.json({ listings: [], next: '/page2' }) :
-      new Response('[]', { headers: { 'Content-Length': String(limit + 1) } });
-  })).rejects.toMatchObject({ code: 'incomplete_feed' });
+  await expect(
+    loadFeed(feed, async (url: string) => {
+      urls.push(url);
+      return urls.length === 1
+        ? Response.json({ listings: [], next: '/page2' })
+        : new Response('[]', { headers: { 'Content-Length': String(limit + 1) } });
+    }),
+  ).rejects.toMatchObject({ code: 'incomplete_feed' });
   expect(urls).toStrictEqual([feed.url, 'https://feed.example.test/page2']);
 });
 

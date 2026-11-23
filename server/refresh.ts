@@ -8,7 +8,14 @@ import { decodeMarketRows, packRentMonth, SNAPSHOT_MONTH, type MarketRow } from 
 import { priorRentMonths } from '../src/rent-history.ts';
 import { bundledRentAreas, marketSnapshot } from '../src/bundled-market.ts';
 import { checkFirstMover, checkPublishedFirstMover } from './firstmover.ts';
-import { configuredFeeds, loadFeed, loadStreetEasyExport, STREETEASY_EXPORT_COVERAGE, STREETEASY_EXPORT_FORMAT, STREETEASY_EXPORT_MAX_AGE } from './listings.ts';
+import {
+  configuredFeeds,
+  loadFeed,
+  loadStreetEasyExport,
+  STREETEASY_EXPORT_COVERAGE,
+  STREETEASY_EXPORT_FORMAT,
+  STREETEASY_EXPORT_MAX_AGE,
+} from './listings.ts';
 import { housingDate, loadHousingConnect } from './housing.ts';
 import { HDC_RERENTALS, loadHdcRerentals } from './hdc-rerentals.ts';
 import { JERSEY_AFFORDABLE, refreshJerseyAffordable } from './jersey-affordable.ts';
@@ -23,7 +30,20 @@ import { loadStreetEasyPublicSearch, STREETEASY_LIVE, STREETEASY_PUBLIC_COVERAGE
 
 export { WORKFLOW_SOURCE_IDS };
 
-type RentalSnapshot = { listings: ListingData[]; observationHistory?: ObservationHistory; pages?: number; total?: number; rawCount?: number; transport?: string; checkedAt?: string; sampleLimit?: number; limited?: boolean; partial?: boolean; requestedPages?: number; failedPages?: number };
+type RentalSnapshot = {
+  listings: ListingData[];
+  observationHistory?: ObservationHistory;
+  pages?: number;
+  total?: number;
+  rawCount?: number;
+  transport?: string;
+  checkedAt?: string;
+  sampleLimit?: number;
+  limited?: boolean;
+  partial?: boolean;
+  requestedPages?: number;
+  failedPages?: number;
+};
 
 type StoredRentalSnapshot = Omit<RentalSnapshot, 'listings'> & { listings: (ListingData & { priceHistory?: UnitHistory })[] };
 
@@ -125,7 +145,10 @@ async function readSnapshot<T>(bucket: Bucket, key: string): Promise<T | null> {
   const hit = cache.get(key);
   if (hit?.etag === head.etag) return hit.value as T;
   const object = await bucket.get(key);
-  if (!object) { cache.delete(key); return null; }
+  if (!object) {
+    cache.delete(key);
+    return null;
+  }
   const value = deepFreeze(await unpack<T>(object));
   cache.set(key, { etag: object.etag, value });
   return value as T;
@@ -142,10 +165,14 @@ function checkInProgress(state: RefreshState, now: Date) {
 }
 
 function publicStatus(state: RefreshState, now = new Date()) {
-  const sources = (state.sources ?? []).map((source) => source.status === 'feed_required' && DIRECT_BY_ID.has(source.id)
-    ? { ...source, status: 'pending' } : source);
-  return { lastCheckedAt: state.lastCheckedAt ?? null, sources,
-    ...(checkInProgress(state, now) ? { checking: true, activeSource: state.activeSource ?? null } : {}) };
+  const sources = (state.sources ?? []).map((source) =>
+    source.status === 'feed_required' && DIRECT_BY_ID.has(source.id) ? { ...source, status: 'pending' } : source,
+  );
+  return {
+    lastCheckedAt: state.lastCheckedAt ?? null,
+    sources,
+    ...(checkInProgress(state, now) ? { checking: true, activeSource: state.activeSource ?? null } : {}),
+  };
 }
 
 export async function refreshStatus(bucket: Bucket | undefined) {
@@ -153,17 +180,22 @@ export async function refreshStatus(bucket: Bucket | undefined) {
 }
 
 function checkedDuring(sources: SourceStatus[] | undefined, ids: string[], hour: string) {
-  return ids.every((id) => sources?.some((source) =>
-    source.id === id && source.status !== 'failed' && source.checkedAt?.slice(0, 13) === hour));
+  return ids.every((id) =>
+    sources?.some((source) => source.id === id && source.status !== 'failed' && source.checkedAt?.slice(0, 13) === hour),
+  );
 }
 
 const coolingDown = (source: SourceStatus | undefined, now: Date) => Date.parse(source?.retryAt ?? '') > now.getTime();
 
 const sourceLifetime = (id: string, transport: string | undefined) =>
-  completeSync(id) ? COMPLETE_SYNC_LIFETIME :
-  id === STREETEASY_LIVE.id && transport === STREETEASY_EXPORT_FORMAT ? STREETEASY_EXPORT_MAX_AGE :
-  id === STREETEASY_LIVE.id && (transport === STREETEASY_TRANSPORT || transport === STREETEASY_PARTNER_TRANSPORT || transport === STREETEASY_PUBLIC_TRANSPORT)
-    ? STREETEASY_SYNC_INTERVAL : LIVE_MAX_AGE;
+  completeSync(id)
+    ? COMPLETE_SYNC_LIFETIME
+    : id === STREETEASY_LIVE.id && transport === STREETEASY_EXPORT_FORMAT
+      ? STREETEASY_EXPORT_MAX_AGE
+      : id === STREETEASY_LIVE.id &&
+          (transport === STREETEASY_TRANSPORT || transport === STREETEASY_PARTNER_TRANSPORT || transport === STREETEASY_PUBLIC_TRANSPORT)
+        ? STREETEASY_SYNC_INTERVAL
+        : LIVE_MAX_AGE;
 
 export function sourceRecent(status: { sources: SourceStatus[] } | null | undefined, id: string, now = new Date()) {
   const source = status?.sources.find((item) => item.id === id);
@@ -174,7 +206,7 @@ export function sourceRecent(status: { sources: SourceStatus[] } | null | undefi
 /** Expiry of a currently usable observation, never an extension of its checked time. */
 export function sourceExpiresAt(status: { sources: SourceStatus[] } | null | undefined, id: string, now = new Date()): string | null {
   if (!sourceRecent(status, id, now)) return null;
-  const source = status!.sources.find(item => item.id === id)!;
+  const source = status!.sources.find((item) => item.id === id)!;
   const lifetime = sourceLifetime(id, source.transport);
   return new Date(Date.parse(source.updatedAt!) + lifetime).toISOString();
 }
@@ -194,10 +226,13 @@ export async function refreshPlan(bucket: Bucket | undefined, now = new Date()) 
   // Configured feeds are not in SOURCES, which does not depend on the settings; the saved status lists them.
   const feeds = value.sources?.map(({ id }) => id).filter((id) => !SOURCES.some((source) => source.id === id)) ?? [];
   const publicIds = SOURCES.filter(({ kind }) => kind === 'public').map(({ id }) => id);
-  return { ready: Boolean(bucket), market,
+  return {
+    ready: Boolean(bucket),
+    market,
     alreadyChecked: Boolean(market) && !value.running && checkedDuring(value.sources, [...SOURCES.map(({ id }) => id), ...feeds], hour),
     publicAlreadyChecked: Boolean(market) && !value.running && checkedDuring(value.sources, publicIds, hour),
-    ...publicStatus(value, now) };
+    ...publicStatus(value, now),
+  };
 }
 
 export async function storedMarket(bucket: Bucket | undefined) {
@@ -212,13 +247,21 @@ export async function storedMarket(bucket: Bucket | undefined) {
   return market;
 }
 
-export async function storedRentHistory(bucket: Bucket | undefined, latest: string, region: string, grouping: string): Promise<RentHistory> {
-  return Promise.all(priorRentMonths(latest).map(async (month) => {
-    const object = month >= SNAPSHOT_MONTH ? await bucket?.get(HISTORY_PREFIX + month + '.json.gz') : null;
-    const areas = object ? (await unpack<Record<string, Record<string, PackedRentRow[]> | undefined>>(object))[region]?.[grouping] :
-      bundledRentAreas(month, region, grouping);
-    return [month, areas ?? []] as const;
-  }));
+export async function storedRentHistory(
+  bucket: Bucket | undefined,
+  latest: string,
+  region: string,
+  grouping: string,
+): Promise<RentHistory> {
+  return Promise.all(
+    priorRentMonths(latest).map(async (month) => {
+      const object = month >= SNAPSHOT_MONTH ? await bucket?.get(HISTORY_PREFIX + month + '.json.gz') : null;
+      const areas = object
+        ? (await unpack<Record<string, Record<string, PackedRentRow[]> | undefined>>(object))[region]?.[grouping]
+        : bundledRentAreas(month, region, grouping);
+      return [month, areas ?? []] as const;
+    }),
+  );
 }
 
 export async function storedFeed(bucket: Bucket, feed: { id: string }): Promise<StoredRentalSnapshot> {
@@ -227,26 +270,58 @@ export async function storedFeed(bucket: Bucket, feed: { id: string }): Promise<
   return snapshot;
 }
 
-function marketBaseline(object: BucketHead | null | undefined, previous: RefreshState['market']): ({ month: string; revision: string; updatedAt: string; catalogEtag?: string; csvEtag?: string }) | null {
+function marketBaseline(
+  object: BucketHead | null | undefined,
+  previous: RefreshState['market'],
+): { month: string; revision: string; updatedAt: string; catalogEtag?: string; csvEtag?: string } | null {
   const metadata = object?.customMetadata;
   if (metadata?.schema !== MARKET_SCHEMA) return null;
   const sameRelease = previous?.revision === metadata.revision;
-  return { ...metadata, month: metadata.month, revision: metadata.revision, updatedAt: metadata.updatedAt, catalogEtag: sameRelease ? previous?.catalogEtag : '', csvEtag: sameRelease ? previous?.csvEtag : '' };
+  return {
+    ...metadata,
+    month: metadata.month,
+    revision: metadata.revision,
+    updatedAt: metadata.updatedAt,
+    catalogEtag: sameRelease ? previous?.catalogEtag : '',
+    csvEtag: sameRelease ? previous?.csvEtag : '',
+  };
 }
 
-async function refreshMarket(bucket: Bucket, previous: RefreshState['market'], checkedAt: string, fetcher: SourceFetch, imported: Awaited<ReturnType<typeof checkFirstMover>> | undefined, isImport: boolean, onDemand: boolean) {
+async function refreshMarket(
+  bucket: Bucket,
+  previous: RefreshState['market'],
+  checkedAt: string,
+  fetcher: SourceFetch,
+  imported: Awaited<ReturnType<typeof checkFirstMover>> | undefined,
+  isImport: boolean,
+  onDemand: boolean,
+) {
   const stored = await bucket.head(MARKET_KEY);
   const baseline = marketBaseline(stored, previous);
   const check = onDemand ? checkPublishedFirstMover : checkFirstMover;
   const result = isImport ? imported : await check(baseline, fetcher);
-  const month = result?.month, revision = result?.revision;
-  if (!result || typeof month !== 'string' || !/^20\d{2}-(0[1-9]|1[0-2])$/.test(month) ||
-      typeof revision !== 'string' || !/^[a-f0-9]{40}$/.test(revision) ||
-      (baseline && month < baseline.month)) throw new Error('The FirstMover import failed.');
+  const month = result?.month,
+    revision = result?.revision;
+  if (
+    !result ||
+    typeof month !== 'string' ||
+    !/^20\d{2}-(0[1-9]|1[0-2])$/.test(month) ||
+    typeof revision !== 'string' ||
+    !/^[a-f0-9]{40}$/.test(revision) ||
+    (baseline && month < baseline.month)
+  )
+    throw new Error('The FirstMover import failed.');
   if (!result.changed && revision !== baseline?.revision) throw new Error('The FirstMover release has changed.');
-  if (result.changed && (!Array.isArray(result.rows) || result.rows.length === 0 || result.rows.length > 60000 ||
-      result.rows.some((row: unknown) => !Array.isArray(row) || row.length !== 15 ||
-        typeof row[12] !== 'string' || !/^\/(rental|building)\//.test(row[12])))) {
+  if (
+    result.changed &&
+    (!Array.isArray(result.rows) ||
+      result.rows.length === 0 ||
+      result.rows.length > 60000 ||
+      result.rows.some(
+        (row: unknown) =>
+          !Array.isArray(row) || row.length !== 15 || typeof row[12] !== 'string' || !/^\/(rental|building)\//.test(row[12]),
+      ))
+  ) {
     throw new Error('The FirstMover import had invalid listings.');
   }
   const updatedAt = result.changed ? checkedAt : baseline!.updatedAt;
@@ -259,17 +334,22 @@ async function refreshMarket(bucket: Bucket, previous: RefreshState['market'], c
       customMetadata: { month: month, revision: revision, updatedAt, schema: MARKET_SCHEMA },
     });
   }
-  return { status: result.changed ? 'updated' : 'current', month: month,
-    revision: revision, catalogEtag: 'catalogEtag' in result ? result.catalogEtag : undefined, csvEtag: result.csvEtag, updatedAt };
+  return {
+    status: result.changed ? 'updated' : 'current',
+    month: month,
+    revision: revision,
+    catalogEtag: 'catalogEtag' in result ? result.catalogEtag : undefined,
+    csvEtag: result.csvEtag,
+    updatedAt,
+  };
 }
 
 export async function storedHousing(bucket: Bucket | undefined, now = new Date()): Promise<HousingSnapshot> {
   const object = await bucket?.get(HOUSING_KEY);
   if (!object) return { publishedAt: null, checkedAt: null, opportunities: [] };
-  const data = await object.json() as HousingSnapshot;
+  const data = (await object.json()) as HousingSnapshot;
   const today = housingDate(now);
-  return { ...data, checkedAt: object.customMetadata.updatedAt,
-    opportunities: data.opportunities.filter(({ closes }) => closes >= today) };
+  return { ...data, checkedAt: object.customMetadata.updatedAt, opportunities: data.opportunities.filter(({ closes }) => closes >= today) };
 }
 
 export async function storedHdcRerentals(bucket: Bucket | undefined): Promise<HdcSnapshot | null> {
@@ -277,32 +357,50 @@ export async function storedHdcRerentals(bucket: Bucket | undefined): Promise<Hd
   return object ? object.json() : null;
 }
 
-async function refreshHousing(bucket: Bucket, checkedAt: string, fetcher: SourceFetch, now: Date, imported: HousingSnapshot | undefined, isImport: boolean) {
+async function refreshHousing(
+  bucket: Bucket,
+  checkedAt: string,
+  fetcher: SourceFetch,
+  now: Date,
+  imported: HousingSnapshot | undefined,
+  isImport: boolean,
+) {
   const result = isImport ? imported : await loadHousingConnect(fetcher, now);
-  if (!Array.isArray(result?.opportunities) || result.opportunities.length > 250 ||
-      result.opportunities.some(({ id, url }) => !/^\d{1,12}$/.test(id) ||
-        url !== 'https://housingconnect.nyc.gov/PublicWeb/details/' + id)) {
+  if (
+    !Array.isArray(result?.opportunities) ||
+    result.opportunities.length > 250 ||
+    result.opportunities.some(({ id, url }) => !/^\d{1,12}$/.test(id) || url !== 'https://housingconnect.nyc.gov/PublicWeb/details/' + id)
+  ) {
     throw new Error('NYC Open Data could not be imported.');
   }
   const data = JSON.stringify(result);
   const previous = await bucket.get(HOUSING_KEY);
-  if (previous && await previous.text() === data) {
+  if (previous && (await previous.text()) === data) {
     return { status: 'current', updatedAt: previous.customMetadata.updatedAt };
   }
   await bucket.put(HOUSING_KEY, data, { customMetadata: { updatedAt: checkedAt } });
   return { status: 'updated', updatedAt: checkedAt };
 }
 
-export async function saveObservedSnapshot(bucket: Bucket, key: string, result: object, listings: ListingData[], sourceId: string, at: string, customMetadata: Record<string, string> = {}) {
+export async function saveObservedSnapshot(
+  bucket: Bucket,
+  key: string,
+  result: object,
+  listings: ListingData[],
+  sourceId: string,
+  at: string,
+  customMetadata: Record<string, string> = {},
+) {
   const object = await bucket.get(key);
   const previous = object ? await unpack<{ observationHistory?: ObservationHistory; listings?: ObservedListing[] }>(object) : null;
-  const carriesForward = ('partial' in result && result.partial === true) || ('limited' in result && result.limited === true && sourceId === STREETEASY_LIVE.id);
+  const carriesForward =
+    ('partial' in result && result.partial === true) || ('limited' in result && result.limited === true && sourceId === STREETEASY_LIVE.id);
   const observed = recordListingHistory(listings, previous?.observationHistory, sourceId, at, { keepUnseen: carriesForward });
   if (carriesForward) {
-    const ids = new Set(observed.listings.map(listing => listing.id));
-    const retained = (previous?.listings ?? []).filter((listing) => !ids.has(listing.id))
-      .map((listing) => ({ ...listing, kind: 'cached',
-        sources: listing.sources.map(source => ({ ...source, kind: 'cached' })) }));
+    const ids = new Set(observed.listings.map((listing) => listing.id));
+    const retained = (previous?.listings ?? [])
+      .filter((listing) => !ids.has(listing.id))
+      .map((listing) => ({ ...listing, kind: 'cached', sources: listing.sources.map((source) => ({ ...source, kind: 'cached' })) }));
     observed.listings.push(...retained);
   }
   const saved = await bucket.put(key, compressed({ ...result, ...observed }), {
@@ -314,56 +412,125 @@ export async function saveObservedSnapshot(bucket: Bucket, key: string, result: 
 
 async function refreshOpenigloo(bucket: Bucket, result: RentalSnapshot, at: string) {
   const total = result?.total;
-  if (result?.transport !== OPENIGLOO_TRANSPORT || !Number.isSafeInteger(total) || total! < 0 || total! > OPENIGLOO_MAX_LISTINGS ||
-      !Array.isArray(result.listings) || result.listings.length < total! * OPENIGLOO_MIN_COVERAGE ||
-      new Set(result.listings.map((listing) => listing?.id)).size !== result.listings.length ||
-      result.listings.some((listing) => listing.kind !== 'feed' || listing.region !== 'nyc' ||
-        !Array.isArray(listing.sources) || listing.sources[0]?.id !== 'openigloo' ||
-        !/^https:\/\/www\.openigloo\.com\/unit\/nyc\//.test(listing.sources[0]?.url ?? ''))) {
+  if (
+    result?.transport !== OPENIGLOO_TRANSPORT ||
+    !Number.isSafeInteger(total) ||
+    total! < 0 ||
+    total! > OPENIGLOO_MAX_LISTINGS ||
+    !Array.isArray(result.listings) ||
+    result.listings.length < total! * OPENIGLOO_MIN_COVERAGE ||
+    new Set(result.listings.map((listing) => listing?.id)).size !== result.listings.length ||
+    result.listings.some(
+      (listing) =>
+        listing.kind !== 'feed' ||
+        listing.region !== 'nyc' ||
+        !Array.isArray(listing.sources) ||
+        listing.sources[0]?.id !== 'openigloo' ||
+        !/^https:\/\/www\.openigloo\.com\/unit\/nyc\//.test(listing.sources[0]?.url ?? ''),
+    )
+  ) {
     throw new Error('Openigloo did not return a verifiable complete inventory.');
   }
   const listings = result.listings.map((listing: ListingData) => ({ ...withoutCommuteEstimate(listing), checkedAt: at }));
   await saveObservedSnapshot(bucket, OPENIGLOO_KEY, result, listings, 'openigloo', at, { updatedAt: at });
-  return { status: 'updated', updatedAt: at, listingCount: result.listings.length, total, pages: result.pages, transport: result.transport };
+  return {
+    status: 'updated',
+    updatedAt: at,
+    listingCount: result.listings.length,
+    total,
+    pages: result.pages,
+    transport: result.transport,
+  };
 }
 
-async function refreshDirectRentals(bucket: Bucket, source: typeof DIRECT_RENTAL_SOURCES[number], result: RentalSnapshot, at: string, verifiedPartner = false) {
+async function refreshDirectRentals(
+  bucket: Bucket,
+  source: (typeof DIRECT_RENTAL_SOURCES)[number],
+  result: RentalSnapshot,
+  at: string,
+  verifiedPartner = false,
+) {
   const complete = completeSync(source.id);
   const verifiedComplete = isCompleteSnapshot(source.id, result?.transport);
-  if (complete && (!verifiedComplete || !Number.isSafeInteger(result.total) ||
-      result.rawCount !== result.total || result.listings.length > result.rawCount!)) {
+  if (
+    complete &&
+    (!verifiedComplete ||
+      !Number.isSafeInteger(result.total) ||
+      result.rawCount !== result.total ||
+      result.listings.length > result.rawCount!)
+  ) {
     throw new Error(complete.name + ' did not return a verifiable complete inventory.');
   }
   const verifiedStreetEasy = source.id === STREETEASY_LIVE.id && result?.transport === STREETEASY_TRANSPORT;
-  if (verifiedStreetEasy && (!Number.isSafeInteger(result.total) || result.total! < 0 || result.total! > 20000 ||
-      result.rawCount !== result.total || !Array.isArray(result.listings) || result.listings.length > result.total! ||
-      !Number.isFinite(Date.parse(result.checkedAt ?? '')) || Date.parse(result.checkedAt ?? '') > Date.parse(at) ||
-      Date.parse(at) - Date.parse(result.checkedAt ?? '') > 10 * 60_000)) {
+  if (
+    verifiedStreetEasy &&
+    (!Number.isSafeInteger(result.total) ||
+      result.total! < 0 ||
+      result.total! > 20000 ||
+      result.rawCount !== result.total ||
+      !Array.isArray(result.listings) ||
+      result.listings.length > result.total! ||
+      !Number.isFinite(Date.parse(result.checkedAt ?? '')) ||
+      Date.parse(result.checkedAt ?? '') > Date.parse(at) ||
+      Date.parse(at) - Date.parse(result.checkedAt ?? '') > 10 * 60_000)
+  ) {
     throw new Error('StreetEasy import is incomplete or stale.');
   }
-  const validPartial = source.id !== STREETEASY_LIVE.id && result?.partial === true &&
-    Number.isInteger(result.requestedPages) && result.requestedPages! >= source.minPages && result.requestedPages! <= source.maxPages &&
-    Number.isInteger(result.failedPages) && result.failedPages! > 0 && result.pages! + result.failedPages! === result.requestedPages;
-  if (!Number.isInteger(result?.pages) || result.pages! < (validPartial ? 1 : source.minPages) || result.pages! > source.maxPages ||
-      !Array.isArray(result.listings) || (!result.listings.length && result.total !== 0) || (!verifiedPartner && result.listings.length > result.pages! * source.rowsPerPage) ||
-      new Set(result.listings.map((listing: ListingData) => listing?.id)).size !== result.listings.length ||
-      result.listings.some((listing) => listing?.kind !== 'feed' || !source.regions.includes(listing.region ?? '') ||
-        typeof listing.id !== 'string' || !listing.id.startsWith(source.marketplace + ':') ||
-        typeof listing.address !== 'string' || !listing.address || typeof listing.unit !== 'string' ||
-        typeof listing.city !== 'string' || !listing.city || !/^\d{5}$/.test(listing.zip) ||
-        !Number.isFinite(listing.rent) || listing.rent <= 0 || listing.rent > ('maxRent' in source ? source.maxRent : 100000) ||
-        !Number.isInteger(listing.bedrooms) || listing.bedrooms < 0 || listing.bedrooms > (('maxBedrooms' in source ? source.maxBedrooms as number : undefined) ?? 4) ||
-        !Array.isArray(listing.sources) || !listing.sources.length ||
-        listing.sources.some((link) => link?.id !== source.marketplace || link.kind !== 'feed' ||
-          !source.listingUrl(link.url)) || !Number.isFinite(Date.parse(listing.seenAt ?? '')))) {
+  const validPartial =
+    source.id !== STREETEASY_LIVE.id &&
+    result?.partial === true &&
+    Number.isInteger(result.requestedPages) &&
+    result.requestedPages! >= source.minPages &&
+    result.requestedPages! <= source.maxPages &&
+    Number.isInteger(result.failedPages) &&
+    result.failedPages! > 0 &&
+    result.pages! + result.failedPages! === result.requestedPages;
+  if (
+    !Number.isInteger(result?.pages) ||
+    result.pages! < (validPartial ? 1 : source.minPages) ||
+    result.pages! > source.maxPages ||
+    !Array.isArray(result.listings) ||
+    (!result.listings.length && result.total !== 0) ||
+    (!verifiedPartner && result.listings.length > result.pages! * source.rowsPerPage) ||
+    new Set(result.listings.map((listing: ListingData) => listing?.id)).size !== result.listings.length ||
+    result.listings.some(
+      (listing) =>
+        listing?.kind !== 'feed' ||
+        !source.regions.includes(listing.region ?? '') ||
+        typeof listing.id !== 'string' ||
+        !listing.id.startsWith(source.marketplace + ':') ||
+        typeof listing.address !== 'string' ||
+        !listing.address ||
+        typeof listing.unit !== 'string' ||
+        typeof listing.city !== 'string' ||
+        !listing.city ||
+        !/^\d{5}$/.test(listing.zip) ||
+        !Number.isFinite(listing.rent) ||
+        listing.rent <= 0 ||
+        listing.rent > ('maxRent' in source ? source.maxRent : 100000) ||
+        !Number.isInteger(listing.bedrooms) ||
+        listing.bedrooms < 0 ||
+        listing.bedrooms > (('maxBedrooms' in source ? (source.maxBedrooms as number) : undefined) ?? 4) ||
+        !Array.isArray(listing.sources) ||
+        !listing.sources.length ||
+        listing.sources.some((link) => link?.id !== source.marketplace || link.kind !== 'feed' || !source.listingUrl(link.url)) ||
+        !Number.isFinite(Date.parse(listing.seenAt ?? '')),
+    )
+  ) {
     throw new Error(source.name + ' did not return a valid live sample.');
   }
   const listings = result.listings.map((listing: ListingData) => ({ ...withoutCommuteEstimate(listing), checkedAt: at }));
   await saveObservedSnapshot(bucket, 'rentals/' + source.id + '.json.gz', result, listings, source.id, at);
-  return { status: 'updated', updatedAt: at, listingCount: result.listings.length, pages: result.pages, total: result.total,
+  return {
+    status: 'updated',
+    updatedAt: at,
+    listingCount: result.listings.length,
+    pages: result.pages,
+    total: result.total,
     ...(validPartial ? { partial: true, requestedPages: result.requestedPages, failedPages: result.failedPages } : {}),
     ...(result.sampleLimit !== undefined ? { sampleLimit: result.sampleLimit } : {}),
-    ...(verifiedStreetEasy || verifiedPartner || verifiedComplete ? { transport: result.transport } : {}) };
+    ...(verifiedStreetEasy || verifiedPartner || verifiedComplete ? { transport: result.transport } : {}),
+  };
 }
 
 type PartnerFeed = ReturnType<typeof configuredFeeds>[number];
@@ -375,8 +542,14 @@ function streetEasyTransportFor(env: AppEnv, partner: PartnerFeed | undefined) {
 }
 
 /** Reads StreetEasy from an authorized partner: a complete export, or a feed whose total must reconcile. */
-async function refreshStreetEasyPartner(bucket: Bucket, source: typeof DIRECT_RENTAL_SOURCES[number], partner: PartnerFeed,
-  fetcher: SourceFetch, now: Date, at: string) {
+async function refreshStreetEasyPartner(
+  bucket: Bucket,
+  source: (typeof DIRECT_RENTAL_SOURCES)[number],
+  partner: PartnerFeed,
+  fetcher: SourceFetch,
+  now: Date,
+  at: string,
+) {
   if (partner.format === STREETEASY_EXPORT_FORMAT) {
     const result = await loadStreetEasyExport(partner, fetcher, now);
     const stored = await storedDirectRentals(bucket, source);
@@ -411,7 +584,13 @@ type Run = {
   streetEasyTransport: ReturnType<typeof streetEasyTransportFor>;
 };
 
-type StatusContext = { at: string; now: Date; onDemand: boolean; streetEasyTransport: ReturnType<typeof streetEasyTransportFor>; previousById: Map<string, SourceStatus> };
+type StatusContext = {
+  at: string;
+  now: Date;
+  onDemand: boolean;
+  streetEasyTransport: ReturnType<typeof streetEasyTransportFor>;
+  previousById: Map<string, SourceStatus>;
+};
 /** Why a check failed: whatever the source's loader threw. */
 type Failure = PromiseRejectedResult['reason'];
 
@@ -445,10 +624,18 @@ function describeCounts(item: SourceStatus, next: CheckResult | null, older: Sou
   if (pages !== undefined) item.pages = pages;
   const total = next ? next.total : older?.total;
   if (total !== undefined) item.total = total;
-  if (!next) item.error = failure?.code === 'incomplete_feed' ? item.name + ' returned an incomplete inventory.' : item.name + ' could not be refreshed.';
+  if (!next)
+    item.error =
+      failure?.code === 'incomplete_feed' ? item.name + ' returned an incomplete inventory.' : item.name + ' could not be refreshed.';
 }
 
-function describeDirect(item: SourceStatus, next: CheckResult | null, older: SourceStatus | undefined, failure: Failure, { onDemand, streetEasyTransport }: StatusContext) {
+function describeDirect(
+  item: SourceStatus,
+  next: CheckResult | null,
+  older: SourceStatus | undefined,
+  failure: Failure,
+  { onDemand, streetEasyTransport }: StatusContext,
+) {
   const { id, name } = item;
   if (id === STREETEASY_LIVE.id || id === 'hotpads-live') item.requestTransport = onDemand ? 'direct' : 'import';
   if (id === STREETEASY_LIVE.id && (onDemand || next?.transport === STREETEASY_TRANSPORT)) {
@@ -461,26 +648,48 @@ function describeDirect(item: SourceStatus, next: CheckResult | null, older: Sou
     item.listingCount = counts.listingCount;
     item.pages = counts.pages;
     if (counts.sampleLimit !== undefined) item.sampleLimit = counts.sampleLimit;
-    if (counts.partial) { item.partial = true; item.requestedPages = counts.requestedPages; item.failedPages = counts.failedPages; }
+    if (counts.partial) {
+      item.partial = true;
+      item.requestedPages = counts.requestedPages;
+      item.failedPages = counts.failedPages;
+    }
     if (counts.total !== undefined) item.total = counts.total;
   }
-  if (!next) item.error = failure?.code === 'incomplete_feed' ? name + ' returned an incomplete inventory.' :
-    failure instanceof Error && failure.message.startsWith(name + ' ') ? failure.message :
-      'The ' + name + ' live sample could not be refreshed.';
+  if (!next)
+    item.error =
+      failure?.code === 'incomplete_feed'
+        ? name + ' returned an incomplete inventory.'
+        : failure instanceof Error && failure.message.startsWith(name + ' ')
+          ? failure.message
+          : 'The ' + name + ' live sample could not be refreshed.';
 }
 
 /** A direct rental source: StreetEasy can also be read from an authorized partner or its public search page. */
-function directSource(source: typeof DIRECT_RENTAL_SOURCES[number]): RefreshSource {
+function directSource(source: (typeof DIRECT_RENTAL_SOURCES)[number]): RefreshSource {
   const streetEasy = source.id === STREETEASY_LIVE.id;
   return {
-    id: source.id, name: source.name, kind: 'live',
+    id: source.id,
+    name: source.name,
+    kind: 'live',
     catalog(env) {
       const partner = configuredFeeds(env).find(({ id }) => id === STREETEASY_LIVE.marketplace);
       const paused = streetEasy && env.STREETEASY_SYNC_ENABLED === 'false';
-      return { id: source.id, name: source.name, marketplace: source.marketplace,
-        coverage: !streetEasy ? source.coverage : partner?.format === STREETEASY_EXPORT_FORMAT ? STREETEASY_EXPORT_COVERAGE :
-          partner ? 'Configured StreetEasy partner feed' : env.STREETEASY_PUBLIC_SEARCH === 'true' ? STREETEASY_PUBLIC_COVERAGE : source.coverage,
-        resyncable: !paused, ...(paused ? { paused: true } : {}) };
+      return {
+        id: source.id,
+        name: source.name,
+        marketplace: source.marketplace,
+        coverage: !streetEasy
+          ? source.coverage
+          : partner?.format === STREETEASY_EXPORT_FORMAT
+            ? STREETEASY_EXPORT_COVERAGE
+            : partner
+              ? 'Configured StreetEasy partner feed'
+              : env.STREETEASY_PUBLIC_SEARCH === 'true'
+                ? STREETEASY_PUBLIC_COVERAGE
+                : source.coverage,
+        resyncable: !paused,
+        ...(paused ? { paused: true } : {}),
+      };
     },
     async check(run) {
       if (streetEasy && run.onDemand && run.streetEasyPartner) {
@@ -492,35 +701,78 @@ function directSource(source: typeof DIRECT_RENTAL_SOURCES[number]): RefreshSour
       return refreshDirectRentals(run.bucket, source, await run.liveData(source.id, source.load), run.at);
     },
     describe: describeDirect,
-    ...(streetEasy ? { endpoint: ({ streetEasyTransport }: StatusContext) => streetEasyTransport === STREETEASY_PUBLIC_TRANSPORT ?
-      'StreetEasy public rentals page' : streetEasyTransport === STREETEASY_TRANSPORT ? 'StreetEasy API' : source.name } : {}),
+    ...(streetEasy
+      ? {
+          endpoint: ({ streetEasyTransport }: StatusContext) =>
+            streetEasyTransport === STREETEASY_PUBLIC_TRANSPORT
+              ? 'StreetEasy public rentals page'
+              : streetEasyTransport === STREETEASY_TRANSPORT
+                ? 'StreetEasy API'
+                : source.name,
+        }
+      : {}),
   };
 }
 
 /** Every source except configured feeds, in the order the app lists them. */
 const SOURCES: readonly RefreshSource[] = [
-  { id: 'firstmover', name: 'FirstMover (StreetEasy)', kind: 'public',
-    catalog: () => ({ id: 'firstmover', name: 'FirstMover rent history', coverage: 'Historical rent charts, not active inventory', resyncable: true }),
-    check: (run) => refreshMarket(run.bucket, run.previous.market, run.at, run.fetch, run.imported('firstmover'), run.isImport, run.onDemand),
+  {
+    id: 'firstmover',
+    name: 'FirstMover (StreetEasy)',
+    kind: 'public',
+    catalog: () => ({
+      id: 'firstmover',
+      name: 'FirstMover rent history',
+      coverage: 'Historical rent charts, not active inventory',
+      resyncable: true,
+    }),
+    check: (run) =>
+      refreshMarket(run.bucket, run.previous.market, run.at, run.fetch, run.imported('firstmover'), run.isImport, run.onDemand),
     describe(item, next, older, failure) {
       item.month = next?.month ?? older?.month ?? SNAPSHOT_MONTH;
-      if (!next) item.error = failure instanceof Error &&
-        /^FirstMover |^The (latest )?FirstMover /.test(failure.message) ? failure.message : 'The FirstMover import failed.';
-    } },
-  { id: 'housingconnect', name: 'NYC Housing Connect', kind: 'public',
-    catalog: () => ({ id: 'housingconnect', name: 'NYC Housing Connect', coverage: 'NYC affordable housing opportunities', resyncable: true }),
-    check: (run) => refreshHousing(run.bucket, run.at, run.fetch, run.now, run.imported('housingconnect'), run.isImport) },
-  { ...HDC_RERENTALS, kind: 'reference',
+      if (!next)
+        item.error =
+          failure instanceof Error && /^FirstMover |^The (latest )?FirstMover /.test(failure.message)
+            ? failure.message
+            : 'The FirstMover import failed.';
+    },
+  },
+  {
+    id: 'housingconnect',
+    name: 'NYC Housing Connect',
+    kind: 'public',
+    catalog: () => ({
+      id: 'housingconnect',
+      name: 'NYC Housing Connect',
+      coverage: 'NYC affordable housing opportunities',
+      resyncable: true,
+    }),
+    check: (run) => refreshHousing(run.bucket, run.at, run.fetch, run.now, run.imported('housingconnect'), run.isImport),
+  },
+  {
+    ...HDC_RERENTALS,
+    kind: 'reference',
     catalog: () => ({ ...HDC_RERENTALS, coverage: 'NYC affordable re-rentals', resyncable: true }),
     async check(run) {
       const data = await loadHdcRerentals(run.fetch);
       await run.bucket.put(HDC_KEY, JSON.stringify({ ...data, checkedAt: run.at }));
       return { status: 'updated', updatedAt: run.at, listingCount: data.results.length };
-    } },
-  { ...JERSEY_AFFORDABLE, kind: 'reference',
-    catalog: () => ({ ...JERSEY_AFFORDABLE, coverage: 'Jersey City income-restricted application notices, not market inventory', resyncable: true }),
-    check: (run) => refreshJerseyAffordable(run.bucket, run.fetch, run.now, run.at) },
-  { id: 'openigloo', name: 'Openigloo', kind: 'live',
+    },
+  },
+  {
+    ...JERSEY_AFFORDABLE,
+    kind: 'reference',
+    catalog: () => ({
+      ...JERSEY_AFFORDABLE,
+      coverage: 'Jersey City income-restricted application notices, not market inventory',
+      resyncable: true,
+    }),
+    check: (run) => refreshJerseyAffordable(run.bucket, run.fetch, run.now, run.at),
+  },
+  {
+    id: 'openigloo',
+    name: 'Openigloo',
+    kind: 'live',
     catalog: () => ({ id: 'openigloo', name: 'Openigloo', coverage: OPENIGLOO_COVERAGE, resyncable: true }),
     check: async (run) => refreshOpenigloo(run.bucket, await run.liveData('openigloo', loadOpenigloo), run.at),
     describe(item, next, older, failure) {
@@ -531,15 +783,21 @@ const SOURCES: readonly RefreshSource[] = [
         if (counts.pages !== undefined) item.pages = counts.pages;
         if (counts.transport) item.transport = counts.transport;
       }
-      if (!next) item.error = failure instanceof Error && /^Openigloo /.test(failure.message) ? failure.message :
-        'The Openigloo inventory could not be refreshed.';
-    } },
+      if (!next)
+        item.error =
+          failure instanceof Error && /^Openigloo /.test(failure.message)
+            ? failure.message
+            : 'The Openigloo inventory could not be refreshed.';
+    },
+  },
   ...DIRECT_RENTAL_SOURCES.map(directSource),
 ];
 
 /** A partner feed from the settings. StreetEasy's partner feed is read by the StreetEasy source instead. */
 const feedSource = (feed: PartnerFeed): RefreshSource => ({
-  id: feed.id, name: feed.name, kind: 'feed',
+  id: feed.id,
+  name: feed.name,
+  kind: 'feed',
   catalog: () => ({ id: feed.id, name: feed.name, coverage: 'Configured feed', resyncable: true }),
   async check(run) {
     const result = await loadFeed(feed, run.fetch);
@@ -550,16 +808,22 @@ const feedSource = (feed: PartnerFeed): RefreshSource => ({
 });
 
 /** Every source these settings check, in the order the app lists them. */
-const sourcesFor = (env: AppEnv) => [...SOURCES,
-  ...configuredFeeds(env).filter(({ id }) => id !== STREETEASY_LIVE.marketplace).map(feedSource)];
+const sourcesFor = (env: AppEnv) => [
+  ...SOURCES,
+  ...configuredFeeds(env)
+    .filter(({ id }) => id !== STREETEASY_LIVE.marketplace)
+    .map(feedSource),
+];
 
 export function refreshCatalog(env: AppEnv): SourceDefinition[] {
   const feedIds = new Set(configuredFeeds(env).map(({ id }) => id));
   return [
     ...sourcesFor(env).map((source) => source.catalog(env)),
     // Marketplaces that need an authorized feed, listed so the app can say so.
-    ...FEED_REQUIRED_IDS.filter(id => !feedIds.has(id)).map(id => ({
-      id, name: MARKETPLACE_NAMES[id], coverage: id === 'citysnap' ? 'REBNY listing feed access required' : 'Authorized listing feed required',
+    ...FEED_REQUIRED_IDS.filter((id) => !feedIds.has(id)).map((id) => ({
+      id,
+      name: MARKETPLACE_NAMES[id],
+      coverage: id === 'citysnap' ? 'REBNY listing feed access required' : 'Authorized listing feed required',
       resyncable: false,
     })),
   ];
@@ -572,24 +836,45 @@ function checkStatus(source: RefreshSource, result: PromiseSettledResult<CheckRe
   const older = previousById.get(id);
   const next = result.status === 'fulfilled' ? result.value : null;
   const failure = result.status === 'rejected' ? result.reason : null;
-  const item: SourceStatus = { id, name, checkedAt: at, status: next?.status ?? 'failed',
-    updatedAt: next?.updatedAt ?? older?.updatedAt ?? null };
+  const item: SourceStatus = {
+    id,
+    name,
+    checkedAt: at,
+    status: next?.status ?? 'failed',
+    updatedAt: next?.updatedAt ?? older?.updatedAt ?? null,
+  };
   (source.describe ?? describeCounts)(item, next, older, failure, context);
   if (!next && onDemand) {
     const status = failure?.httpStatus;
     if (status) {
-      item.error = (source.endpoint?.(context) ?? name) + ' returned HTTP ' + status +
-        (failure?.providerDenial ? ' (' + failure.providerDenial + ')' : '') + '.';
-    }
-    else if (failure?.name === 'TimeoutError') item.error = name + ' did not respond in time.';
+      item.error =
+        (source.endpoint?.(context) ?? name) +
+        ' returned HTTP ' +
+        status +
+        (failure?.providerDenial ? ' (' + failure.providerDenial + ')' : '') +
+        '.';
+    } else if (failure?.name === 'TimeoutError') item.error = name + ' did not respond in time.';
     Object.assign(item, retrySchedule(failure, older?.transport === item.transport ? older : undefined, now.getTime()));
   }
   return item;
 }
 
-export async function refreshSources(env: AppEnv, { fetcher = fetch, now = new Date(), imports, onDemand = false, fallback = false, onlyStreetEasy = false, sourceId, excludeWorkflowSources = false }: RefreshOptions = {}) {
+export async function refreshSources(
+  env: AppEnv,
+  {
+    fetcher = fetch,
+    now = new Date(),
+    imports,
+    onDemand = false,
+    fallback = false,
+    onlyStreetEasy = false,
+    sourceId,
+    excludeWorkflowSources = false,
+  }: RefreshOptions = {},
+) {
   const selected = sourceId ?? (onlyStreetEasy ? STREETEASY_LIVE.id : null);
-  if (selected && !refreshCatalog(env).some((source) => source.id === selected && source.resyncable)) throw new Error('Unknown or disconnected refresh source.');
+  if (selected && !refreshCatalog(env).some((source) => source.id === selected && source.resyncable))
+    throw new Error('Unknown or disconnected refresh source.');
   const bucket = env.BUCKET;
   if (!bucket) throw new Error('Source storage is unavailable.');
   const current = await readState(bucket);
@@ -615,26 +900,45 @@ export async function refreshSources(env: AppEnv, { fetcher = fetch, now = new D
   const imported = <T>(id: string) => imports?.[id] as T | undefined;
   const priorStreetEasy = previousById.get(STREETEASY_LIVE.id);
   // A StreetEasy upload from the home sync replaces a failed or day-old StreetEasy check.
-  const recoveredStreetEasy = imported<{ transport?: string }>(STREETEASY_LIVE.id)?.transport === STREETEASY_TRANSPORT &&
-    (!priorStreetEasy || priorStreetEasy.status === 'failed' ||
+  const recoveredStreetEasy =
+    imported<{ transport?: string }>(STREETEASY_LIVE.id)?.transport === STREETEASY_TRANSPORT &&
+    (!priorStreetEasy ||
+      priorStreetEasy.status === 'failed' ||
       now.getTime() - Date.parse(priorStreetEasy.updatedAt ?? '') >= STREETEASY_SYNC_INTERVAL);
   /**
    * Whether this run checks a source. A regular run checks everything due; an on-demand one what is ready;
    * a StreetEasy-only run just StreetEasy; a fallback (the home sync filling in) only what failed or is stale.
    */
   const included = ({ id, kind }: RefreshSource) => {
-    if (kind === 'public') return !onlyStreetEasy && (fallback ? Boolean(imports?.[id]) && previousById.get(id)?.status === 'failed' && ready(id) : !onDemand || ready(id));
+    if (kind === 'public')
+      return (
+        !onlyStreetEasy &&
+        (fallback ? Boolean(imports?.[id]) && previousById.get(id)?.status === 'failed' && ready(id) : !onDemand || ready(id))
+      );
     if (kind === 'reference') return onDemand && !onlyStreetEasy && !fallback && ready(id);
     if (kind === 'feed') return !onlyStreetEasy && !fallback && (!onDemand || ready(id));
     const streetEasy = id === STREETEASY_LIVE.id;
-    const requested = onlyStreetEasy ? streetEasy && ready(id) : fallback ? streetEasy && recoveredStreetEasy :
-      onDemand ? ready(id) : Boolean(imports) && Object.hasOwn(imports!, id);
+    const requested = onlyStreetEasy
+      ? streetEasy && ready(id)
+      : fallback
+        ? streetEasy && recoveredStreetEasy
+        : onDemand
+          ? ready(id)
+          : Boolean(imports) && Object.hasOwn(imports!, id);
     // StreetEasy is skipped when paused, and in uploads when a partner feed supplies it.
     return requested && !(streetEasy && (env.STREETEASY_SYNC_ENABLED === 'false' || (!onDemand && streetEasyPartner)));
   };
   const checks = sources.filter(included).filter(({ id }) => !selected || id === selected);
   const ids = checks.map(({ id }) => id);
-  if (ids.length === 0 || (!onDemand && !selected && !onlyStreetEasy && !previous.running && !imported<{ changed?: boolean }>('firstmover')?.changed && checkedDuring(previous.sources, ids, hour))) {
+  if (
+    ids.length === 0 ||
+    (!onDemand &&
+      !selected &&
+      !onlyStreetEasy &&
+      !previous.running &&
+      !imported<{ changed?: boolean }>('firstmover')?.changed &&
+      checkedDuring(previous.sources, ids, hour))
+  ) {
     return { state: 'already_checked', ...publicStatus(previous) };
   }
 
@@ -644,11 +948,25 @@ export async function refreshSources(env: AppEnv, { fetcher = fetch, now = new D
   });
   if (!lease) return { state: 'running', ...publicStatus((await readState(bucket)).value, now) };
 
-  const sourceFetch = onDemand ? requestForRefresh(fetcher, AbortSignal.timeout(ids.includes(STREETEASY_LIVE.id) ? 120_000 : PAGE_FETCH_TIMEOUT)) : fetcher;
-  const run: Run = { bucket, at, now, onDemand, isImport: Boolean(imports), previous, fetch: sourceFetch, imported,
-    liveData: <T>(id: string, load: (fetcher: SourceFetch, now: Date) => T): T => onDemand ? load(completeSync(id) ?
-      requestForRefresh(fetcher, AbortSignal.timeout(completeSync(id)!.timeoutMs)) : sourceFetch, now) : imported<T>(id) as T,
-    streetEasyPartner, streetEasyTransport };
+  const sourceFetch = onDemand
+    ? requestForRefresh(fetcher, AbortSignal.timeout(ids.includes(STREETEASY_LIVE.id) ? 120_000 : PAGE_FETCH_TIMEOUT))
+    : fetcher;
+  const run: Run = {
+    bucket,
+    at,
+    now,
+    onDemand,
+    isImport: Boolean(imports),
+    previous,
+    fetch: sourceFetch,
+    imported,
+    liveData: <T>(id: string, load: (fetcher: SourceFetch, now: Date) => T): T =>
+      onDemand
+        ? load(completeSync(id) ? requestForRefresh(fetcher, AbortSignal.timeout(completeSync(id)!.timeoutMs)) : sourceFetch, now)
+        : (imported<T>(id) as T),
+    streetEasyPartner,
+    streetEasyTransport,
+  };
   const statusContext: StatusContext = { at, now, onDemand, streetEasyTransport, previousById };
   const statusFor = (check: RefreshSource, result: PromiseSettledResult<CheckResult>) => checkStatus(check, result, statusContext);
 
@@ -659,26 +977,38 @@ export async function refreshSources(env: AppEnv, { fetcher = fetch, now = new D
   const persist = (item: SourceStatus) => {
     writes = writes.then(async () => {
       progress.set(item.id, item);
-      const receipt = await bucket.put(STATE_KEY, JSON.stringify({ ...previous,
-        running: true, startedAt: at, activeSource, lastCheckedAt: at, sources: [...progress.values()] }),
-      { onlyIf: { etagMatches: currentEtag } });
+      const receipt = await bucket.put(
+        STATE_KEY,
+        JSON.stringify({ ...previous, running: true, startedAt: at, activeSource, lastCheckedAt: at, sources: [...progress.values()] }),
+        { onlyIf: { etagMatches: currentEtag } },
+      );
       if (!receipt) throw new Error('Source refresh was superseded.');
       currentEtag = receipt.etag;
     });
     return writes;
   };
-  const results = await Promise.all(checks.map(async (check): Promise<PromiseSettledResult<CheckResult>> => {
-    let result: PromiseSettledResult<CheckResult>;
-    try { result = { status: 'fulfilled', value: await check.check(run) }; }
-    catch (reason) { result = { status: 'rejected', reason }; }
-    await persist(statusFor(check, result));
-    return result;
-  }));
+  const results = await Promise.all(
+    checks.map(async (check): Promise<PromiseSettledResult<CheckResult>> => {
+      let result: PromiseSettledResult<CheckResult>;
+      try {
+        result = { status: 'fulfilled', value: await check.check(run) };
+      } catch (reason) {
+        result = { status: 'rejected', reason };
+      }
+      await persist(statusFor(check, result));
+      return result;
+    }),
+  );
   const attempted = checks.map((check, index) => statusFor(check, results[index]));
   for (const [index, item] of attempted.entries()) {
     const result = results[index];
-    if (result.status === 'rejected') log.warn('source_check_failed', { source: item.id, error: item.error,
-      cause: result.reason instanceof Error ? result.reason.message : String(result.reason), httpStatus: result.reason?.httpStatus });
+    if (result.status === 'rejected')
+      log.warn('source_check_failed', {
+        source: item.id,
+        error: item.error,
+        cause: result.reason instanceof Error ? result.reason.message : String(result.reason),
+        httpStatus: result.reason?.httpStatus,
+      });
   }
 
   // Sources no longer declared or configured drop out of the saved status.
@@ -686,9 +1016,19 @@ export async function refreshSources(env: AppEnv, { fetcher = fetch, now = new D
   const saved = [...attempted, ...(previous.sources ?? []).filter(({ id }) => !ids.includes(id) && declared.has(id))];
   const marketResult = results[checks.findIndex(({ id }) => id === 'firstmover')];
   const market = marketResult?.status === 'fulfilled' ? marketResult.value : previous.market;
-  const state = { running: false, hour, lastCheckedAt: at, market: market ? {
-    revision: market.revision, catalogEtag: market.catalogEtag, csvEtag: market.csvEtag,
-  } : null, sources: saved };
+  const state = {
+    running: false,
+    hour,
+    lastCheckedAt: at,
+    market: market
+      ? {
+          revision: market.revision,
+          catalogEtag: market.catalogEtag,
+          csvEtag: market.csvEtag,
+        }
+      : null,
+    sources: saved,
+  };
   const written = await bucket.put(STATE_KEY, JSON.stringify(state), { onlyIf: { etagMatches: currentEtag } });
   if (!written) return { state: 'superseded', ...publicStatus((await readState(bucket)).value) };
   const result = publicStatus(state);

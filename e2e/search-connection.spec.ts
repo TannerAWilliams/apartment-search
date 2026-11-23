@@ -6,40 +6,63 @@ import { parseFilters, localWorkplace } from '../src/search.ts';
 for (const initial of ['checking', 'offline'] as const) {
   test(`search during ${initial} preserves startup loading and can be retried`, async ({ page }) => {
     let release = () => {};
-    const gate = new Promise<void>(resolve => { release = resolve; });
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
     let configurations = 0;
     const searches: unknown[] = [];
-    const listing = normalizeListing({ id:'connection-test',addressLine1:'12 Grove Street',city:'Jersey City',state:'NJ',zipCode:'07302',bedrooms:1,price:2000,status:'Active',url:'https://www.zillow.com/homedetails/connection-test/' }, {id:'zillow',name:'Zillow',kind:'feed'});
+    const listing = normalizeListing(
+      {
+        id: 'connection-test',
+        addressLine1: '12 Grove Street',
+        city: 'Jersey City',
+        state: 'NJ',
+        zipCode: '07302',
+        bedrooms: 1,
+        price: 2000,
+        status: 'Active',
+        url: 'https://www.zillow.com/homedetails/connection-test/',
+      },
+      { id: 'zillow', name: 'Zillow', kind: 'feed' },
+    );
     if (!listing) throw new Error('Invalid fixture');
-    await page.route('**/*', async route => {
+    await page.route('**/*', async (route) => {
       const url = new URL(route.request().url());
       if (url.origin !== 'http://127.0.0.1:4173') return route.abort();
       if (!url.pathname.startsWith('/api/')) return route.continue();
       if (url.pathname === '/api/config') {
         configurations++;
         if (configurations === 1 && initial === 'checking') await gate;
-        if (configurations === 1 && initial === 'offline') return route.fulfill({status:503,json:{error:'Synthetic offline server'}});
-        return route.fulfill({json:{sources:[],commuteConfigured:false}});
+        if (configurations === 1 && initial === 'offline')
+          return route.fulfill({ status: 503, json: { error: 'Synthetic offline server' } });
+        return route.fulfill({ json: { sources: [], commuteConfigured: false } });
       }
       if (url.pathname === '/api/search') {
         searches.push(route.request().postDataJSON());
         const filters = parseFilters(route.request().postDataJSON());
-        return route.fulfill({json:localSearch([listing],filters,localWorkplace(filters),'live',[{id:'zillow',status:'searched'}])});
+        return route.fulfill({
+          json: localSearch([listing], filters, localWorkplace(filters), 'live', [{ id: 'zillow', status: 'searched' }]),
+        });
       }
       return route.abort();
     });
     await page.goto('/');
-    await page.getByRole('button',{name:'Filters',exact:true}).click();
-    if (initial === 'offline') await expect(page.getByRole('button',{name:'Retry connection',exact:true})).toBeVisible();
-    await page.getByRole('button',{name:'Search apartments →',exact:true}).click();
-    await expect(page.getByRole('alert').filter({hasText:initial === 'checking' ? 'Still connecting' : 'Retry the connection'}).first()).toBeVisible();
+    await page.getByRole('button', { name: 'Filters', exact: true }).click();
+    if (initial === 'offline') await expect(page.getByRole('button', { name: 'Retry connection', exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Search apartments →', exact: true }).click();
+    await expect(
+      page
+        .getByRole('alert')
+        .filter({ hasText: initial === 'checking' ? 'Still connecting' : 'Retry the connection' })
+        .first(),
+    ).toBeVisible();
     expect(searches).toHaveLength(0);
     if (initial === 'checking') release();
-    else await page.getByRole('button',{name:'Retry connection',exact:true}).click();
+    else await page.getByRole('button', { name: 'Retry connection', exact: true }).click();
     await expect.poll(() => searches.length).toBe(1);
-    await page.getByRole('button',{name:'Search apartments →',exact:true}).click();
+    await page.getByRole('button', { name: 'Search apartments →', exact: true }).click();
     await expect.poll(() => searches.length).toBe(2);
-    await expect(page.getByText('12 Grove Street',{exact:true})).toBeVisible();
-    await expect(page.getByRole('heading',{name:'1 matching apartment',exact:true})).toBeVisible();
+    await expect(page.getByText('12 Grove Street', { exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '1 matching apartment', exact: true })).toBeVisible();
   });
 }

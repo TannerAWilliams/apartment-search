@@ -18,21 +18,29 @@ export function useSavedListings(onError: (message: string) => void) {
   reportError.current = onError;
   useEffect(() => {
     let active = true;
-    AsyncStorage.getItem(SAVED_KEY).then((value) => {
-      if (value && active) {
-        const data = JSON.parse(value);
-        if (!Array.isArray(data)) throw new Error('Invalid saved listings');
-        // Listings this app saved on this device; an entry without an ID is dropped.
-        const stored = data.filter((item) => isRecord(item) && typeof item.id === 'string') as ListingData[];
-        setSaved((current) => mergeListings([...current, ...stored]));
-      }
-      if (active) setLoaded(true);
-    }).catch(() => { if (active) reportError.current('Saved listings could not be loaded from this device.'); });
-    return () => { active = false; };
+    AsyncStorage.getItem(SAVED_KEY)
+      .then((value) => {
+        if (value && active) {
+          const data = JSON.parse(value);
+          if (!Array.isArray(data)) throw new Error('Invalid saved listings');
+          // Listings this app saved on this device; an entry without an ID is dropped.
+          const stored = data.filter((item) => isRecord(item) && typeof item.id === 'string') as ListingData[];
+          setSaved((current) => mergeListings([...current, ...stored]));
+        }
+        if (active) setLoaded(true);
+      })
+      .catch(() => {
+        if (active) reportError.current('Saved listings could not be loaded from this device.');
+      });
+    return () => {
+      active = false;
+    };
   }, []);
   useEffect(() => {
-    if (loaded) AsyncStorage.setItem(SAVED_KEY, JSON.stringify(saved))
-      .catch(() => reportError.current('This device could not store the saved listings.'));
+    if (loaded)
+      AsyncStorage.setItem(SAVED_KEY, JSON.stringify(saved)).catch(() =>
+        reportError.current('This device could not store the saved listings.'),
+      );
   }, [saved, loaded]);
   return [saved, setSaved] as const;
 }
@@ -53,14 +61,29 @@ export function useInventoryClock(result: Pick<SearchResult, 'mode' | 'inventory
     let timer: ReturnType<typeof setTimeout> | undefined;
     const schedule = () => {
       const remaining = Date.parse(result.inventoryExpiresAt!) - Date.now();
-      if (!Number.isFinite(remaining) || remaining < 0) { check(); return; }
+      if (!Number.isFinite(remaining) || remaining < 0) {
+        check();
+        return;
+      }
       // setTimeout's maximum delay; longer expiries reschedule.
-      timer = setTimeout(() => { check(); schedule(); }, Math.min(2_147_483_647, remaining + 1));
+      timer = setTimeout(
+        () => {
+          check();
+          schedule();
+        },
+        Math.min(2_147_483_647, remaining + 1),
+      );
     };
     schedule();
-    const subscription = AppState.addEventListener('change', state => { if (state === 'active') check(); });
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') check();
+    });
     if (Platform.OS === 'web') window.addEventListener('focus', check);
-    return () => { if (timer !== undefined) clearTimeout(timer); subscription.remove(); if (Platform.OS === 'web') window.removeEventListener('focus', check); };
+    return () => {
+      if (timer !== undefined) clearTimeout(timer);
+      subscription.remove();
+      if (Platform.OS === 'web') window.removeEventListener('focus', check);
+    };
   }, [result]);
   return inventoryClock;
 }
@@ -99,7 +122,10 @@ export function useHashNavigation() {
     restore();
     window.addEventListener('popstate', restore);
     window.addEventListener('hashchange', restore);
-    return () => { window.removeEventListener('popstate', restore); window.removeEventListener('hashchange', restore); };
+    return () => {
+      window.removeEventListener('popstate', restore);
+      window.removeEventListener('hashchange', restore);
+    };
   }, []);
   const navigateTab = (next: string) => {
     if (Platform.OS === 'web' && window.location.hash !== '#' + next) window.history.pushState(null, '', '#' + next);

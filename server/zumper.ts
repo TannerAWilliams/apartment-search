@@ -25,30 +25,60 @@ export const ZUMPER_MARKETS = [
   { city: 'Greenwich', state: 'CT', region: 'ct' },
 ].map((market) => ({ ...market, borough: boroughKey(market.city) }));
 export const ZUMPER_TRANSPORT = 'complete-zumper-search';
-export const ZUMPER_COVERAGE = 'Every individually priced apartment on Zumper’s search pages in the five NYC boroughs, Jersey City, Hoboken, Newark, Hempstead, Huntington, Yonkers, White Plains, New Rochelle, Stamford, Norwalk and Greenwich';
+export const ZUMPER_COVERAGE =
+  'Every individually priced apartment on Zumper’s search pages in the five NYC boroughs, Jersey City, Hoboken, Newark, Hempstead, Huntington, Yonkers, White Plains, New Rochelle, Stamford, Norwalk and Greenwich';
 /** Manhattan had 124 search pages in November 2026; this bounds a market's crawl. */
 const MAX_MARKET_PAGES = 400;
 const PAGE_INTERVAL_MS = 1000;
 export const zumperPacing = { intervalMs: PAGE_INTERVAL_MS };
-const marketUrl = (market: { city: string; state: string }, page: number) => ORIGIN + '/apartments-for-rent/' +
-  market.city.toLowerCase().replaceAll(' ', '-') + '-' + market.state.toLowerCase() + (page > 1 ? '?page=' + page : '');
+const marketUrl = (market: { city: string; state: string }, page: number) =>
+  ORIGIN +
+  '/apartments-for-rent/' +
+  market.city.toLowerCase().replaceAll(' ', '-') +
+  '-' +
+  market.state.toLowerCase() +
+  (page > 1 ? '?page=' + page : '');
 const listingUrl = (url: unknown) => publicListingUrl(url, ORIGIN, /^\/listings\/\d+p?\/[^/]+\/?$/);
 /** Apartment, condo and house rental types; other types (rooms, parking) are excluded by the search itself. */
 const RESIDENTIAL_TYPES = new Set([0, 1, 4, 9, 13]);
-const sharedRental = /\b(?:room[- ]for[- ]rent|private (?:bed)?room|shared (?:apartment|home|housing)|roommates?|roomates?|(?:small|medium|large) (?:size )?room|rent (?:a|one) room)\b/i;
+const sharedRental =
+  /\b(?:room[- ]for[- ]rent|private (?:bed)?room|shared (?:apartment|home|housing)|roommates?|roomates?|(?:small|medium|large) (?:size )?room|rent (?:a|one) room)\b/i;
 
 export const ZUMPER_LIVE = {
-  ...SOURCE, id: 'zumper-live', marketplace: SOURCE.id, coverage: ZUMPER_COVERAGE,
-  regions: ['nyc', 'nj', 'li', 'metroNorth', 'ct'], minPages: ZUMPER_MARKETS.length, maxPages: ZUMPER_MARKETS.length * MAX_MARKET_PAGES, rowsPerPage: 25,
-  listingUrl, load: loadZumper,
+  ...SOURCE,
+  id: 'zumper-live',
+  marketplace: SOURCE.id,
+  coverage: ZUMPER_COVERAGE,
+  regions: ['nyc', 'nj', 'li', 'metroNorth', 'ct'],
+  minPages: ZUMPER_MARKETS.length,
+  maxPages: ZUMPER_MARKETS.length * MAX_MARKET_PAGES,
+  rowsPerPage: 25,
+  listingUrl,
+  load: loadZumper,
 };
 
-type ZumperMarket = typeof ZUMPER_MARKETS[number];
+type ZumperMarket = (typeof ZUMPER_MARKETS)[number];
 /** A Zumper search result as this parser reads it; normalizeListing checks every field it keeps. */
 type ZumperRow = {
-  listing_id?: unknown; url?: unknown; title?: string; description?: string; address?: unknown; city?: string; state?: string; zipcode?: string;
-  listing_status?: unknown; listing_type?: number; property_type?: number; lat?: unknown; lng?: unknown;
-  min_price?: unknown; max_price?: unknown; min_bedrooms?: unknown; max_bedrooms?: unknown; neighborhood_name?: unknown; brokerage_name?: unknown;
+  listing_id?: unknown;
+  url?: unknown;
+  title?: string;
+  description?: string;
+  address?: unknown;
+  city?: string;
+  state?: string;
+  zipcode?: string;
+  listing_status?: unknown;
+  listing_type?: number;
+  property_type?: number;
+  lat?: unknown;
+  lng?: unknown;
+  min_price?: unknown;
+  max_price?: unknown;
+  min_bedrooms?: unknown;
+  max_bedrooms?: unknown;
+  neighborhood_name?: unknown;
+  brokerage_name?: unknown;
 };
 type ZumperState = { currentSearch?: { hasMoreListables?: unknown; listables?: { listables?: unknown } } } | null;
 const hasListingId = (row: ZumperRow): row is ZumperRow & { listing_id: number } =>
@@ -62,7 +92,11 @@ function searchState(html: string) {
   return { rows: rows.filter(isRecord) as ZumperRow[], hasMore: search?.hasMoreListables !== false };
 }
 
-export function parseZumperPage(html: string, market: {city:string; state:string; region:string; borough:string|null}, checkedAt: string) {
+export function parseZumperPage(
+  html: string,
+  market: { city: string; state: string; region: string; borough: string | null },
+  checkedAt: string,
+) {
   return zumperListings(searchState(html).rows, market, checkedAt);
 }
 
@@ -71,7 +105,11 @@ export function parseZumperPage(html: string, market: {city:string; state:string
  * entry with a price range; only individually priced apartments are saved, and the number of
  * building entries skipped is reported.
  */
-export async function loadZumper(fetcher: FetchTransport = fetch, now = new Date(), wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))) {
+export async function loadZumper(
+  fetcher: FetchTransport = fetch,
+  now = new Date(),
+  wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms)),
+) {
   const checkedAt = now.toISOString();
   const listings = new Map<string, ListingData>();
   const entries = new Set<number>();
@@ -82,7 +120,11 @@ export async function loadZumper(fetcher: FetchTransport = fetch, now = new Date
     const gap = last + zumperPacing.intervalMs - Date.now();
     if (gap > 0) await wait(gap);
     last = Date.now();
-    const response = await fetcher(marketUrl(market, page), { headers: { Accept: 'text/html' }, redirect: 'manual', signal: AbortSignal.timeout(20000) });
+    const response = await fetcher(marketUrl(market, page), {
+      headers: { Accept: 'text/html' },
+      redirect: 'manual',
+      signal: AbortSignal.timeout(20000),
+    });
     if (!response.ok) throw Object.assign(new Error('Zumper returned HTTP ' + response.status + '.'), { httpStatus: response.status });
     return searchState(await response.text());
   }
@@ -96,7 +138,9 @@ export async function loadZumper(fetcher: FetchTransport = fetch, now = new Date
       pages++;
       const fresh = rows.filter(hasListingId).filter((row) => !seen.has(row.listing_id));
       for (const row of fresh) seen.add(row.listing_id);
-      buildings += fresh.filter((row) => !entries.has(row.listing_id) && (row.min_price !== row.max_price || row.min_bedrooms !== row.max_bedrooms)).length;
+      buildings += fresh.filter(
+        (row) => !entries.has(row.listing_id) && (row.min_price !== row.max_price || row.min_bedrooms !== row.max_bedrooms),
+      ).length;
       for (const row of fresh) entries.add(row.listing_id);
       for (const listing of zumperListings(fresh, market, checkedAt)) if (!listings.has(listing.id)) listings.set(listing.id, listing);
       if (!hasMore || rows.length === 0 || fresh.length === 0) break;
@@ -104,10 +148,22 @@ export async function loadZumper(fetcher: FetchTransport = fetch, now = new Date
   }
   if (!listings.size) throw new Error('Zumper returned no supported apartment listings.');
   // Separate ads for the same unit become one listing with each ad's link.
-  return { listings: deduplicatePublicRentals([...listings.values()]), pages, total: entries.size, rawCount: entries.size, buildings, checkedAt, transport: ZUMPER_TRANSPORT };
+  return {
+    listings: deduplicatePublicRentals([...listings.values()]),
+    pages,
+    total: entries.size,
+    rawCount: entries.size,
+    buildings,
+    checkedAt,
+    transport: ZUMPER_TRANSPORT,
+  };
 }
 
-function zumperListings(rows: ZumperRow[], market: {city:string; state:string; region:string; borough:string|null}, checkedAt: string): ListingData[] {
+function zumperListings(
+  rows: ZumperRow[],
+  market: { city: string; state: string; region: string; borough: string | null },
+  checkedAt: string,
+): ListingData[] {
   return rows.flatMap((row) => {
     const url = listingUrl(row.url);
     const borough = row.state ? searchBorough({ state: row.state, zip: row.zipcode }) : null;
@@ -115,20 +171,46 @@ function zumperListings(rows: ZumperRow[], market: {city:string; state:string; r
     // it is kept when it names a unit, since its map position is still exact.
     const address = String(row.address ?? '');
     const identified = /^\d/.test(address) || (row.listing_type === 3 && /#\s*\w+$/.test(address));
-    if (!url || row.listing_status !== 1 || ![1, 3].includes(row.listing_type ?? 0) || !RESIDENTIAL_TYPES.has(row.property_type ?? -1) ||
-        row.state !== market.state || !/^\d{5}$/.test(row.zipcode ?? '') || !identified ||
-        (market.borough ? borough !== market.borough : row.city?.trim().toLowerCase() !== market.city.toLowerCase()) || sharedRental.test(url + ' ' + (row.title ?? '') + ' ' + (row.description ?? '')) ||
-        row.min_price !== row.max_price || row.min_bedrooms !== row.max_bedrooms ||
-        typeof row.min_price !== 'number' || !(row.min_price > 0 && row.min_price <= 200_000) ||
-        !Number.isFinite(row.lat) || !Number.isFinite(row.lng)) return [];
+    if (
+      !url ||
+      row.listing_status !== 1 ||
+      ![1, 3].includes(row.listing_type ?? 0) ||
+      !RESIDENTIAL_TYPES.has(row.property_type ?? -1) ||
+      row.state !== market.state ||
+      !/^\d{5}$/.test(row.zipcode ?? '') ||
+      !identified ||
+      (market.borough ? borough !== market.borough : row.city?.trim().toLowerCase() !== market.city.toLowerCase()) ||
+      sharedRental.test(url + ' ' + (row.title ?? '') + ' ' + (row.description ?? '')) ||
+      row.min_price !== row.max_price ||
+      row.min_bedrooms !== row.max_bedrooms ||
+      typeof row.min_price !== 'number' ||
+      !(row.min_price > 0 && row.min_price <= 200_000) ||
+      !Number.isFinite(row.lat) ||
+      !Number.isFinite(row.lng)
+    )
+      return [];
 
     const city = market.borough && borough ? NYC_SEARCH_AREAS[borough].label : market.city;
-    const listing = normalizeListing({
-      id: String(row.listing_id), url, address: row.address, city, state: row.state, region: market.region,
-      zipCode: row.zipcode, latitude: row.lat, longitude: row.lng, bedrooms: row.min_bedrooms,
-      rent: row.min_price, neighborhood: row.neighborhood_name, company: row.brokerage_name,
-      status: 'Active', updatedAt: checkedAt,
-    }, SOURCE);
+    const listing = normalizeListing(
+      {
+        id: String(row.listing_id),
+        url,
+        address: row.address,
+        city,
+        state: row.state,
+        region: market.region,
+        zipCode: row.zipcode,
+        latitude: row.lat,
+        longitude: row.lng,
+        bedrooms: row.min_bedrooms,
+        rent: row.min_price,
+        neighborhood: row.neighborhood_name,
+        company: row.brokerage_name,
+        status: 'Active',
+        updatedAt: checkedAt,
+      },
+      SOURCE,
+    );
     return listing ? [listing] : [];
   });
 }

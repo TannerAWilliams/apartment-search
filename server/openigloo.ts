@@ -29,8 +29,16 @@ const BOROUGHS = ['Manhattan', 'Brooklyn', 'Queens', 'Bronx', 'Staten Island'];
 const BEDROOMS = [0, 1, 2, 3, 4]; // 4 = four or more
 
 type Row = {
-  id?: string; address?: string; borough?: string; neighborhood?: string; status?: string; url?: string;
-  bedrooms?: number; bathrooms?: number; rent_per_month?: number; no_fee?: boolean;
+  id?: string;
+  address?: string;
+  borough?: string;
+  neighborhood?: string;
+  status?: string;
+  url?: string;
+  bedrooms?: number;
+  bathrooms?: number;
+  rent_per_month?: number;
+  no_fee?: boolean;
 };
 /** max: null means no upper bound. area is a borough, or a neighborhood within `borough`. */
 type Search = { borough: string; area: string; bedrooms: number; min: number; max: number | null };
@@ -38,11 +46,18 @@ export type OpeniglooRow = Row & { search: Search };
 type Page = { total: number; rows: Row[] };
 /** A JSON-RPC reply from the Openigloo MCP server, and the result of its search tool. */
 type RpcMessage = { id?: unknown; error?: unknown; result?: unknown };
-type ToolResult = { isError?: unknown; content?: { text?: unknown }[]; structuredContent?: { total_matches?: unknown; apartments?: unknown } };
+type ToolResult = {
+  isError?: unknown;
+  content?: { text?: unknown }[];
+  structuredContent?: { total_matches?: unknown; apartments?: unknown };
+};
 type OpeniglooSearch = (search: Search) => Promise<Page>;
 
 /** Opens an MCP session with Openigloo's public server and returns its search tool. */
-export async function openiglooSearch(fetcher: FetchTransport, wait: (ms: number) => Promise<unknown> = (ms) => new Promise((resolve) => setTimeout(resolve, ms))): Promise<OpeniglooSearch> {
+export async function openiglooSearch(
+  fetcher: FetchTransport,
+  wait: (ms: number) => Promise<unknown> = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+): Promise<OpeniglooSearch> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' };
   let nextId = 1;
   let lastRequest = 0;
@@ -52,7 +67,11 @@ export async function openiglooSearch(fetcher: FetchTransport, wait: (ms: number
       if (gap > 0) await wait(gap);
       lastRequest = Date.now();
       const response = await fetcher(ENDPOINT, {
-        method: 'POST', headers: { ...headers }, body, redirect: 'manual', signal: AbortSignal.timeout(20000),
+        method: 'POST',
+        headers: { ...headers },
+        body,
+        redirect: 'manual',
+        signal: AbortSignal.timeout(20000),
       });
       if (response.status !== 429 || attempt >= RATE_LIMIT_RETRIES) return response;
       await response.body?.cancel();
@@ -66,16 +85,27 @@ export async function openiglooSearch(fetcher: FetchTransport, wait: (ms: number
     if (!response.ok) throw Object.assign(new Error('Openigloo returned HTTP ' + response.status + '.'), { httpStatus: response.status });
     const session = response.headers.get('Mcp-Session-Id');
     if (session) headers['Mcp-Session-Id'] = session;
-    if (notification || response.status === 202 || response.status === 204) { await response.body?.cancel(); return null; }
+    if (notification || response.status === 202 || response.status === 204) {
+      await response.body?.cancel();
+      return null;
+    }
     const data = await response.text();
-    const message = (response.headers.get('Content-Type')?.includes('text/event-stream') ?
-      data.split(/\r?\n/).filter((line) => line.startsWith('data: '))
-        .map((line) => JSON.parse(line.slice(6)) as RpcMessage | null).find((event) => event?.id === id) : JSON.parse(data)) as RpcMessage | null | undefined;
+    const message = (
+      response.headers.get('Content-Type')?.includes('text/event-stream')
+        ? data
+            .split(/\r?\n/)
+            .filter((line) => line.startsWith('data: '))
+            .map((line) => JSON.parse(line.slice(6)) as RpcMessage | null)
+            .find((event) => event?.id === id)
+        : JSON.parse(data)
+    ) as RpcMessage | null | undefined;
     if (!message || message.error || message.id !== id) throw new Error('The Openigloo request failed.');
     return message.result;
   }
   const handshake = await request('initialize', {
-    protocolVersion: PROTOCOL, capabilities: {}, clientInfo: { name: 'Apartment Search', version: '1.0' },
+    protocolVersion: PROTOCOL,
+    capabilities: {},
+    clientInfo: { name: 'Apartment Search', version: '1.0' },
   });
   if ((handshake as { protocolVersion?: unknown } | null)?.protocolVersion !== PROTOCOL) throw new Error('The Openigloo protocol changed.');
   headers['MCP-Protocol-Version'] = PROTOCOL;
@@ -84,21 +114,39 @@ export async function openiglooSearch(fetcher: FetchTransport, wait: (ms: number
     const rent = { ...(min > 0 ? { min_rent: min } : {}), ...(max !== null ? { max_rent: max } : {}) };
     let result: ToolResult | null;
     for (let attempt = 0; ; attempt++) {
-      result = await request('tools/call', { name: 'search_apartments', arguments: {
-        area, bedrooms: [bedrooms], ...rent, limit: PAGE_SIZE,
-      } }) as ToolResult | null;
+      result = (await request('tools/call', {
+        name: 'search_apartments',
+        arguments: {
+          area,
+          bedrooms: [bedrooms],
+          ...rent,
+          limit: PAGE_SIZE,
+        },
+      })) as ToolResult | null;
       const busy = result?.isError && /try again/i.test(String(result?.content?.[0]?.text ?? ''));
       if (!busy || attempt >= RETRY_DELAYS.length) break;
       await wait(RETRY_DELAYS[attempt]);
     }
     const content = result?.structuredContent;
-    if (result?.isError || typeof content?.total_matches !== 'number' || !Number.isSafeInteger(content.total_matches) || content.total_matches < 0 ||
-        !Array.isArray(content?.apartments) || content.apartments.length > PAGE_SIZE) {
-      throw new Error('Openigloo did not return listing results' + (result?.isError ? ': ' + String(result?.content?.[0]?.text ?? '').slice(0, 160) : '.'));
+    if (
+      result?.isError ||
+      typeof content?.total_matches !== 'number' ||
+      !Number.isSafeInteger(content.total_matches) ||
+      content.total_matches < 0 ||
+      !Array.isArray(content?.apartments) ||
+      content.apartments.length > PAGE_SIZE
+    ) {
+      throw new Error(
+        'Openigloo did not return listing results' +
+          (result?.isError ? ': ' + String(result?.content?.[0]?.text ?? '').slice(0, 160) : '.'),
+      );
     }
     // With no matches the tool suggests unrelated alternatives; they are not results.
     // Rows have the tool's documented fields; each one is checked before it is saved.
-    return { total: content.total_matches, rows: content.total_matches > 0 ? content.apartments.map((row) => isRecord(row) ? row as Row : {}) : [] };
+    return {
+      total: content.total_matches,
+      rows: content.total_matches > 0 ? content.apartments.map((row) => (isRecord(row) ? (row as Row) : {})) : [],
+    };
   };
 }
 
@@ -106,9 +154,15 @@ function limiter(size: number) {
   let active = 0;
   const waiting: (() => void)[] = [];
   return async <T>(work: () => Promise<T>) => {
-    if (active >= size) await new Promise<void>((resolve) => waiting.push(resolve)); else active++;
-    try { return await work(); }
-    finally { const next = waiting.shift(); if (next) next(); else active--; }
+    if (active >= size) await new Promise<void>((resolve) => waiting.push(resolve));
+    else active++;
+    try {
+      return await work();
+    } finally {
+      const next = waiting.shift();
+      if (next) next();
+      else active--;
+    }
   };
 }
 
@@ -119,16 +173,19 @@ function limiter(size: number) {
  * displayed rents only guide where to split.
  */
 /** One starting search per borough and bedroom count; a complete sync crawls all of them. */
-export const OPENIGLOO_CELLS: Search[] = BOROUGHS.flatMap((borough) => BEDROOMS.map((bedrooms) => ({ borough, area: borough, bedrooms, min: 0, max: null })));
+export const OPENIGLOO_CELLS: Search[] = BOROUGHS.flatMap((borough) =>
+  BEDROOMS.map((bedrooms) => ({ borough, area: borough, bedrooms, min: 0, max: null })),
+);
 
 export async function crawlOpenigloo(search: OpeniglooSearch, cells = OPENIGLOO_CELLS) {
   let calls = 0;
   let unresolved = 0;
   const limit = limiter(CONCURRENCY);
-  const query = (q: Search) => limit(async () => {
-    if (++calls > MAX_CALLS) throw new Error('Openigloo inventory exceeds the sync request limit.');
-    return search(q);
-  });
+  const query = (q: Search) =>
+    limit(async () => {
+      if (++calls > MAX_CALLS) throw new Error('Openigloo inventory exceeds the sync request limit.');
+      return search(q);
+    });
   const rows = new Map<string, OpeniglooRow>();
   const neighborhoods = new Map<string, Set<string>>();
   const keep = (q: Search, page: Page) => {
@@ -142,40 +199,53 @@ export async function crawlOpenigloo(search: OpeniglooSearch, cells = OPENIGLOO_
     }
   };
   async function byNeighborhood(q: Search, page: Page) {
-    const names = [...neighborhoods.get(q.borough) ?? []];
-    const found = await Promise.all(names.map(async (area) => {
-      const child = { ...q, area };
-      const result = await query(child);
-      keep(child, result);
-      if (result.total > PAGE_SIZE) unresolved += result.total - result.rows.length;
-      return result.total;
-    }));
+    const names = [...(neighborhoods.get(q.borough) ?? [])];
+    const found = await Promise.all(
+      names.map(async (area) => {
+        const child = { ...q, area };
+        const result = await query(child);
+        keep(child, result);
+        if (result.total > PAGE_SIZE) unresolved += result.total - result.rows.length;
+        return result.total;
+      }),
+    );
     unresolved += Math.max(0, page.total - found.reduce((sum, value) => sum + value, 0));
   }
   async function collect(q: Search, page: Page): Promise<void> {
     keep(q, page);
     if (page.total <= PAGE_SIZE) return;
     if (q.max === null && q.min < TOP_RANGE_START) {
-      const ranges = [{ ...q, max: TOP_RANGE_START - 1 }, { ...q, min: TOP_RANGE_START }];
+      const ranges = [
+        { ...q, max: TOP_RANGE_START - 1 },
+        { ...q, min: TOP_RANGE_START },
+      ];
       await Promise.all(ranges.map(async (child) => collect(child, await query(child))));
       return;
     }
     const upper = q.max ?? q.min * 2;
     if (q.min >= upper) {
-      if (q.area === q.borough) await byNeighborhood(q, page); else unresolved += page.total - page.rows.length;
+      if (q.area === q.borough) await byNeighborhood(q, page);
+      else unresolved += page.total - page.rows.length;
       return;
     }
-    const prices = page.rows.map((row) => row.rent_per_month)
-      .filter((rent): rent is number => Number.isSafeInteger(rent) && rent! > q.min && rent! < upper).sort((a, b) => a - b);
+    const prices = page.rows
+      .map((row) => row.rent_per_month)
+      .filter((rent): rent is number => Number.isSafeInteger(rent) && rent! > q.min && rent! < upper)
+      .sort((a, b) => a - b);
     const split = prices.length ? prices[Math.floor(prices.length / 2)] - 1 : Math.floor((q.min + upper) / 2);
-    const ranges = [{ ...q, max: split }, { ...q, min: split + 1 }];
+    const ranges = [
+      { ...q, max: split },
+      { ...q, min: split + 1 },
+    ];
     await Promise.all(ranges.map(async (child) => collect(child, await query(child))));
   }
-  const totals = await Promise.all(cells.map(async (cell) => {
-    const page = await query(cell);
-    await collect(cell, page);
-    return page.total;
-  }));
+  const totals = await Promise.all(
+    cells.map(async (cell) => {
+      const page = await query(cell);
+      await collect(cell, page);
+      return page.total;
+    }),
+  );
   return { rows: [...rows.values()], total: totals.reduce((sum, value) => sum + value, 0), calls, unresolved };
 }
 
@@ -190,19 +260,42 @@ export function openiglooListing(row: OpeniglooRow, checkedAt: string): ListingD
   const parts = typeof row.address === 'string' ? row.address.trim().match(ADDRESS) : null;
   const { search } = row;
   const bedroomsMatch = search.bedrooms === 4 ? Number(row.bedrooms) >= 4 : row.bedrooms === search.bedrooms;
-  if (!parts || row.status !== 'for_rent' || marketplaceIdForUrl(row.url) !== OPENIGLOO.id || !row.url?.includes('/unit/nyc/') ||
-      !boroughKey(row.borough ?? '') || boroughKey(row.borough ?? '') !== boroughKey(search.borough) ||
-      !/^1\d{4}$/.test(parts[3]) || !bedroomsMatch ||
-      !Number.isFinite(row.rent_per_month) || row.rent_per_month! <= 0) return null;
+  if (
+    !parts ||
+    row.status !== 'for_rent' ||
+    marketplaceIdForUrl(row.url) !== OPENIGLOO.id ||
+    !row.url?.includes('/unit/nyc/') ||
+    !boroughKey(row.borough ?? '') ||
+    boroughKey(row.borough ?? '') !== boroughKey(search.borough) ||
+    !/^1\d{4}$/.test(parts[3]) ||
+    !bedroomsMatch ||
+    !Number.isFinite(row.rent_per_month) ||
+    row.rent_per_month! <= 0
+  )
+    return null;
   const street = parts[1].replace(/\s+/g, ' ').trim();
   const [, address, unit = ''] = street.match(/^(.*?)\s+(?:#|apt\.?\s+|unit\s+)\s*([\w-]+)$/i) ?? [, street];
   const url = new URL(row.url!);
   url.search = '';
-  return normalizeListing({
-    id: row.id, address, unit, city: boroughLabel(search.borough), state: 'NY', zipCode: parts[3], region: 'nyc',
-    neighborhood: row.neighborhood, bedrooms: Math.min(Number(row.bedrooms), 4), bathrooms: row.bathrooms,
-    rent: row.rent_per_month, url: url.href, status: 'Active', updatedAt: checkedAt,
-  }, OPENIGLOO);
+  return normalizeListing(
+    {
+      id: row.id,
+      address,
+      unit,
+      city: boroughLabel(search.borough),
+      state: 'NY',
+      zipCode: parts[3],
+      region: 'nyc',
+      neighborhood: row.neighborhood,
+      bedrooms: Math.min(Number(row.bedrooms), 4),
+      bathrooms: row.bathrooms,
+      rent: row.rent_per_month,
+      url: url.href,
+      status: 'Active',
+      updatedAt: checkedAt,
+    },
+    OPENIGLOO,
+  );
 }
 
 /** Geocodes each building once, in batches small enough for the Census batch geocoder. */
@@ -215,11 +308,16 @@ async function geocodeBuildings(listings: ListingData[], fetcher: FetchTransport
   const unique = [...buildings.values()];
   const points = new Map<string, { latitude?: number; longitude?: number }>();
   const batch = limiter(2);
-  await Promise.all(Array.from({ length: Math.ceil(unique.length / 500) }, (_, index) => batch(async () => {
-    const chunk = unique.slice(index * 500, (index + 1) * 500);
-    const located = await geocodeRentalAddresses(chunk, fetcher, 60000).catch(() => chunk);
-    for (const item of located) if (item.latitude !== undefined) points.set(item.id, { latitude: item.latitude, longitude: item.longitude });
-  })));
+  await Promise.all(
+    Array.from({ length: Math.ceil(unique.length / 500) }, (_, index) =>
+      batch(async () => {
+        const chunk = unique.slice(index * 500, (index + 1) * 500);
+        const located = await geocodeRentalAddresses(chunk, fetcher, 60000).catch(() => chunk);
+        for (const item of located)
+          if (item.latitude !== undefined) points.set(item.id, { latitude: item.latitude, longitude: item.longitude });
+      }),
+    ),
+  );
   const keys = [...buildings.keys()];
   const byKey = new Map(keys.map((key, index) => [key, points.get(String(index))]));
   return listings.map((listing) => ({ ...listing, ...byKey.get([listing.address, listing.zip].join('|').toLowerCase()) }));
@@ -230,14 +328,22 @@ type OpeniglooCrawl = { rows: OpeniglooRow[]; total: number; calls: number; unre
 /** Turns a complete crawl into saved listings, refusing one that misses too much of the reported inventory. */
 export async function finishOpenigloo(crawl: OpeniglooCrawl, fetcher: FetchTransport, now: Date) {
   const checkedAt = now.toISOString();
-  const listings = crawl.rows.flatMap((row) => { const listing = openiglooListing(row, checkedAt); return listing ? [listing] : []; });
+  const listings = crawl.rows.flatMap((row) => {
+    const listing = openiglooListing(row, checkedAt);
+    return listing ? [listing] : [];
+  });
   if (crawl.total > OPENIGLOO_MAX_LISTINGS) throw new Error('Openigloo inventory exceeds the sync limit.');
   if (listings.length < crawl.total * OPENIGLOO_MIN_COVERAGE) {
     throw new Error(`Openigloo returned ${listings.length} usable listings of ${crawl.total} reported; the saved inventory was kept.`);
   }
   return {
-    listings: await geocodeBuildings(listings, fetcher), total: crawl.total, rawCount: crawl.rows.length,
-    pages: crawl.calls, checkedAt, transport: OPENIGLOO_TRANSPORT, unresolved: crawl.unresolved,
+    listings: await geocodeBuildings(listings, fetcher),
+    total: crawl.total,
+    rawCount: crawl.rows.length,
+    pages: crawl.calls,
+    checkedAt,
+    transport: OPENIGLOO_TRANSPORT,
+    unresolved: crawl.unresolved,
   };
 }
 

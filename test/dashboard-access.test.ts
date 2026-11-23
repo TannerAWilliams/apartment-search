@@ -16,8 +16,13 @@ test('dashboard capability supports public aggregates but fails closed on unconf
 
 test('public dashboard exposes only allowlisted stored aggregates with no writes or provider requests', async () => {
   let calls = 0;
-  const options = { fetcher: async () => { calls++; throw new Error('No provider access allowed'); },
-    dashboardArchive: () => Bun.file(new URL('../public/data/streeteasy-dashboard-2026-11-17.zip', import.meta.url)).bytes() };
+  const options = {
+    fetcher: async () => {
+      calls++;
+      throw new Error('No provider access allowed');
+    },
+    dashboardArchive: () => Bun.file(new URL('../public/data/streeteasy-dashboard-2026-11-17.zip', import.meta.url)).bytes(),
+  };
   const env = { PUBLIC_APP: 'true' };
   const request = (suffix = '', method = 'GET') => new Request('https://app.test/api/dashboard' + suffix, { method });
   const catalog = await handleApi(request(), env, options);

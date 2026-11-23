@@ -20,12 +20,30 @@ type CompleteSync = {
 };
 
 export const COMPLETE_SYNCS: readonly CompleteSync[] = [
-  { id: CITYREALTY_ID, name: 'CityRealty', transport: CITYREALTY_TRANSPORT, coverage: CITYREALTY_COVERAGE,
-    timeoutMs: 12 * 60_000, stepTimeout: '13 minutes' },
-  { id: OPENIGLOO.id, name: OPENIGLOO.name, transport: OPENIGLOO_TRANSPORT, coverage: OPENIGLOO_COVERAGE,
-    timeoutMs: 28 * 60_000, stepTimeout: '30 minutes' },
-  { id: ZUMPER_LIVE.id, name: ZUMPER_LIVE.name, transport: ZUMPER_TRANSPORT, coverage: ZUMPER_COVERAGE,
-    timeoutMs: 25 * 60_000, stepTimeout: '25 minutes' },
+  {
+    id: CITYREALTY_ID,
+    name: 'CityRealty',
+    transport: CITYREALTY_TRANSPORT,
+    coverage: CITYREALTY_COVERAGE,
+    timeoutMs: 12 * 60_000,
+    stepTimeout: '13 minutes',
+  },
+  {
+    id: OPENIGLOO.id,
+    name: OPENIGLOO.name,
+    transport: OPENIGLOO_TRANSPORT,
+    coverage: OPENIGLOO_COVERAGE,
+    timeoutMs: 28 * 60_000,
+    stepTimeout: '30 minutes',
+  },
+  {
+    id: ZUMPER_LIVE.id,
+    name: ZUMPER_LIVE.name,
+    transport: ZUMPER_TRANSPORT,
+    coverage: ZUMPER_COVERAGE,
+    timeoutMs: 25 * 60_000,
+    stepTimeout: '25 minutes',
+  },
 ];
 
 export const WORKFLOW_SOURCE_IDS = COMPLETE_SYNCS.map(({ id }) => id);
@@ -40,5 +58,4 @@ export const isCompleteSnapshot = (id: string, transport: string | undefined) =>
   transport !== undefined && completeSync(id)?.transport === transport;
 
 /** Whether catalog coverage text describes a complete sync. */
-export const isCompleteCoverage = (coverage: string | undefined) =>
-  COMPLETE_SYNCS.some((source) => source.coverage === coverage);
+export const isCompleteCoverage = (coverage: string | undefined) => COMPLETE_SYNCS.some((source) => source.coverage === coverage);

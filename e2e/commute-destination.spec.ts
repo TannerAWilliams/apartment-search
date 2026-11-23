@@ -4,15 +4,20 @@ import { localSearch } from '../src/market.ts';
 
 test('destination editing stays local until Apply and remains accessible without routing', async ({ page }) => {
   const requests: { workplace: string; customWorkplace: string }[] = [];
-  await page.route('**/*', async route => {
+  await page.route('**/*', async (route) => {
     const url = new URL(route.request().url());
     if (url.origin !== 'http://127.0.0.1:4173') return route.abort();
     if (!url.pathname.startsWith('/api/')) return route.continue();
-    if (url.pathname === '/api/config') return route.fulfill({ json: { sources: [], commuteConfigured: false, browserImportAllowed: false } });
+    if (url.pathname === '/api/config')
+      return route.fulfill({ json: { sources: [], commuteConfigured: false, browserImportAllowed: false } });
     if (url.pathname === '/api/search') {
       const filters = parseFilters(route.request().postDataJSON());
       requests.push({ workplace: filters.workplace, customWorkplace: filters.customWorkplace });
-      if (filters.customWorkplace === 'Unmatched test address') return route.fulfill({ status: 422, json: { error: 'Use a full street address with city, state, and ZIP, or enter coordinates.' } });
+      if (filters.customWorkplace === 'Unmatched test address')
+        return route.fulfill({
+          status: 422,
+          json: { error: 'Use a full street address with city, state, and ZIP, or enter coordinates.' },
+        });
       return route.fulfill({ json: localSearch([], filters, localWorkplace(filters), 'live') });
     }
     return route.abort();

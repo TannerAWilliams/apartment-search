@@ -10,7 +10,6 @@ import { parseApartmentsPage } from '../server/apartments-com.ts';
 import { safeListingUrl } from '../src/marketplaces.ts';
 import { regionOf } from '../src/regions.ts';
 
-
 test('values outside every supported area or URL rule are rejected quietly', () => {
   expect(safeListingUrl('https://[not a host')).toBeNull();
   expect(regionOf({ state: 'NY', zip: '12207' }), 'Albany').toBeNull();
@@ -28,9 +27,20 @@ test('a D1 snapshot missing one of its parts is reported, not returned truncated
 test('the Cloudflare entry answers a request body that breaks off with an error, without crashing', async () => {
   const { default: worker } = await import('../server/cloudflare.ts');
   const { d1 } = await fakeD1();
-  const body = new ReadableStream({ pull(controller) { controller.error(new Error('connection reset')); } });
-  const response = await worker.fetch(new Request('https://app.test/api/search', { method: 'POST', body, duplex: 'half', headers: { Authorization: 'Bearer token-0123456789abcdef', 'Content-Type': 'application/json' } } as RequestInit),
-    { APARTMENTS: d1, APP_ACCESS_TOKEN: 'token-0123456789abcdef', ASSETS: { fetch: async () => new Response() } } as never);
+  const body = new ReadableStream({
+    pull(controller) {
+      controller.error(new Error('connection reset'));
+    },
+  });
+  const response = await worker.fetch(
+    new Request('https://app.test/api/search', {
+      method: 'POST',
+      body,
+      duplex: 'half',
+      headers: { Authorization: 'Bearer token-0123456789abcdef', 'Content-Type': 'application/json' },
+    } as RequestInit),
+    { APARTMENTS: d1, APP_ACCESS_TOKEN: 'token-0123456789abcdef', ASSETS: { fetch: async () => new Response() } } as never,
+  );
   expect(response.status).toBe(400);
   expect(await response.json()).toStrictEqual({ error: 'Send a JSON request.' });
 });
@@ -43,25 +53,40 @@ test('FirstMover refuses a catalog whose newest monthly CSV is missing or too la
 test('a StreetEasy partner feed whose rows are all unusable is not saved as an empty inventory', async () => {
   const bucket = createMemoryBucket();
   const env = { BUCKET: bucket, FREE_PARTNER_FEEDS_JSON: JSON.stringify([{ id: 'streeteasy', url: 'https://partner.example.test/se' }]) };
-  await refreshSources(env, { now: new Date(), onDemand: true, sourceId: 'streeteasy-live', fetcher: async () => Response.json({ listings: [{ unusable: true }], total: 1 }) });
+  await refreshSources(env, {
+    now: new Date(),
+    onDemand: true,
+    sourceId: 'streeteasy-live',
+    fetcher: async () => Response.json({ listings: [{ unusable: true }], total: 1 }),
+  });
   const status = (await refreshStatus(bucket)).sources.find(({ id }) => id === 'streeteasy-live');
   expect(status?.status).toBe('failed');
 });
 
 test('a StreetEasy denial page that cannot be read still reports the denial', async () => {
-  const body = new ReadableStream({ pull(controller) { controller.error(new Error('reset')); } });
+  const body = new ReadableStream({
+    pull(controller) {
+      controller.error(new Error('reset'));
+    },
+  });
   const request = requestForRefresh(async () => new Response(body, { status: 403 }), AbortSignal.timeout(5000));
   await expect(request('https://api-v6.streeteasy.com/', { method: 'POST' })).rejects.toMatchObject({ httpStatus: 403 });
 });
 
 test('Apartments.com cards with malformed share data are skipped, not fatal', () => {
-  const page = '<script type="application/ld+json">' + JSON.stringify({ '@graph': [{ '@type': 'CollectionPage', mainEntity: { itemListElement: [{ item: {} }] } }] }) + '</script>' +
+  const page =
+    '<script type="application/ld+json">' +
+    JSON.stringify({ '@graph': [{ '@type': 'CollectionPage', mainEntity: { itemListElement: [{ item: {} }] } }] }) +
+    '</script>' +
     `<article data-listing-key="abc1234" data-listing-share-lines='{not json'></article>`;
   expect(parseApartmentsPage(page, { borough: 'manhattan', bedrooms: 1 }, new Date().toISOString())).toStrictEqual([]);
 });
 
 test('AffordableHousing.com keeps its listings when geocoding is unavailable', async () => {
-  const card = (city: string, zip: string) => `<article data-listing-card-type="standard"><span class="green--text"><em></em> Available Now</span>
+  const card = (
+    city: string,
+    zip: string,
+  ) => `<article data-listing-card-type="standard"><span class="green--text"><em></em> Available Now</span>
     <span class="details-category">Apartment</span><a data-track="listing-card-link" href="/${city.toLowerCase()}-ny/example-apartments-123/"></a>
     <div class="tnresult--propertyaddress">10 Example Street, ${city}, NY ${zip}</div><div class="card--price">$2,000</div>
     <div class="card--details"><span>1 <span>bed</span></span></div></article>`;

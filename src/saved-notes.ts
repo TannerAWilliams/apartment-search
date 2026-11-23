@@ -1,7 +1,7 @@
 import { isRecord, oneOf, type Loose } from './domain.ts';
 export const NOTE_LIMIT = 2000;
 export const VIEWING_STATUSES = ['Considering', 'Contacted', 'Tour scheduled', 'Toured', 'Applied', 'Passed'] as const;
-type SavedNote = { text: string; status: typeof VIEWING_STATUSES[number] };
+type SavedNote = { text: string; status: (typeof VIEWING_STATUSES)[number] };
 export const emptySavedNote = (): SavedNote => ({ text: '', status: 'Considering' });
 export function parseSavedNote(value: string | null): SavedNote {
   if (value === null) return emptySavedNote();

@@ -14,12 +14,21 @@ const encoder = new TextEncoder();
 function concat(...parts: Uint8Array[]): Bytes {
   const result = new Uint8Array(parts.reduce((total, part) => total + part.length, 0));
   let offset = 0;
-  for (const part of parts) { result.set(part, offset); offset += part.length; }
+  for (const part of parts) {
+    result.set(part, offset);
+    offset += part.length;
+  }
   return result;
 }
 
 /** Push services this server will deliver to; a subscription naming any other host is refused. */
-const PUSH_HOSTS = ['web.push.apple.com', 'fcm.googleapis.com', 'updates.push.services.mozilla.com', 'push.services.mozilla.com', 'notify.windows.com'];
+const PUSH_HOSTS = [
+  'web.push.apple.com',
+  'fcm.googleapis.com',
+  'updates.push.services.mozilla.com',
+  'push.services.mozilla.com',
+  'notify.windows.com',
+];
 
 const pushService = (endpoint: string) => {
   if (!URL.canParse(endpoint)) return false;
@@ -27,9 +36,17 @@ const pushService = (endpoint: string) => {
   return protocol === 'https:' && PUSH_HOSTS.some((host) => hostname === host || hostname.endsWith('.' + host));
 };
 /** A base64url key that decodes to this many bytes. */
-const key = (bytes: number) => v.pipe(v.string(), v.check((value) => {
-  try { return fromBase64Url(value).length === bytes; } catch { return false; }
-}));
+const key = (bytes: number) =>
+  v.pipe(
+    v.string(),
+    v.check((value) => {
+      try {
+        return fromBase64Url(value).length === bytes;
+      } catch {
+        return false;
+      }
+    }),
+  );
 
 /** A browser's push subscription (PushSubscription.toJSON()), for a known push service. */
 const PushSubscriptionSchema = v.object({
@@ -42,23 +59,41 @@ export const validSubscription = (value: unknown): value is PushSubscriptionJson
 
 /** A new VAPID key pair: the public key for clients and the private scalar for the server's secret. */
 export async function generateVapidKeys() {
-  const pair = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']) as CryptoKeyPair;
-  const publicKey = new Uint8Array(await crypto.subtle.exportKey('raw', pair.publicKey) as ArrayBuffer);
-  const { d } = await crypto.subtle.exportKey('jwk', pair.privateKey) as JsonWebKey;
+  const pair = (await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify'])) as CryptoKeyPair;
+  const publicKey = new Uint8Array((await crypto.subtle.exportKey('raw', pair.publicKey)) as ArrayBuffer);
+  const { d } = (await crypto.subtle.exportKey('jwk', pair.privateKey)) as JsonWebKey;
   return { publicKey: toBase64Url(publicKey), privateKey: d! };
 }
 
 async function vapidAuthorization(endpoint: string, vapid: VapidKeys, now: number) {
   const publicKey = fromBase64Url(vapid.publicKey);
-  const key = await crypto.subtle.importKey('jwk', {
-    kty: 'EC', crv: 'P-256', d: vapid.privateKey, ext: true,
-    x: toBase64Url(publicKey.slice(1, 33)), y: toBase64Url(publicKey.slice(33, 65)),
-  }, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign']);
+  const key = await crypto.subtle.importKey(
+    'jwk',
+    {
+      kty: 'EC',
+      crv: 'P-256',
+      d: vapid.privateKey,
+      ext: true,
+      x: toBase64Url(publicKey.slice(1, 33)),
+      y: toBase64Url(publicKey.slice(33, 65)),
+    },
+    { name: 'ECDSA', namedCurve: 'P-256' },
+    false,
+    ['sign'],
+  );
   const header = toBase64Url(encoder.encode(JSON.stringify({ typ: 'JWT', alg: 'ES256' })));
-  const claims = toBase64Url(encoder.encode(JSON.stringify({
-    aud: new URL(endpoint).origin, exp: Math.floor(now / 1000) + 12 * 60 * 60, sub: vapid.subject,
-  })));
-  const signature = new Uint8Array(await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, key, encoder.encode(header + '.' + claims)));
+  const claims = toBase64Url(
+    encoder.encode(
+      JSON.stringify({
+        aud: new URL(endpoint).origin,
+        exp: Math.floor(now / 1000) + 12 * 60 * 60,
+        sub: vapid.subject,
+      }),
+    ),
+  );
+  const signature = new Uint8Array(
+    await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, key, encoder.encode(header + '.' + claims)),
+  );
   return `vapid t=${header}.${claims}.${toBase64Url(signature)}, k=${vapid.publicKey}`;
 }
 
@@ -68,12 +103,16 @@ async function hkdf(salt: Bytes, secret: Bytes, info: Bytes, bytes: number) {
 }
 
 /** The aes128gcm body for one device: a single record holding the payload. */
-export async function encryptPayload(subscription: PushSubscriptionJson, payload: Bytes,
-  { salt = crypto.getRandomValues(new Uint8Array(16)), serverKeys }: { salt?: Bytes; serverKeys?: CryptoKeyPair } = {}) {
+export async function encryptPayload(
+  subscription: PushSubscriptionJson,
+  payload: Bytes,
+  { salt = crypto.getRandomValues(new Uint8Array(16)), serverKeys }: { salt?: Bytes; serverKeys?: CryptoKeyPair } = {},
+) {
   const clientPublic = fromBase64Url(subscription.keys.p256dh);
   const auth = fromBase64Url(subscription.keys.auth);
-  const local = serverKeys ?? await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']) as CryptoKeyPair;
-  const localPublic = new Uint8Array(await crypto.subtle.exportKey('raw', local.publicKey) as ArrayBuffer);
+  const local =
+    serverKeys ?? ((await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits'])) as CryptoKeyPair);
+  const localPublic = new Uint8Array((await crypto.subtle.exportKey('raw', local.publicKey)) as ArrayBuffer);
   const clientKey = await crypto.subtle.importKey('raw', clientPublic, { name: 'ECDH', namedCurve: 'P-256' }, false, []);
   const shared = new Uint8Array(await crypto.subtle.deriveBits({ name: 'ECDH', public: clientKey }, local.privateKey, 256));
   const ikm = await hkdf(auth, shared, concat(encoder.encode('WebPush: info\0'), clientPublic, localPublic), 32);
@@ -88,13 +127,28 @@ export async function encryptPayload(subscription: PushSubscriptionJson, payload
 }
 
 /** Sends one notification. `gone` means the device unsubscribed, so the subscription should be dropped. */
-export async function sendPush(subscription: PushSubscriptionJson, message: unknown, vapid: VapidKeys,
-  { fetcher = (url: string, init: RequestInit) => fetch(url, init), now = Date.now() }: { fetcher?: (url: string, init: RequestInit) => Promise<Response>; now?: number } = {}) {
+export async function sendPush(
+  subscription: PushSubscriptionJson,
+  message: unknown,
+  vapid: VapidKeys,
+  {
+    fetcher = (url: string, init: RequestInit) => fetch(url, init),
+    now = Date.now(),
+  }: { fetcher?: (url: string, init: RequestInit) => Promise<Response>; now?: number } = {},
+) {
   const body = await encryptPayload(subscription, encoder.encode(JSON.stringify(message)));
   const response = await fetcher(subscription.endpoint, {
-    method: 'POST', body, redirect: 'manual', signal: AbortSignal.timeout(10_000),
-    headers: { Authorization: await vapidAuthorization(subscription.endpoint, vapid, now), 'Content-Encoding': 'aes128gcm',
-      'Content-Type': 'application/octet-stream', TTL: String(24 * 60 * 60), Urgency: 'normal' },
+    method: 'POST',
+    body,
+    redirect: 'manual',
+    signal: AbortSignal.timeout(10_000),
+    headers: {
+      Authorization: await vapidAuthorization(subscription.endpoint, vapid, now),
+      'Content-Encoding': 'aes128gcm',
+      'Content-Type': 'application/octet-stream',
+      TTL: String(24 * 60 * 60),
+      Urgency: 'normal',
+    },
   });
   return { ok: response.ok, gone: response.status === 404 || response.status === 410, status: response.status };
 }

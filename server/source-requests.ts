@@ -47,8 +47,8 @@ export class SourceResponseError extends Error {
     const retryAfter = response.headers.get('Retry-After')?.trim();
     const retryTime = /^\d{1,9}$/.test(retryAfter ?? '') ? receivedAt + Number(retryAfter) * 1000 : Date.parse(retryAfter ?? '');
     const reset = response.headers.get('X-RateLimit-Reset');
-    const resetTime = response.headers.get('X-RateLimit-Remaining')?.trim() === '0' && /^\d{1,12}$/.test(reset ?? '') ?
-      Number(reset) * 1000 : 0;
+    const resetTime =
+      response.headers.get('X-RateLimit-Remaining')?.trim() === '0' && /^\d{1,12}$/.test(reset ?? '') ? Number(reset) * 1000 : 0;
     this.retryAfter = Math.max(retryTime || 0, resetTime || 0);
   }
 }
@@ -57,14 +57,19 @@ export function requestForRefresh(fetcher: SourceFetch, deadline: AbortSignal) {
   return async (url: string, options?: RequestInit) => {
     const headers = new Headers(options?.headers);
     headers.set('Cache-Control', 'no-cache');
-    const signal = options?.signal && typeof AbortSignal.any === 'function' ?
-      AbortSignal.any([options.signal, deadline]) : deadline;
+    const signal = options?.signal && typeof AbortSignal.any === 'function' ? AbortSignal.any([options.signal, deadline]) : deadline;
     const init = { ...options, headers, signal };
     let response = await fetcher(url, init);
     const method = (options?.method ?? 'GET').toUpperCase();
     const exhausted = response.headers.get('X-RateLimit-Remaining')?.trim() === '0';
-    if ((method === 'GET' || method === 'HEAD') && TRANSIENT.has(response.status) && !signal.aborted &&
-        !response.headers.has('Retry-After') && !exhausted && !isChallenge(response)) {
+    if (
+      (method === 'GET' || method === 'HEAD') &&
+      TRANSIENT.has(response.status) &&
+      !signal.aborted &&
+      !response.headers.has('Retry-After') &&
+      !exhausted &&
+      !isChallenge(response)
+    ) {
       await response.body?.cancel().catch(() => {});
       await new Promise((resolve) => setTimeout(resolve, 250));
       if (!signal.aborted) response = await fetcher(url, init);
@@ -82,7 +87,11 @@ export function requestForRefresh(fetcher: SourceFetch, deadline: AbortSignal) {
   };
 }
 
-export function retrySchedule(error: { httpStatus?: number; retryAfter?: unknown; receivedAt?: unknown; providerDenial?: string } | null | undefined, previous: { retryAttempts?: number } | undefined, startedAt: number) {
+export function retrySchedule(
+  error: { httpStatus?: number; retryAfter?: unknown; receivedAt?: unknown; providerDenial?: string } | null | undefined,
+  previous: { retryAttempts?: number } | undefined,
+  startedAt: number,
+) {
   const status = error?.httpStatus;
   const refused = status === 401 || status === 403 || error?.providerDenial === CLOUDFLARE_CHALLENGE;
   if (!refused && status !== 429 && !error?.retryAfter) return {};

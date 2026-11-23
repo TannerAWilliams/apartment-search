@@ -11,20 +11,26 @@ const { SYNC_PROGRESS_KEY } = await import('../server/source-registry.ts');
 
 const TOKEN = 'synthetic-access-token-0123456789';
 const realFetch = globalThis.fetch;
-afterEach(() => { globalThis.fetch = realFetch; });
+afterEach(() => {
+  globalThis.fetch = realFetch;
+});
 type Instance = { status: string };
 async function environment({ publicApp = false, instances = new Map<string, Instance>(), createError = null as Error | null } = {}) {
   const { d1 } = await fakeD1();
   const created: { id: string; params: { delay: boolean; sources?: string[] } }[] = [];
   return {
-    created, instances,
+    created,
+    instances,
     env: {
-      APARTMENTS: d1, APP_ACCESS_TOKEN: TOKEN, ...(publicApp ? { PUBLIC_APP: 'true' } : {}),
+      APARTMENTS: d1,
+      APP_ACCESS_TOKEN: TOKEN,
+      ...(publicApp ? { PUBLIC_APP: 'true' } : {}),
       ASSETS: { fetch: async (request: Request) => new Response('asset ' + new URL(request.url).pathname) },
       SYNC_WORKFLOW: {
         async create(options: { id: string; params: { delay: boolean; sources?: string[] } }) {
           if (createError) throw createError;
-          created.push(options); instances.set(options.id, { status: 'queued' });
+          created.push(options);
+          instances.set(options.id, { status: 'queued' });
         },
         async get(id: string) {
           const instance = instances.get(id);
@@ -35,11 +41,19 @@ async function environment({ publicApp = false, instances = new Map<string, Inst
     },
   };
 }
-const call = (env: object, path: string, init: RequestInit = {}, token: string | null = TOKEN) => worker.fetch(new Request('https://app.test' + path, {
-  ...init, headers: { ...(token ? { Authorization: 'Bearer ' + token } : {}), ...init.headers as Record<string, string> },
-}), env as Parameters<typeof worker.fetch>[1]);
-const post = (body: unknown, extra: Record<string, string> = {}) =>
-  ({ method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json', ...extra } });
+const call = (env: object, path: string, init: RequestInit = {}, token: string | null = TOKEN) =>
+  worker.fetch(
+    new Request('https://app.test' + path, {
+      ...init,
+      headers: { ...(token ? { Authorization: 'Bearer ' + token } : {}), ...(init.headers as Record<string, string>) },
+    }),
+    env as Parameters<typeof worker.fetch>[1],
+  );
+const post = (body: unknown, extra: Record<string, string> = {}) => ({
+  method: 'POST',
+  body: JSON.stringify(body),
+  headers: { 'Content-Type': 'application/json', ...extra },
+});
 
 test('health and static assets are served without the API', async () => {
   const { env } = await environment();
@@ -55,7 +69,10 @@ test('the web app is served with its security policy, and only fingerprinted fil
   expect(page.headers.get('Cache-Control')).toBe('private, no-cache');
   const bundle = await call(env, '/_expo/static/js/web/index-0123abcd.js');
   expect(bundle.headers.get('Cache-Control')).toBe('private, max-age=31536000, immutable');
-  const missing = await call({ ...env, ASSETS: { fetch: async () => new Response('not found', { status: 404, headers: { 'Cache-Control': 'no-store' } }) } }, '/_expo/static/gone.js');
+  const missing = await call(
+    { ...env, ASSETS: { fetch: async () => new Response('not found', { status: 404, headers: { 'Cache-Control': 'no-store' } }) } },
+    '/_expo/static/gone.js',
+  );
   expect(missing.headers.get('Cache-Control'), 'a missing file is never cached long-term').toBe('no-store');
 });
 
@@ -74,7 +91,9 @@ test('the private app requires the access token for every request, assets includ
 test('a public app accepts same-origin refresh checks but not imports or cross-origin writes', async () => {
   const { env } = await environment({ publicApp: true });
   expect((await call(env, '/api/refresh', post({ check: 'now' }, { Origin: 'https://elsewhere.test' }), null)).status).toBe(403);
-  expect((await call(env, '/api/refresh', { method: 'POST', body: 'not json', headers: { Origin: 'https://app.test' } }, null)).status).toBe(400);
+  expect(
+    (await call(env, '/api/refresh', { method: 'POST', body: 'not json', headers: { Origin: 'https://app.test' } }, null)).status,
+  ).toBe(400);
   const importing = await call(env, '/api/refresh', post({ payload: 'abc' }, { Origin: 'https://app.test' }), null);
   expect(importing.status).toBe(403);
   expect((await readJson<ErrorBody>(importing)).error).toMatch(/cannot import/);
@@ -87,7 +106,17 @@ test('a public app accepts same-origin refresh checks but not imports or cross-o
 
 test('a failure outside the API is a 503 with HTTPS enforced, never a crash', async () => {
   const { env } = await environment();
-  const failing = await call({ ...env, ASSETS: { fetch: async () => { throw new Error('assets unavailable'); } } }, '/index.html');
+  const failing = await call(
+    {
+      ...env,
+      ASSETS: {
+        fetch: async () => {
+          throw new Error('assets unavailable');
+        },
+      },
+    },
+    '/index.html',
+  );
   expect(failing.status).toBe(503);
   expect((await readJson<ErrorBody>(failing)).error).toMatch(/could not complete the request/);
   expect(failing.headers.get('Strict-Transport-Security') ?? '').toMatch(/max-age=31536000/);
@@ -95,12 +124,29 @@ test('a failure outside the API is a 503 with HTTPS enforced, never a crash', as
 
 test('oversized requests are refused and unexpected failures keep saved data', async () => {
   const { env } = await environment({ publicApp: true });
-  const large = await call(env, '/api/search', { method: 'POST', body: 'x'.repeat(5000), headers: { 'Content-Type': 'application/json' } }, null);
+  const large = await call(
+    env,
+    '/api/search',
+    { method: 'POST', body: 'x'.repeat(5000), headers: { 'Content-Type': 'application/json' } },
+    null,
+  );
   expect(large.status).toBe(413);
-  const broken = { ...env, APARTMENTS: { prepare() { throw new Error('database down'); }, batch() { throw new Error('database down'); } } };
+  const broken = {
+    ...env,
+    APARTMENTS: {
+      prepare() {
+        throw new Error('database down');
+      },
+      batch() {
+        throw new Error('database down');
+      },
+    },
+  };
   const failed = await call(broken, '/api/config');
   expect(failed.status).toBe(503);
-  expect((await readJson<ErrorBody>(failed)).error, 'a storage failure is not blamed on feed settings').toMatch(/Saved source data could not be read/);
+  expect((await readJson<ErrorBody>(failed)).error, 'a storage failure is not blamed on feed settings').toMatch(
+    /Saved source data could not be read/,
+  );
 });
 
 test('a manual resync of a complete source starts its Workflow job and reports it running', async () => {
@@ -122,7 +168,9 @@ test('status names the source the Workflow recorded, and nothing once jobs finis
   await createD1Bucket(env.APARTMENTS).put(SYNC_PROGRESS_KEY, JSON.stringify({ source: 'zumper-live' }));
   expect((await readJson<RefreshInfo>(call(env, '/api/refresh'))).activeSource).toBe('zumper-live');
   await createD1Bucket(env.APARTMENTS).put(SYNC_PROGRESS_KEY, JSON.stringify({ source: 'unknown-source' }));
-  expect((await readJson<RefreshInfo>(call(env, '/api/refresh'))).activeSource, 'a full run falls back to its first source').toBe('cityrealty-live');
+  expect((await readJson<RefreshInfo>(call(env, '/api/refresh'))).activeSource, 'a full run falls back to its first source').toBe(
+    'cityrealty-live',
+  );
   for (const instance of instances.values()) instance.status = 'complete';
   expect(!(await readJson<RefreshInfo>(call(env, '/api/refresh'))).checking).toBeTruthy();
 });
@@ -147,18 +195,23 @@ test('provider requests keep redirects unfollowed, in the form Workers accept', 
   }) as typeof fetch;
   await call(env, '/api/refresh', post({ check: 'now', source: 'housingconnect' }));
   expect(redirects.length > 0, 'the refresh reached the provider').toBeTruthy();
-  expect(redirects.every((redirect) => redirect === 'manual'), String(redirects)).toBeTruthy();
+  expect(
+    redirects.every((redirect) => redirect === 'manual'),
+    String(redirects),
+  ).toBeTruthy();
 });
 
 test('the dashboard archive is read once through the assets binding and cannot be downloaded directly', async () => {
   const { env } = await environment();
   const bytes = await Bun.file(new URL('../public/data/streeteasy-dashboard-2026-11-17.zip', import.meta.url)).bytes();
   let reads = 0;
-  const ASSETS = { fetch: async (request: Request) => {
-    if (!new URL(request.url).pathname.startsWith('/data/')) return new Response('asset');
-    reads++;
-    return new Response(bytes);
-  } };
+  const ASSETS = {
+    fetch: async (request: Request) => {
+      if (!new URL(request.url).pathname.startsWith('/data/')) return new Response('asset');
+      reads++;
+      return new Response(bytes);
+    },
+  };
   const withArchive = { ...env, ASSETS };
   expect((await call(withArchive, '/data/streeteasy-dashboard-2026-11-17.zip')).status).toBe(404);
   expect(reads, 'a direct request never reaches the archive').toBe(0);
@@ -177,14 +230,25 @@ test('a Cloudflare Access sign-in opens the app; its writes must come from the a
   const seconds = Date.now() / 1000;
   const token = await access.sign({ ...access.claims, exp: seconds + 600, nbf: seconds - 10 });
   const signedIn = (path: string, init: RequestInit = {}) =>
-    call(configured, path, { ...init, headers: { 'Cf-Access-Jwt-Assertion': token, ...init.headers as Record<string, string> } }, null);
+    call(configured, path, { ...init, headers: { 'Cf-Access-Jwt-Assertion': token, ...(init.headers as Record<string, string>) } }, null);
   expect(await (await signedIn('/index.html')).text()).toBe('asset /index.html');
   expect((await signedIn('/api/config')).status).toBe(200);
   expect((await signedIn('/api/refresh', post({ check: 'now', source: 'openigloo' }, { Origin: 'https://app.test' }))).status).toBe(202);
   expect((await signedIn('/api/refresh', post({ check: 'now' }, { Origin: 'https://elsewhere.test' }))).status).toBe(403);
   expect((await signedIn('/api/refresh', post({ check: 'now' }))).status, 'a write with no Origin is refused').toBe(403);
-  expect((await call(configured, '/api/config', { headers: { 'Cf-Access-Jwt-Assertion': token.slice(0, -4) + 'AAAA' } }, null)).status).toBe(401);
-  expect((await call({ ...configured, ACCESS_ALLOWED_EMAILS: 'someone-else@example.com' }, '/api/config', { headers: { 'Cf-Access-Jwt-Assertion': token } }, null)).status).toBe(401);
+  expect(
+    (await call(configured, '/api/config', { headers: { 'Cf-Access-Jwt-Assertion': token.slice(0, -4) + 'AAAA' } }, null)).status,
+  ).toBe(401);
+  expect(
+    (
+      await call(
+        { ...configured, ACCESS_ALLOWED_EMAILS: 'someone-else@example.com' },
+        '/api/config',
+        { headers: { 'Cf-Access-Jwt-Assertion': token } },
+        null,
+      )
+    ).status,
+  ).toBe(401);
   expect((await call(configured, '/api/config')).status, 'the app access token still works for scripts').toBe(200);
 });
 
@@ -200,7 +264,12 @@ test('when Access keys cannot be read, nobody signs in through Access', async ()
 
 test('every response, including a refusal, tells browsers to use HTTPS only', async () => {
   const { env } = await environment();
-  for (const [path, token] of [['/index.html', TOKEN], ['/api/config', TOKEN], ['/health', TOKEN], ['/api/config', null]] as const) {
+  for (const [path, token] of [
+    ['/index.html', TOKEN],
+    ['/api/config', TOKEN],
+    ['/health', TOKEN],
+    ['/api/config', null],
+  ] as const) {
     expect((await call(env, path, {}, token)).headers.get('Strict-Transport-Security'), path).toBe('max-age=31536000; includeSubDomains');
   }
 });

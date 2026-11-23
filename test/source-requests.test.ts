@@ -7,9 +7,13 @@ test('a transient response with exhausted quota is not immediately retried', asy
   const reset = Math.floor(Date.now() / 1000) + 600;
   const request = requestForRefresh(async () => {
     calls++;
-    return new Response('limited', { status: 503, headers: {
-      'X-RateLimit-Remaining': '0', 'X-RateLimit-Reset': String(reset),
-    } });
+    return new Response('limited', {
+      status: 503,
+      headers: {
+        'X-RateLimit-Remaining': '0',
+        'X-RateLimit-Reset': String(reset),
+      },
+    });
   }, new AbortController().signal);
   const failure = instanceOf(await rejection(request('https://example.test', {})), SourceResponseError);
   expect(failure.httpStatus).toBe(503);
@@ -29,8 +33,10 @@ test('exhausted quota without a reset still suppresses the immediate retry', asy
 
 test('ordinary transient GET errors still retry once', async () => {
   let calls = 0;
-  const request = requestForRefresh(async () => ++calls === 1
-    ? new Response(null, { status: 503 }) : Response.json({ ok: true }), new AbortController().signal);
+  const request = requestForRefresh(
+    async () => (++calls === 1 ? new Response(null, { status: 503 }) : Response.json({ ok: true })),
+    new AbortController().signal,
+  );
   expect((await request('https://example.test', { method: 'get' })).status).toBe(200);
   expect(calls).toBe(2);
 });
@@ -47,7 +53,11 @@ test('non-idempotent POST is never retried after a transient error', async () =>
 
 test('provider auth/rate errors without request-wrapper metadata still get cooldowns', () => {
   const startedAt = Date.parse('2026-11-13T15:00:00Z');
-  for (const [httpStatus, minutes] of [[401, 15], [403, 15], [429, 1]]) {
+  for (const [httpStatus, minutes] of [
+    [401, 15],
+    [403, 15],
+    [429, 1],
+  ]) {
     const result = retrySchedule({ httpStatus }, undefined, startedAt);
     expect(result.retryAttempts).toBe(1);
     expect(Date.parse(required(result.retryAt))).toBe(startedAt + minutes * 60_000);
@@ -57,8 +67,7 @@ test('provider auth/rate errors without request-wrapper metadata still get coold
 test('malformed optional timestamps do not break failure status persistence', () => {
   const startedAt = Date.parse('2026-11-13T15:00:00Z');
   for (const timestamp of [undefined, null, NaN, Infinity, 'invalid']) {
-    const result = retrySchedule({ httpStatus: 403, receivedAt: timestamp, retryAfter: timestamp },
-      { retryAttempts: 1 }, startedAt);
+    const result = retrySchedule({ httpStatus: 403, receivedAt: timestamp, retryAfter: timestamp }, { retryAttempts: 1 }, startedAt);
     expect(Date.parse(required(result.retryAt))).toBe(startedAt + 30 * 60_000);
   }
 });

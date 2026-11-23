@@ -1,8 +1,13 @@
 import { expect, test } from 'bun:test';
 import { createApi } from '../src/api-client.ts';
 
-const respond = (body: string | object, init: ResponseInit = {}) => async () =>
-  new Response(typeof body === 'string' ? body : JSON.stringify(body), { headers: { 'Content-Type': typeof body === 'string' ? 'text/html' : 'application/json' }, ...init });
+const respond =
+  (body: string | object, init: ResponseInit = {}) =>
+  async () =>
+    new Response(typeof body === 'string' ? body : JSON.stringify(body), {
+      headers: { 'Content-Type': typeof body === 'string' ? 'text/html' : 'application/json' },
+      ...init,
+    });
 const search = { matches: [], total: 0, workplace: { label: 'Rockefeller Center', latitude: 40.75, longitude: -73.97 } };
 
 test('valid responses pass through with the retry time', async () => {
@@ -25,13 +30,20 @@ test('server error messages and commute errors are kept', async () => {
 
 test('malformed source statuses and search results are rejected before the UI renders them', async () => {
   await expect(createApi('', respond({ matches: [], total: 0 }))('refresh')).rejects.toThrow(/unrecognized source status/);
-  await expect(createApi('', respond({ checking: false, sources: [{ id: 'x' }] }))('refresh')).rejects.toThrow(/unrecognized source status/);
+  await expect(createApi('', respond({ checking: false, sources: [{ id: 'x' }] }))('refresh')).rejects.toThrow(
+    /unrecognized source status/,
+  );
   await expect(createApi('', respond({ matches: [], total: 0, mapPoints: [] }))('search')).rejects.toThrow(/unrecognized search result/);
   expect((await createApi('', respond({ checking: false, sources: [] }))('refresh')).sources).toStrictEqual([]);
 });
 
 test('without a server origin, calls fail without a request', async () => {
   let called = false;
-  await expect(createApi(null, async () => { called = true; return new Response('{}'); })('config')).rejects.toThrow(/Could not reach/);
+  await expect(
+    createApi(null, async () => {
+      called = true;
+      return new Response('{}');
+    })('config'),
+  ).rejects.toThrow(/Could not reach/);
   expect(called).toBe(false);
 });

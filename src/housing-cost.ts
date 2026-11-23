@@ -19,9 +19,8 @@ export const HOUSING_COST_FIELDS = [
   ['rentDueAtSigning', 'Rent due at signing'],
   ['recurringFeesDueAtSigning', 'Recurring fees due at signing'],
 ] as const;
-export const emptyHousingCosts = (): HousingCostInput => Object.fromEntries(
-  HOUSING_COST_FIELDS.map(([key]) => [key, '']),
-) as HousingCostInput;
+export const emptyHousingCosts = (): HousingCostInput =>
+  Object.fromEntries(HOUSING_COST_FIELDS.map(([key]) => [key, ''])) as HousingCostInput;
 
 export function calculateHousingCost(input: HousingCostInput) {
   const errors: Partial<Record<keyof HousingCostInput, string>> = {};
@@ -29,7 +28,10 @@ export function calculateHousingCost(input: HousingCostInput) {
   const values: Partial<Record<keyof HousingCostInput, number>> = {};
   for (const [key, label] of HOUSING_COST_FIELDS) {
     const raw = input[key]?.trim();
-    if (!raw) { missing.push(key); continue; }
+    if (!raw) {
+      missing.push(key);
+      continue;
+    }
     const months = key === 'leaseMonths';
     if (!(months ? /^\d+$/ : /^\d+(?:\.\d{1,2})?$/).test(raw)) {
       errors[key] = `${label}: enter ${months ? 'whole months' : 'a dollar amount with at most two decimals'}, without symbols.`;
@@ -37,13 +39,22 @@ export function calculateHousingCost(input: HousingCostInput) {
     }
     const amount = Number(raw);
     if (!Number.isFinite(amount) || amount > (months ? 120 : 1000000) || ((months || key === 'grossMonthlyRent') && amount <= 0)) {
-      errors[key] = `${label}: enter ${months ? '1–120 months' : key === 'grossMonthlyRent' ? 'more than $0 and at most $1,000,000' : '$0–$1,000,000'}.`;
+      errors[key] =
+        `${label}: enter ${months ? '1–120 months' : key === 'grossMonthlyRent' ? 'more than $0 and at most $1,000,000' : '$0–$1,000,000'}.`;
       continue;
     }
     values[key] = months ? amount : Math.round(amount * 100);
   }
-  const { grossMonthlyRent: rent, leaseMonths: months, totalConcessions: concessions,
-    monthlyFees: fees, nonrefundableUpfrontFees: upfront, refundableDeposit: deposit, rentDueAtSigning: signing, recurringFeesDueAtSigning: signingFees } = values;
+  const {
+    grossMonthlyRent: rent,
+    leaseMonths: months,
+    totalConcessions: concessions,
+    monthlyFees: fees,
+    nonrefundableUpfrontFees: upfront,
+    refundableDeposit: deposit,
+    rentDueAtSigning: signing,
+    recurringFeesDueAtSigning: signingFees,
+  } = values;
   if (rent !== undefined && months !== undefined && concessions !== undefined && concessions > rent * months) {
     errors.totalConcessions = 'Concessions cannot exceed the gross rent for the entire lease.';
   }
@@ -56,11 +67,15 @@ export function calculateHousingCost(input: HousingCostInput) {
   if (Object.keys(errors).length || missing.length) return { errors, missing, estimate: null };
   // All entries validated above; cents avoid repeated floating-point currency arithmetic.
   const leaseCostCents = rent! * months! - concessions! + fees! * months! + upfront!;
-  return { errors, missing, estimate: {
-    leaseCostCents,
-    effectiveMonthlyCents: Math.round(leaseCostCents / months!),
-    recurringMonthlyCents: rent! + fees!,
-    cashAtSigningCents: signing! + signingFees! + upfront! + deposit!,
-    refundableDepositCents: deposit!,
-  } };
+  return {
+    errors,
+    missing,
+    estimate: {
+      leaseCostCents,
+      effectiveMonthlyCents: Math.round(leaseCostCents / months!),
+      recurringMonthlyCents: rent! + fees!,
+      cashAtSigningCents: signing! + signingFees! + upfront! + deposit!,
+      refundableDepositCents: deposit!,
+    },
+  };
 }

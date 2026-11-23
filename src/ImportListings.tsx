@@ -39,20 +39,47 @@ export function ImportListings({ onImport, onCancel }: { onImport: (listings: Li
     }
   }
 
-  return <View style={styles.chartCard}>
-    <Text accessibilityRole="header" style={styles.panelTitle}>Import rental listings</Text>
-    <Text style={styles.bodyText}>Upload or paste a CSV of listings you’ve collected, including their direct links. They’ll appear in Saved on this device.</Text>
-    <Text selectable style={styles.fieldLabel}>{IMPORT_COLUMNS}</Text>
-    <Text style={styles.smallMuted}>Use 0 for a studio. Add latitude and longitude columns if you want map pins. Enter up to 500 apartments per import.</Text>
-    {Platform.OS === 'web' && <input type="file" accept=".csv,text/csv" aria-label="Upload listing CSV"
-      onChange={selectFile} disabled={reading} />}
-    <TextInput accessibilityLabel="Listing CSV" value={csv} onChangeText={setCsv}
-      multiline numberOfLines={5} maxLength={MAX_IMPORT_SIZE}
-      autoCapitalize="none" autoCorrect={false} style={[styles.input, { minHeight: 105, textAlignVertical: 'top' }]} />
-    {error !== '' && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
-    <View style={styles.chipRow}>
-      <Button onPress={submit} disabled={!csv.trim() || reading}>Save listings</Button>
-      <Button secondary onPress={onCancel}>Cancel</Button>
+  return (
+    <View style={styles.chartCard}>
+      <Text accessibilityRole="header" style={styles.panelTitle}>
+        Import rental listings
+      </Text>
+      <Text style={styles.bodyText}>
+        Upload or paste a CSV of listings you’ve collected, including their direct links. They’ll appear in Saved on this device.
+      </Text>
+      <Text selectable style={styles.fieldLabel}>
+        {IMPORT_COLUMNS}
+      </Text>
+      <Text style={styles.smallMuted}>
+        Use 0 for a studio. Add latitude and longitude columns if you want map pins. Enter up to 500 apartments per import.
+      </Text>
+      {Platform.OS === 'web' && (
+        <input type="file" accept=".csv,text/csv" aria-label="Upload listing CSV" onChange={selectFile} disabled={reading} />
+      )}
+      <TextInput
+        accessibilityLabel="Listing CSV"
+        value={csv}
+        onChangeText={setCsv}
+        multiline
+        numberOfLines={5}
+        maxLength={MAX_IMPORT_SIZE}
+        autoCapitalize="none"
+        autoCorrect={false}
+        style={[styles.input, { minHeight: 105, textAlignVertical: 'top' }]}
+      />
+      {error !== '' && (
+        <Text accessibilityRole="alert" style={styles.error}>
+          {error}
+        </Text>
+      )}
+      <View style={styles.chipRow}>
+        <Button onPress={submit} disabled={!csv.trim() || reading}>
+          Save listings
+        </Button>
+        <Button secondary onPress={onCancel}>
+          Cancel
+        </Button>
+      </View>
     </View>
-  </View>;
+  );
 }

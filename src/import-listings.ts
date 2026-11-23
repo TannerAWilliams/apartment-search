@@ -14,9 +14,19 @@ export function parseListingImport(csv: string) {
     const parsed: unknown = parse(csv, { bom: true, skip_empty_lines: true, trim: true, info: true });
     if (!Array.isArray(parsed)) throw new Error('Invalid CSV output.');
     rows = parsed.map((entry: unknown) => {
-      if (!entry || typeof entry !== 'object' || !('record' in entry) || !('info' in entry) ||
-          !Array.isArray(entry.record) || !entry.record.every((cell: unknown) => typeof cell === 'string') ||
-          !entry.info || typeof entry.info !== 'object' || !('lines' in entry.info) || typeof entry.info.lines !== 'number') throw new Error('Invalid CSV output.');
+      if (
+        !entry ||
+        typeof entry !== 'object' ||
+        !('record' in entry) ||
+        !('info' in entry) ||
+        !Array.isArray(entry.record) ||
+        !entry.record.every((cell: unknown) => typeof cell === 'string') ||
+        !entry.info ||
+        typeof entry.info !== 'object' ||
+        !('lines' in entry.info) ||
+        typeof entry.info.lines !== 'number'
+      )
+        throw new Error('Invalid CSV output.');
       return { record: entry.record as string[], info: { lines: entry.info.lines } };
     });
   } catch {
@@ -32,12 +42,19 @@ export function parseListingImport(csv: string) {
   return rows.map(({ record, info }) => {
     const row = Object.fromEntries(columns.map((column, index) => [column, record[index]]));
     const state = row.state.toUpperCase();
-    if (!safeListingUrl(row.url) || !/^\d{5}$/.test(row.zip) || !/^[0-4]$/.test(row.bedrooms) ||
-        !/^\d+(\.\d{1,2})?$/.test(row.rent) || !['NY', 'NJ', 'CT', 'PA'].includes(state)) {
+    if (
+      !safeListingUrl(row.url) ||
+      !/^\d{5}$/.test(row.zip) ||
+      !/^[0-4]$/.test(row.bedrooms) ||
+      !/^\d+(\.\d{1,2})?$/.test(row.rent) ||
+      !['NY', 'NJ', 'CT', 'PA'].includes(state)
+    ) {
       throw new Error(`Check the listing URL, state, ZIP, bedrooms, and rent on line ${info.lines}.`);
     }
-    if ((row.latitude || row.longitude) &&
-        (!row.latitude || !row.longitude || !isPoint({ latitude: Number(row.latitude), longitude: Number(row.longitude) }))) {
+    if (
+      (row.latitude || row.longitude) &&
+      (!row.latitude || !row.longitude || !isPoint({ latitude: Number(row.latitude), longitude: Number(row.longitude) }))
+    ) {
       throw new Error(`Enter both valid coordinates on line ${info.lines}, or leave them blank.`);
     }
     const region = state === 'NJ' ? 'nj' : state === 'CT' ? 'ct' : state === 'PA' ? 'pa' : undefined;

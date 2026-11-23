@@ -11,27 +11,44 @@ const PAGES = [
   ['Hicksville_NY', 'Hicksville', 'li'],
   ['White-Plains_NY', 'White Plains', 'metroNorth'],
 ].map(([slug, city, region]) => ({
-  url: ORIGIN + '/apartments/' + slug + '/price-na-2800', city, region,
+  url: ORIGIN + '/apartments/' + slug + '/price-na-2800',
+  city,
+  region,
 }));
 const APARTMENTS = new Set(['apartment', 'condos', 'coop']);
 const listingUrl = (url: unknown) => publicListingUrl(url, ORIGIN, /^\/rentals\/details\/[^/]+_M\d+-\d+\/?$/);
 
 export const REALTOR_LIVE = {
-  ...SOURCE, id: 'realtor-live', marketplace: SOURCE.id, coverage: 'Queens, Hicksville and White Plains',
-  regions: ['nyc', 'li', 'metroNorth'], minPages: PAGES.length, maxPages: PAGES.length, rowsPerPage: 50,
-  listingUrl, load: (fetcher: FetchTransport, now: Date) => loadPublicPages(SOURCE, PAGES, parseRealtorPage, fetcher, now),
+  ...SOURCE,
+  id: 'realtor-live',
+  marketplace: SOURCE.id,
+  coverage: 'Queens, Hicksville and White Plains',
+  regions: ['nyc', 'li', 'metroNorth'],
+  minPages: PAGES.length,
+  maxPages: PAGES.length,
+  rowsPerPage: 50,
+  listingUrl,
+  load: (fetcher: FetchTransport, now: Date) => loadPublicPages(SOURCE, PAGES, parseRealtorPage, fetcher, now),
 };
 
 /** A Realtor.com search result as this parser reads it; normalizeListing checks every field it keeps. */
 type RealtorRow = {
-  listing_id?: unknown; permalink?: unknown; status?: unknown; list_price?: unknown; flags?: { is_pending?: unknown };
+  listing_id?: unknown;
+  permalink?: unknown;
+  status?: unknown;
+  list_price?: unknown;
+  flags?: { is_pending?: unknown };
   description?: { type?: string; beds?: unknown };
-  location?: { address?: { line?: string; city?: string; state_code?: string; postal_code?: string; coordinate?: { lat?: unknown; lon?: unknown } } };
+  location?: {
+    address?: { line?: string; city?: string; state_code?: string; postal_code?: string; coordinate?: { lat?: unknown; lon?: unknown } };
+  };
 };
 
-export function parseRealtorPage(html: string, market: {city:string; region:string}, checkedAt: string) {
+export function parseRealtorPage(html: string, market: { city: string; region: string }, checkedAt: string) {
   const script = html.match(/<script\b[^>]*\bid=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script\s*>/i);
-  const rows = script ? (JSON.parse(script[1]) as { props?: { pageProps?: { properties?: unknown } } } | null)?.props?.pageProps?.properties : null;
+  const rows = script
+    ? (JSON.parse(script[1]) as { props?: { pageProps?: { properties?: unknown } } } | null)?.props?.pageProps?.properties
+    : null;
   if (!Array.isArray(rows)) throw new Error('Realtor.com did not return a recognized rental page.');
   return (rows.filter(isRecord) as RealtorRow[]).flatMap((row) => {
     const description = row.description;
@@ -39,16 +56,43 @@ export function parseRealtorPage(html: string, market: {city:string; region:stri
     const { lat, lon } = address?.coordinate ?? {};
     const url = typeof row.permalink === 'string' ? listingUrl('/rentals/details/' + row.permalink) : null;
     const city = market.region === 'nyc' ? nycBorough(address?.postal_code ?? '') : address?.city;
-    if (!url || !description || row.status !== 'for_rent' || row.flags?.is_pending || !APARTMENTS.has(description.type ?? '') ||
-        !Number.isInteger(description.beds) || typeof row.list_price !== 'number' || !Number.isFinite(row.list_price) || row.list_price > 2800 ||
-        address?.state_code !== 'NY' || !/^\d{5}$/.test(address.postal_code ?? '') || !/^\d/.test(address.line ?? '') ||
-        city?.toLowerCase() !== market.city.toLowerCase() || !Number.isFinite(lat) || !Number.isFinite(lon)) return [];
+    if (
+      !url ||
+      !description ||
+      row.status !== 'for_rent' ||
+      row.flags?.is_pending ||
+      !APARTMENTS.has(description.type ?? '') ||
+      !Number.isInteger(description.beds) ||
+      typeof row.list_price !== 'number' ||
+      !Number.isFinite(row.list_price) ||
+      row.list_price > 2800 ||
+      address?.state_code !== 'NY' ||
+      !/^\d{5}$/.test(address.postal_code ?? '') ||
+      !/^\d/.test(address.line ?? '') ||
+      city?.toLowerCase() !== market.city.toLowerCase() ||
+      !Number.isFinite(lat) ||
+      !Number.isFinite(lon)
+    )
+      return [];
 
-    const listing = normalizeListing({
-      id: row.listing_id, url, address: address.line, city, state: 'NY', region: market.region,
-      zipCode: address.postal_code, latitude: lat, longitude: lon, bedrooms: description.beds, rent: row.list_price,
-      status: 'Active', updatedAt: checkedAt,
-    }, SOURCE);
+    const listing = normalizeListing(
+      {
+        id: row.listing_id,
+        url,
+        address: address.line,
+        city,
+        state: 'NY',
+        region: market.region,
+        zipCode: address.postal_code,
+        latitude: lat,
+        longitude: lon,
+        bedrooms: description.beds,
+        rent: row.list_price,
+        status: 'Active',
+        updatedAt: checkedAt,
+      },
+      SOURCE,
+    );
     return listing ? [listing] : [];
   });
 }

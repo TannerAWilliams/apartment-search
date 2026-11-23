@@ -11,16 +11,27 @@ const { SYNC_PROGRESS_KEY } = await import('../server/source-registry.ts');
 
 openiglooPacing.intervalMs = 0;
 const realFetch = globalThis.fetch;
-afterEach(() => { globalThis.fetch = realFetch; });
+afterEach(() => {
+  globalThis.fetch = realFetch;
+});
 
 /** Runs steps inline and records their names, like the Workflows runtime without durability. */
 function steps() {
   const names: string[] = [];
   const sleeps: string[] = [];
-  return { names, sleeps, step: {
-    async do<T>(name: string, _config: unknown, callback: () => Promise<T>) { names.push(name); return callback(); },
-    async sleep(name: string) { sleeps.push(name); },
-  } };
+  return {
+    names,
+    sleeps,
+    step: {
+      async do<T>(name: string, _config: unknown, callback: () => Promise<T>) {
+        names.push(name);
+        return callback();
+      },
+      async sleep(name: string) {
+        sleeps.push(name);
+      },
+    },
+  };
 }
 
 /** Openigloo's MCP server with an empty inventory. */
@@ -43,7 +54,10 @@ test('an Openigloo sync searches every part, records its progress and saves the 
   globalThis.fetch = emptyOpenigloo;
   const { bucket, sync } = await workflow();
   const { step, names } = steps();
-  const outcome = await sync.run({ payload: { delay: false, sources: ['openigloo'] }, instanceId: 'run-1', timestamp: new Date() }, step as never);
+  const outcome = await sync.run(
+    { payload: { delay: false, sources: ['openigloo'] }, instanceId: 'run-1', timestamp: new Date() },
+    step as never,
+  );
   expect(outcome).toStrictEqual({ openigloo: { state: 'complete', listingCount: 0 } });
   expect(names.filter((name) => name.startsWith('Search Openigloo part')).length).toBe(25);
   expect((await readJson<{ source: string }>(required(await bucket.get(SYNC_PROGRESS_KEY)))).source).toBe('openigloo');
@@ -51,29 +65,48 @@ test('an Openigloo sync searches every part, records its progress and saves the 
 });
 
 test('a failed source makes the run fail with that source named', async () => {
-  globalThis.fetch = (async () => { throw new Error('network down'); }) as unknown as typeof fetch;
+  globalThis.fetch = (async () => {
+    throw new Error('network down');
+  }) as unknown as typeof fetch;
   const { sync } = await workflow();
   const { step, sleeps } = steps();
-  await expect(sync.run({ payload: { delay: true, sources: ['openigloo', 'not-a-sync'] }, instanceId: 'run-2', timestamp: new Date() }, step as never)).rejects.toThrow(/^Openigloo: /);
+  await expect(
+    sync.run({ payload: { delay: true, sources: ['openigloo', 'not-a-sync'] }, instanceId: 'run-2', timestamp: new Date() }, step as never),
+  ).rejects.toThrow(/^Openigloo: /);
   expect(sleeps).toStrictEqual(['Give other sources time to start']);
 });
 
 test('CityRealty failures are reported, and the run waits out another refresh before giving up', async () => {
   globalThis.fetch = (async () => new Response('busy', { status: 503 })) as unknown as typeof fetch;
   const failing = await workflow();
-  await expect(failing.sync.run({ payload: { delay: false, sources: ['cityrealty-live'] }, instanceId: 'run-3', timestamp: new Date() }, steps().step as never)).rejects.toThrow(/^CityRealty: /);
+  await expect(
+    failing.sync.run(
+      { payload: { delay: false, sources: ['cityrealty-live'] }, instanceId: 'run-3', timestamp: new Date() },
+      steps().step as never,
+    ),
+  ).rejects.toThrow(/^CityRealty: /);
   const busy = await workflow();
-  await busy.bucket.put('rentals/refresh.json', JSON.stringify({ running: true, startedAt: new Date().toISOString(), activeSource: 'cityrealty-live' }));
+  await busy.bucket.put(
+    'rentals/refresh.json',
+    JSON.stringify({ running: true, startedAt: new Date().toISOString(), activeSource: 'cityrealty-live' }),
+  );
   const { step, sleeps } = steps();
-  await expect(busy.sync.run({ payload: { delay: false, sources: ['cityrealty-live'] }, instanceId: 'run-4', timestamp: new Date() }, step as never)).rejects.toThrow(/Another source refresh is already running/);
+  await expect(
+    busy.sync.run({ payload: { delay: false, sources: ['cityrealty-live'] }, instanceId: 'run-4', timestamp: new Date() }, step as never),
+  ).rejects.toThrow(/Another source refresh is already running/);
   expect(sleeps.length).toBe(6);
 });
 
 test('saving Openigloo waits for another refresh to finish before giving up', async () => {
   globalThis.fetch = emptyOpenigloo;
   const { bucket, sync } = await workflow();
-  await bucket.put('rentals/refresh.json', JSON.stringify({ running: true, startedAt: new Date().toISOString(), activeSource: 'openigloo' }));
+  await bucket.put(
+    'rentals/refresh.json',
+    JSON.stringify({ running: true, startedAt: new Date().toISOString(), activeSource: 'openigloo' }),
+  );
   const { step, sleeps } = steps();
-  await expect(sync.run({ payload: { delay: false, sources: ['openigloo'] }, instanceId: 'run-5', timestamp: new Date() }, step as never)).rejects.toThrow(/Another source refresh is already running/);
+  await expect(
+    sync.run({ payload: { delay: false, sources: ['openigloo'] }, instanceId: 'run-5', timestamp: new Date() }, step as never),
+  ).rejects.toThrow(/Another source refresh is already running/);
   expect(sleeps.filter((name) => name.includes('saving Openigloo')).length).toBe(6);
 });

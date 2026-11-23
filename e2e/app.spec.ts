@@ -5,54 +5,145 @@ import { parseFilters, localWorkplace } from '../src/search.ts';
 import type { ListingData } from '../src/domain.ts';
 import type { HousingResponse } from '../server/contracts.ts';
 
-const fixtures = (count = 1) => Array.from({ length: count }, (_, index) => normalizeListing({
-  id: `fixture-${index + 1}`, addressLine1: `${12 + index} Grove Street`, city: 'Jersey City', state: 'NJ', zipCode: '07302',
-  latitude: 40.72 + index / 10000, longitude: -74.04, bedrooms: 1, price: 1800 + index * 25,
-  status: 'Active', url: `https://streeteasy.com/building/test/${index + 1}`,
-}, { id: 'streeteasy', name: 'StreetEasy', kind: 'feed' })).filter((listing): listing is ListingData => listing !== null);
+const fixtures = (count = 1) =>
+  Array.from({ length: count }, (_, index) =>
+    normalizeListing(
+      {
+        id: `fixture-${index + 1}`,
+        addressLine1: `${12 + index} Grove Street`,
+        city: 'Jersey City',
+        state: 'NJ',
+        zipCode: '07302',
+        latitude: 40.72 + index / 10000,
+        longitude: -74.04,
+        bedrooms: 1,
+        price: 1800 + index * 25,
+        status: 'Active',
+        url: `https://streeteasy.com/building/test/${index + 1}`,
+      },
+      { id: 'streeteasy', name: 'StreetEasy', kind: 'feed' },
+    ),
+  ).filter((listing): listing is ListingData => listing !== null);
 const now = '2026-11-13T12:00:00Z';
 /** Source checks sent to the server. Opening the app sends none, so each one is a resync the user started. */
 type MockRequest = { path: string; method: string; body: Record<string, unknown> | null };
-const userRefreshes = (requests: MockRequest[]) =>
-  requests.filter(r => r.path === '/api/refresh' && r.method === 'POST');
-async function mockApp(page: Page, options: { failed?: boolean; searchError?: boolean; listingCount?: number; notices?: string[]; priceHistory?: boolean; discovery?: boolean; commute?: boolean; nyc?: boolean; dashboardAvailable?: boolean; inventoryExpiresAt?: string; housing?: HousingResponse } = {}) {
+const userRefreshes = (requests: MockRequest[]) => requests.filter((r) => r.path === '/api/refresh' && r.method === 'POST');
+async function mockApp(
+  page: Page,
+  options: {
+    failed?: boolean;
+    searchError?: boolean;
+    listingCount?: number;
+    notices?: string[];
+    priceHistory?: boolean;
+    discovery?: boolean;
+    commute?: boolean;
+    nyc?: boolean;
+    dashboardAvailable?: boolean;
+    inventoryExpiresAt?: string;
+    housing?: HousingResponse;
+  } = {},
+) {
   const requests: MockRequest[] = [];
   const unexpected: string[] = [];
   const listings = fixtures(options.listingCount);
   if (options.nyc) Object.assign(listings[0], { city: 'Brooklyn', state: 'NY', county: 'Kings', zip: '11201', region: 'nyc' });
-  if (options.commute) Object.assign(listings[0], { transitSeconds: 1801, drivingSeconds: 900, commuteEstimate: { provider: 'TravelTime', arrivalPeriod: 'weekday_morning', checkedAt: now, destination: { label: 'Synthetic test workplace', latitude: 40.75, longitude: -73.98 } } });
+  if (options.commute)
+    Object.assign(listings[0], {
+      transitSeconds: 1801,
+      drivingSeconds: 900,
+      commuteEstimate: {
+        provider: 'TravelTime',
+        arrivalPeriod: 'weekday_morning',
+        checkedAt: now,
+        destination: { label: 'Synthetic test workplace', latitude: 40.75, longitude: -73.98 },
+      },
+    });
   if (options.discovery) Object.assign(listings[0], { bathrooms: 1.5, squareFeet: 900, petsAllowed: true, laundry: 'in_unit' });
-  if (options.priceHistory) Object.assign(listings[0], { priceHistory: { sourceId: 'synthetic-fixture', firstObservedAt: '2026-11-01T12:00:00Z', lastObservedAt: now, truncated: true,
-    observations: [{ checkedAt: '2026-11-01T12:00:00Z', rent: 1900, priceIncludesFees: false }, { checkedAt: now, rent: 1800, priceIncludesFees: true }] } });
-  const refresh = { checking: false, lastCheckedAt: now, sources: [{ id: 'streeteasy-live', name: 'StreetEasy', status: options.failed ? 'failed' : 'updated', checkedAt: now, updatedAt: now, listingCount: listings.length, ...(options.failed ? { error: 'StreetEasy returned HTTP 403. Verification required.' } : {}) }] };
-  await page.route('**/*', async route => {
-    const request = route.request(); const url = new URL(request.url());
+  if (options.priceHistory)
+    Object.assign(listings[0], {
+      priceHistory: {
+        sourceId: 'synthetic-fixture',
+        firstObservedAt: '2026-11-01T12:00:00Z',
+        lastObservedAt: now,
+        truncated: true,
+        observations: [
+          { checkedAt: '2026-11-01T12:00:00Z', rent: 1900, priceIncludesFees: false },
+          { checkedAt: now, rent: 1800, priceIncludesFees: true },
+        ],
+      },
+    });
+  const refresh = {
+    checking: false,
+    lastCheckedAt: now,
+    sources: [
+      {
+        id: 'streeteasy-live',
+        name: 'StreetEasy',
+        status: options.failed ? 'failed' : 'updated',
+        checkedAt: now,
+        updatedAt: now,
+        listingCount: listings.length,
+        ...(options.failed ? { error: 'StreetEasy returned HTTP 403. Verification required.' } : {}),
+      },
+    ],
+  };
+  await page.route('**/*', async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
     // No real provider, image, geocoder, map tile or analytics request leaves the browser.
     if (url.origin !== 'http://127.0.0.1:4173') return route.abort();
     if (!url.pathname.startsWith('/api/')) return route.continue();
     const body = request.postDataJSON();
     requests.push({ path: url.pathname, method: request.method(), body });
     let data: unknown;
-    if (url.pathname === '/api/config') data = { mode: 'live', storageMode: 'persistent', dashboardAvailable: options.dashboardAvailable === true, browserImportAllowed: false, commuteConfigured: false, sources: [{ id: 'streeteasy', name: 'StreetEasy' }], sourceCatalog: [{ id: 'streeteasy-live', marketplace: 'streeteasy', name: 'StreetEasy', coverage: 'Synthetic test feed', resyncable: true }], refresh };
+    if (url.pathname === '/api/config')
+      data = {
+        mode: 'live',
+        storageMode: 'persistent',
+        dashboardAvailable: options.dashboardAvailable === true,
+        browserImportAllowed: false,
+        commuteConfigured: false,
+        sources: [{ id: 'streeteasy', name: 'StreetEasy' }],
+        sourceCatalog: [
+          { id: 'streeteasy-live', marketplace: 'streeteasy', name: 'StreetEasy', coverage: 'Synthetic test feed', resyncable: true },
+        ],
+        refresh,
+      };
     else if (url.pathname === '/api/refresh') data = refresh;
     else if (url.pathname === '/api/housing' && options.housing) data = options.housing;
-    else if (url.pathname === '/api/building-report' && options.nyc) data = {
-      status: 'matched', checkedAt: now,
-      identity: { address: '12 Grove Street, 11201', borough: 'BROOKLYN', buildingId: '123', bin: '3000001', bbl: '3000120004' },
-      openViolations: 2, complaintsLast365Days: 3, since: '2025-11-14',
-      requests311: { total: 5, topProblems: [{ problem: 'Heat / hot water', count: 4 }] },
-      taxLotOwner: { name: 'EXAMPLE PROPERTY LLC', bbl: '3000120004', edition: '26v2' },
-      rentRegistration: { matched: true, latestYear: 2026, registeredUnits: 18 },
-      bedbugs: null, dob: null, flood: null, errors: [],
-    };
+    else if (url.pathname === '/api/building-report' && options.nyc)
+      data = {
+        status: 'matched',
+        checkedAt: now,
+        identity: { address: '12 Grove Street, 11201', borough: 'BROOKLYN', buildingId: '123', bin: '3000001', bbl: '3000120004' },
+        openViolations: 2,
+        complaintsLast365Days: 3,
+        since: '2025-11-14',
+        requests311: { total: 5, topProblems: [{ problem: 'Heat / hot water', count: 4 }] },
+        taxLotOwner: { name: 'EXAMPLE PROPERTY LLC', bbl: '3000120004', edition: '26v2' },
+        rentRegistration: { matched: true, latestYear: 2026, registeredUnits: 18 },
+        bedbugs: null,
+        dob: null,
+        flood: null,
+        errors: [],
+      };
     else if (url.pathname === '/api/search') {
-      if (options.searchError && requests.filter(r => r.path === '/api/search').length > 1) return route.fulfill({ status: 503, json: { error: 'Synthetic search unavailable' } });
-      const filters = parseFilters(body); data = { ...localSearch(listings, filters, localWorkplace(filters), 'live', [], options.notices ?? []), ...(options.inventoryExpiresAt ? { inventoryExpiresAt: options.inventoryExpiresAt } : {}) };
-    } else { unexpected.push(url.pathname); return route.fulfill({ status: 500, json: { error: 'Unexpected test endpoint' } }); }
+      if (options.searchError && requests.filter((r) => r.path === '/api/search').length > 1)
+        return route.fulfill({ status: 503, json: { error: 'Synthetic search unavailable' } });
+      const filters = parseFilters(body);
+      data = {
+        ...localSearch(listings, filters, localWorkplace(filters), 'live', [], options.notices ?? []),
+        ...(options.inventoryExpiresAt ? { inventoryExpiresAt: options.inventoryExpiresAt } : {}),
+      };
+    } else {
+      unexpected.push(url.pathname);
+      return route.fulfill({ status: 500, json: { error: 'Unexpected test endpoint' } });
+    }
     await route.fulfill({ json: data });
   });
   await page.goto('/');
-  await expect.poll(() => requests.filter(r => r.path === '/api/search').length).toBeGreaterThan(0);
+  await expect.poll(() => requests.filter((r) => r.path === '/api/search').length).toBeGreaterThan(0);
   return { requests, unexpected, listings };
 }
 
@@ -60,10 +151,10 @@ test('homepage searches saved all-region inventory without starting a refresh', 
   const { requests, unexpected } = await mockApp(page);
   await expect(page.getByText('12 Grove Street', { exact: true })).toBeVisible();
   expect(userRefreshes(requests)).toHaveLength(0);
-  expect(requests.find(r => r.path === '/api/search')!.body?.region).toBe('all');
-  const searchesBeforeReload = requests.filter(r => r.path === '/api/search').length;
+  expect(requests.find((r) => r.path === '/api/search')!.body?.region).toBe('all');
+  const searchesBeforeReload = requests.filter((r) => r.path === '/api/search').length;
   await page.reload();
-  await expect.poll(() => requests.filter(r => r.path === '/api/search').length).toBeGreaterThan(searchesBeforeReload);
+  await expect.poll(() => requests.filter((r) => r.path === '/api/search').length).toBeGreaterThan(searchesBeforeReload);
   await expect(page.getByText('12 Grove Street', { exact: true })).toBeVisible();
   expect(userRefreshes(requests)).toHaveLength(0);
   expect(unexpected).toEqual([]);
@@ -148,7 +239,7 @@ test('rent filter sends user input and handles an empty result', async ({ page }
   await page.getByRole('button', { name: 'Filters', exact: true }).click();
   await page.getByRole('textbox', { name: 'Max rent per month ($)', exact: true }).fill('1000');
   await page.getByRole('button', { name: 'Search apartments →', exact: true }).click();
-  await expect.poll(() => requests.filter(r => r.path === '/api/search').at(-1)?.body?.maxRent).toBe(1000);
+  await expect.poll(() => requests.filter((r) => r.path === '/api/search').at(-1)?.body?.maxRent).toBe(1000);
   await expect(page.getByRole('button', { name: 'Save apartment', exact: true })).toHaveCount(0);
 });
 
@@ -173,18 +264,19 @@ test('Sources tab is keyboard operable', async ({ page }) => {
   await mockApp(page);
   await page.getByRole('tab', { name: 'More', exact: true }).click();
   const sources = page.getByRole('button', { name: 'Sources & sync', exact: true });
-  await sources.focus(); await page.keyboard.press('Enter');
+  await sources.focus();
+  await page.keyboard.press('Enter');
   await expect(page).toHaveURL(/#sources$/);
   await expect(page.getByRole('button', { name: 'Resync all connected providers' })).toBeVisible();
 });
-
-
 
 test('the map view loads its tiles under the Content Security Policy', async ({ page }) => {
   await page.setViewportSize({ width: 393, height: 852 });
   // A request event means the policy allowed the tile; the mock then aborts it so nothing leaves the browser.
   const tiles: string[] = [];
-  page.on('request', (request) => { if (request.url().startsWith('https://tile.openstreetmap.org/')) tiles.push(request.url()); });
+  page.on('request', (request) => {
+    if (request.url().startsWith('https://tile.openstreetmap.org/')) tiles.push(request.url());
+  });
   await mockApp(page);
   await page.getByRole('button', { name: 'Map', exact: true }).click();
   await expect(page.getByRole('region', { name: 'Map of matching apartments', exact: true })).toBeVisible();
@@ -199,12 +291,12 @@ test('portrait keeps first listing visible and filter cancellation does not sear
   await expect(page.getByRole('button', { name: 'Map', exact: true })).toBeVisible();
   await expect(page.getByRole('region', { name: 'Map of matching apartments', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Resync all connected providers', exact: true })).toHaveCount(0);
-  const before = requests.filter(r => r.path === '/api/search').length;
+  const before = requests.filter((r) => r.path === '/api/search').length;
   await page.getByRole('button', { name: 'Filters', exact: true }).click();
   await page.getByRole('textbox', { name: 'Max rent per month ($)', exact: true }).fill('1000');
   await page.getByRole('button', { name: 'Cancel', exact: true }).click();
   await expect(first).toBeInViewport();
-  expect(requests.filter(r => r.path === '/api/search')).toHaveLength(before);
+  expect(requests.filter((r) => r.path === '/api/search')).toHaveLength(before);
   await page.getByRole('button', { name: 'Filters', exact: true }).click();
   await expect(page.getByRole('textbox', { name: 'Max rent per month ($)', exact: true })).toHaveValue('');
   await page.keyboard.press('Escape');
@@ -220,8 +312,8 @@ test('applied filters, expanded results and search scroll survive navigation', a
   await page.getByRole('button', { name: '1 BR', exact: true }).click();
   await page.getByRole('textbox', { name: 'Max rent per month ($)', exact: true }).fill('5000');
   await page.getByRole('button', { name: 'Search apartments →', exact: true }).click();
-  await expect.poll(() => requests.filter(r => r.path === '/api/search').at(-1)?.body?.maxRent).toBe(5000);
-  expect(requests.filter(r => r.path === '/api/search').at(-1)?.body?.bedrooms).toBe(1);
+  await expect.poll(() => requests.filter((r) => r.path === '/api/search').at(-1)?.body?.maxRent).toBe(5000);
+  expect(requests.filter((r) => r.path === '/api/search').at(-1)?.body?.bedrooms).toBe(1);
   await expect(page.getByText('1 bedroom · Up to $5,000', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Show more (12 of 20)', exact: true }).click();
   await expect(page.getByRole('button', { name: /^Details for / })).toHaveCount(20);
@@ -229,10 +321,12 @@ test('applied filters, expanded results and search scroll survive navigation', a
   const scroller = page.getByTestId('main-scroll');
   // React Native Web replaces this element's scrollTo with its own ({ x, y, animated }) version, so set
   // the DOM position directly for an instant scroll.
-  await scroller.evaluate((element) => { element.scrollTop = 500; });
+  await scroller.evaluate((element) => {
+    element.scrollTop = 500;
+  });
   await expect.poll(() => scroller.evaluate((element) => element.scrollTop)).toBe(500);
   const searchScroll = 500;
-  const searchesBeforeNavigation = requests.filter(r => r.path === '/api/search').length;
+  const searchesBeforeNavigation = requests.filter((r) => r.path === '/api/search').length;
   await page.getByRole('tab', { name: 'Saved (0)', exact: true }).click();
   await expect(page.getByText('All apartment sizes · Any price', { exact: true })).toBeVisible();
   await expect(page.getByText('1 bedroom · Up to $5,000', { exact: true })).toHaveCount(0);
@@ -240,13 +334,12 @@ test('applied filters, expanded results and search scroll survive navigation', a
   await page.getByRole('tab', { name: 'Search', exact: true }).click();
 
   await expect(page.getByRole('button', { name: /^Details for / })).toHaveCount(20);
-  await expect.poll(async () => Math.abs(await scroller.evaluate((element) => element.scrollTop) - searchScroll)).toBeLessThan(5);
-  expect(requests.filter(r => r.path === '/api/search')).toHaveLength(searchesBeforeNavigation);
+  await expect.poll(async () => Math.abs((await scroller.evaluate((element) => element.scrollTop)) - searchScroll)).toBeLessThan(5);
+  expect(requests.filter((r) => r.path === '/api/search')).toHaveLength(searchesBeforeNavigation);
   await page.getByRole('button', { name: 'Filters', exact: true }).click();
   await expect(page.getByRole('button', { name: '1 BR', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByRole('textbox', { name: 'Max rent per month ($)', exact: true })).toHaveValue('5000');
 });
-
 
 async function openImport(page: Page) {
   await page.getByRole('tab', { name: 'More', exact: true }).click();
@@ -285,7 +378,9 @@ test('CSV validation is atomic and correcting the bad row recovers', async ({ pa
   await openImport(page);
   const save = page.getByRole('button', { name: 'Save listings', exact: true });
   await expect(save).toBeDisabled();
-  await page.getByRole('textbox', { name: 'Listing CSV', exact: true }).fill(`${importHeader}\n${importRow}\nhttps://example.com/bad,102 Test Street,,Brooklyn,NY,11201,1,invalid`);
+  await page
+    .getByRole('textbox', { name: 'Listing CSV', exact: true })
+    .fill(`${importHeader}\n${importRow}\nhttps://example.com/bad,102 Test Street,,Brooklyn,NY,11201,1,invalid`);
   await save.click();
   await expect(page.getByRole('alert').filter({ hasText: 'line 3' })).toBeVisible();
   await expect(page.getByRole('tab', { name: 'Saved (0)', exact: true })).toBeVisible();
@@ -334,7 +429,9 @@ test('CSV outside supported regions reports the restriction without saving', asy
   await mockApp(page);
   await openImport(page);
   // Albany is in New York State but outside every searchable region.
-  await page.getByRole('textbox', { name: 'Listing CSV', exact: true }).fill(`${importHeader}\nhttps://example.com/albany,12 State Street,,Albany,NY,12207,1,1800`);
+  await page
+    .getByRole('textbox', { name: 'Listing CSV', exact: true })
+    .fill(`${importHeader}\nhttps://example.com/albany,12 State Street,,Albany,NY,12207,1,1800`);
   await page.getByRole('button', { name: 'Save listings', exact: true }).click();
   await expect(page.getByRole('alert').filter({ hasText: 'Check the street, city, region, and monthly rent on line 2' })).toBeVisible();
   await expect(page.getByRole('tab', { name: 'Saved (0)', exact: true })).toBeVisible();
@@ -347,11 +444,17 @@ test('housing cost inputs require known amounts, calculate, reject invalid input
   await page.getByRole('button', { name: 'Details for 12 Grove Street', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Housing cost estimate', exact: true })).toBeVisible();
   await page.getByRole('textbox', { name: 'Gross monthly rent', exact: true }).fill('2400');
-  await expect(page.getByText('Complete all eight amounts to compare costs; unknown costs are not treated as free.', { exact: true })).toBeVisible();
+  await expect(
+    page.getByText('Complete all eight amounts to compare costs; unknown costs are not treated as free.', { exact: true }),
+  ).toBeVisible();
   const inputs = [
-    ['Lease length in months', '12'], ['Total rent concessions over lease', '2400'],
-    ['Recurring monthly fees', '100'], ['Nonrefundable upfront fees', '600'],
-    ['Refundable deposit', '2400'], ['Rent due at signing', '2400'], ['Recurring fees due at signing', '100'],
+    ['Lease length in months', '12'],
+    ['Total rent concessions over lease', '2400'],
+    ['Recurring monthly fees', '100'],
+    ['Nonrefundable upfront fees', '600'],
+    ['Refundable deposit', '2400'],
+    ['Rent due at signing', '2400'],
+    ['Recurring fees due at signing', '100'],
   ];
   for (const [name, value] of inputs) await page.getByRole('textbox', { name, exact: true }).fill(value);
   await expect(page.getByText('Average lease cost: $2,350.00/mo', { exact: true })).toBeVisible();
@@ -379,9 +482,8 @@ test('saved notes and viewing status persist on this device without network writ
   await page.getByRole('button', { name: 'Details for 12 Grove Street', exact: true }).click();
   await expect(notes).toHaveValue('Ask about utilities');
   await expect(page.getByRole('button', { name: 'Toured', exact: true })).toHaveAttribute('aria-pressed', 'true');
-  expect(requests.some(request => JSON.stringify(request.body ?? null).includes('Ask about utilities'))).toBe(false);
+  expect(requests.some((request) => JSON.stringify(request.body ?? null).includes('Ask about utilities'))).toBe(false);
 });
-
 
 test('observed timeline distinguishes historical checks from live availability and fee bases', async ({ page }) => {
   const { requests } = await mockApp(page, { priceHistory: true });
@@ -394,7 +496,6 @@ test('observed timeline distinguishes historical checks from live availability a
   expect(userRefreshes(requests)).toHaveLength(0);
 });
 
-
 test('feature filters require reported facts rather than matching unknown details', async ({ page }) => {
   const { requests } = await mockApp(page, { listingCount: 2, discovery: true });
   await page.getByRole('button', { name: 'Filters', exact: true }).click();
@@ -405,7 +506,7 @@ test('feature filters require reported facts rather than matching unknown detail
   await page.getByRole('button', { name: 'Search apartments →', exact: true }).click();
   await expect(page.getByText('12 Grove Street', { exact: true })).toBeVisible();
   await expect(page.getByText('13 Grove Street', { exact: true })).toHaveCount(0);
-  const search = requests.filter(request => request.path === '/api/search').at(-1)!;
+  const search = requests.filter((request) => request.path === '/api/search').at(-1)!;
   expect(search.body?.minBathrooms).toBe(1.5);
   expect(search.body?.minSquareFeet).toBe(900);
   expect(search.body?.petsRequired).toBe(true);
@@ -419,7 +520,8 @@ test('saved comparison caps four, enables replacements and clears without removi
   for (let index = 0; index < 5; index++) await page.getByRole('button', { name: 'Save apartment', exact: true }).first().click();
   await page.getByRole('tab', { name: 'Saved (5)', exact: true }).click();
   await page.getByRole('button', { name: 'Compare saved apartments', exact: true }).click();
-  for (let index = 0; index < 4; index++) await page.getByRole('checkbox', { name: `Compare ${12 + index} Grove Street, Jersey City`, exact: true }).click();
+  for (let index = 0; index < 4; index++)
+    await page.getByRole('checkbox', { name: `Compare ${12 + index} Grove Street, Jersey City`, exact: true }).click();
   const fifth = page.getByRole('checkbox', { name: 'Compare 16 Grove Street, Jersey City', exact: true });
   await expect(fifth).toBeDisabled();
   await expect(page.getByText('4 of 4 selected. Remove a selection to choose another.', { exact: true })).toBeVisible();
@@ -432,7 +534,6 @@ test('saved comparison caps four, enables replacements and clears without removi
   expect(userRefreshes(requests)).toHaveLength(0);
 });
 
-
 test('saved route context identifies destination, period and estimate rather than live traffic', async ({ page }) => {
   const { requests } = await mockApp(page, { commute: true });
   await page.getByRole('button', { name: 'Details for 12 Grove Street', exact: true }).click();
@@ -443,7 +544,6 @@ test('saved route context identifies destination, period and estimate rather tha
   expect(userRefreshes(requests)).toHaveLength(0);
 });
 
-
 test('local change checks opt in, seed baseline and show newer observed price changes without refreshing', async ({ page }) => {
   const { requests, listings } = await mockApp(page, { priceHistory: true });
   Object.assign(listings[0], { priceIncludesFees: true });
@@ -451,8 +551,17 @@ test('local change checks opt in, seed baseline and show newer observed price ch
   await page.getByRole('button', { name: 'Price changes found by a local check', exact: true }).click();
   await page.getByRole('button', { name: 'Check this page and save local baseline', exact: true }).click();
   await expect(page.getByText(/Baseline saved. Check again after a later source observation/)).toBeVisible();
-  Object.assign(listings[0], { rent: 1700, priceIncludesFees: true, priceHistory: { sourceId: 'synthetic-fixture', firstObservedAt: '2026-11-14T12:00:00Z', lastObservedAt: '2026-11-14T12:00:00Z', truncated: false,
-    observations: [{ checkedAt: '2026-11-14T12:00:00Z', rent: 1700, priceIncludesFees: true }] } });
+  Object.assign(listings[0], {
+    rent: 1700,
+    priceIncludesFees: true,
+    priceHistory: {
+      sourceId: 'synthetic-fixture',
+      firstObservedAt: '2026-11-14T12:00:00Z',
+      lastObservedAt: '2026-11-14T12:00:00Z',
+      truncated: false,
+      observations: [{ checkedAt: '2026-11-14T12:00:00Z', rent: 1700, priceIncludesFees: true }],
+    },
+  });
   await page.reload();
   await page.getByRole('button', { name: 'Price changes found by a local check', exact: true }).click();
   await page.getByRole('button', { name: 'Check this page and save local baseline', exact: true }).click();
@@ -460,55 +569,77 @@ test('local change checks opt in, seed baseline and show newer observed price ch
   expect(userRefreshes(requests)).toHaveLength(0);
 });
 
-
 test('NYC building report loads automatically on Details and reuses completed session cache', async ({ page }) => {
   const { requests, unexpected } = await mockApp(page, { nyc: true });
   const details = page.getByRole('button', { name: 'Details for 12 Grove Street', exact: true });
-  expect(requests.filter(item => item.path === '/api/building-report')).toHaveLength(0);
+  expect(requests.filter((item) => item.path === '/api/building-report')).toHaveLength(0);
   await details.click();
   await expect(page.getByText('Official building report: matched', { exact: true })).toBeVisible();
   await expect(page.getByText('311 service requests on this tax lot in the last 365 days: 5.', { exact: true })).toBeVisible();
   await expect(page.getByText('EXAMPLE PROPERTY LLC · NYC PLUTO tax-lot owner · 26v2', { exact: true })).toBeVisible();
-  await expect(page.getByText('State rent registration on this tax lot · latest filing year 2026 · 18 registered units reported.', { exact: true })).toBeVisible();
+  await expect(
+    page.getByText('State rent registration on this tax lot · latest filing year 2026 · 18 registered units reported.', { exact: true }),
+  ).toBeVisible();
   await expect(page.getByText(/Apartment-level stabilization status: unverified/)).toBeVisible();
   await expect(page.getByRole('button', { name: 'Check official HPD records', exact: true })).toHaveCount(0);
-  expect(requests.filter(item => item.path === '/api/building-report')).toHaveLength(1);
-  await details.click(); await details.click();
+  expect(requests.filter((item) => item.path === '/api/building-report')).toHaveLength(1);
+  await details.click();
+  await details.click();
   await expect(page.getByText('Official building report: matched', { exact: true })).toBeVisible();
-  expect(requests.filter(item => item.path === '/api/building-report')).toHaveLength(1);
+  expect(requests.filter((item) => item.path === '/api/building-report')).toHaveLength(1);
   expect(userRefreshes(requests)).toHaveLength(0);
   expect(unexpected).toEqual([]);
 });
 
 test('historical dashboard loads privately and a failed series does not trap the selector', async ({ page }) => {
   await mockApp(page, { dashboardAvailable: true });
-  await page.route('**/api/dashboard*', async route => {
+  await page.route('**/api/dashboard*', async (route) => {
     const name = new URL(route.request().url()).searchParams.get('file');
-    if (name === 'medianAskingRent_All.csv') return route.fulfill({status:503,json:{error:'Synthetic unavailable series'}});
-    const file = {name:'rentalInventory_All.csv',metric:'rentalInventory',segment:'All',months:['2025-01','2025-02'],areas:[{name:'Test area',borough:'Queens',type:'neighborhood',values:[null,0]}]};
-    return route.fulfill({json:name ? {file} : {provenance:{downloadedAt:'2026-11-17'},files:[{name:'medianAskingRent_All.csv',metric:'medianAskingRent',segment:'All'},file]}});
+    if (name === 'medianAskingRent_All.csv') return route.fulfill({ status: 503, json: { error: 'Synthetic unavailable series' } });
+    const file = {
+      name: 'rentalInventory_All.csv',
+      metric: 'rentalInventory',
+      segment: 'All',
+      months: ['2025-01', '2025-02'],
+      areas: [{ name: 'Test area', borough: 'Queens', type: 'neighborhood', values: [null, 0] }],
+    };
+    return route.fulfill({
+      json: name
+        ? { file }
+        : {
+            provenance: { downloadedAt: '2026-11-17' },
+            files: [{ name: 'medianAskingRent_All.csv', metric: 'medianAskingRent', segment: 'All' }, file],
+          },
+    });
   });
-  await page.getByRole('tab',{name:'More',exact:true}).click();
-  await page.getByRole('button',{name:'Rent chart',exact:true}).click();
-  await page.getByRole('button',{name:'StreetEasy dashboard files',exact:true}).click();
+  await page.getByRole('tab', { name: 'More', exact: true }).click();
+  await page.getByRole('button', { name: 'Rent chart', exact: true }).click();
+  await page.getByRole('button', { name: 'StreetEasy dashboard files', exact: true }).click();
   await expect(page.getByText('This historical series could not be loaded. No values have been substituted.')).toBeVisible();
-  await page.getByRole('button',{name:'Rental inventory',exact:true}).click();
-  await expect(page.getByRole('button',{name:'2025-02 · Test area: 0',exact:true})).toBeVisible();
-  await expect(page.getByRole('button',{name:'2025-01 · Test area: Not reported',exact:true})).toBeVisible();
-  await page.getByRole('button',{name:'All history',exact:true}).click();
-  await page.getByRole('button',{name:'2025-01 · Test area: Not reported',exact:true}).click();
-  await expect(page.getByText('Prior calendar month: Unavailable (missing, anomalous or zero baseline). Same month one year earlier: Unavailable (missing, anomalous or zero baseline).',{exact:true})).toBeVisible();
-  await page.getByRole('button',{name:'Back to rent trends',exact:true}).click();
-  await expect(page.getByText('StreetEasy historical dashboard',{exact:true})).toHaveCount(0);
+  await page.getByRole('button', { name: 'Rental inventory', exact: true }).click();
+  await expect(page.getByRole('button', { name: '2025-02 · Test area: 0', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '2025-01 · Test area: Not reported', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'All history', exact: true }).click();
+  await page.getByRole('button', { name: '2025-01 · Test area: Not reported', exact: true }).click();
+  await expect(
+    page.getByText(
+      'Prior calendar month: Unavailable (missing, anomalous or zero baseline). Same month one year earlier: Unavailable (missing, anomalous or zero baseline).',
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Back to rent trends', exact: true }).click();
+  await expect(page.getByText('StreetEasy historical dashboard', { exact: true })).toHaveCount(0);
 });
-
 
 test('iPhone 17 portrait keeps primary controls inside the screen', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'iphone17-portrait-chromium', 'Portrait-specific layout qualification');
   await mockApp(page, { failed: true });
   expect(page.viewportSize()).toEqual({ width: 402, height: 681 });
   async function checkLayout(label: string, checkNavigation = true) {
-    const dimensions = await page.evaluate(() => ({ width: document.documentElement.clientWidth, contentWidth: document.documentElement.scrollWidth }));
+    const dimensions = await page.evaluate(() => ({
+      width: document.documentElement.clientWidth,
+      contentWidth: document.documentElement.scrollWidth,
+    }));
     expect(dimensions.contentWidth, label + ' must not overflow horizontally').toBeLessThanOrEqual(dimensions.width + 1);
     if (checkNavigation) {
       const controls = page.getByRole('tab');
@@ -548,31 +679,55 @@ test('iPhone 17 portrait keeps primary controls inside the screen', async ({ pag
   await checkLayout('search-return');
 });
 
-
 test('unavailable dashboard capability explains access without requesting source bytes', async ({ page }) => {
   const { requests } = await mockApp(page);
   await page.getByRole('tab', { name: 'More', exact: true }).click();
   await page.getByRole('button', { name: 'Rent chart', exact: true }).click();
   await page.getByRole('button', { name: 'StreetEasy dashboard files', exact: true }).click();
-  await expect(page.getByText('Historical dashboard data is unavailable on this server. Connect to a server with dashboard access; a private server requires authentication.', { exact: true })).toBeVisible();
-  expect(requests.filter(request => request.path === '/api/dashboard')).toHaveLength(0);
+  await expect(
+    page.getByText(
+      'Historical dashboard data is unavailable on this server. Connect to a server with dashboard access; a private server requires authentication.',
+      { exact: true },
+    ),
+  ).toBeVisible();
+  expect(requests.filter((request) => request.path === '/api/dashboard')).toHaveLength(0);
 });
 
 test('Jersey City affordable notices show with official links and stay out of apartment search', async ({ page }) => {
-  const { requests, unexpected } = await mockApp(page, { housing: {
-    publishedAt: null, checkedAt: null, opportunities: [], rerentals: null,
-    jersey: { revision: '2026-11-16', checkedAt: now, total: 3,
-      sourceUrl: 'https://www.jerseycitynj.gov/CityHall/HousingAndDevelopment/affordable_housing/recent_affordable_housing_postings',
-      applicationUrl: 'https://affordablehousingjc.com/',
-      notices: [{ id: 'fixture', name: 'Example affordable building', address: '10 Example St, Jersey City, NJ 07302', sizes: [1, 2, 0, 0, 0], total: 3 }] },
-  } });
+  const { requests, unexpected } = await mockApp(page, {
+    housing: {
+      publishedAt: null,
+      checkedAt: null,
+      opportunities: [],
+      rerentals: null,
+      jersey: {
+        revision: '2026-11-16',
+        checkedAt: now,
+        total: 3,
+        sourceUrl: 'https://www.jerseycitynj.gov/CityHall/HousingAndDevelopment/affordable_housing/recent_affordable_housing_postings',
+        applicationUrl: 'https://affordablehousingjc.com/',
+        notices: [
+          {
+            id: 'fixture',
+            name: 'Example affordable building',
+            address: '10 Example St, Jersey City, NJ 07302',
+            sizes: [1, 2, 0, 0, 0],
+            total: 3,
+          },
+        ],
+      },
+    },
+  });
   await expect(page.getByText('Example affordable building', { exact: true })).toHaveCount(0);
   await page.getByRole('tab', { name: 'More', exact: true }).click();
   await page.getByRole('button', { name: 'Affordable housing', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Jersey City affordable housing applications' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Example affordable building', exact: true })).toBeVisible();
   await expect(page.getByText('1 BR · 2', { exact: true })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Jersey City application portal' })).toHaveAttribute('href', 'https://affordablehousingjc.com/');
+  await expect(page.getByRole('link', { name: 'Jersey City application portal' })).toHaveAttribute(
+    'href',
+    'https://affordablehousingjc.com/',
+  );
   await page.getByRole('tab', { name: 'Search', exact: true }).click();
   await expect(page.getByText('Example affordable building', { exact: true })).toHaveCount(0);
   expect(userRefreshes(requests)).toHaveLength(0);
@@ -587,12 +742,19 @@ for (const width of [320, 375, 390]) {
     await page.getByRole('tab', { name: 'More', exact: true }).click();
     const affordable = page.getByRole('button', { name: 'Affordable housing', exact: true });
     await expect(affordable).toBeVisible();
-    const measure = await affordable.evaluate(element => {
+    const measure = await affordable.evaluate((element) => {
       const rect = element.getBoundingClientRect();
-      const range = document.createRange(); range.selectNodeContents(element);
+      const range = document.createRange();
+      range.selectNodeContents(element);
       const text = range.getBoundingClientRect();
-      return { left: rect.left, right: rect.right, textLeft: text.left, textRight: text.right,
-        viewport: document.documentElement.clientWidth, content: document.documentElement.scrollWidth };
+      return {
+        left: rect.left,
+        right: rect.right,
+        textLeft: text.left,
+        textRight: text.right,
+        viewport: document.documentElement.clientWidth,
+        content: document.documentElement.scrollWidth,
+      };
     });
     expect(measure.left).toBeGreaterThanOrEqual(0);
     expect(measure.right).toBeLessThanOrEqual(width);
@@ -607,7 +769,6 @@ for (const width of [320, 375, 390]) {
   });
 }
 
-
 test('empty active inventory is not presented as no apartments matching the filters', async ({ page }) => {
   await mockApp(page, { listingCount: 0 });
   await expect(page.getByRole('heading', { name: 'Active inventory unavailable', exact: true })).toBeVisible();
@@ -615,7 +776,6 @@ test('empty active inventory is not presented as no apartments matching the filt
   await page.getByRole('button', { name: 'Check source status', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Sources & sync', exact: true })).toBeVisible();
 });
-
 
 test('an open result expires without a provider request and saved apartments remain available', async ({ page }) => {
   await page.clock.install({ time: new Date('2026-11-17T11:59:00Z') });
@@ -635,7 +795,12 @@ test('an open result expires without a provider request and saved apartments rem
 test('alerts: save one for the current search, send a test, and remove it', async ({ page }) => {
   await mockApp(page);
   const posts: { action: string; rule?: { name: string; filters: Record<string, unknown> } }[] = [];
-  let state = { rules: [] as { id: string; name: string; createdAt: string }[], devices: [], recent: [], channels: { email: true, push: null } };
+  let state = {
+    rules: [] as { id: string; name: string; createdAt: string }[],
+    devices: [],
+    recent: [],
+    channels: { email: true, push: null },
+  };
   await page.route('**/api/alerts', async (route) => {
     const body = route.request().postDataJSON();
     if (body) {

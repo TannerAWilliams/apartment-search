@@ -6,10 +6,25 @@ export type ChangeBaseline = { version: 1; observations: ObservedUnit[]; truncat
 export type ObservedChange = { kind: 'newly_encountered' | 'price' | 'fee_basis'; current: ObservedUnit; previous?: ObservedUnit };
 export const MAX_BASELINE_UNITS = 2000;
 function validObservation(item: unknown): item is ObservedUnit {
-  return isRecord(item) && typeof item.key === 'string' && !!item.key && item.key.length <= 1000 &&
-    typeof item.label === 'string' && item.label.length <= 500 && typeof item.sourceId === 'string' && !!item.sourceId && item.sourceId.length <= 200 &&
-    typeof item.checkedAt === 'string' && item.checkedAt.length <= 64 && Number.isFinite(Date.parse(item.checkedAt)) &&
-    typeof item.rent === 'number' && Number.isFinite(item.rent) && item.rent > 0 && item.rent <= 100000 && typeof item.includesFees === 'boolean';
+  return (
+    isRecord(item) &&
+    typeof item.key === 'string' &&
+    !!item.key &&
+    item.key.length <= 1000 &&
+    typeof item.label === 'string' &&
+    item.label.length <= 500 &&
+    typeof item.sourceId === 'string' &&
+    !!item.sourceId &&
+    item.sourceId.length <= 200 &&
+    typeof item.checkedAt === 'string' &&
+    item.checkedAt.length <= 64 &&
+    Number.isFinite(Date.parse(item.checkedAt)) &&
+    typeof item.rent === 'number' &&
+    Number.isFinite(item.rent) &&
+    item.rent > 0 &&
+    item.rent <= 100000 &&
+    typeof item.includesFees === 'boolean'
+  );
 }
 export function parseChangeBaseline(raw: string | null): ChangeBaseline | null {
   if (raw === null) return null;
@@ -17,8 +32,14 @@ export function parseChangeBaseline(raw: string | null): ChangeBaseline | null {
   if (raw.length > 32 * 1024 * 1024) throw new Error('Change baseline is too large.');
   const value = JSON.parse(raw);
   const { version, truncated, observations }: Loose<ChangeBaseline> = isRecord(value) ? value : {};
-  if (version !== 1 || typeof truncated !== 'boolean' || !Array.isArray(observations) || observations.length > MAX_BASELINE_UNITS ||
-      !observations.every(validObservation)) throw new Error('Invalid change baseline.');
+  if (
+    version !== 1 ||
+    typeof truncated !== 'boolean' ||
+    !Array.isArray(observations) ||
+    observations.length > MAX_BASELINE_UNITS ||
+    !observations.every(validObservation)
+  )
+    throw new Error('Invalid change baseline.');
   const keys = new Set<string>();
   for (const item of observations) {
     if (keys.has(item.key)) throw new Error('Invalid change baseline.');
@@ -27,7 +48,7 @@ export function parseChangeBaseline(raw: string | null): ChangeBaseline | null {
   return { version, truncated, observations };
 }
 export function checkObservedChanges(listings: ListingData[], baseline: ChangeBaseline | null) {
-  const previous = new Map((baseline?.observations ?? []).map(item => [item.key, item]));
+  const previous = new Map((baseline?.observations ?? []).map((item) => [item.key, item]));
   const next = new Map(previous);
   const changes: ObservedChange[] = [];
   let eligible = 0;
@@ -35,14 +56,28 @@ export function checkObservedChanges(listings: ListingData[], baseline: ChangeBa
   for (const listing of listings) {
     const history = displayPriceHistory(listing.priceHistory);
     const latest = history?.observations.at(-1);
-    if (!history || !latest || latest.rent > 100000 || latest.rent !== listing.rent || latest.priceIncludesFees !== (listing.priceIncludesFees === true)) continue;
+    if (
+      !history ||
+      !latest ||
+      latest.rent > 100000 ||
+      latest.rent !== listing.rent ||
+      latest.priceIncludesFees !== (listing.priceIncludesFees === true)
+    )
+      continue;
     const key = JSON.stringify([listingKey(listing), history.sourceId]);
     if (seen.has(key)) continue;
 
-    const current: ObservedUnit = { key, label: [listing.address, listing.unit ? `Unit ${listing.unit}` : '', listing.city].filter(Boolean).join(', '),
-      sourceId: history.sourceId, checkedAt: history.lastObservedAt, rent: latest.rent, includesFees: latest.priceIncludesFees };
+    const current: ObservedUnit = {
+      key,
+      label: [listing.address, listing.unit ? `Unit ${listing.unit}` : '', listing.city].filter(Boolean).join(', '),
+      sourceId: history.sourceId,
+      checkedAt: history.lastObservedAt,
+      rent: latest.rent,
+      includesFees: latest.priceIncludesFees,
+    };
     if (!validObservation(current)) continue;
-    seen.add(key); eligible++;
+    seen.add(key);
+    eligible++;
     const old = previous.get(key);
     // Older/equal snapshots cannot roll back a baseline or manufacture changes.
     if (old && Date.parse(current.checkedAt) <= Date.parse(old.checkedAt)) continue;
@@ -54,5 +89,13 @@ export function checkObservedChanges(listings: ListingData[], baseline: ChangeBa
     next.set(key, current);
   }
   const records = [...next.values()].sort((a, b) => Date.parse(b.checkedAt) - Date.parse(a.checkedAt));
-  return { eligible, changes, baseline: { version: 1 as const, observations: records.slice(0, MAX_BASELINE_UNITS), truncated: Boolean(baseline?.truncated || records.length > MAX_BASELINE_UNITS) } };
+  return {
+    eligible,
+    changes,
+    baseline: {
+      version: 1 as const,
+      observations: records.slice(0, MAX_BASELINE_UNITS),
+      truncated: Boolean(baseline?.truncated || records.length > MAX_BASELINE_UNITS),
+    },
+  };
 }

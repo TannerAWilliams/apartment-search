@@ -20,10 +20,19 @@ export class ErrorBoundary extends React.Component<{ children: ReactNode }, { fa
 
   override render() {
     if (!this.state.failed) return this.props.children;
-    return <View accessibilityRole="alert" style={styles.filters}>
-      <Text style={styles.sectionHeading}>Something went wrong</Text>
-      <Text style={styles.smallMuted}>Apartment Search hit an unexpected problem. Your saved apartments are kept on this device.</Text>
-      <Button onPress={() => { if (Platform.OS === 'web') window.location.reload(); else this.setState({ failed: false }); }}>Reload</Button>
-    </View>;
+    return (
+      <View accessibilityRole="alert" style={styles.filters}>
+        <Text style={styles.sectionHeading}>Something went wrong</Text>
+        <Text style={styles.smallMuted}>Apartment Search hit an unexpected problem. Your saved apartments are kept on this device.</Text>
+        <Button
+          onPress={() => {
+            if (Platform.OS === 'web') window.location.reload();
+            else this.setState({ failed: false });
+          }}
+        >
+          Reload
+        </Button>
+      </View>
+    );
   }
 }
