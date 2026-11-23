@@ -15,6 +15,8 @@
   // scripts that send the app access token, such as the StreetEasy home sync.
   "routes": [{ "pattern": "apartments.5thof6.com", "custom_domain": true }],
   "workers_dev": true,
+  // No per-version preview URLs; they were off before the first deploy from this file.
+  "preview_urls": false,
   "vars": {
     // Public identifiers of that Access application, not secrets.
     "ACCESS_TEAM_DOMAIN": "https://empty-term-4661.cloudflareaccess.com",
