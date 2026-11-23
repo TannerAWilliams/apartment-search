@@ -58,7 +58,19 @@ export function sourceRows(catalog: SourceDefinition[], statuses: SourceStatus[]
 }
 
 /** A partial refresh must not look like an empty or successful full inventory fetch. */
-export function refreshSummary(sources: SourceStatus[]): string {
+export function refreshSummary(
+  all: SourceStatus[],
+  run: { lastCheckedAt?: string | null; checking?: boolean; paused?: readonly string[] } = {},
+): string {
+  // Only sources this run reached count; the rest keep the outcome of an earlier run, which must not read as new.
+  const sources = run.lastCheckedAt ? all.filter((source) => source.checkedAt === run.lastCheckedAt) : all;
+  const pending =
+    run.checking && run.lastCheckedAt
+      ? all.filter((source) => source.checkedAt !== run.lastCheckedAt && !run.paused?.includes(source.id))
+      : [];
+  const stillSyncing = pending.length
+    ? ` Still syncing in the background: ${pending.map((source) => source.name ?? source.id).join(', ')}.`
+    : '';
   const updated = sources.filter((source) => source.status === 'updated');
   const unchanged = sources.filter((source) => source.status === 'current');
   const successful = updated.length + unchanged.length;
@@ -72,8 +84,9 @@ export function refreshSummary(sources: SourceStatus[]): string {
     .filter(Boolean)
     .join('; ');
   if (failed.length)
-    return `${outcome ? outcome + '; ' : ''}${unavailable} could not refresh. Previous cached listings are retained where available. This is not complete coverage.`;
-  if (successful) return `${outcome}. Connected providers may return limited samples.`;
+    return `${outcome ? outcome + '; ' : ''}${unavailable} could not refresh. Previous cached listings are retained where available. This is not complete coverage.${stillSyncing}`;
+  if (successful) return `${outcome}. Connected providers may return limited samples.${stillSyncing}`;
+  if (stillSyncing) return stillSyncing.trim();
   return 'No sources refreshed. Check Sources for connection status and retry times.';
 }
 

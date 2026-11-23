@@ -122,7 +122,13 @@ export function useServer({ appliedFilters, searchVersion, submitted, setResult,
         const config = await api('config', { token: activeToken, signal });
         if (signal?.aborted) return;
         updateConfig(config);
-        if (!source) setRefreshError(refreshSummary(config.refresh?.sources ?? []));
+        if (!source)
+          setRefreshError(
+            refreshSummary(config.refresh?.sources ?? [], {
+              ...config.refresh,
+              paused: (config.sourceCatalog ?? []).filter(({ paused }) => paused).map(({ id }) => id),
+            }),
+          );
         if (source) {
           const status = config.refresh?.sources.find((item) => item.id === source);
           if (status?.status === 'failed')

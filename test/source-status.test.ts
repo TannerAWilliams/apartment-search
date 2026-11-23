@@ -61,6 +61,39 @@ test('failed refresh does not turn unchanged checks into updates', async () => {
   expect(message).not.toMatch(/updated/);
 });
 
+test('a running resync counts only the sources it reached and names the ones still syncing', async () => {
+  const { refreshSummary } = await import('../src/source-status.ts');
+  const run = { lastCheckedAt: '2026-11-23T23:54:23.077Z', checking: true };
+  const earlier = '2026-11-18T18:20:40.683Z';
+  const message = refreshSummary(
+    [
+      { id: 'trulia-live', name: 'Trulia', status: 'updated', checkedAt: run.lastCheckedAt },
+      { id: 'zillow-live', name: 'Zillow', status: 'failed', checkedAt: run.lastCheckedAt },
+      { id: 'cityrealty-live', name: 'CityRealty', status: 'updated', checkedAt: earlier },
+      { id: 'streeteasy-live', name: 'StreetEasy', status: 'failed', checkedAt: earlier },
+    ],
+    run,
+  );
+  expect(message).toMatch(/^1 source updated; Zillow could not refresh/);
+  expect(message).toMatch(/Still syncing in the background: CityRealty, StreetEasy\.$/);
+  expect(
+    refreshSummary([{ id: 'streeteasy-live', name: 'StreetEasy', status: 'failed', checkedAt: earlier }], {
+      ...run,
+      paused: ['streeteasy-live'],
+    }),
+  ).toMatch(/No sources refreshed/);
+  const success = refreshSummary(
+    [
+      { id: 'trulia-live', status: 'updated', checkedAt: run.lastCheckedAt },
+      { id: 'zumper', name: 'Zumper', checkedAt: earlier },
+    ],
+    run,
+  );
+  expect(success).toMatch(/limited samples\. Still syncing in the background: Zumper\.$/);
+  expect(refreshSummary([{ id: 'zumper', name: 'Zumper', checkedAt: earlier }], run)).toBe('Still syncing in the background: Zumper.');
+  expect(refreshSummary([{ id: 'zumper', checkedAt: earlier }], { lastCheckedAt: run.lastCheckedAt })).toMatch(/No sources refreshed/);
+});
+
 test('empty source check is not described as success', async () => {
   const { refreshSummary } = await import('../src/source-status.ts');
   expect(refreshSummary([])).toMatch(/No sources refreshed/);
