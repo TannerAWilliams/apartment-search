@@ -9,10 +9,10 @@ Areas: all of New York City (Manhattan, Brooklyn, Queens, the Bronx, Staten Isla
 ## Architecture
 
 ```
-browser ──▶ apartments.5thof6.com ── Cloudflare Access sign-in
-              │  Cf-Access-Jwt-Assertion (signed token)
+browser or app ──▶ apartments.5thof6.com
+              │  email-code sign-in session (cookie on the web, bearer token in the app)
               ▼
-          apartment-search Worker, a Hono app (server/cloudflare.ts), checks the token (server/access.ts)
+          apartment-search Worker, a Hono app (server/cloudflare.ts), checks the session (server/auth.ts)
               ├── web app files ── Workers Static Assets (web-build/)
               ├── /api/* ── server/api.ts (Hono routes, Valibot request checks)
               ├── D1 apartment-search-observations ── listings, price history and sign-in tables (server/d1-bucket.ts)
@@ -21,9 +21,8 @@ browser ──▶ apartments.5thof6.com ── Cloudflare Access sign-in
 your computer ── scripts/sync-streeteasy.ts ── uploads the StreetEasy inventory daily (workers.dev URL, app token)
 ```
 
-- **One Worker, three ways in.** `server/cloudflare.ts` serves the web app and the API at `apartments.5thof6.com` and its workers.dev URL. The API and data need one of the sign-ins below; with email-code sign-in on, the web app's own files load signed out so they can show the sign-in form.
-  - an **email-code sign-in** with Better Auth (`server/auth.ts`), which the App Store app needs: type your email, get a six-digit code, type it in. Only `ACCESS_ALLOWED_EMAILS` get a code or an account; anyone else sees the same reply and gets nothing. Codes last 10 minutes with 3 tries; asking for codes is limited to 3 a minute. Sessions last 30 days, in a cookie on the web and in the device's secure storage in the native app, which sends it as a bearer token. Users, sessions, codes and rate limits are tables in D1. It turns on when the `BETTER_AUTH_SECRET` secret is set, and sends codes through the same email binding as alerts (see [Email alerts](#email-alerts)).
-  - a **Cloudflare Access sign-in**, with a passkey (Face ID or Touch ID) or an emailed one-time code. Sessions last 24 hours. Access signs a token for each request it lets through. The Worker verifies it against the team's published keys (issuer, audience, expiry, signature) and allows only the emails in `ACCESS_ALLOWED_EMAILS`. Workers with Static Assets don't receive `ctx.access`, so the Worker checks the token itself. Changes from a signed-in browser must come from the app's own pages (same `Origin`).
+- **One Worker, one sign-in.** `server/cloudflare.ts` serves the web app and the API at `apartments.5thof6.com` and its workers.dev URL. The web app's own files load signed out so they can show the sign-in form; the API and data need one of:
+  - an **email-code sign-in** with Better Auth (`server/auth.ts`), for people, on the web and in the App Store app: type your email, get a six-digit code, type it in. Only `ACCESS_ALLOWED_EMAILS` get a code or an account; anyone else sees the same reply and gets nothing. Codes last 10 minutes with 3 tries; asking for codes is limited to 3 a minute. Sessions last 30 days, in a cookie on the web and in the device's secure storage in the native app, which sends it as a bearer token. Changes from the web app must come from its own pages (same `Origin`). Users, sessions, codes and rate limits are tables in D1. It needs the `BETTER_AUTH_SECRET` secret, and sends codes through the same email binding as alerts (see [Email alerts](#email-alerts)).
   - the **app access token** (`Authorization: Bearer <APP_ACCESS_TOKEN>`), for scripts such as the StreetEasy home sync.
 
   Every response carries `Strict-Transport-Security` (HTTPS only, for a year). `/health` returns `ok` to a signed-in caller.
@@ -81,9 +80,8 @@ bun run dev          # build the web app and serve it at http://localhost:8787
 
 | Variable | Where | Purpose |
 | --- | --- | --- |
-| `ACCESS_ALLOWED_EMAILS` | Worker secret | Required for sign-in: comma-separated emails that may sign in, by email code or Access. Kept out of the repository. |
+| `ACCESS_ALLOWED_EMAILS` | Worker secret | Required for sign-in: comma-separated emails that may sign in with an email code. Kept out of the repository. |
 | `BETTER_AUTH_SECRET` | Worker secret | Turns on email-code sign-in and signs its sessions. Make one with `openssl rand -base64 32`. |
-| `ACCESS_TEAM_DOMAIN`, `ACCESS_AUD` | `wrangler.jsonc` vars | The Access team domain and the application's audience tag. Sign-in is off unless these and the emails are set. |
 | `APP_ACCESS_TOKEN` | Worker secret | The token scripts send, such as the StreetEasy home sync. |
 | `TRAVELTIME_APP_ID`, `TRAVELTIME_API_KEY` | Worker secrets | Optional commute estimates. |
 | `FREE_PARTNER_FEEDS_JSON` | Worker secret | Optional authorized feeds. |
@@ -126,11 +124,11 @@ bun run deploy                                          # build the web app and 
 
 `deploy/cloudflare/wrangler.jsonc` defines the Worker, its static assets, the D1 binding, the Workflow (limited to one run at a time) and a 30-second CPU limit. Before the first deploy from this file, compare it with the live Worker's settings (routes, workers.dev) so the deploy changes only code. Set secrets with `wrangler secret put NAME -c deploy/cloudflare/wrangler.jsonc`. Apply schema changes to the production database with `wrangler d1 execute apartment-search-observations --remote --file deploy/cloudflare/schema.sql -c deploy/cloudflare/wrangler.jsonc`; the schema only creates missing tables.
 
-To turn on email-code sign-in: apply the schema (above) so D1 has the sign-in tables, set up email (see [Email alerts](#email-alerts)), then `openssl rand -base64 32 | node ./node_modules/wrangler/bin/wrangler.js secret put BETTER_AUTH_SECRET -c deploy/cloudflare/wrangler.jsonc` and deploy. While the Cloudflare Access application stays in front of `apartments.5thof6.com`, Access still asks you to sign in first; once email-code sign-in works, you can delete that Access application in Zero Trust. `scripts/auth-schema.ts` regenerates the sign-in tables in `schema.sql` after a change to `server/auth.ts`, and a test checks they match.
+To turn on email-code sign-in: apply the schema (above) so D1 has the sign-in tables, set up email (see [Email alerts](#email-alerts)), then `openssl rand -base64 32 | node ./node_modules/wrangler/bin/wrangler.js secret put BETTER_AUTH_SECRET -c deploy/cloudflare/wrangler.jsonc` and deploy. `scripts/auth-schema.ts` regenerates the sign-in tables in `schema.sql` after a change to `server/auth.ts`, and a test checks they match.
 
-The Cloudflare Access application for `apartments.5thof6.com` (who may sign in, and how) is configured in Zero Trust; the Worker's custom domain and its check of the Access token are in this repository. Before the first deploy from this file, set the `ACCESS_ALLOWED_EMAILS` secret, or nobody can sign in.
+Before the first deploy from this file, set the `ACCESS_ALLOWED_EMAILS` secret, or nobody can sign in. The app used Cloudflare Access for sign-in until 2026-11-23; the email-code sign-in replaced it.
 
-`apartments.5thof6.com` used to be served by a separate gate Worker, `apartment-search-access`, which checked the Access sign-in and forwarded requests with the app token. This Worker checks the sign-in itself, and the gate Worker was deleted on 2026-11-23.
+`apartments.5thof6.com` used to be served by a separate gate Worker, `apartment-search-access`, which checked a Cloudflare Access sign-in and forwarded requests with the app token. This Worker checks sign-in itself, and the gate Worker was deleted on 2026-11-23.
 
 ## Email alerts
 
@@ -153,7 +151,7 @@ git clone https://github.com/TannerAWilliams/apartment-search.git && cd apartmen
 bun scripts/install-streeteasy-schedule.ts --origin=https://apartment-search.<subdomain>.workers.dev
 ```
 
-Use the Worker's own URL, not `apartments.5thof6.com`, which needs an interactive Access sign-in. The installer asks for the Worker's `APP_ACCESS_TOKEN` and stores it in the macOS Keychain (or `~/.config/apartment-search/token`, mode 600, on Linux). It runs daily at 6:17 local time (`SYNC_HOUR` and `SYNC_MINUTE` change this); on a Mac, a run missed while asleep happens at wake. Logs go to `~/Library/Logs/apartment-search-streeteasy.log` or `~/.config/apartment-search/streeteasy.log`. Run it now with `bun scripts/streeteasy-daily.ts` (add `--manual` to fetch even when saved data is under a day old), and remove it with `bun scripts/install-streeteasy-schedule.ts --uninstall`. If you installed the daily sync before it moved from shell scripts to TypeScript, run the installer again once; it replaces the old job.
+Use the Worker's own workers.dev URL. The installer asks for the Worker's `APP_ACCESS_TOKEN` and stores it in the macOS Keychain (or `~/.config/apartment-search/token`, mode 600, on Linux). It runs daily at 6:17 local time (`SYNC_HOUR` and `SYNC_MINUTE` change this); on a Mac, a run missed while asleep happens at wake. Logs go to `~/Library/Logs/apartment-search-streeteasy.log` or `~/.config/apartment-search/streeteasy.log`. Run it now with `bun scripts/streeteasy-daily.ts` (add `--manual` to fetch even when saved data is under a day old), and remove it with `bun scripts/install-streeteasy-schedule.ts --uninstall`. If you installed the daily sync before it moved from shell scripts to TypeScript, run the installer again once; it replaces the old job.
 
 Failures leave saved listings unchanged. The runner skips work when saved StreetEasy data is under a day old, respects the source retry time, retries once if the inventory moves during the download, and refuses an upload above the Worker's 2 MiB request limit rather than sending a truncated one. The import was about 1.9 MB in November 2026, so a much larger inventory will need a larger limit. If StreetEasy starts refusing your home connection too, the run fails with that status in the log.
 

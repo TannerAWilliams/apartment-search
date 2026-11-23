@@ -9,17 +9,13 @@
   "account_id": "c021a5b3eac3e4ea7b4afba9fd926223",
   "main": "../../server/cloudflare.ts",
   "compatibility_date": "2026-11-18",
-  // The app's address. Cloudflare Access (application "apartments.5thof6.com" in Zero Trust) signs people
-  // in there, and the Worker checks the token Access adds (server/access.ts). workers.dev stays on for
-  // scripts that send the app access token, such as the StreetEasy home sync.
+  // The app's address. People sign in with an email code (server/auth.ts). workers.dev stays on for scripts
+  // that send the app access token, such as the StreetEasy home sync.
   "routes": [{ "pattern": "apartments.5thof6.com", "custom_domain": true }],
   "workers_dev": true,
   // No per-version preview URLs; they were off before the first deploy from this file.
   "preview_urls": false,
   "vars": {
-    // Public identifiers of that Access application, not secrets.
-    "ACCESS_TEAM_DOMAIN": "https://empty-term-4661.cloudflareaccess.com",
-    "ACCESS_AUD": "026b1766294a95474b5fbbac3408e95ac51397636366322b7b9ad582f462ade0",
     // StreetEasy refreshes and imports are paused, as on the live Worker since November 2026. Set to
     // "true" when the home sync is installed (README, "Daily StreetEasy sync from your own computer").
     "STREETEASY_SYNC_ENABLED": "false",

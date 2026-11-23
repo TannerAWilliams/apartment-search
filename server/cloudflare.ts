@@ -10,7 +10,6 @@ import { timingSafeEqual } from 'hono/utils/buffer';
 import { type Auth, createAuth, sessionEmail } from './auth.ts';
 import { log } from './log.ts';
 import { securityHeaders, withCacheControl } from './web-headers.ts';
-import { accessSettings, verifyAccessToken } from './access.ts';
 import { type ArchiveLoader, DASHBOARD_ARCHIVE_PATH } from './dashboard-snapshot.ts';
 import { SYNC_PROGRESS_KEY, WORKFLOW_SOURCE_IDS } from './source-registry.ts';
 export { CityRealtySync } from './sync-workflow.ts';
@@ -20,9 +19,6 @@ type Workflow = {
   get(id: string): Promise<{ status(): Promise<{ status: string }> }>;
 };
 type Environment = AppEnv & {
-  /** The Cloudflare Access application in front of apartments.5thof6.com; see server/access.ts. */
-  ACCESS_TEAM_DOMAIN?: string;
-  ACCESS_AUD?: string;
   /** Secret: comma-separated emails allowed to sign in, kept out of the repository. */
   ACCESS_ALLOWED_EMAILS?: string;
   /** Secret: turns on sign-in with an email code (server/auth.ts) and signs its sessions. */
@@ -121,37 +117,29 @@ app.on(['GET', 'POST'], '/api/auth/*', async (c): Promise<Response> => {
   return auth ? auth.handler(c.req.raw) : fail(c, 404, 'Not found.');
 });
 
-// The deployed app is private. You sign in with an email code (Better Auth) or Cloudflare Access, whose
-// token this Worker verifies; scripts such as the StreetEasy home sync send the app access token instead.
-// With email-code sign-in the app's own pages load signed out, so they can show the sign-in form; the API
-// and data always need one of the three. PUBLIC_APP opens the app for local development.
+// The deployed app is private. People sign in with an email code (Better Auth, server/auth.ts); scripts such
+// as the StreetEasy home sync send the app access token instead. The app's own pages load signed out, so they
+// can show the sign-in form; the API and data need one or the other. PUBLIC_APP opens the app for local development.
 app.use(async (c, next) => {
   const env = c.env;
   const bearer = Boolean(
     env.APP_ACCESS_TOKEN && (await timingSafeEqual(c.req.header('Authorization') ?? '', 'Bearer ' + env.APP_ACCESS_TOKEN)),
   );
-  const access = bearer ? null : accessSettings(env);
-  const accessEmail = access
-    ? await verifyAccessToken(c.req.header('Cf-Access-Jwt-Assertion') ?? null, access).catch((cause) => {
-        log.error('access_check_failed', cause);
-        return null;
-      })
-    : null;
-  const auth = bearer || accessEmail ? null : authFor(env);
+  const auth = bearer ? null : authFor(env);
   const session = auth
     ? await sessionEmail(auth, env, c.req.raw.headers).catch((cause) => {
         log.error('session_check_failed', cause);
         return null;
       })
     : null;
-  const signedIn = bearer || accessEmail !== null || session !== null;
+  const signedIn = bearer || session !== null;
   const reading = ['GET', 'HEAD'].includes(c.req.method);
   if (env.PUBLIC_APP !== 'true' && !signedIn && !(auth && reading && !c.req.path.startsWith('/api/'))) {
     return fail(c, 401, 'Sign in to the private apartment app.');
   }
-  // Access and the web app's session ride on browser cookies, so changes must come from the app's own pages.
+  // The web app's session rides on a browser cookie, so changes must come from the app's own pages.
   // The native app sends its session as a bearer token, which another site cannot make a browser send.
-  const cookie = accessEmail !== null || (session !== null && !c.req.header('Authorization'));
+  const cookie = session !== null && !c.req.header('Authorization');
   if (cookie && !reading && c.req.header('Origin') !== new URL(c.req.url).origin) {
     return fail(c, 403, 'Cross-origin request rejected.');
   }

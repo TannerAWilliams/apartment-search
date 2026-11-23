@@ -1,6 +1,5 @@
 import { afterEach, expect, test } from 'bun:test';
 import { fakeD1 } from './fixtures/fake-d1.ts';
-import { team } from './fixtures/access-team.ts';
 import { readJson, type ErrorBody } from './fixtures/json.ts';
 import type { RefreshInfo } from '../src/api-client.ts';
 
@@ -220,46 +219,6 @@ test('the dashboard archive is read once through the assets binding and cannot b
   expect(reads, 'the archive is read and verified once').toBe(1);
   const missing = { ...env, ASSETS: { fetch: async () => new Response('missing', { status: 404 }) } };
   expect((await call(missing, '/api/dashboard?file=rentalIndex_All.csv')).status).toBe(503);
-});
-
-test('a Cloudflare Access sign-in opens the app; its writes must come from the app itself', async () => {
-  const { env } = await environment();
-  const access = await team('team-worker');
-  globalThis.fetch = access.fetcher as unknown as typeof fetch;
-  const configured = { ...env, ACCESS_TEAM_DOMAIN: access.issuer, ACCESS_AUD: 'app-audience', ACCESS_ALLOWED_EMAILS: 'owner@example.com' };
-  const seconds = Date.now() / 1000;
-  const token = await access.sign({ ...access.claims, exp: seconds + 600, nbf: seconds - 10 });
-  const signedIn = (path: string, init: RequestInit = {}) =>
-    call(configured, path, { ...init, headers: { 'Cf-Access-Jwt-Assertion': token, ...(init.headers as Record<string, string>) } }, null);
-  expect(await (await signedIn('/index.html')).text()).toBe('asset /index.html');
-  expect((await signedIn('/api/config')).status).toBe(200);
-  expect((await signedIn('/api/refresh', post({ check: 'now', source: 'openigloo' }, { Origin: 'https://app.test' }))).status).toBe(202);
-  expect((await signedIn('/api/refresh', post({ check: 'now' }, { Origin: 'https://elsewhere.test' }))).status).toBe(403);
-  expect((await signedIn('/api/refresh', post({ check: 'now' }))).status, 'a write with no Origin is refused').toBe(403);
-  expect(
-    (await call(configured, '/api/config', { headers: { 'Cf-Access-Jwt-Assertion': token.slice(0, -4) + 'AAAA' } }, null)).status,
-  ).toBe(401);
-  expect(
-    (
-      await call(
-        { ...configured, ACCESS_ALLOWED_EMAILS: 'someone-else@example.com' },
-        '/api/config',
-        { headers: { 'Cf-Access-Jwt-Assertion': token } },
-        null,
-      )
-    ).status,
-  ).toBe(401);
-  expect((await call(configured, '/api/config')).status, 'the app access token still works for scripts').toBe(200);
-});
-
-test('when Access keys cannot be read, nobody signs in through Access', async () => {
-  const { env } = await environment();
-  const access = await team('team-worker-outage');
-  globalThis.fetch = (async () => new Response('busy', { status: 503 })) as unknown as typeof fetch;
-  const configured = { ...env, ACCESS_TEAM_DOMAIN: access.issuer, ACCESS_AUD: 'app-audience', ACCESS_ALLOWED_EMAILS: 'owner@example.com' };
-  const seconds = Date.now() / 1000;
-  const token = await access.sign({ ...access.claims, exp: seconds + 600, nbf: seconds - 10 });
-  expect((await call(configured, '/api/config', { headers: { 'Cf-Access-Jwt-Assertion': token } }, null)).status).toBe(401);
 });
 
 test('every response, including a refusal, tells browsers to use HTTPS only', async () => {
