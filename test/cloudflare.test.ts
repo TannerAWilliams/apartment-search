@@ -1,4 +1,4 @@
-import { mock, test } from 'bun:test';
+import { afterEach, mock, test } from 'bun:test';
 import assert from 'node:assert/strict';
 import { fakeD1 } from './fixtures/fake-d1.ts';
 
@@ -11,6 +11,8 @@ const { createD1Bucket } = await import('../server/d1-bucket.ts');
 const { SYNC_PROGRESS_KEY } = await import('../server/source-registry.ts');
 
 const TOKEN = 'synthetic-access-token-0123456789';
+const realFetch = globalThis.fetch;
+afterEach(() => { globalThis.fetch = realFetch; });
 type Instance = { status: string };
 async function environment({ publicApp = false, instances = new Map<string, Instance>(), createError = null as Error | null } = {}) {
   const { d1 } = await fakeD1();
@@ -42,16 +44,19 @@ const post = (body: unknown, extra: Record<string, string> = {}) =>
 
 test('health and static assets are served without the API', async () => {
   const { env } = await environment();
-  assert.equal(await (await call(env, '/health', {}, null)).text(), 'ok');
-  assert.equal(await (await call(env, '/index.html', {}, null)).text(), 'asset /index.html');
+  assert.equal(await (await call(env, '/health')).text(), 'ok');
+  assert.equal(await (await call(env, '/index.html')).text(), 'asset /index.html');
 });
 
-test('the private app requires the access token for the API', async () => {
+test('the private app requires the access token for every request, assets included', async () => {
   const { env } = await environment();
-  const denied = await call(env, '/api/config', {}, null);
-  assert.equal(denied.status, 401);
-  assert.equal(denied.headers.get('Cache-Control'), 'no-store');
+  for (const path of ['/api/config', '/index.html', '/health']) {
+    const denied = await call(env, path, {}, null);
+    assert.equal(denied.status, 401, path);
+    assert.equal(denied.headers.get('Cache-Control'), 'no-store');
+  }
   assert.equal((await call(env, '/api/config', {}, 'wrong-token')).status, 401);
+  assert.equal((await call({ ...env, APP_ACCESS_TOKEN: '' }, '/api/config', {}, '')).status, 401, 'an unset token opens nothing');
   assert.equal((await call(env, '/api/config')).status, 200);
 });
 
@@ -63,6 +68,7 @@ test('a public app accepts same-origin refresh checks but not imports or cross-o
   assert.equal(importing.status, 403);
   assert.match((await importing.json()).error, /cannot import/);
   assert.equal((await call(env, '/api/config', {}, null)).status, 200);
+  assert.equal(await (await call(env, '/index.html', {}, null)).text(), 'asset /index.html');
 });
 
 test('oversized requests are refused and unexpected failures keep saved data', async () => {
@@ -108,4 +114,16 @@ test('starting a job that already exists is accepted, but a failure with no job 
   const failing = await environment({ createError: new Error('Workflows unavailable') });
   const failed = await call(failing.env, '/api/refresh', post({ check: 'now', source: 'zumper-live' }));
   assert.ok(failed.status >= 500, 'a job that could not start is reported as a server error');
+});
+
+test('provider requests keep redirects unfollowed, in the form Workers accept', async () => {
+  const { env } = await environment();
+  const redirects: (RequestRedirect | undefined)[] = [];
+  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    redirects.push(init?.redirect);
+    return new Response('unavailable', { status: 503 });
+  }) as typeof fetch;
+  await call(env, '/api/refresh', post({ check: 'now', source: 'housingconnect' }));
+  assert.ok(redirects.length > 0, 'the refresh reached the provider');
+  assert.ok(redirects.every((redirect) => redirect === 'manual'), String(redirects));
 });

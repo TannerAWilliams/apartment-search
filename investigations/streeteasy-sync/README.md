@@ -24,12 +24,13 @@ export its credentials.
 
 - [Partitioned StreetEasy loader](../../server/streeteasy.ts): unfiltered active
   inventory, bounded price partitions, result-window handling and reconciliation.
-- [Restricted Node relay](../../server/relay-service.ts): authenticated requests,
-  response-size/concurrency/rate limits and upstream error propagation.
-- [Relay request policy](../../server/relay-policy.ts): allowed request shapes and
-  destinations; not a general-purpose proxy.
-- [Application documentation](../../README.md#streeteasy-access-and-completeness):
-  current importer and external-runner contracts.
+- [Home-computer sync](../../scripts/sync-streeteasy.ts): downloads the inventory
+  from a computer you own and uploads it to the Worker.
+- [Application documentation](../../README.md#daily-streeteasy-sync-from-your-own-computer):
+  current importer and sync contracts.
+- The Render relay (`server/relay-service.ts`, `server/relay-policy.ts`) referenced
+  below was removed in November 2026, when the app became Cloudflare-only; it is in
+  the Git history.
 
 Keep experimental work separate from these production paths until reviewed,
 tested and explicitly selected for deployment.

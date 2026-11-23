@@ -6,7 +6,7 @@ import { inventoryExpired } from './src/inventory-freshness.ts';
 import { inventoryUnavailable } from './src/inventory-state.ts';
 import type { ListingData, SourceLink, SearchFilters, SearchResult } from './src/domain.ts';
 import type { SourceDefinition, SourceStatus } from './src/source-status.ts';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
 Modal, Platform, Pressable, ScrollView, StatusBar, Text, View, useWindowDimensions,
 } from 'react-native';
@@ -389,7 +389,6 @@ function ApartmentSearch() {
   const [activeToken, setActiveToken] = useState('');
   const [commuteConfigured, setCommuteConfigured] = useState(false);
   const [dashboardAvailable, setDashboardAvailable] = useState(false);
-  const [temporaryStorage, setTemporaryStorage] = useState(false);
   const { tab, setTab, navigateTab, scope, setScope, expanded, setExpanded } = useHashNavigation();
   /** The open tool panel below the commute box: one at a time. */
   const [tool, setTool] = useState('');
@@ -397,8 +396,16 @@ function ApartmentSearch() {
   const [mapView, setMapView] = useState(false);
   const scrollRef = useRef<React.ElementRef<typeof ScrollView>>(null);
   const scrollPositions = useRef<Record<string, number>>({});
-  useEffect(() => {
-    const frame = requestAnimationFrame(() => scrollRef.current?.scrollTo({ y: scrollPositions.current[tab] ?? 0, animated: false }));
+  /** The tab the scroll offset belongs to; null from a tab change until that tab's offset is restored. */
+  const scrollTab = useRef<string | null>(null);
+  // A layout effect, so scroll events from the new tab's content (or a late scroll-end event from the
+  // previous tab) cannot be recorded against the wrong tab before the restore.
+  useLayoutEffect(() => {
+    scrollTab.current = null;
+    const frame = requestAnimationFrame(() => {
+      scrollRef.current?.scrollTo({ y: scrollPositions.current[tab] ?? 0, animated: false });
+      scrollTab.current = tab;
+    });
     return () => cancelAnimationFrame(frame);
   }, [tab]);
   const [busy, setBusy] = useState(false);
@@ -430,7 +437,6 @@ function ApartmentSearch() {
     setSourceCatalog(config.sourceCatalog ?? []);
     setCommuteConfigured(config.commuteConfigured === true);
     setDashboardAvailable(config.dashboardAvailable === true);
-    setTemporaryStorage(config.storageMode === 'temporary');
     setCompanies(config.companies ?? {});
     setRefresh(config.refresh ?? null);
     setRefreshClock(Date.now());
@@ -671,7 +677,7 @@ function ApartmentSearch() {
         </ScrollView>
       </View></View>
     </Modal>
-    <ScrollView ref={scrollRef} testID="main-scroll" onScroll={(event) => { scrollPositions.current[tab] = event.nativeEvent.contentOffset.y; }} scrollEventThrottle={100} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scroll}>
+    <ScrollView ref={scrollRef} testID="main-scroll" onScroll={(event) => { if (scrollTab.current) scrollPositions.current[scrollTab.current] = event.nativeEvent.contentOffset.y; }} scrollEventThrottle={16} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scroll}>
       <View style={styles.shell}>
         <View style={styles.results}>
             {error !== '' && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
@@ -683,7 +689,6 @@ function ApartmentSearch() {
               {tab === 'saved' && <SavedComparison listings={saved} open={tool === 'compare'} />}
               {tab === 'saved' && <TourPlanner listings={saved} open={tool === 'tours'} />}
               {tab === 'results' && <SavedSearches open={tool === 'searches'} filters={applied} disabled={busy} apply={filters => { const next = { ...filters, includeMap: WEB_MAP }; setDraft({ ...formDefaults(), ...next }); submit(next); }} check={filters => { if (serverState !== 'ready') return Promise.reject(new Error('Connect to the inventory server before checking a saved search.')); return api('search-check', { body: filters, token: activeToken }); }} />}
-              {tab === 'results' && temporaryStorage && <Text style={styles.noticeLine}>Temporary listing storage: source checks are lost when the server restarts or redeploys. Your device-saved apartments are separate.</Text>}
               {tab === 'results' && !staleInventory && <ObservedChanges listings={result.matches} open={tool === 'changes'} />}
               {tab === 'results' && <Pressable accessibilityRole="button" accessibilityLabel="View source freshness and coverage" onPress={() => navigateTab('sources')}>
                 <Text style={mobileStyles.freshness}>{refreshing ? 'Refreshing sources…' : failedSources.length ? 'Partial coverage · Some sources unavailable' : refresh?.lastCheckedAt ? 'Saved results · ' + CHECK_TIME.format(new Date(refresh.lastCheckedAt)) : 'Saved results · Not yet refreshed'} · Details</Text>

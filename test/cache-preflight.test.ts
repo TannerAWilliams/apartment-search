@@ -1,7 +1,7 @@
 import { required } from './test-values.ts';
 import { test } from 'bun:test';
 import assert from 'node:assert/strict';
-import { createMemoryBucket } from '../server/memory-bucket.ts';
+import { createMemoryBucket } from './fixtures/memory-bucket.ts';
 
 test('oversized binary writes are rejected before copying the payload', async () => {
   const bucket = createMemoryBucket(4);

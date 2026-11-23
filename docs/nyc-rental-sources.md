@@ -91,9 +91,8 @@ platforms they share rather than one adapter per landlord.
 
 ## Steps 3 and 4 (storage and search)
 
-D1 currently stores each sync as JSON blobs per listing (`rental_listing_records`). For
-fast UI search, add a normalized `listings` table: one row per apartment per source, with
-indexed `rent`, `bedrooms`, `zip`, `borough`/`neighborhood`, `latitude`/`longitude`,
-`active`, `first_seen`/`last_seen`, plus a cross-source `apartment_id` for deduplication.
-The UI then queries a Worker API endpoint that filters and pages through that table
-instead of downloading the whole inventory.
+D1 stores each source's current inventory as one versioned snapshot (`apartment_objects`,
+split into `apartment_object_parts`), and the Worker searches the saved snapshots in memory,
+caching each by its etag. Searches took 60–97 ms in November 2026. A normalized `listings`
+table (one indexed row per apartment per source) is the next step only if inventory grows
+past what a snapshot search handles quickly.

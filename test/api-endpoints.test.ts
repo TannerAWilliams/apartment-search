@@ -2,7 +2,7 @@ import { test } from 'bun:test';
 import assert from 'node:assert/strict';
 import { gzipSync, strToU8 } from 'fflate';
 import { handleApi } from '../server/api.ts';
-import { createMemoryBucket } from '../server/memory-bucket.ts';
+import { createMemoryBucket } from './fixtures/memory-bucket.ts';
 import { buildingKey, normalizeListing } from '../src/listings.ts';
 import type { Bucket } from '../server/contracts.ts';
 
@@ -40,6 +40,7 @@ test('malformed requests are refused before any work', async () => {
   const declared = new Request(url('/api/search'), { method: 'POST', body: '{}', headers: { 'Content-Type': 'application/json', 'Content-Length': '99999999' } });
   assert.equal((await handleApi(declared, { BUCKET: bucket })).status, 413);
   assert.equal((await handleApi(postJson('/api/search', 'not json'), { BUCKET: bucket })).status, 400);
+  assert.equal((await handleApi(postJson('/api/refresh', { payload: 'AAAA' }), { BUCKET: bucket }, { fetcher: noNetwork })).status, 422, 'an import that does not decode');
   const commute = new Request(url('/api/search'), { method: 'POST', body: JSON.stringify({ includeCommute: true }), headers: { 'Content-Type': 'text/plain' } });
   assert.equal((await handleApi(commute, { BUCKET: bucket })).status, 400);
 });

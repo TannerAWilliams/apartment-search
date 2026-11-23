@@ -6,7 +6,6 @@ import { isCompleteCoverage, isCompleteSnapshot, WORKFLOW_SOURCE_IDS } from './s
 import { dashboardSnapshot } from './dashboard-snapshot.ts';
 import { retrieveBuildingRecords } from './building-records.ts';
 import { wholeSearchCheck } from './whole-search-check.ts';
-import { relayConfig, type ListingTransports } from './relay-client.ts';
 import { companyCounts } from '../src/companies.ts';
 import { localWorkplace, matchListings, needsCommute, parseFilters, SearchInputError } from '../src/search.ts';
 import { formatSearch, RENT_GROUPINGS, rentAreas, SNAPSHOT_MONTH } from '../src/market.ts';
@@ -29,10 +28,9 @@ export function appConfig(env: AppEnv) {
   const feeds = configuredFeeds(env).filter(({ id }) => env.STREETEASY_SYNC_ENABLED !== 'false' || id !== STREETEASY_LIVE.marketplace);
   return {
     mode: feeds.length > 0 ? 'live' : 'snapshot',
-    storageMode: env.TEMPORARY_CACHE === 'true' ? 'temporary' : env.BUCKET ? 'persistent' : 'none',
+    storageMode: env.BUCKET ? 'persistent' : 'none',
     browserImportAllowed: env.PUBLIC_APP !== 'true',
     dashboardAvailable: env.PUBLIC_APP === 'true' || Boolean(env.APP_ACCESS_TOKEN),
-    listingRequestTransport: relayConfig(env) ? 'relay' : 'direct',
     snapshotMonth: SNAPSHOT_MONTH,
     sources: feeds.map(({ id, name }) => ({ id, name })),
     ...(routingCredentials(env) ? { commuteConfigured: true } : {}),
@@ -203,12 +201,9 @@ function json(value: unknown, status = 200) {
   return Response.json(value, { status, headers: { 'Cache-Control': 'no-store' } });
 }
 
-export async function handleApi(request: Request, env: AppEnv, { privateAuthenticated = false, requireToken = false, fetcher = (url, options) => globalThis.fetch(url, options), waitUntil, prepareListingSources, listingTransports, backgroundRefresh = false, cityRealtyJob }: { privateAuthenticated?: boolean; requireToken?: boolean; fetcher?: SourceFetch; waitUntil?: (work: Promise<unknown>) => void; prepareListingSources?: () => Promise<void>; listingTransports?: ListingTransports; backgroundRefresh?: boolean; cityRealtyJob?: { start(delay: boolean, sources?: string[]): Promise<void>; pending(): Promise<string | boolean | null> } } = {}) {
+export async function handleApi(request: Request, env: AppEnv, { privateAuthenticated = false, fetcher = (url, options) => globalThis.fetch(url, options), waitUntil, cityRealtyJob }: { privateAuthenticated?: boolean; fetcher?: SourceFetch; waitUntil?: (work: Promise<unknown>) => void; cityRealtyJob?: { start(delay: boolean, sources?: string[]): Promise<void>; pending(): Promise<string | boolean | null> } } = {}) {
   const { pathname: path, searchParams } = new URL(request.url);
   if (!API_PATHS.has(path)) return json({ error: 'Endpoint not found.' }, 404);
-  if (requireToken && request.headers.get('Authorization') !== `Bearer ${env.APP_ACCESS_TOKEN}`) {
-    return json({ error: 'Enter your apartment search server access token.' }, 401);
-  }
   if (path === '/api/dashboard') {
     if (env.PUBLIC_APP !== 'true' && (!env.APP_ACCESS_TOKEN || (!privateAuthenticated && request.headers.get('Authorization') !== `Bearer ${env.APP_ACCESS_TOKEN}`))) return json({ error: 'Private authenticated access is required for this research snapshot.' }, 403);
     if (request.method !== 'GET') return json({ error: 'Use GET for dashboard data.' }, 405);
@@ -303,24 +298,13 @@ export async function handleApi(request: Request, env: AppEnv, { privateAuthenti
           if (!current.checking || current.activeSource !== body.source) await cityRealtyJob.start(Boolean(current.checking), [body.source]);
           return json({ ...current, state: 'running', checking: true, activeSource: body.source }, 202);
         }
-        let started!: () => void;
-        const starting = new Promise<void>(resolve => { started = resolve; });
-        const work = refreshSources(env, { fetcher, listingTransports, onDemand: true, prepareListingSources,
-          sourceId: body.source, forceRefresh: body.sessionStart !== true, onStarted: started, excludeWorkflowSources: Boolean(cityRealtyJob) });
+        const work = refreshSources(env, { fetcher, onDemand: true,
+          sourceId: body.source, forceRefresh: body.sessionStart !== true, excludeWorkflowSources: Boolean(cityRealtyJob) });
         if (cityRealtyJob && body.source === undefined && body.sessionStart !== true) {
           try { await cityRealtyJob.start(true); }
           catch (cause) { await work.catch(() => {}); throw cause; }
         }
         waitUntil?.(work.catch(() => {}));
-        if (backgroundRefresh) {
-          // Bun keeps this process alive independently of the initiating HTTP request.
-          void work.catch(() => {});
-          const outcome = await Promise.race([
-            work.then(result => ({ result, status: 200 })),
-            starting.then(async () => ({ result: { state: 'running', ...await refreshPlan(env.BUCKET) }, status: 202 })),
-          ]);
-          return json(outcome.result, outcome.status);
-        }
         return json(await work);
       }
       let imports;

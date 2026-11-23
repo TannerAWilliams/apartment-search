@@ -19,7 +19,6 @@
     "server/**/*.ts",
     "scripts/**/*.ts",
     "test/**/*.ts",
-    "e2e/serve.ts",
-    "deploy/cloudflare/**/*.ts"
+    "e2e/serve.ts"
   ]
 }

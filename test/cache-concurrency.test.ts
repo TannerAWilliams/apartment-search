@@ -1,7 +1,7 @@
 import { required } from './test-values.ts';
 import { test } from 'bun:test';
 import assert from 'node:assert/strict';
-import { createMemoryBucket } from '../server/memory-bucket.ts';
+import { createMemoryBucket } from './fixtures/memory-bucket.ts';
 
 test('concurrent initial refresh leases have exactly one winner', async () => {
   const bucket = createMemoryBucket();

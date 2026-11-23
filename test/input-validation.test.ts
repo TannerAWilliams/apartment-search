@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { bedroomLabel, parseFilters, SearchInputError } from '../src/search.ts';
 import { listingLinkLabel } from '../src/listings.ts';
 import { geocodeAddress, routeCommutes } from '../server/commute.ts';
-import { createMemoryBucket } from '../server/memory-bucket.ts';
+import { createMemoryBucket } from './fixtures/memory-bucket.ts';
 
 test('bedroom labels read naturally', () => {
   assert.deepEqual([null, 0, 1, 2].map(bedroomLabel), ['Any beds', 'Studio', '1 bedroom', '2 bedrooms']);

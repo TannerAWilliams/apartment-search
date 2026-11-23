@@ -4,10 +4,9 @@ import { zipSync, strToU8 } from 'fflate';
 import { fakeD1 } from './fixtures/fake-d1.ts';
 import { createD1Bucket } from '../server/d1-bucket.ts';
 import { checkFirstMover } from '../server/firstmover.ts';
-import { createMemoryBucket } from '../server/memory-bucket.ts';
+import { createMemoryBucket } from './fixtures/memory-bucket.ts';
 import { refreshSources, refreshStatus } from '../server/refresh.ts';
 import { requestForRefresh } from '../server/source-requests.ts';
-import { initializeInventory } from '../server/startup-inventory.ts';
 import { AFFORDABLE_LIVE } from '../server/affordable-rentals.ts';
 import { parseApartmentsPage } from '../server/apartments-com.ts';
 import { parseDashboardArchive } from '../src/dashboard-data.ts';
@@ -20,10 +19,6 @@ test('values outside every supported area or URL rule are rejected quietly', () 
   assert.equal(safeListingUrl('https://[not a host'), null);
   assert.equal(regionOf({ state: 'NY', zip: '12207' }), null, 'Albany');
   assert.equal(regionOf({ state: 'TX', zip: '75201' }), null);
-});
-
-test('startup without options or storage does nothing', async () => {
-  assert.equal((await initializeInventory({})).state, 'disabled');
 });
 
 test('a D1 snapshot missing one of its parts is reported, not returned truncated', async () => {

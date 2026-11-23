@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import { handleApi } from '../server/api.ts';
 import { CITYREALTY_ID } from '../server/cityrealty.ts';
 import type { FetchTransport } from '../src/fetch-type.ts';
-import { createMemoryBucket } from '../server/memory-bucket.ts';
+import { createMemoryBucket } from './fixtures/memory-bucket.ts';
 import { refreshSources, storedDirectRentals } from '../server/refresh.ts';
 
 function mockCityRealty({ duplicate = false }: { duplicate?: boolean } = {}): FetchTransport {

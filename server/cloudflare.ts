@@ -1,11 +1,10 @@
 import { handleApi } from './api.ts';
 import type { AppEnv } from './contracts.ts';
 import { createD1Bucket, type D1Database } from './d1-bucket.ts';
-import { secretsEqual } from './private-session.ts';
+import { secretsEqual } from './secrets.ts';
 import { isPublicRefresh } from './public-access.ts';
 import { readRequestBody, RequestTooLarge } from './request-body.ts';
 import { SYNC_PROGRESS_KEY, WORKFLOW_SOURCE_IDS } from './source-registry.ts';
-import { createListingSourceClient } from './relay-client.ts';
 export { CityRealtySync } from './cityrealty-workflow.ts';
 
 type Environment = AppEnv & {
@@ -23,12 +22,14 @@ const error = (message: string, status: number) => Response.json({ error: messag
 export default {
   async fetch(request: Request, env: Environment) {
     const url = new URL(request.url);
-    if (url.pathname === '/health' && request.method === 'GET') return new Response('ok', { headers });
-    if (!url.pathname.startsWith('/api/')) return env.ASSETS.fetch(request);
+    // The deployed app is private: apartment-search-access adds this token after Cloudflare Access
+    // sign-in, so every request, assets included, needs it. PUBLIC_APP opens it for local development.
     const bearer = Boolean(env.APP_ACCESS_TOKEN && secretsEqual(
       request.headers.get('Authorization') ?? '', 'Bearer ' + env.APP_ACCESS_TOKEN,
     ));
     if (env.PUBLIC_APP !== 'true' && !bearer) return error('Sign in to the private apartment app.', 401);
+    if (url.pathname === '/health' && request.method === 'GET') return new Response('ok', { headers });
+    if (!url.pathname.startsWith('/api/')) return env.ASSETS.fetch(request);
 
     try {
       let apiRequest = request;
@@ -43,12 +44,13 @@ export default {
         }
         apiRequest = new Request(request.url, { method: 'POST', headers: request.headers, signal: request.signal, body });
       }
-      const appEnv = { ...env, BUCKET: createD1Bucket(env.APARTMENTS), LISTING_FETCH_TRANSPORT: 'direct' };
-      const client = createListingSourceClient(appEnv, (target, options) =>
-        fetch(target, options?.redirect === 'error' ? { ...options, redirect: 'manual' } : options));
+      const appEnv = { ...env, BUCKET: createD1Bucket(env.APARTMENTS) };
+      // Workers reject redirect: 'error'; 'manual' keeps redirects unfollowed, and source readers reject non-success responses.
+      const fetcher = (target: string, options?: RequestInit) =>
+        fetch(target, options?.redirect === 'error' ? { ...options, redirect: 'manual' } : options);
       const workflow = env.CITYREALTY_SYNC;
       const workflowId = (offset = 0) => 'cityrealty-' + (Math.floor(Date.now() / 120_000) - offset);
-      return await handleApi(apiRequest, appEnv, { ...client, privateAuthenticated: bearer,
+      return await handleApi(apiRequest, appEnv, { fetcher, privateAuthenticated: bearer,
         cityRealtyJob: workflow ? {
           async start(delay, sources) {
             const id = workflowId() + (sources ? '-' + sources.join('-') : '');

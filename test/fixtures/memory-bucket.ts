@@ -1,8 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Buffer } from 'node:buffer';
 
-// Render Free has no durable disk. This single-process cache deliberately resets
-// on restart; a failed refresh never replaces a previously saved source object.
+/** An in-memory Bucket for tests, with the same conditional writes and size limit as the D1 bucket. */
 export function createMemoryBucket(maxBytes = 96 * 1024 * 1024) {
   const objects = new Map<string, { bytes: Uint8Array; etag: string; customMetadata: Record<string, string> }>();
   let used = 0;

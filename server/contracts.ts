@@ -8,17 +8,9 @@ export type Bucket = {
 };
 export type AppEnv = {
   BUCKET?: Bucket;
-  /** Legacy settings intentionally ignored by current adapters. */
-  RENTCAST_API_KEY?: string;
-  GOOGLE_ROUTES_API_KEY?: string;
-  PARTNER_FEEDS_JSON?: string;
-  TEMPORARY_CACHE?: string; STARTUP_OPENIGLOO?: string;
   PUBLIC_APP?: string;
   APP_ACCESS_TOKEN?: string;
   FREE_PARTNER_FEEDS_JSON?: string;
-  LISTING_RELAY_URL?: string;
-  LISTING_RELAY_TOKEN?: string;
-  LISTING_FETCH_TRANSPORT?: string;
   STREETEASY_SYNC_ENABLED?: string;
   STREETEASY_PUBLIC_SEARCH?: string;
   TRAVELTIME_APP_ID?: string;

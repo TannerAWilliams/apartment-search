@@ -1,7 +1,7 @@
 import { test } from 'bun:test';
 import assert from 'node:assert/strict';
 import { handleApi } from '../server/api.ts';
-import { createMemoryBucket } from '../server/memory-bucket.ts';
+import { createMemoryBucket } from './fixtures/memory-bucket.ts';
 import { OPENIGLOO_TRANSPORT } from '../server/openigloo.ts';
 import { refreshSources, refreshStatus } from '../server/refresh.ts';
 import { ZUMPER_TRANSPORT } from '../server/zumper.ts';

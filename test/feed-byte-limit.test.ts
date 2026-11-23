@@ -31,7 +31,7 @@ test('missing or understated content length cannot bypass the decoded-byte cap',
 
 test('an oversized refresh preserves the prior saved partner inventory', async () => {
   const { refreshSources, storedFeed } = await import('../server/refresh.ts');
-  const { createMemoryBucket } = await import('../server/memory-bucket.ts');
+  const { createMemoryBucket } = await import('./fixtures/memory-bucket.ts');
   const env = { BUCKET: createMemoryBucket(), FREE_PARTNER_FEEDS_JSON: JSON.stringify([feed]) };
   const row = { id: 'one', address: '12 Grove Street', unit: '3', city: 'Jersey City', state: 'NJ',
     zip: '07302', county: 'Hudson', status: 'active', bedrooms: 2, rent: 2400 };

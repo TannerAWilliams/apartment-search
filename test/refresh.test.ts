@@ -50,49 +50,7 @@ class TestBucket {
   }
 }
 
-let testWorker;
-function loadWorker() {
-  testWorker ??= Bun.build({
-    entrypoints: [new URL('../server/worker.ts', import.meta.url).pathname],
-    format: 'esm', target: 'browser',
-    plugins: [{
-      name: 'test-assets',
-      setup(builder) {
-        builder.onResolve({ filter: /^virtual:web-assets$/ }, () => ({ path: 'web', namespace: 'test' }));
-        builder.onLoad({ filter: /.*/, namespace: 'test' }, () => ({
-          loader: 'js', contents: `export default ${JSON.stringify({
-            '/index.html': { type: 'text/html; charset=utf-8', content: '<script src="/_expo/static/test.js"></script>' },
-            '/_expo/static/test.js': { type: 'text/javascript; charset=utf-8', content: 'void 0;' },
-          })}`,
-        }));
-      },
-    }],
-  }).then(async ({ success, outputs }) => {
-    if (!success || outputs.length !== 1) throw new Error('Fixture bundle failed.');
-    return (await import('data:text/javascript;base64,' + Buffer.from(await outputs[0].text()).toString('base64'))).default;
-  });
-  return testWorker;
-}
-
-test('worker integration serves the page and referenced asset with distinct cache policies', async () => {
-  const worker = await loadWorker();
-  const get = (path: string, method = 'GET') => worker.fetch(new Request('https://site.test' + path, { method }), {});
-  const home = await get('/');
-  assert.equal(home.status, 200);
-  assert.equal(home.headers.get('cache-control'), 'no-cache');
-  const script = (await home.text()).match(/src="([^"]+)"/)[1];
-  const asset = await get(script);
-  assert.equal(asset.status, 200);
-  assert.match(asset.headers.get('cache-control'), /immutable/);
-  assert.match(asset.headers.get('content-type'), /javascript/);
-  assert.equal(await (await get(script, 'HEAD')).text(), '');
-  assert.equal((await get('/missing')).status, 404);
-  assert.equal((await get('/', 'POST')).status, 405);
-  assert.equal((await get('/api/unknown')).status, 404);
-});
-
-test('worker integration refreshes active rentals, scopes cards and pins, and removes a rented unit', async () => {
-  const worker = await loadWorker();
+test('the API refreshes active rentals, scopes cards and pins, and removes a rented unit', async () => {
   const url = 'https://feed.example.test/fixtures';
   const env = { BUCKET: new TestBucket(), FREE_PARTNER_FEEDS_JSON: JSON.stringify([{ id: 'zillow', url }]) };
   const apartment = { id: 'brooklyn', address: '50 Example Street', unit: '2A', city: 'Brooklyn', county: 'Kings',
@@ -107,9 +65,9 @@ test('worker integration refreshes active rentals, scopes cards and pins, and re
     String(input) === url ? Response.json({ listings: rows }) : new Response(null, { status: 404 })) as typeof fetch);
   try {
   const waits: Promise<unknown>[] = [];
-  const request = (path: string, body?: object) => worker.fetch(new Request('https://site.test/api/' + path, body ? {
+  const request = (path: string, body?: object) => handleApi(new Request('https://site.test/api/' + path, body ? {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
-  } : {}), env, { waitUntil: (promise: Promise<unknown>) => waits.push(promise) });
+  } : {}), env, { waitUntil: (promise: Promise<unknown>) => { waits.push(promise); } });
   const filters = { region: 'manhattan-brooklyn', bedrooms: 1, maxRent: 5000, liveOnly: true, includeMap: true };
   const refresh = await request('refresh', { check: 'now' });
   assert.equal(refresh.status, 200);
@@ -131,7 +89,7 @@ test('worker integration refreshes active rentals, scopes cards and pins, and re
   assert.deepEqual(after.mapPoints, []);
   await Promise.all(waits);
   } finally { fetchMock.mockRestore(); }
-}, 30_000); // Bundles the Worker with Bun.build, which can take several seconds under a full test run.
+});
 
 const at = new Date('2026-11-10T00:25:00Z');
 const next = new Date('2026-11-10T01:00:00Z');
@@ -201,7 +159,7 @@ test('an hourly refresh persists each source, makes charts use the imported reco
   assert.equal(updated.sources[1].status, 'current');
   assert.equal(updated.sources[0].updatedAt, at.toISOString());
   assert.equal(updated.lastCheckedAt, next.toISOString());
-}, 30_000); // Bundles the Worker with Bun.build, which can take several seconds under a full test run.
+});
 
 test('failed sources preserve the last data and expired lotteries are removed at the Eastern date boundary', async () => {
   const env = { BUCKET: new TestBucket() };
@@ -234,7 +192,7 @@ test('the private writer imports a completed public check without publisher acce
     method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer test-owner' },
     body: JSON.stringify(encodeSourceImport(inputs)),
   });
-  const response = await handleApi(request, env, { requireToken: true });
+  const response = await handleApi(request, env);
   assert.equal(response.status, 200);
   assert.equal((await response.json()).state, 'complete');
   assert.equal((await storedHousing(env.BUCKET, at)).opportunities.length, 1);
@@ -646,22 +604,6 @@ test('unknown or disconnected targeted provider is rejected before acquiring ref
   assert.equal(bucket.records.size, 0);
 });
 
-test('relay preparation is isolated to listing requests, not imports or unrelated sources', async () => {
-  const env = { BUCKET: new TestBucket() };
-  let prepared = 0;
-  const prepareListingSources = async () => { prepared++; throw new Error('relay unavailable'); };
-  const call = (body: unknown) => handleApi(new Request('https://private.test/api/refresh', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
-  }), env, { prepareListingSources, fetcher: async () => new Response('blocked', { status: 403 }) });
-  await call({ source: 'streeteasy-live', imports: {} });
-  assert.equal(prepared, 0);
-  await call({ check: 'now', source: 'apartments-live' });
-  assert.equal(prepared, 0);
-  await call({ check: 'now', source: 'streeteasy-live' });
-  assert.equal(prepared, 1);
-  await call({ check: 'now', source: 'hotpads-live' });
-  assert.equal(prepared, 2);
-});
 
 test('provider 403 without wrapper metadata saves failure, releases lock and preserves inventory', async () => {
   const env = { BUCKET: new TestBucket() };
@@ -767,7 +709,7 @@ test('overlapping source snapshot writes reject stale history instead of overwri
 });
 
 test('saved snapshots are reused until a sync replaces them, and are read-only', async () => {
-  const { createMemoryBucket } = await import('../server/memory-bucket.ts');
+  const { createMemoryBucket } = await import('./fixtures/memory-bucket.ts');
   const bucket = createMemoryBucket();
   const key = 'rentals/' + ZUMPER_LIVE.id + '.json.gz';
   const save = (rent: number) => bucket.put(key, gzipSync(strToU8(JSON.stringify({ listings: [{ id: 'zumper:1', rent }] }))));

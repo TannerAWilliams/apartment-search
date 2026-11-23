@@ -1,7 +1,6 @@
 // Reports unit-test coverage of the application modules (server/ and the non-UI parts of src/).
-// UI components are covered by the Playwright suite, and process entry points run in child
-// processes or bundles; both are listed rather than silently left out.
-import { applicationModules, ENTRY_POINTS } from './coverage-scope.ts';
+// UI components are covered by the Playwright suite; they are listed rather than silently left out.
+import { applicationModules } from './coverage-scope.ts';
 
 const MIN_LINES = 0.98;
 const MIN_FUNCTIONS = 0.96;
@@ -30,7 +29,6 @@ const functions = totals.FNH / totals.FNF;
 console.log(`Application modules (${measured.length}): lines ${totals.LH}/${totals.LF} (${(lines * 100).toFixed(2)}%); functions ${totals.FNH}/${totals.FNF} (${(functions * 100).toFixed(2)}%).`);
 if (partial.length) console.log('Not fully covered: ' + partial.join('; '));
 console.log(`UI modules covered by the Playwright suite instead (${ui.length}): ${ui.join(', ')}.`);
-console.log('Entry points run as child processes or bundles: ' + Object.entries(ENTRY_POINTS).map(([path, why]) => `${path} (${why})`).join('; ') + '.');
 const scripts = [...records.entries()].filter(([path]) => path.startsWith('scripts/'));
 console.log('Build and ops scripts, reported separately: ' + scripts.map(([path, record]) => `${path} ${record.LH}/${record.LF}`).join(', ') + '.');
 if (lines < MIN_LINES || functions < MIN_FUNCTIONS) {

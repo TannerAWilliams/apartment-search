@@ -3,7 +3,6 @@ import type { ListingData } from '../src/domain.ts';
 import type { AppEnv, Bucket, BucketObject, BucketHead, HousingSnapshot, HdcSnapshot } from './contracts.ts';
 import { withoutCommuteEstimate } from '../src/commute-estimate.ts';
 import { type UnitHistory, type ObservationHistory, recordListingHistory } from './listing-history.ts';
-import type { ListingTransports } from './relay-client.ts';
 import { gzipSync, gunzipSync, strFromU8, strToU8 } from 'fflate';
 import { decodeMarketRows, marketSnapshot, packRentMonth, SNAPSHOT_MONTH } from '../src/market.ts';
 import { bundledRentAreas, priorRentMonths } from '../src/rent-history.ts';
@@ -67,7 +66,7 @@ type CheckResult = {
 };
 
 export type SourceStatus = CheckResult & {
-  requestTransport?: 'direct' | 'relay' | 'import' | 'partner-feed' | 'public-search' | typeof STREETEASY_EXPORT_FORMAT | 'not-recorded';
+  requestTransport?: 'direct' | 'import' | 'partner-feed' | 'public-search' | typeof STREETEASY_EXPORT_FORMAT;
   id: string;
   name: string;
   checkedAt: string | null;
@@ -88,7 +87,6 @@ export type RefreshState = {
 };
 
 type RefreshOptions = {
-  listingTransports?: ListingTransports;
   fetcher?: SourceFetch;
   now?: Date;
   imports?: Record<string, any>;
@@ -100,8 +98,6 @@ type RefreshOptions = {
   fallback?: boolean;
   /** Skip the complete syncs because the Workflow runs them. */
   excludeWorkflowSources?: boolean;
-  prepareListingSources?: () => Promise<void>;
-  onStarted?: () => void;
 };
 
 export function refreshCatalog(env: AppEnv): SourceDefinition[] {
@@ -391,7 +387,7 @@ async function refreshDirectRentals(bucket: Bucket, source: typeof DIRECT_RENTAL
     ...(verifiedStreetEasy || verifiedPartner || verifiedComplete ? { transport: result.transport } : {}) };
 }
 
-export async function refreshSources(env: AppEnv, { fetcher = fetch, now = new Date(), imports, onDemand = false, fallback = false, skipStreetEasy = false, onlyStreetEasy = false, sourceId, forceRefresh = false, listingTransports, prepareListingSources, onStarted, excludeWorkflowSources = false }: RefreshOptions = {}) {
+export async function refreshSources(env: AppEnv, { fetcher = fetch, now = new Date(), imports, onDemand = false, fallback = false, skipStreetEasy = false, onlyStreetEasy = false, sourceId, forceRefresh = false, excludeWorkflowSources = false }: RefreshOptions = {}) {
   const selected = sourceId ?? (onlyStreetEasy ? STREETEASY_LIVE.id : null);
   if (selected && !refreshCatalog(env).some((source) => source.id === selected && source.resyncable)) throw new Error('Unknown or disconnected refresh source.');
   const bucket = env.BUCKET;
@@ -444,13 +440,10 @@ export async function refreshSources(env: AppEnv, { fetcher = fetch, now = new D
     onlyIf: current.etag ? { etagMatches: current.etag } : { etagDoesNotMatch: '*' },
   });
   if (!lease) return { state: 'running', ...publicStatus((await readState(bucket)).value, now) };
-  onStarted?.();
 
   const sourceFetch = onDemand ? requestForRefresh(fetcher, AbortSignal.timeout(ids.includes(STREETEASY_LIVE.id) ? 120_000 : PAGE_FETCH_TIMEOUT)) : fetcher;
   const liveData = <T>(id: string, load: (fetcher: SourceFetch, now: Date) => T): T => onDemand ? load(completeSync(id) ?
     requestForRefresh(fetcher, AbortSignal.timeout(completeSync(id)!.timeoutMs)) : sourceFetch, now) : imports?.[id];
-  let preparation: Promise<void> | undefined;
-  const prepare = () => preparation ??= Promise.resolve().then(() => prepareListingSources?.());
   const candidates: { id: string; name: string; work: () => Promise<CheckResult> }[] = [
     ...(publicChecks.includes('firstmover') ? [{ id: 'firstmover', name: 'FirstMover (StreetEasy)', work: () =>
       refreshMarket(bucket, previous.market, at, sourceFetch, imports?.firstmover, Boolean(imports), onDemand) }] : []),
@@ -485,7 +478,6 @@ export async function refreshSources(env: AppEnv, { fetcher = fetch, now = new D
         if (onDemand && source.id === STREETEASY_LIVE.id && streetEasyTransport === STREETEASY_PUBLIC_TRANSPORT) {
           return refreshDirectRentals(bucket, source, await loadStreetEasyPublicSearch(sourceFetch, now), at);
         }
-        if (onDemand && ['streeteasy-live', 'hotpads-live'].includes(source.id)) await prepare();
         return refreshDirectRentals(bucket, source, await liveData(source.id, source.load), at);
       },
     })),
@@ -503,7 +495,7 @@ export async function refreshSources(env: AppEnv, { fetcher = fetch, now = new D
     const failure = result.status === 'rejected' ? result.reason : null;
     const item: SourceStatus = { id, name, checkedAt: at, status: next?.status ?? 'failed',
       updatedAt: next?.updatedAt ?? older?.updatedAt ?? null };
-    if (id === STREETEASY_LIVE.id || id === 'hotpads-live') item.requestTransport = onDemand ? listingTransports?.[id] ?? 'not-recorded' : 'import';
+    if (id === STREETEASY_LIVE.id || id === 'hotpads-live') item.requestTransport = onDemand ? 'direct' : 'import';
     if (id === STREETEASY_LIVE.id && (onDemand || next?.transport === STREETEASY_TRANSPORT)) {
       item.transport = onDemand ? streetEasyTransport : STREETEASY_TRANSPORT;
       if (onDemand && streetEasyTransport !== STREETEASY_TRANSPORT) item.requestTransport = streetEasyTransport;

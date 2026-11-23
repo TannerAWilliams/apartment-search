@@ -1,7 +1,7 @@
 import { test } from 'bun:test';
 import assert from 'node:assert/strict';
 import { handleApi, search } from '../server/api.ts';
-import { createMemoryBucket } from '../server/memory-bucket.ts';
+import { createMemoryBucket } from './fixtures/memory-bucket.ts';
 import { refreshSources, refreshStatus, storedDirectRentals } from '../server/refresh.ts';
 import { COMPASS_LIVE, parseCompassPage } from '../server/compass.ts';
 import { assignedJson, loadPublicPages, deduplicatePublicRentals } from '../server/public-rentals.ts';
@@ -95,32 +95,6 @@ test('Compass accepts script wrapper whitespace and parses JSON strings containi
   assert.equal(assignedJson('<script>global.uc = {', /global\.uc\s*=\s*(?=\{)/), null);
 });
 
-test('background refresh responds before relay preparation and publishes independent inventory while it waits', async () => {
-  const bucket = createMemoryBucket();
-  const feed = { id: 'partner', name: 'Partner', url: 'https://partner.test/rentals' };
-  const env = { BUCKET: bucket, FREE_PARTNER_FEEDS_JSON: JSON.stringify([feed]) };
-  let release!: () => void;
-  const blocked = new Promise<void>(resolve => { release = resolve; });
-  const response = await handleApi(new Request('https://app.test/api/refresh', { method: 'POST',
-    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ check: 'now' }) }), env, {
-    backgroundRefresh: true,
-    prepareListingSources: async () => { await blocked; throw new Error('relay unavailable'); },
-    fetcher: async (url) => url === feed.url ? Response.json({ listings: [{ id: '1',
-      address: '10 Example Street', unit: '1A', city: 'Manhattan', state: 'NY', zip: '10001',
-      bedrooms: 1, price: 2500, status: 'Active', listingUrl: 'https://partner.test/rentals/1',
-    }] }) : new Response('', { status: 403 }),
-  });
-  assert.equal(response.status, 202);
-  assert.equal((await response.json()).checking, true);
-  await until(async () => (await refreshStatus(bucket)).sources.some(item => item.id === feed.id && item.status === 'updated'));
-  assert.equal((await search({ liveOnly: true }, env)).total, 1);
-  assert.equal((await refreshStatus(bucket)).checking, true);
-  release();
-  await until(async () => !(await refreshStatus(bucket)).checking);
-  const status = await refreshStatus(bucket);
-  assert.equal(status.sources.find(item => item.id === 'streeteasy-live')?.status, 'failed');
-  assert.equal(status.sources.find(item => item.id === feed.id)?.status, 'updated');
-});
 
 test('one failed public page keeps successful pages and identifies the missing portion', async () => {
   const result = await loadPublicPages(source, [1, 2, 3].map(page => ({ url: `https://provider.test/${page}` })),
@@ -218,7 +192,7 @@ test('the existing StreetEasy resync checks the configured feed, preserves inven
     assert.equal(url, feed.url);
     assert.equal(new Headers(options?.headers).get('Authorization'), 'Bearer ' + feed.token);
     return Response.json({ listings: [listing], total });
-  }, prepareListingSources: async () => { throw new Error('Partner feed should not require the relay.'); } });
+  } });
   const updated = await (await run(1)).json();
   assert.equal(updated.sources.find(({ id }: { id: string }) => id === 'streeteasy-live')?.transport, 'partner-feed');
   const results = await search({ source: 'streeteasy', liveOnly: true }, env);
@@ -251,7 +225,6 @@ test('StreetEasy resync can read the public active search as a bounded sample', 
       assert.equal(options?.method, undefined);
       return new Response(html, { headers: { 'Content-Type': 'text/html' } });
     },
-    prepareListingSources: async () => { throw new Error('Public search should not use the API relay.'); },
   });
   const { sources } = await response.json();
   const status = sources.find(({ id }: { id: string }) => id === 'streeteasy-live');
@@ -316,7 +289,6 @@ test('a complete StreetEasy export syncs all rows in one request and preserves t
       assert.equal(new Headers(options?.headers).get('Authorization'), 'Bearer export-test-secret');
       return Response.json({ ...complete, ...overrides });
     },
-    prepareListingSources: async () => { throw new Error('Export must not use the StreetEasy relay.'); },
   });
   const first = await run();
   assert.equal(called, 1);
