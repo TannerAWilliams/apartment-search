@@ -22,17 +22,16 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version-file: .bun-version
+      # Wrangler, Cloudflare's tool that bundles the Worker and runs it locally in workerd, runs on Node.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
       - run: bun install --frozen-lockfile
       - run: bun run typecheck
       - name: Unit tests and coverage
         run: bun run test:coverage
       - name: Build the web app and bundle the Worker
         run: bun run build
-      # Wrangler's local server, which runs the Worker in workerd, does not start under Bun
-      # (oven-sh/bun#39247), so this one step uses Node.
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 26
       # The Worker in Cloudflare's own runtime (workerd), which unit tests under Bun cannot catch.
       - name: Worker routes in workerd
         run: bun run test:workerd

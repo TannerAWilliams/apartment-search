@@ -52,10 +52,9 @@ async function waitForWorker(deadline: number) {
 
 if (import.meta.main) {
   // A fresh local D1 database with the production schema.
-  const schema = Bun.spawnSync([Bun.argv[0], ...wrangler, 'd1', 'execute', 'apartment-search-observations', '--local', '--file', 'deploy/cloudflare/schema.sql']);
+  const schema = Bun.spawnSync(['node', ...wrangler, 'd1', 'execute', 'apartment-search-observations', '--local', '--file', 'deploy/cloudflare/schema.sql']);
   if (schema.exitCode !== 0) throw new Error('Could not create the local database:\n' + schema.stderr.toString());
-  // Wrangler's local server is the one tool that still runs on Node: under Bun it cannot forward requests to
-  // workerd, because Bun's fetch ignores the undici dispatcher Miniflare uses (oven-sh/bun#39247).
+  // Wrangler runs on Node, its supported runtime; it runs the Worker in workerd.
   const worker = Bun.spawn(['node', ...wrangler, 'dev', '--var', 'PUBLIC_APP:true', '--var', `ACCESS_ALLOWED_EMAILS:${PLACEHOLDER_EMAIL}`,
     '--port', String(PORT), '--ip', '127.0.0.1'], { stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' });
   let output = '';

@@ -6,9 +6,9 @@ import { jsonBodies, type ApiVariables, type SyncJob } from './routes/context.ts
 import { RefreshCheckSchema } from './routes/inputs.ts';
 import type { AppEnv, Bucket } from './contracts.ts';
 import { createD1Bucket, type D1Database } from './d1-bucket.ts';
-import { secretsEqual } from './secrets.ts';
+import { timingSafeEqual } from 'hono/utils/buffer';
 import { log } from './log.ts';
-import { STRICT_TRANSPORT_SECURITY, withWebHeaders } from './web-headers.ts';
+import { securityHeaders, withCacheControl } from './web-headers.ts';
 import { accessSettings, verifyAccessToken } from './access.ts';
 import { type ArchiveLoader, DASHBOARD_ARCHIVE_PATH } from './dashboard-snapshot.ts';
 import { SYNC_PROGRESS_KEY, WORKFLOW_SOURCE_IDS } from './source-registry.ts';
@@ -83,15 +83,15 @@ function executionContext(c: Context) {
 
 const app = new Hono<Worker>();
 
-// Every response asks browsers to use HTTPS only.
-app.use(async (c, next) => { await next(); c.header('Strict-Transport-Security', STRICT_TRANSPORT_SECURITY); });
+// Hono's secure headers on every response, sign-in refusals included: HTTPS only, the Content Security Policy and the rest.
+app.use(securityHeaders);
 
 // The deployed app is private. A browser signs in with Cloudflare Access, whose token this Worker
 // verifies; scripts such as the StreetEasy home sync send the app access token instead. Every request,
 // assets included, needs one of them. PUBLIC_APP opens the app for local development.
 app.use(async (c, next) => {
   const env = c.env;
-  const bearer = Boolean(env.APP_ACCESS_TOKEN && await secretsEqual(c.req.header('Authorization') ?? '', 'Bearer ' + env.APP_ACCESS_TOKEN));
+  const bearer = Boolean(env.APP_ACCESS_TOKEN && await timingSafeEqual(c.req.header('Authorization') ?? '', 'Bearer ' + env.APP_ACCESS_TOKEN));
   const access = bearer ? null : accessSettings(env);
   const accessEmail = access ? await verifyAccessToken(c.req.header('Cf-Access-Jwt-Assertion') ?? null, access)
     .catch((cause) => { log.error('access_check_failed', cause); return null; }) : null;
@@ -139,7 +139,7 @@ app.post('/api/refresh', async (c, next) => {
 });
 
 app.route('/', api);
-app.all('*', async (c) => withWebHeaders(await c.env.ASSETS.fetch(c.req.raw), c.req.path));
+app.all('*', async (c) => withCacheControl(await c.env.ASSETS.fetch(c.req.raw), c.req.path));
 
 app.onError((cause, c) => {
   log.error('request_failed', cause, { path: c.req.path, method: c.req.method });

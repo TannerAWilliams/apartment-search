@@ -1,7 +1,6 @@
 import { required } from './test-values.ts';
 import { expect, test } from 'bun:test';
 import { createMemoryBucket } from './fixtures/memory-bucket.ts';
-import { secretsEqual } from '../server/secrets.ts';
 
 test('the in-memory test bucket mirrors D1 conditional writes and size limits', async () => {
  const bucket = createMemoryBucket(100);
@@ -14,9 +13,4 @@ test('the in-memory test bucket mirrors D1 conditional writes and size limits', 
  await expect(bucket.put('large', 'x'.repeat(101))).rejects.toThrow();
  expect(await bucket.get('large')).toBeNull();
  expect(await createMemoryBucket().get('state')).toBeNull();
-});
-test('secrets compare equal only when identical', async () => {
- expect(await secretsEqual('Bearer ' + 'x'.repeat(40), 'Bearer ' + 'x'.repeat(40))).toBe(true);
- expect(await secretsEqual('Bearer short', 'Bearer ' + 'x'.repeat(40))).toBe(false);
- expect(await secretsEqual('Bearer ' + 'y'.repeat(40), 'Bearer ' + 'x'.repeat(40))).toBe(false);
 });

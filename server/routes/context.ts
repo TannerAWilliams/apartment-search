@@ -2,13 +2,13 @@
  * What every API route shares: the context type, the Hono factory that creates route groups and middleware
  * with it, and the request helpers. See server/api.ts for how the routes are put together.
  */
+import { bodyLimit } from 'hono/body-limit';
 import { createFactory, createMiddleware } from 'hono/factory';
 import type { Context } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import type { AppEnv, Bucket } from '../contracts.ts';
 import type { ArchiveLoader } from '../dashboard-snapshot.ts';
 import type { SourceFetch } from '../refresh.ts';
-import { readRequestBody, RequestTooLarge } from '../request-body.ts';
 
 export type SyncJob = { start(delay: boolean, sources?: string[]): Promise<void>; pending(): Promise<string | boolean | null> };
 /** What a request can use besides the settings and storage. The Worker entry passes the real ones; tests pass stand-ins. */
@@ -43,18 +43,16 @@ const IMPORT_LIMIT = 2 * 1024 * 1024;
 const JSON_TYPE = /^application\/([a-z-.]+\+)?json(;\s*[a-zA-Z0-9-]+=([^;]+))*$/i;
 
 /**
- * A POST body is JSON, within the route's size limit, read before the route runs so a body that is too large
- * or breaks off is refused. Requiring the JSON type also stops cross-site form posts.
+ * A POST body is JSON, within the route's size limit (Hono's body-limit middleware), so a body that is too
+ * large is refused before the route reads it. Requiring the JSON type also stops cross-site form posts.
  */
 export const jsonBodies = (limit: (path: string) => number) => createMiddleware(async (c, next) => {
   if (!JSON_TYPE.test(c.req.header('Content-Type') ?? '')) return fail(c, 400, 'Send a JSON request.');
-  const maxBytes = limit(c.req.path);
-  if (Number(c.req.header('Content-Length')) > maxBytes) return fail(c, 413, 'The request is too large.');
-  let body;
-  try { body = await readRequestBody(c.req.raw, maxBytes); }
-  catch (cause) { return cause instanceof RequestTooLarge ? fail(c, 413, 'The request is too large.') : fail(c, 400, 'Send a JSON request.'); }
-  c.req.raw = new Request(c.req.raw, { body });
-  return next();
+  const limiter = bodyLimit({ maxSize: limit(c.req.path), onError: (c) => fail(c, 413, 'The request is too large.') });
+  // Reading a body that breaks off fails before the route runs; errors from the route itself are Hono's to handle.
+  let reached = false;
+  try { return await limiter(c, () => { reached = true; return next(); }); }
+  catch (cause) { if (reached) throw cause; return fail(c, 400, 'Send a JSON request.'); }
 });
 /** The API's limits: 2 MiB for a source import, 4 KB for everything else. */
 export const apiBodies = jsonBodies((path) => path === '/api/refresh' ? IMPORT_LIMIT : REQUEST_LIMIT);

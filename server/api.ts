@@ -3,6 +3,7 @@
  * Valibot schema (server/routes/inputs.ts) and its reply types reach the app through `ApiRoutes`.
  */
 import { HTTPException } from 'hono/http-exception';
+import { methodNotAllowed } from 'hono/method-not-allowed';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { SearchInputError } from '../src/search.ts';
 import { CommuteError } from './commute.ts';
@@ -25,17 +26,11 @@ export const api = factory.createApp().basePath('/api')
 /** The routes and the shape of each reply, for the app's API client. */
 export type ApiRoutes = typeof api;
 
-// A known path asked with the wrong method gets a 405 that says which method to use; anything else is a 404.
-const ONE_METHOD: Record<string, string> = {
-  '/api/vitals': 'Use POST for performance measurements.', '/api/dashboard': 'Use GET for dashboard data.',
-  '/api/config': 'Use GET for app configuration.', '/api/housing': 'Use GET for affordable housing.', '/api/market': 'Use GET for rent data.',
-};
-const POST_ROUTES = new Set(['/api/alerts', '/api/refresh', '/api/search', '/api/search-check', '/api/geocode', '/api/building-report']);
-api.all('*', (c) => {
-  const oneMethod = ONE_METHOD[c.req.path];
-  if (oneMethod) return fail(c, 405, oneMethod);
-  return POST_ROUTES.has(c.req.path) ? fail(c, 405, 'Use POST for this endpoint.') : fail(c, 404, 'Endpoint not found.');
-});
+// A known path asked with the wrong method gets a 405 that says which methods to use (Hono's method-not-allowed
+// middleware, which also sets the Allow header); anything else is a 404.
+api.use(methodNotAllowed({ app: api, onMethodNotAllowed: (c, methods) =>
+  c.json({ error: `Use ${methods.filter((method) => method !== 'HEAD').join(' or ')} for this endpoint.` }, 405, { Allow: methods.join(', ') }) }));
+api.all('*', (c) => fail(c, 404, 'Endpoint not found.'));
 
 api.onError((error, c) => {
   if (error instanceof HTTPException) return error.status === 413 ? fail(c, 413, 'The request is too large.') : fail(c, 400, 'Send a JSON request.');
