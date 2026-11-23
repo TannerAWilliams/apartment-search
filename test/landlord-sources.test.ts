@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test';
+import { brodskyListingUrl, loadBrodsky, parseBrodskyBuilding, parseBrodskyRentals } from '../server/brodsky.ts';
 import { GLENWOOD_BUILDINGS, glenwoodListingUrl, loadGlenwood, parseGlenwoodSearch } from '../server/glenwood.ts';
 import { refreshSources } from '../server/refresh.ts';
 import { search } from '../server/search.ts';
@@ -129,4 +130,68 @@ test('a landlord check is saved as a full inventory, so search does not call it 
   );
   expect(found.matches).toHaveLength(2);
   expect(found.sources.find(({ id }) => id === 'stuytown')).toMatchObject({ status: 'searched', sample: false });
+});
+
+const brodskyUnit = (uid: string, property: string, extra: Record<string, unknown> = {}) => ({
+  uid,
+  propertyUid: property,
+  neighborhoodUid: 'lincoln-square',
+  url: `/rentals/lincoln-square/${property}/${uid}`,
+  apartmentName: 'S37A',
+  beds: 2,
+  baths: 2,
+  minimumRent: 8500,
+  zipCode: '10019',
+  latitude: 40.77,
+  longitude: -73.98,
+  description: 'A {braced} "quoted" note',
+  ...extra,
+});
+/** A rentals page embedding its apartments in Next.js flight data, as brodsky.com does. */
+const brodskyPage = (units: unknown[]) =>
+  `<html><script>self.__next_f.push(${JSON.stringify([1, '5:["$","div",null,{"units":' + JSON.stringify(units) + '}]\n'])})</script></html>`;
+const brodskyBuilding = (street: string, city = 'New York') =>
+  `<script type="application/ld+json">{"address":{"streetAddress":"${street}","addressLocality":"${city}"}}</script>`;
+function brodskySite(units: unknown[], buildings: Record<string, string>) {
+  const requests: string[] = [];
+  const fetcher = (url: string) => {
+    requests.push(url);
+    const path = new URL(url).pathname;
+    const body = path === '/rentals' ? brodskyPage(units) : (buildings[path.split('/').at(-1) ?? ''] ?? '<html></html>');
+    return new Response(body, { headers: { 'Content-Type': 'text/html' } });
+  };
+  return { fetcher, requests };
+}
+
+test('Brodsky: every apartment on its rentals page, with each building’s address from its own page', async () => {
+  const units = [
+    brodskyUnit('one-a', 'one-columbus-place'),
+    brodskyUnit('one-b', 'one-columbus-place', { apartmentName: 'S16F' }),
+    brodskyUnit('city-1', 'city-tower'),
+  ];
+  const { fetcher, requests } = brodskySite(units, {
+    'one-columbus-place': brodskyBuilding('One Columbus Place'),
+    'city-tower': brodskyBuilding('10 City Point', 'Brooklyn'),
+  });
+  const result = await loadBrodsky(fetcher, now);
+  expect(result).toMatchObject({ total: 3, rawCount: 3, pages: 3, transport: 'brodsky-rentals-page' });
+  // One request per building, not per apartment.
+  expect(requests).toHaveLength(3);
+  expect(result.listings.map(({ address, city, unit }) => [address, city, unit])).toEqual([
+    ['One Columbus Place', 'Manhattan', 'S37A'],
+    ['One Columbus Place', 'Manhattan', 'S16F'],
+    ['10 City Point', 'Brooklyn', 'S37A'],
+  ]);
+  expect(result.listings[0]?.sources[0]?.url).toBe('https://www.brodsky.com/rentals/lincoln-square/one-columbus-place/one-a');
+});
+
+test('Brodsky: an empty or partly described page, or a building without an address, saves nothing', async () => {
+  await expect(loadBrodsky(brodskySite([], {}).fetcher, now)).rejects.toThrow('recognized rentals page');
+  expect(() => parseBrodskyRentals(brodskyPage([brodskyUnit('x', 'tower', { minimumRent: null })]))).toThrow('did not fully describe');
+  expect(() => parseBrodskyRentals(brodskyPage([brodskyUnit('x', '../etc')]))).toThrow('did not fully describe');
+  await expect(loadBrodsky(brodskySite([brodskyUnit('x', 'tower')], {}).fetcher, now)).rejects.toThrow('building’s address');
+  expect(parseBrodskyBuilding(brodskyBuilding('12 East 86th Street'))).toEqual({ address: '12 East 86th Street', city: 'Manhattan' });
+  expect(brodskyListingUrl('https://www.brodsky.com/rentals/a/b/c?x=1')).toBe('https://www.brodsky.com/rentals/a/b/c');
+  for (const url of ['https://evil.example/rentals/a/b/c', 'https://www.brodsky.com/sales/a/b/c', 'https://www.brodsky.com/rentals/a/b'])
+    expect(brodskyListingUrl(url)).toBeNull();
 });

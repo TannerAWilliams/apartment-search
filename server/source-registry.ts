@@ -1,6 +1,7 @@
 import { CITYREALTY_COVERAGE, CITYREALTY_ID, CITYREALTY_TRANSPORT } from './cityrealty.ts';
 import { OPENIGLOO, OPENIGLOO_COVERAGE, OPENIGLOO_TRANSPORT } from './openigloo.ts';
 import { ZUMPER_COVERAGE, ZUMPER_LIVE, ZUMPER_TRANSPORT } from './zumper.ts';
+import { BRODSKY_TRANSPORT } from './brodsky.ts';
 import { GLENWOOD_TRANSPORT } from './glenwood.ts';
 import { STUYTOWN_TRANSPORT } from './stuytown.ts';
 
@@ -62,6 +63,8 @@ export const completeSync = (id: string | null | undefined) => COMPLETE_SYNCS.fi
 const VERIFIED_INVENTORIES: readonly { id: string; name: string; transport: string }[] = [
   { id: 'stuytown-live', name: 'StuyTown', transport: STUYTOWN_TRANSPORT },
   { id: 'glenwood-live', name: 'Glenwood', transport: GLENWOOD_TRANSPORT },
+  // Brodsky lists every apartment on one page but gives no separate total; see server/brodsky.ts.
+  { id: 'brodsky-live', name: 'Brodsky', transport: BRODSKY_TRANSPORT },
 ];
 
 /** The full-inventory rule a source follows, if any: a complete sync, or a verified inventory. */
