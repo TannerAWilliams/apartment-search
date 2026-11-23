@@ -6,6 +6,7 @@
   //   bun run dev       runs it locally with local D1 and Workflows (`bun run db:local` creates the tables)
   "$schema": "../../node_modules/wrangler/config-schema.json",
   "name": "apartment-search",
+  "account_id": "c021a5b3eac3e4ea7b4afba9fd926223",
   "main": "../../server/cloudflare.ts",
   "compatibility_date": "2026-11-18",
   "compatibility_flags": ["nodejs_compat"],

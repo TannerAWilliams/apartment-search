@@ -99,6 +99,10 @@ GitHub Actions (`.github/workflows/ci.yml`) runs the typecheck, unit tests with 
 
 ## Deploy
 
+Deploy from GitHub: **Actions → Deploy → Run workflow** (`.github/workflows/deploy.yml`). It runs the typecheck and unit tests, then builds and deploys. It needs the repository secret `CLOUDFLARE_API_TOKEN`, an API token made from Cloudflare's "Edit Cloudflare Workers" template. It only runs when you start it.
+
+To deploy from your own computer instead:
+
 ```sh
 node ./node_modules/wrangler/bin/wrangler.js login     # or set CLOUDFLARE_API_TOKEN
 bun run deploy                                          # build the web app and deploy the Worker
@@ -113,8 +117,8 @@ The Cloudflare Access application for `apartments.5thof6.com` (who may sign in, 
 `apartments.5thof6.com` used to be served by a separate gate Worker, `apartment-search-access`, which checked the Access sign-in and forwarded requests with the app token. This Worker now does that itself. To switch:
 
 1. `wrangler secret put ACCESS_ALLOWED_EMAILS -c deploy/cloudflare/wrangler.jsonc` with the email you sign in with.
-2. Detach `apartments.5thof6.com` from `apartment-search-access` (Workers & Pages → apartment-search-access → Settings → Domains & Routes).
-3. `bun run deploy`, which attaches the domain to `apartment-search`. The Access application on the hostname keeps protecting it.
+2. Nothing to detach first: a deploy from GitHub Actions (or any non-interactive run) moves `apartments.5thof6.com` off `apartment-search-access` itself. An interactive `wrangler deploy` asks first.
+3. Run the Deploy workflow (or `bun run deploy`), which attaches the domain to `apartment-search`. The Access application on the hostname keeps protecting it.
 4. Open `apartments.5thof6.com`, sign in, and check that search works.
 5. Delete `apartment-search-access` and its `APARTMENT_BACKEND_KEY` secret.
 
