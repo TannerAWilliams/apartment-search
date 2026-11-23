@@ -5,7 +5,7 @@
  *   bun scripts/check-sources.ts [source-id ...]
  * Each source is one of:
  *   working  it read listings (the count is shown)
- *   blocked  the site refused automated requests (HTTP 403 or 429, or a bot challenge): reported, not a failure
+ *   blocked  the site refused automated requests (HTTP 403, 405 or 429, or a bot challenge): reported, not a failure
  *   broken   anything else, such as a page the reader no longer recognizes: the run fails
  * The complete syncs that take many minutes (CityRealty, Openigloo, Zumper) are left out; they run in the Workflow.
  */
@@ -35,7 +35,8 @@ export const CHECKS: Check[] = [
 export function isBlocked(error: unknown) {
   if (!(error instanceof Error)) return false;
   const status = 'httpStatus' in error ? Number(error.httpStatus) : Number(error.message.match(/HTTP (\d{3})/)?.[1]);
-  return status === 403 || status === 429 || ('code' in error && error.code === 'bot_challenge');
+  // Redfin answers automated requests with 405, though every reader asks with a plain GET.
+  return status === 403 || status === 405 || status === 429 || ('code' in error && error.code === 'bot_challenge');
 }
 
 export async function checkSources(checks: Check[], fetcher: FetchTransport, now = new Date()): Promise<Outcome[]> {

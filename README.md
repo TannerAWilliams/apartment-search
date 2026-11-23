@@ -48,6 +48,7 @@ your computer ── scripts/sync-streeteasy.ts ── uploads the StreetEasy in
 | Apartments.com | Individually identified units with exact rents from the first two search pages for one- and two-bedroom rentals in each borough. Building-wide price ranges are excluded. |
 | HotPads | A bounded exact-unit sample from NYC, Jersey City and Stamford. |
 | Zillow, Compass, RentHop, Realtor.com | Public search adapters with documented regional samples. Provider errors show in Sources. |
+| Live check, 2026-11-23 | From GitHub's network, `scripts/check-sources.ts` read listings from Zillow, Trulia, AffordableHousing.com, HotPads, Apartment List, StuyTown, Glenwood, Brodsky, Housing Connect, HDC, Jersey City and Westchester. StreetEasy and Apartments.com (HTTP 403), Realtor.com (HTTP 429), Redfin (HTTP 405), and Compass and RentHop (bot challenges) refuse automated requests; the app reports them as blocked and does not try to get around it. |
 | Apartment List | Identified NYC units marked available now on its first search page. |
 | Redfin | Active, individually identified units from its public NYC search. |
 | Trulia | The first two pages of one- and two-bedroom searches in the five boroughs and the same outer markets as Zumper. |

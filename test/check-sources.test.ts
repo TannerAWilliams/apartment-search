@@ -6,6 +6,7 @@ test('each source is reported as working, blocked or broken', async () => {
     [
       { id: 'good', run: async () => 12 },
       { id: 'refused', run: async () => Promise.reject(new Error('Zillow returned HTTP 403.')) },
+      { id: 'redfin', run: async () => Promise.reject(new Error('Redfin returned HTTP 405.')) },
       { id: 'limited', run: async () => Promise.reject(Object.assign(new Error('Slow down'), { httpStatus: 429 })) },
       {
         id: 'challenged',
@@ -19,6 +20,7 @@ test('each source is reported as working, blocked or broken', async () => {
   expect(outcomes.map(({ id, state }) => [id, state])).toEqual([
     ['good', 'working'],
     ['refused', 'blocked'],
+    ['redfin', 'blocked'],
     ['limited', 'blocked'],
     ['challenged', 'blocked'],
     ['changed', 'broken'],
