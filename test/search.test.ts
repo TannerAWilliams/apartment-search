@@ -5,7 +5,8 @@ import { parseFilters, DEFAULT_FILTERS, localWorkplace, directionsLink } from '.
 import { MARKETS, NYC_SEARCH_DEFAULT, REGIONS, marketsForSearch, regionOf, searchBorough } from '../src/regions.ts';
 import { marketplaceAddressSearches, marketplaceIdForUrl, marketplaceLinks } from '../src/marketplaces.ts';
 import { listingKey, mergeListings, normalizeListing, sourceLink } from '../src/listings.ts';
-import { localSearch, marketSnapshot, median, rentAreas, snapshotSearch, SNAPSHOT_MONTH } from '../src/market.ts';
+import { localSearch, median, rentAreas, SNAPSHOT_MONTH } from '../src/market.ts';
+import { marketSnapshot, snapshotSearch } from '../src/bundled-market.ts';
 import { IMPORT_COLUMNS, parseListingImport } from '../src/import-listings.ts';
 import { appConfig, handleApi, search } from '../server/api.ts';
 

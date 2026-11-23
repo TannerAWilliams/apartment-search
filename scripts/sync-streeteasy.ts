@@ -2,7 +2,7 @@ import type { FetchTransport } from '../src/fetch-type.ts';
 import { createInterface } from 'node:readline';
 import type { Readable } from 'node:stream';
 import { loadStreetEasy, STREETEASY_LIVE } from '../server/streeteasy.ts';
-import { encodeSourceImport } from '../src/pull-sources.ts';
+import { encodeSourceImport } from '../src/source-import.ts';
 
 /** The deployed Worker rejects authenticated /api/refresh bodies larger than this. */
 export const MAX_IMPORT_BYTES = 2 * 1024 * 1024;

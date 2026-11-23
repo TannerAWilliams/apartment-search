@@ -4,6 +4,7 @@ import { formatSnapshotMonth } from './market.ts';
 import { type RentArea, type RentHistory, type RentPoint, rentSeries } from './rent-history.ts';
 import { bedroomLabel, formatRent } from './search.ts';
 import { styles } from './styles.ts';
+import { toggleProps } from './ui.tsx';
 
 const SERIES_COLORS = ['#206248', '#34638c', '#94512d'];
 const CHART_HEIGHT = 178;
@@ -62,7 +63,7 @@ function TrendPlot({ series, points, scale, selectedIndex, onMonth }: { series: 
     </View>
     <View style={[styles.trendMonths, { marginLeft: AXIS_WIDTH }]}>
       {points.map(({ month }, index) => <Pressable key={month} accessibilityRole="button"
-        accessibilityLabel={formatSnapshotMonth(month)} accessibilityState={{ selected: index === selectedIndex }} aria-selected={index === selectedIndex}
+        accessibilityLabel={formatSnapshotMonth(month)} {...toggleProps(index === selectedIndex)}
         onPress={() => onMonth(month)} style={[styles.trendMonth, index === selectedIndex && styles.trendMonthActive]}>
         <Text style={[styles.trendMonthText, index === selectedIndex && styles.trendMonthTextActive]}>{monthLabel(month)}</Text>
       </Pressable>)}

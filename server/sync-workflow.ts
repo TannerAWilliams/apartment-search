@@ -4,6 +4,7 @@ import { createD1Bucket, type D1Database } from './d1-bucket.ts';
 import { crawlOpeniglooCell, finishOpeniglooRun, OPENIGLOO_CELL_COUNT } from './openigloo-sync.ts';
 import { refreshSources } from './refresh.ts';
 import { log } from './log.ts';
+import { runAlerts } from './api.ts';
 import { completeSync, SYNC_PROGRESS_KEY, WORKFLOW_SOURCE_IDS } from './source-registry.ts';
 
 type Environment = AppEnv & { APARTMENTS: D1Database };
@@ -25,6 +26,11 @@ export class CityRealtySync extends WorkflowEntrypoint<Environment, RefreshParam
         return sourceId;
       });
       outcomes[sourceId] = sourceId === 'openigloo' ? await this.syncOpenigloo(event.instanceId, step) : await this.sync(sourceId, step);
+    }
+    // Saved-search alerts compare the new inventory with each alert's last check.
+    if (Object.values(outcomes).some((outcome) => !outcome.error)) {
+      await step.do('Check saved-search alerts', { retries: { limit: 1, delay: '10 seconds' }, timeout: '5 minutes' }, async () =>
+        ({ alerts: (await runAlerts({ ...this.env, BUCKET: bucket }))?.alerts.length ?? 0 }));
     }
     const failed = Object.entries(outcomes).filter(([, outcome]) => outcome.error);
     for (const [id, outcome] of failed) log.warn('complete_sync_failed', { source: id, error: outcome.error, instance: event.instanceId });

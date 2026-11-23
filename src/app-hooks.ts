@@ -36,7 +36,7 @@ export function useSavedListings(onError: (message: string) => void) {
 }
 
 /** The tabs the URL hash can name; anything else opens Search. */
-export const APP_TABS = ['results', 'saved', 'more', 'sources', 'chart', 'marketplaces', 'affordable'];
+export const APP_TABS = ['results', 'saved', 'more', 'sources', 'chart', 'marketplaces', 'affordable', 'alerts'];
 
 /**
  * The current time, updated when the shown live inventory reaches its expiry and whenever the app

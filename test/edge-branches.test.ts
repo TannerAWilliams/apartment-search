@@ -9,7 +9,7 @@ import { refreshSources, refreshStatus } from '../server/refresh.ts';
 import { requestForRefresh } from '../server/source-requests.ts';
 import { AFFORDABLE_LIVE } from '../server/affordable-rentals.ts';
 import { parseApartmentsPage } from '../server/apartments-com.ts';
-import { parseDashboardArchive } from '../src/dashboard-data.ts';
+import { parseDashboardArchive } from '../server/dashboard-csv.ts';
 import { safeListingUrl } from '../src/marketplaces.ts';
 import { regionOf } from '../src/regions.ts';
 

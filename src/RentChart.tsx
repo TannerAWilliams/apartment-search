@@ -3,12 +3,13 @@ import type { RentArea, RentMarket, RentHistory } from './rent-history.ts';
 import type { LoadDashboard } from './DashboardExplorer.tsx';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
-import { formatSnapshotMonth, marketSnapshot, RENT_GROUPINGS, rentAreas, SNAPSHOT_MONTH, SNAPSHOT_SOURCE } from './market.ts';
-import { bundledRentHistory } from './rent-history.ts';
+import { formatSnapshotMonth, RENT_GROUPINGS, rentAreas, SNAPSHOT_MONTH, SNAPSHOT_SOURCE } from './market.ts';
+// Resolves to offline-rent-data.web.ts on the web, which bundles no data.
+import { offlineRentData } from './offline-rent-data';
 import { NYC_SEARCH_AREAS } from './regions.ts';
 import { bedroomLabel, formatRent } from './search.ts';
 import { styles } from './styles.ts';
-import { Button, Chip, Field, Link } from './ui.tsx';
+import { Button, Chip, Field, Link, toggleProps } from './ui.tsx';
 import { DashboardExplorer } from './DashboardExplorer.tsx';
 import { RentTrend } from './RentTrend.tsx';
 
@@ -46,7 +47,7 @@ function RentTable({ areas, selection, choose }: { areas: RentArea[]; selection:
         {SIZES.map((label) => <Text key={label} style={[styles.chartCell, styles.fieldLabel]}>{label}</Text>)}
       </View>
       {areas.map((area) => <Pressable key={area.id} accessibilityRole="button"
-        accessibilityState={{ selected: selection === area.id }} aria-selected={selection === area.id} accessibilityLabel={`Show chart for ${area.label} ${area.detail}`}
+        {...toggleProps(selection === area.id)} accessibilityLabel={`Show chart for ${area.label} ${area.detail}`}
         onPress={() => choose(area.id)} style={[styles.chartTableRow, selection === area.id && styles.chartTableSelected]}>
         <View style={styles.chartTablePlace}>
           <Text style={styles.fieldLabel}>{area.label}</Text>
@@ -75,21 +76,25 @@ export function RentChart({ initialRegion, saved, onError, showSaved, loadMarket
   const [query, setQuery] = useState('');
   const [visible, setVisible] = useState(PAGE_SIZE);
   const [remote, setRemote] = useState<(RentMarket & { region: string; grouping: string }) | null>(null);
+  const [failedLoad, setFailedLoad] = useState('');
 
   useEffect(() => {
     if (dataset !== 'market' || !loadMarket) return;
     const controller = new AbortController();
     loadMarket(region, grouping, controller.signal)
       .then((data) => { if (!controller.signal.aborted) setRemote({ ...data, region, grouping }); })
-      .catch(() => {});
+      .catch(() => { if (!controller.signal.aborted) setFailedLoad(region + '|' + grouping); });
     return () => controller.abort();
   }, [dataset, region, grouping, loadMarket]);
 
   const published = dataset === 'market' && remote?.region === region && remote.grouping === grouping ? remote : null;
+  // Without the server's figures, native builds chart the bundled snapshot; the web build has none.
+  const marketState = dataset !== 'market' || published || offlineRentData ? 'ready'
+    : !loadMarket || failedLoad === region + '|' + grouping ? 'failed' : 'loading';
   const month = published?.month ?? SNAPSHOT_MONTH;
-  const areas = useMemo(() => published?.areas ?? rentAreas(dataset === 'market' ? marketSnapshot() : saved, { region, grouping }),
-    [published, dataset, saved, region, grouping]);
-  const history = useMemo<RentHistory>(() => published?.history ?? bundledRentHistory(month, 'nyc', grouping)
+  const areas = useMemo(() => published?.areas ?? (dataset === 'market' ? offlineRentData ? rentAreas(offlineRentData.listings(), { region, grouping }) : []
+    : rentAreas(saved, { region, grouping })), [published, dataset, saved, region, grouping]);
+  const history = useMemo<RentHistory>(() => published?.history ?? (offlineRentData?.history(month, 'nyc', grouping) ?? [])
     .map(([period, rows]) => [period, rows.filter(([id]) => id !== 'overall')]), [published, month, grouping]);
   const search = query.trim().toLowerCase();
   const areaChoices = search ? areas.filter(({ id, label, detail }) =>
@@ -167,7 +172,10 @@ export function RentChart({ initialRegion, saved, onError, showSaved, loadMarket
       {visible < areaChoices.length && <Button secondary onPress={() => setVisible(visible + PAGE_SIZE)}>
         Show more areas ({visible} of {areaChoices.length})
       </Button>}
-    </> : <View style={styles.empty}>
+    </> : marketState !== 'ready' ? <View style={styles.empty} aria-live="polite">
+      <Text accessibilityRole="header" style={styles.panelTitle}>{marketState === 'loading' ? 'Loading rent data…' : 'Rent data is unavailable'}</Text>
+      {marketState === 'failed' && <Text style={styles.bodyText}>The rent figures could not be loaded. Try again shortly.</Text>}
+    </View> : <View style={styles.empty}>
       <Text accessibilityRole="header" style={styles.panelTitle}>{search ? 'No matching area' : 'No rent observations here'}</Text>
       <Text style={styles.bodyText}>{search ? 'Try another name or grouping.' :
         dataset === 'market' ? 'The public snapshot has no observations for this selection.' :

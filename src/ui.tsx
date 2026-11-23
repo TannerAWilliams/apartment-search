@@ -3,9 +3,14 @@ import type { TextInputProps, ViewProps } from 'react-native';
 import { Linking, Platform, Pressable, Text, TextInput, View } from 'react-native';
 import { colors, styles } from './styles.ts';
 
+/**
+ * Props for a button that toggles on and off: aria-pressed on the web (aria-selected is not allowed on
+ * buttons), the "selected" state on iOS and Android.
+ */
+export const toggleProps = (on: boolean) => Platform.OS === 'web' ? { 'aria-pressed': on } : { accessibilityState: { selected: on } };
+
 export function Chip({ children, selected = false, onPress, label }: { children: ReactNode; selected?: boolean; onPress: () => void; label?: string }) {
-  // aria-selected is what react-native-web exposes on the web; accessibilityState covers native.
-  return <Pressable accessibilityRole="button" accessibilityState={{ selected }} aria-selected={selected}
+  return <Pressable accessibilityRole="button" {...toggleProps(selected)}
     accessibilityLabel={label} aria-label={label}
     onPress={onPress} style={({ pressed }) => [styles.chip, selected && styles.chipActive, pressed && styles.pressed]}>
     <Text style={[styles.chipText, selected && styles.chipTextActive]}>{children}</Text>

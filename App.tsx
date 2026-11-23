@@ -6,7 +6,20 @@ import { inventoryExpired } from './src/inventory-freshness.ts';
 import { inventoryUnavailable } from './src/inventory-state.ts';
 import type { ListingData, SourceLink, SearchFilters, SearchResult } from './src/domain.ts';
 import type { SourceDefinition, SourceStatus } from './src/source-status.ts';
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+
+// Screens off the first page load on first use, so opening the app downloads only what search needs:
+// the map and Leaflet, rent charts and the dashboard, affordable housing, tours, comparison, sources
+// and listing import (with its CSV parser).
+const ListingMap = lazy(() => import('./src/ListingMap').then((module) => ({ default: module.ListingMap })));
+const AffordableHousing = lazy(() => import('./src/AffordableHousing.tsx').then((module) => ({ default: module.AffordableHousing })));
+const AddListing = lazy(() => import('./src/AddListing.tsx').then((module) => ({ default: module.AddListing })));
+const ImportListings = lazy(() => import('./src/ImportListings.tsx').then((module) => ({ default: module.ImportListings })));
+const SourcesPage = lazy(() => import('./src/SourcesPage.tsx').then((module) => ({ default: module.SourcesPage })));
+const SavedComparison = lazy(() => import('./src/SavedComparison.tsx').then((module) => ({ default: module.SavedComparison })));
+const TourPlanner = lazy(() => import('./src/TourPlanner.tsx').then((module) => ({ default: module.TourPlanner })));
+const RentChart = lazy(() => import('./src/RentChart.tsx').then((module) => ({ default: module.RentChart })));
+const AlertsPage = lazy(() => import('./src/AlertsPage.tsx').then((module) => ({ default: module.AlertsPage })));
 import {
 Modal, Platform, Pressable, ScrollView, StatusBar, Text, View, useWindowDimensions,
 } from 'react-native';
@@ -22,20 +35,14 @@ import { colors, styles } from './src/styles.ts';
 import { formatSnapshotMonth, localSearch, SNAPSHOT_SOURCE } from './src/market.ts';
 import { listingKey, listingLinkLabel, mergeListings, mergeSourceLinks, orderedListingLinks } from './src/listings.ts';
 import { Button, Chip, ExternalLink, Field, Link, SectionTitle } from './src/ui.tsx';
-import { encodeSourceImport, pullPublicSources, retryablePublicSources } from './src/pull-sources.ts';
-import { AffordableHousing } from './src/AffordableHousing.tsx';
-import { AddListing } from './src/AddListing.tsx';
-import { ImportListings } from './src/ImportListings.tsx';
-import { ListingMap } from './src/ListingMap';
-import { SourcesPage } from './src/SourcesPage.tsx';
+import { encodeSourceImport, retryablePublicSources } from './src/source-import.ts';
+import { startVitals } from './src/web-vitals-report.ts';
+import type { AlertState } from './src/AlertsPage.tsx';
 import { LONG_SYNC_LIMITS, LONG_SYNC_POLL_MS, refreshSummary } from './src/source-status.ts';
 import { LAUNDRY_LABELS } from './src/discovery.ts';
 import { SavedSearches } from './src/SavedSearches.tsx';
 import { ObservedChanges } from './src/ObservedChanges.tsx';
-import { SavedComparison } from './src/SavedComparison.tsx';
-import { TourPlanner } from './src/TourPlanner.tsx';
 import { Listing } from './src/Listing.tsx';
-import { RentChart } from './src/RentChart.tsx';
 
 type DraftFilters = Omit<SearchFilters, 'maxRent' | 'maxTransitMinutes' | 'maxDrivingMinutes' | 'minBathrooms' | 'minSquareFeet' | 'bestFitRentWeight'> & {
   maxRent: string | number | null; maxTransitMinutes: string | number | null; maxDrivingMinutes: string | number | null;
@@ -58,10 +65,10 @@ const AREA_GROUPS: [string, (keyof typeof REGIONS)[]][] = [
   ['New York City', ['nyc', 'manhattan-brooklyn', 'manhattan', 'brooklyn', 'queens', 'bronx', 'staten-island']],
   ['Around NYC', ['nj', 'li', 'westchester', 'metroNorth', 'ct']],
 ];
-/** Secondary tools per tab, as [id, chip label, accessible name]. */
+/** Secondary tools per tab, as [id, chip label, accessible name]. Each name starts with its visible label. */
 const TOOLS: Record<'results' | 'saved', [string, string, string][]> = {
-  results: [['searches', 'Saved searches', 'Saved searches and whole-search checks'], ['changes', 'Price changes', 'Local price and discovery changes']],
-  saved: [['compare', 'Compare', 'Compare saved apartments'], ['tours', 'Plan tours', 'Plan apartment tours']],
+  results: [['searches', 'Saved searches', 'Saved searches and whole-search checks'], ['changes', 'Price changes', 'Price changes found by a local check']],
+  saved: [['compare', 'Compare', 'Compare saved apartments'], ['tours', 'Plan tours', 'Plan tours of saved apartments']],
 };
 const EMPTY_POINTS: NonNullable<SearchResult['mapPoints']> = [];
 const SAVED_FILTERS = { ...SEARCH_DEFAULTS, bedrooms: null, maxRent: null, liveOnly: false };
@@ -408,6 +415,8 @@ function ApartmentSearch() {
   const [error, setError] = useState('');
   const [saved, setSaved] = useSavedListings(setError);
   const failedSources = refresh?.sources.filter(({ status }) => status === 'failed') ?? [];
+  const freshness = refreshing ? 'Refreshing sources…' : failedSources.length ? 'Partial coverage · Some sources unavailable'
+    : refresh?.lastCheckedAt ? 'Saved results · ' + CHECK_TIME.format(new Date(refresh.lastCheckedAt)) : 'Saved results · Not yet refreshed';
   const savedByKey = useMemo(() => new Map(saved.map((listing) => [listingKey(listing), listing])), [saved]);
   const savedResults = useMemo(() => localSearch(saved, SAVED_FILTERS, result.workplace, 'saved'), [saved, result.workplace]);
 
@@ -452,6 +461,7 @@ function ApartmentSearch() {
       const failedExports = source ? [] : retryablePublicSources(check);
       if (failedExports.length && browserImportAllowed.current) {
         const plan = await api('refresh', { token: activeToken, signal });
+        const { pullPublicSources } = await import('./src/pull-sources.ts');
         const exports = await pullPublicSources(plan, fetch, new Date(), retryablePublicSources(plan));
         if (signal?.aborted) return;
         const recovered = Object.fromEntries(Object.entries(exports).filter(([, data]) => data));
@@ -525,6 +535,9 @@ function ApartmentSearch() {
 
   const loadDashboard = useCallback((file: string | undefined, signal?: AbortSignal) => api<Awaited<ReturnType<NonNullable<React.ComponentProps<typeof RentChart>['loadDashboard']>>>>('dashboard' + (file ? '?file=' + encodeURIComponent(file) : ''), { token: activeToken, signal }), [activeToken]);
 
+  const alertRequest = useCallback((body?: unknown) => api<AlertState>('alerts', body ? { body, token: activeToken } : { token: activeToken }), [activeToken]);
+  const searchSummary = [REGIONS[applied.region as keyof typeof REGIONS]?.label ?? 'All regions', bedroomLabel(applied.bedrooms),
+    applied.maxRent == null ? 'Any price' : 'Up to ' + formatRent(applied.maxRent)].join(' · ');
   const loadHousing = useCallback((signal?: AbortSignal) => api<Awaited<ReturnType<NonNullable<React.ComponentProps<typeof AffordableHousing>['loadHousing']>>>>('housing', { token: activeToken, signal }), [activeToken, lastCheckedAt]);
 
   async function submit(nextDraft: typeof draft | typeof applied = draft) {
@@ -657,6 +670,7 @@ function ApartmentSearch() {
     <ScrollView ref={scrollRef} testID="main-scroll" onScroll={(event) => { if (scrollTab.current) scrollPositions.current[scrollTab.current] = event.nativeEvent.contentOffset.y; }} scrollEventThrottle={16} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scroll}>
       <View style={styles.shell}>
         <View style={styles.results}>
+          <Suspense fallback={<Text style={styles.smallMuted}>Loading…</Text>}>
             {error !== '' && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
             {(tab === 'results' || tab === 'saved') && <>
               <View style={styles.chipRow}>
@@ -667,8 +681,8 @@ function ApartmentSearch() {
               {tab === 'saved' && <TourPlanner listings={saved} open={tool === 'tours'} />}
               {tab === 'results' && <SavedSearches open={tool === 'searches'} filters={applied} disabled={busy} apply={filters => { const next = { ...filters, includeMap: WEB_MAP }; setDraft({ ...formDefaults(), ...next }); submit(next); }} check={filters => { if (serverState !== 'ready') return Promise.reject(new Error('Connect to the inventory server before checking a saved search.')); return api('search-check', { body: filters, token: activeToken }); }} />}
               {tab === 'results' && !staleInventory && <ObservedChanges listings={result.matches} open={tool === 'changes'} />}
-              {tab === 'results' && <Pressable accessibilityRole="button" accessibilityLabel="View source freshness and coverage" onPress={() => navigateTab('sources')}>
-                <Text style={mobileStyles.freshness}>{refreshing ? 'Refreshing sources…' : failedSources.length ? 'Partial coverage · Some sources unavailable' : refresh?.lastCheckedAt ? 'Saved results · ' + CHECK_TIME.format(new Date(refresh.lastCheckedAt)) : 'Saved results · Not yet refreshed'} · Details</Text>
+              {tab === 'results' && <Pressable accessibilityRole="button" accessibilityLabel={freshness + ' · Details: source freshness and coverage'} onPress={() => navigateTab('sources')}>
+                <Text style={mobileStyles.freshness}>{freshness} · Details</Text>
               </Pressable>}
               {tab === 'results' && staleInventory && <View style={styles.empty}>
                 <Text accessibilityRole="header" style={styles.panelTitle}>These results need a fresh check</Text>
@@ -688,12 +702,12 @@ function ApartmentSearch() {
                     onError={setError} />
                 </View>}
                 {WEB_MAP && mapView && <View style={[styles.mapPanel, split && styles.mapPanelWide]}>
-                  <ListingMap points={points} total={displayed.total} visible />
+                  <Suspense fallback={<Text style={styles.smallMuted}>Loading map…</Text>}><ListingMap points={points} total={displayed.total} visible /></Suspense>
                 </View>}
               </View>}
             </>}
             {tab === 'more' && <View style={styles.filters}><Text accessibilityRole="header" style={styles.panelTitle}>More</Text>
-              {[['sources', 'Sources & sync'], ['chart', 'Rent chart'], ['marketplaces', 'Rental platforms'], ['affordable', 'Affordable housing']].map(([key, label]) => <Button key={key} secondary onPress={() => navigateTab(key)}>{label}</Button>)}
+              {[['sources', 'Sources & sync'], ['alerts', 'Alerts'], ['chart', 'Rent chart'], ['marketplaces', 'Rental platforms'], ['affordable', 'Affordable housing']].map(([key, label]) => <Button key={key} secondary onPress={() => navigateTab(key)}>{label}</Button>)}
             </View>}
             {tab === 'chart' && <RentChart initialRegion={applied.region} saved={saved} showSaved={showSaved} onError={setError}
               loadMarket={serverState === 'ready' ? loadMarket : undefined} loadDashboard={serverState === 'ready' && dashboardAvailable ? loadDashboard : undefined} />}
@@ -719,15 +733,17 @@ function ApartmentSearch() {
             {tab === 'marketplaces' && <Marketplaces filters={applied} sources={result.sources}
               configuredSources={configuredSources} companies={companies} onCompany={searchCompany} refresh={refresh} refreshing={refreshing} cooldownSeconds={cooldownSeconds}
               onRefresh={() => checkSources()} onError={setError} />}
+            {tab === 'alerts' && <AlertsPage request={alertRequest} filters={applied} summary={searchSummary} onError={setError} />}
             {tab === 'affordable' && <AffordableHousing region={applied.region}
               loadHousing={serverState === 'ready' ? loadHousing : undefined} onError={setError} />}
+          </Suspense>
         </View>
         <View style={styles.footer}>
           <Text style={styles.smallMuted}>Apartment Search · New York, New Jersey and Connecticut</Text>
         </View>
       </View>
     </ScrollView>
-    <View style={mobileStyles.bottomNav}>
+    <View style={mobileStyles.bottomNav} accessibilityRole="tablist">
       {[['results', 'Search'], ['saved', `Saved (${savedResults.total})`], ['more', 'More']].map(([key, label]) => {
         const selected = key === 'more' ? !['results', 'saved'].includes(tab) : tab === key;
         return <Pressable key={key} accessibilityRole="tab" aria-selected={selected} accessibilityState={{ selected }} style={[mobileStyles.navItem, selected && mobileStyles.navSelected]} onPress={() => navigateTab(key)}><Text style={styles.tabLabel}>{label}</Text></Pressable>;
@@ -737,6 +753,7 @@ function ApartmentSearch() {
 }
 
 export default function App() {
+  useEffect(() => { if (Platform.OS === 'web') startVitals().catch(() => {}); }, []);
   return <SafeAreaProvider><ErrorBoundary><ApartmentSearch /></ErrorBoundary></SafeAreaProvider>;
 }
 

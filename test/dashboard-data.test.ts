@@ -1,6 +1,7 @@
 import { test, expect } from 'bun:test';
 import { strToU8, zipSync } from 'fflate';
-import { DASHBOARD_FILES, parseDashboardCsv, parseDashboardArchive, formatDashboardValue } from '../src/dashboard-data.ts';
+import { DASHBOARD_FILES, formatDashboardValue } from '../src/dashboard-data.ts';
+import { parseDashboardArchive, parseDashboardCsv } from '../server/dashboard-csv.ts';
 const csv = 'areaName,Borough,areaType,2025-01,2025-02\nExample,Queens,neighborhood,,0\n';
 const zip = (name: string, text = csv) => zipSync({ [name]: strToU8(text) });
 test('catalog covers all45 families, full history and blanks preserve zero distinction', () => {

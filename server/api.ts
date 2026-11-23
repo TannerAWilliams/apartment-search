@@ -16,14 +16,16 @@ import { CommuteError, geocodeAddress, resolveWorkplace, routeCommutes, routingC
 import { OPENIGLOO } from './openigloo.ts';
 import { DIRECT_RENTAL_SOURCES } from './direct-rentals.ts';
 import { STREETEASY_LIVE, STREETEASY_PUBLIC_COVERAGE, STREETEASY_PUBLIC_TRANSPORT } from './streeteasy.ts';
-import { decodeSourceImport } from '../src/pull-sources.ts';
+import { decodeSourceImport } from '../src/source-import.ts';
 import { log } from './log.ts';
+import { addDevice, addRule, deleteRule, deliver, readDevices, readRecent, readRules, removeDevice, checkAlerts, type AlertChannels } from './alerts.ts';
+import { VITAL_NAMES } from '../src/web-vitals-report.ts';
 import { type SourceFetch, refreshCatalog, refreshPlan, refreshSources, refreshStatus, sourceExpiresAt, sourceRecent, storedDirectRentals, storedFeed, storedHdcRerentals, storedHousing, storedMarket,
   storedOpenigloo, storedRentHistory } from './refresh.ts';
 
 const REQUEST_LIMIT = 4096;
 const IMPORT_LIMIT = 2 * 1024 * 1024;
-const API_PATHS = new Set(['/api/dashboard', '/api/building-report', '/api/config', '/api/search', '/api/search-check', '/api/geocode', '/api/market', '/api/housing', '/api/refresh']);
+const API_PATHS = new Set(['/api/alerts', '/api/vitals', '/api/dashboard', '/api/building-report', '/api/config', '/api/search', '/api/search-check', '/api/geocode', '/api/market', '/api/housing', '/api/refresh']);
 
 export function appConfig(env: AppEnv) {
   const feeds = configuredFeeds(env).filter(({ id }) => env.STREETEASY_SYNC_ENABLED !== 'false' || id !== STREETEASY_LIVE.marketplace);
@@ -202,6 +204,47 @@ function json(value: unknown, status = 200) {
   return Response.json(value, { status, headers: { 'Cache-Control': 'no-store' } });
 }
 
+const offline = () => { throw new Error('Alerts and saved-search checks read saved inventory only.'); };
+
+/** The channels alerts can use: email when the Email Service binding and sender are set, push when VAPID keys are. */
+export function alertChannels(env: AppEnv): AlertChannels {
+  const to = (env.ACCESS_ALLOWED_EMAILS ?? '').split(',').map((email) => email.trim()).filter(Boolean);
+  return {
+    email: env.ALERT_EMAIL && env.ALERT_EMAIL_FROM && to.length ? env.ALERT_EMAIL : null, from: env.ALERT_EMAIL_FROM, to,
+    vapid: env.VAPID_PUBLIC_KEY && env.VAPID_PRIVATE_KEY && env.VAPID_SUBJECT
+      ? { publicKey: env.VAPID_PUBLIC_KEY, privateKey: env.VAPID_PRIVATE_KEY, subject: env.VAPID_SUBJECT } : null,
+  };
+}
+
+const alertMatches = (env: AppEnv) => async (filters: object) => (await search(filters as Record<string, unknown>, env, offline, true)).matches;
+
+/** Checks every saved alert against the saved inventory; runs after refreshes, never on a schedule. */
+export async function runAlerts(env: AppEnv, origin = env.APP_ORIGIN ?? '') {
+  if (!env.BUCKET) return null;
+  return checkAlerts(env.BUCKET, alertMatches(env), alertChannels(env), { origin });
+}
+
+async function alertState(env: AppEnv & { BUCKET: Bucket }) {
+  const channels = alertChannels(env);
+  const [rules, devices, recent] = await Promise.all([readRules(env.BUCKET), readDevices(env.BUCKET), readRecent(env.BUCKET)]);
+  return { rules, recent, devices: devices.map(({ label, createdAt }) => ({ label, createdAt })),
+    channels: { email: Boolean(channels.email), push: channels.vapid ? { publicKey: channels.vapid.publicKey } : null } };
+}
+
+async function alertAction(body: any, env: AppEnv & { BUCKET: Bucket }, origin: string) {
+  const bucket = env.BUCKET;
+  if (body?.action === 'add-rule') await addRule(bucket, body.rule, alertMatches(env));
+  else if (body?.action === 'delete-rule') await deleteRule(bucket, body.id);
+  else if (body?.action === 'add-device') await addDevice(bucket, body.subscription, body.label);
+  else if (body?.action === 'remove-device') await removeDevice(bucket, body.endpoint);
+  else if (body?.action === 'test') {
+    const delivered = await deliver(bucket, [{ id: crypto.randomUUID(), at: new Date().toISOString(), ruleId: 'test', title: 'Test alert from Apartment Search',
+      lines: ['Alerts are working. New apartments and price drops in your saved alerts will arrive like this.'], newCount: 0, dropCount: 0 }], alertChannels(env), origin);
+    return { ...await alertState(env), delivered };
+  } else throw new SearchInputError('Unknown alert action.');
+  return alertState(env);
+}
+
 const noDashboardArchive: ArchiveLoader = async () => { throw new Error('No dashboard archive is configured.'); };
 
 export async function handleApi(request: Request, env: AppEnv, { privateAuthenticated = false, fetcher = (url, options) => globalThis.fetch(url, options), waitUntil, syncJob, dashboardArchive = noDashboardArchive }: {
@@ -211,7 +254,27 @@ export async function handleApi(request: Request, env: AppEnv, { privateAuthenti
   dashboardArchive?: ArchiveLoader;
 } = {}) {
   const { pathname: path, searchParams } = new URL(request.url);
+  /** A refresh that saved anything is followed by an alert check, after the response is sent. */
+  const afterRefresh = (result: { state: string }) => {
+    if (['complete', 'partial'].includes(result.state)) waitUntil?.(runAlerts(env, env.APP_ORIGIN ?? new URL(request.url).origin)
+      .catch((cause) => log.error('alert_check_failed', cause)));
+  };
   if (!API_PATHS.has(path)) return json({ error: 'Endpoint not found.' }, 404);
+  if (path === '/api/vitals') {
+    if (request.method !== 'POST') return json({ error: 'Use POST for performance measurements.' }, 405);
+    const report = await request.json().catch(() => null) as { page?: unknown; metrics?: unknown } | null;
+    const metrics = Array.isArray(report?.metrics) ? report.metrics.slice(0, VITAL_NAMES.length) : [];
+    const page = typeof report?.page === 'string' && /^[a-z-]{1,20}$/.test(report.page) ? report.page : 'other';
+    let logged = 0;
+    for (const metric of metrics) {
+      const { name, value, rating, navigationType } = metric ?? {};
+      if (!VITAL_NAMES.includes(name) || typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 600_000 ||
+          !['good', 'needs-improvement', 'poor'].includes(rating)) continue;
+      log.info('web_vital', { name, value, rating, page, navigationType: typeof navigationType === 'string' ? navigationType.slice(0, 20) : undefined });
+      logged++;
+    }
+    return logged ? new Response(null, { status: 204 }) : json({ error: 'Send Core Web Vitals measurements.' }, 400);
+  }
   if (path === '/api/dashboard') {
     if (env.PUBLIC_APP !== 'true' && !privateAuthenticated) return json({ error: 'Private authenticated access is required for this research snapshot.' }, 403);
     if (request.method !== 'GET') return json({ error: 'Use GET for dashboard data.' }, 405);
@@ -284,6 +347,11 @@ export async function handleApi(request: Request, env: AppEnv, { privateAuthenti
       return json({ error: 'The refreshed rent data could not be read.' }, 503);
     }
   }
+  if (path === '/api/alerts' && request.method === 'GET') {
+    if (!env.BUCKET) return json({ error: 'Alerts need saved storage.' }, 400);
+    try { return json(await alertState({ ...env, BUCKET: env.BUCKET })); }
+    catch (cause) { log.error('storage_read_failed', cause, { path }); return json({ error: 'Alerts could not be read. Try again shortly.' }, 503); }
+  }
   if (path === '/api/refresh' && request.method === 'GET') {
     const plan = await refreshPlan(env.BUCKET);
     const running = plan.checking || !syncJob ? null : await syncJob.pending();
@@ -326,7 +394,7 @@ export async function handleApi(request: Request, env: AppEnv, { privateAuthenti
           try { await syncJob.start(true); }
           catch (cause) { await work.catch(() => {}); throw cause; }
         }
-        waitUntil?.(work.catch(() => {}));
+        waitUntil?.(work.then(afterRefresh, () => {}));
         return json(await work);
       }
       let imports;
@@ -334,12 +402,17 @@ export async function handleApi(request: Request, env: AppEnv, { privateAuthenti
       catch { return json({ error: 'Send a valid compressed source import.' }, 422); }
       if (body.source !== undefined && body.source !== 'streeteasy-live') return json({ error: 'Unknown refresh source.' }, 422);
       const result = await refreshSources(env, { fetcher, imports, fallback: body.fallback === true, onlyStreetEasy: body.source === 'streeteasy-live' });
+      afterRefresh(result);
       const unavailable = result.state === 'partial' && result.sources.every(({ status }) =>
         status === 'failed' || status === 'feed_required');
       return json(result, unavailable ? 502 : 200);
     }
+    if (path === '/api/alerts') {
+      if (!env.BUCKET) return json({ error: 'Alerts need saved storage.' }, 400);
+      return json(await alertAction(body, { ...env, BUCKET: env.BUCKET }, env.APP_ORIGIN ?? new URL(request.url).origin));
+    }
     if (path === '/api/building-report') return json(await retrieveBuildingRecords(body, async (url, options) => fetcher(url, options), new Date(), request.signal));
-    if (path === '/api/search-check') return json(await wholeSearchCheck(body, env, filters => search(filters, env, () => { throw new Error('External requests are disabled for saved search checks.'); }, true)));
+    if (path === '/api/search-check') return json(await wholeSearchCheck(body, env, filters => search(filters, env, offline, true)));
     if (path === '/api/geocode') return json(await geocodeAddress(body?.address, fetcher));
     if ((body?.includeCommute || needsCommute(body ?? {})) && !request.headers.get('Content-Type')?.startsWith('application/json')) {
       return json({ error: 'Send commute searches as JSON.' }, 400);
