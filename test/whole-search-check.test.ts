@@ -36,7 +36,7 @@ async function fixture(count = 101) {
   );
   await BUCKET.put(
     'rentals/refresh.json',
-    JSON.stringify({ running: false, sources: [{ id: 'partner', status: 'updated', updatedAt: at, checkedAt: at }] }),
+    JSON.stringify({ running: false, sources: [{ id: 'partner', name: 'Partner', status: 'updated', updatedAt: at, checkedAt: at }] }),
   );
   const observed = recordListingHistory(
     listings.filter((listing) => listing !== null),

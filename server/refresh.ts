@@ -23,6 +23,7 @@ import { refreshHomeSeeker, WESTCHESTER_HOMESEEKER } from './westchester-homesee
 import { DIRECT_RENTAL_SOURCES } from './direct-rentals.ts';
 import { loadOpenigloo, OPENIGLOO_COVERAGE, OPENIGLOO_MAX_LISTINGS, OPENIGLOO_MIN_COVERAGE, OPENIGLOO_TRANSPORT } from './openigloo.ts';
 import { requestForRefresh, retrySchedule } from './source-requests.ts';
+import { checkedDocument, HdcSnapshotSchema, RefreshStateSchema, StoredHousingSchema } from './stored-documents.ts';
 import { log } from './log.ts';
 import { MARKETPLACE_NAMES } from '../src/marketplaces.ts';
 import { COMPLETE_SYNC_LIFETIME, completeSync, fullInventory, isCompleteSnapshot, WORKFLOW_SOURCE_IDS } from './source-registry.ts';
@@ -143,7 +144,10 @@ async function readListings(bucket: Bucket, key: string, filter?: SnapshotFilter
 
 async function readState(bucket: Bucket | undefined): Promise<{ value: RefreshState; etag: string | null }> {
   const object = await bucket?.get(STATE_KEY);
-  return object ? { value: await object.json(), etag: object.etag } : { value: {}, etag: null };
+  if (!object) return { value: {}, etag: null };
+  // A status document that does not match is read as empty, so the next check rebuilds it.
+  const value = checkedDocument(RefreshStateSchema, await object.json().catch(() => null), STATE_KEY) as RefreshState | null;
+  return { value: value ?? {}, etag: object.etag };
 }
 
 function checkInProgress(state: RefreshState, now: Date) {
@@ -339,14 +343,15 @@ async function refreshMarket(
 export async function storedHousing(bucket: Bucket | undefined, now = new Date()): Promise<HousingSnapshot> {
   const object = await bucket?.get(HOUSING_KEY);
   if (!object) return { publishedAt: null, checkedAt: null, opportunities: [] };
-  const data = (await object.json()) as HousingSnapshot;
+  const data = checkedDocument(StoredHousingSchema, await object.json().catch(() => null), HOUSING_KEY);
+  if (!data) return { publishedAt: null, checkedAt: null, opportunities: [] };
   const today = housingDate(now);
   return { ...data, checkedAt: object.customMetadata.updatedAt, opportunities: data.opportunities.filter(({ closes }) => closes >= today) };
 }
 
 export async function storedHdcRerentals(bucket: Bucket | undefined): Promise<HdcSnapshot | null> {
   const object = await bucket?.get(HDC_KEY);
-  return object ? object.json() : null;
+  return object ? checkedDocument(HdcSnapshotSchema, await object.json().catch(() => null), HDC_KEY) : null;
 }
 
 async function refreshHousing(

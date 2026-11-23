@@ -183,6 +183,16 @@ test('search results link NYC apartments to open affordable-housing lotteries in
   );
   expect(without.matches.length).toBe(1);
   expect(without.matches[0].buildingLinks).toBeUndefined();
+  // So does a storage failure while reading it.
+  const get = bucket.get.bind(bucket);
+  bucket.get = async (key) => {
+    if (key === 'rentals/housing-connect.json') throw new Error('storage down');
+    return get(key);
+  };
+  const failed = await readJson<SearchResult>(
+    handleApi(postJson('/api/search', { region: 'brooklyn', liveOnly: true }), { BUCKET: bucket }, { fetcher: noNetwork }),
+  );
+  expect(failed.matches.length).toBe(1);
 });
 
 test('a feed configuration error is reported as one, separately from storage failures', async () => {

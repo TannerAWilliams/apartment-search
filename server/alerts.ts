@@ -1,8 +1,9 @@
 import type { ListingData } from '../src/domain.ts';
-import { checkObservedChanges, MAX_BASELINE_UNITS, type ChangeBaseline, type ObservedChange } from '../src/observed-changes.ts';
+import { checkObservedChanges, MAX_BASELINE_UNITS, parseChangeBaseline, type ObservedChange } from '../src/observed-changes.ts';
 import { localWorkplace, needsCommute, parseFilters, SearchInputError } from '../src/search.ts';
 import type { AppEnv, Bucket } from './contracts.ts';
 import { log } from './log.ts';
+import { AlertDevicesSchema, AlertRulesSchema, checkedDocument, RecentAlertsSchema } from './stored-documents.ts';
 import { offline, search } from './search.ts';
 import { sendPush, validSubscription, type PushSubscriptionJson, type VapidKeys } from './web-push.ts';
 import * as v from 'valibot';
@@ -33,15 +34,27 @@ export type AlertChannels = {
   pushFetcher?: (url: string, init: RequestInit) => Promise<Response>;
 };
 
-async function read<T>(bucket: Bucket, key: string, fallback: T): Promise<T> {
+/** A saved document checked against its schema; a missing or unrecognized one reads as the fallback. */
+async function read<S extends v.GenericSchema>(bucket: Bucket, key: string, schema: S, fallback: v.InferOutput<S>) {
   const object = await bucket.get(key);
-  return object ? ((await object.json()) as T) : fallback;
+  return (object && checkedDocument(schema, await object.json().catch(() => null), key)) ?? fallback;
 }
 const write = (bucket: Bucket, key: string, value: unknown) => bucket.put(key, JSON.stringify(value));
 
-export const readRules = (bucket: Bucket) => read<AlertRule[]>(bucket, RULES_KEY, []);
-export const readDevices = (bucket: Bucket) => read<AlertDevice[]>(bucket, DEVICES_KEY, []);
-export const readRecent = (bucket: Bucket) => read<Alert[]>(bucket, RECENT_KEY, []);
+async function readBaseline(bucket: Bucket, key: string) {
+  const raw = (await (await bucket.get(key))?.text()) ?? null;
+  try {
+    return parseChangeBaseline(raw);
+  } catch (cause) {
+    log.warn('stored_document_invalid', { key, issue: cause instanceof Error ? cause.message : 'unreadable' });
+    return null;
+  }
+}
+
+// Rules hold filters that parseFilters produced when the rule was created.
+export const readRules = (bucket: Bucket): Promise<AlertRule[]> => read(bucket, RULES_KEY, AlertRulesSchema, []);
+export const readDevices = (bucket: Bucket): Promise<AlertDevice[]> => read(bucket, DEVICES_KEY, AlertDevicesSchema, []);
+export const readRecent = (bucket: Bucket): Promise<Alert[]> => read(bucket, RECENT_KEY, RecentAlertsSchema, []);
 
 /** Checks a new rule: a name, and filters a stored search can run without routing or geocoding. */
 const NAMED = 'Give the alert a name of up to 60 characters.';
@@ -219,7 +232,8 @@ export async function checkAlerts(
         continue;
       }
       const key = BASELINE_PREFIX + rule.id + '.json';
-      const baseline = await read<ChangeBaseline | null>(bucket, key, null);
+      // An unrecognized baseline is dropped, so the rule records a new one instead of sending a flood.
+      const baseline = await readBaseline(bucket, key);
       const result = checkObservedChanges(matches, baseline);
       await write(bucket, key, result.baseline);
       const alert = baseline ? composeAlert(rule, result.changes, now) : null;

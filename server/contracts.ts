@@ -1,3 +1,4 @@
+import type { HdcSnapshot, StoredHousing } from './stored-documents.ts';
 import type { JerseySnapshot } from './jersey-affordable.ts';
 import type { HomeSeekerSnapshot } from './westchester-homeseeker.ts';
 /** Shared storage contract, including metadata-only object heads. */
@@ -53,29 +54,9 @@ export type AppEnv = {
   VAPID_PRIVATE_KEY?: string;
   VAPID_SUBJECT?: string;
 };
-type HousingOpportunity = {
-  id: string;
-  name: string;
-  borough: string;
-  closes: string;
-  sizes: number[];
-  addresses: string[];
-  buildingKeys: string[];
-  url: string;
-};
-export type HousingSnapshot = { publishedAt: string | null; checkedAt: string | null; opportunities: HousingOpportunity[] };
-type HdcOpportunity = {
-  id: string;
-  name: string;
-  url: string;
-  address: string;
-  borough: string;
-  rent: string;
-  bedrooms: string;
-  age: string;
-  accessibility: string;
-};
-export type HdcSnapshot = { results: HdcOpportunity[]; total: number; limited: boolean; checkedAt?: string };
+/** NYC Housing Connect's open lotteries, with the time they were last checked. */
+export type HousingSnapshot = StoredHousing & { checkedAt: string | null };
+export type { HdcSnapshot };
 export type HousingResponse = HousingSnapshot & {
   rerentals: HdcSnapshot | null;
   jersey: JerseySnapshot | null;
