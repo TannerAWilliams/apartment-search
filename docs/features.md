@@ -53,9 +53,15 @@ Opening a listing's Details fetches an official building report through the API,
 
 Counts are building-wide and can lag the agencies' own records. Neither zero counts nor an exact match proves safety or habitability.
 
+## Alerts
+
+**More → Alerts** saves the current search as an alert (up to 10). Saving records what the search matches now, so alerts report only later changes: newly seen apartments and price drops, compared using each listing's recorded price history. Alerts are checked after each resync you start, after the CityRealty, Openigloo and Zumper Workflow, and after the StreetEasy upload from your computer. Nothing runs on a schedule. An alert lists up to four apartments and a count of the rest; price increases are not alerts.
+
+Alerts go by email to the address you sign in with (once Email Routing is set up, see the README) and as notifications to every device that turned them on. On iPhone and iPad, notifications need the app added to the Home Screen (Share → Add to Home Screen, iOS 16.4 or later), then **Turn on notifications on this device** from inside it. Android and desktop browsers can turn them on in a tab. A device that later unsubscribes is dropped automatically. An alert's search cannot use commute-time limits or a typed workplace address, and must match at most 2,000 apartments.
+
 ## Rent charts
 
-Six months of median initial asking rents for studios through four bedrooms, by neighborhood, borough, city or ZIP, with up to two pinned comparison areas and a **By bedroom** view. Values show their listing counts; missing months are gaps. The chart uses the dated FirstMover snapshot (NYC and parts of North Jersey), excludes houses, townhouses and commercial records, and consolidates duplicates. **Saved listings** charts the saved list instead.
+Six months of median initial asking rents for studios through four bedrooms, from the Worker (the web app bundles no rent data; native builds fall back to the bundled snapshot offline), by neighborhood, borough, city or ZIP, with up to two pinned comparison areas and a **By bedroom** view. Values show their listing counts; missing months are gaps. The chart uses the dated FirstMover snapshot (NYC and parts of North Jersey), excludes houses, townhouses and commercial records, and consolidates duplicates. **Saved listings** charts the saved list instead.
 
 ## Historical dashboard
 

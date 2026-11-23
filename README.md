@@ -30,9 +30,12 @@ your computer ── scripts/sync-streeteasy.ts ── uploads the StreetEasy in
 - **Refreshes happen only when you ask.** Opening the app reads saved inventory and fetches nothing, and nothing runs on a schedule in Cloudflare. **More → Sources & sync** resyncs one source or all of them. Sources that take minutes (CityRealty, Openigloo, Zumper) run in the Workflow, one durable step at a time; the page polls their progress every 15 seconds. A source that failed with a retry time is skipped until that time passes. The only scheduled job is the StreetEasy sync on your own computer.
 - **StreetEasy** refuses requests from cloud hosts (HTTP 403), so a computer you own downloads it and uploads it to the Worker (see [Daily StreetEasy sync](#daily-streeteasy-sync-from-your-own-computer)).
 - **Static data.** The web app's files are served with a Content Security Policy and other security headers (`server/web-headers.ts`); fingerprinted bundles are cached for a year, everything else is revalidated. The 2.4 MB StreetEasy dashboard archive is published with the static files (`public/data/`) rather than built into the Worker, read through the assets binding when a dashboard series is first opened, checked against its SHA-256, and never served directly.
-- **Logs.** Unexpected failures and failed source checks are written as one JSON object per line (`server/log.ts`) to [Workers Logs](https://developers.cloudflare.com/workers/observability/logs/workers-logs/), with source maps so stack traces point at the TypeScript. Look for the `event` field: `request_failed`, `storage_read_failed`, `dashboard_read_failed`, `source_check_failed` or `complete_sync_failed`.
+- **Logs.** Unexpected failures and failed source checks are written as one JSON object per line (`server/log.ts`) to [Workers Logs](https://developers.cloudflare.com/workers/observability/logs/workers-logs/), with source maps so stack traces point at the TypeScript. Look for the `event` field: `request_failed`, `storage_read_failed`, `dashboard_read_failed`, `source_check_failed`, `complete_sync_failed`, `alert_check_failed`, `alert_email_failed` or `alert_push_failed`; `alerts_sent` and `web_vital` record alerts and real-user performance.
+- **Alerts.** Saved alerts (`server/alerts.ts`) are checked after each resync you start, after the sync Workflow, and after the StreetEasy upload from your computer, never on a schedule. Each alert's matches are compared with its last check, and new apartments and price drops go out by email (Cloudflare Email Service) and as notifications (standard Web Push with VAPID keys and encrypted messages, `server/web-push.ts`) to every device that turned them on.
+- **Installable app.** The web app has a manifest, icons and a service worker (`public/`), so it can be added to the Home Screen; iPhone notifications need that. The service worker caches nothing, so the app always loads current code and listings.
+- **Performance.** Screens other than search load on first use: the map, rent charts, alerts, tours, comparison, sources and import. The web build also leaves out the offline snapshot, which only native builds and the Worker use. Real visits report Core Web Vitals to Workers Logs (`src/web-vitals-report.ts`, using Google's `web-vitals`), and `bun run perf` runs a Lighthouse audit (below).
 
-API routes: `config`, `search`, `search-check`, `refresh`, `market`, `housing`, `dashboard`, `building-report` and `geocode`, all under `/api/`.
+API routes: `config`, `search`, `search-check`, `refresh`, `market`, `housing`, `dashboard`, `building-report`, `geocode`, `alerts` and `vitals`, all under `/api/`.
 
 ## Listing sources
 
@@ -79,6 +82,10 @@ bun run dev          # build the web app and serve it at http://localhost:8787
 | `FREE_PARTNER_FEEDS_JSON` | Worker secret | Optional authorized feeds. |
 | `STREETEASY_SYNC_ENABLED` | Worker variable | `false` pauses StreetEasy refreshes; saved data stays. |
 | `STREETEASY_PUBLIC_SEARCH` | Worker variable | `true` checks the first page of StreetEasy's public search when no feed is configured. |
+| `APP_ORIGIN` | `wrangler.jsonc` vars | The app's address, for links in alerts. |
+| `VAPID_PUBLIC_KEY`, `VAPID_SUBJECT` | `wrangler.jsonc` vars | Web Push identity for alert notifications. |
+| `VAPID_PRIVATE_KEY` | Worker secret | Its private key. `bun scripts/vapid-keys.ts \| wrangler secret put VAPID_PRIVATE_KEY` makes a new pair and prints the public key. |
+| `ALERT_EMAIL` binding, `ALERT_EMAIL_FROM` | `wrangler.jsonc` | Email alerts, once Email Routing is on for 5thof6.com; see [Email alerts](#email-alerts). |
 | `PUBLIC_APP` | Worker variable | `true` opens the app without a token (local development). Anonymous callers can then request checks but never upload listings, and writes must be same-origin. |
 
 ## Test
@@ -89,6 +96,7 @@ bun run test             # unit and integration tests; external network is block
 bun run test:coverage    # fails below 98% of lines or 96% of functions
 bun run test:e2e         # typecheck, web build, unit tests, then Playwright
 bun run build            # web build plus a Wrangler dry-run bundle of the Worker
+bun run perf             # Lighthouse audit of the running app (bun run dev first); fails below its budgets
 ```
 
 The test preload (`test/fixtures/offline-network.ts`) blocks external requests, so provider tests use synthetic responses and never refresh a real source; `test/fixtures/quiet-logs.ts` keeps the expected failure logs out of the report. D1 is tested against SQLite with the production schema (`test/fixtures/fake-d1.ts`), and the Workflow and Worker entry are tested with a stub of `cloudflare:workers`.
@@ -121,6 +129,16 @@ The Cloudflare Access application for `apartments.5thof6.com` (who may sign in, 
 3. Run the Deploy workflow (or `bun run deploy`), which attaches the domain to `apartment-search`. The Access application on the hostname keeps protecting it.
 4. Open `apartments.5thof6.com`, sign in, and check that search works.
 5. Delete `apartment-search-access` and its `APARTMENT_BACKEND_KEY` secret.
+
+## Email alerts
+
+Notifications work as soon as the Worker is deployed. Email needs two settings in Cloudflare first, because Email Service only sends from a domain with Email Routing, and free sends go to verified addresses:
+
+1. Email → Email Routing → enable it for `5thof6.com`. The domain has no mail records today, so nothing else changes.
+2. Email Routing → Destination addresses → add the address you sign in with, then open the verification email Cloudflare sends.
+3. In `deploy/cloudflare/wrangler.jsonc`, add `"send_email": [{ "name": "ALERT_EMAIL" }]` and the variable `"ALERT_EMAIL_FROM": "alerts@5thof6.com"`, then deploy.
+
+Alerts → **Send a test alert** checks both channels.
 
 ## Daily StreetEasy sync from your own computer
 
@@ -171,7 +189,7 @@ bun run test && bun run build
 | --- | --- |
 | `App.tsx`, `index.ts`, `src/` | The Expo app. Non-UI modules in `src/` (search, regions, listings, market data) are shared with the server. |
 | `server/` | The Worker: `cloudflare.ts` entry, `api.ts` routes, `refresh.ts` source orchestration, one module per source, `d1-bucket.ts` storage, `sync-workflow.ts` and `source-registry.ts` for the complete syncs. |
-| `public/` | Files copied into the web build unchanged: the StreetEasy dashboard archive, which only the Worker reads. |
+| `public/` | Files copied into the web build unchanged: `index.html` template, manifest, icons (`scripts/make-icons.ts`), the notification service worker, and the StreetEasy dashboard archive, which only the Worker reads. |
 | `deploy/cloudflare/` | `wrangler.jsonc`, `schema.sql` and `.dev.vars.example`. |
 | `scripts/` | The StreetEasy home sync, offline data rebuilds and the coverage report. |
 | `test/`, `e2e/` | Bun unit and integration tests, and the Playwright suite ([e2e/README.md](e2e/README.md)). |

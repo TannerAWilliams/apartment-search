@@ -239,7 +239,7 @@ test('applied filters, expanded results and search scroll survive navigation', a
   await expect.poll(async () => Math.abs(await scroller.evaluate((element) => element.scrollTop) - searchScroll)).toBeLessThan(5);
   expect(requests.filter(r => r.path === '/api/search')).toHaveLength(searchesBeforeNavigation);
   await page.getByRole('button', { name: 'Filters', exact: true }).click();
-  await expect(page.getByRole('button', { name: '1 BR', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('button', { name: '1 BR', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByRole('textbox', { name: 'Max rent per month ($)', exact: true })).toHaveValue('5000');
 });
 
@@ -370,7 +370,7 @@ test('saved notes and viewing status persist on this device without network writ
   await page.reload();
   await page.getByRole('button', { name: 'Details for 12 Grove Street', exact: true }).click();
   await expect(notes).toHaveValue('Ask about utilities');
-  await expect(page.getByRole('button', { name: 'Toured', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('button', { name: 'Toured', exact: true })).toHaveAttribute('aria-pressed', 'true');
   expect(requests.some(request => JSON.stringify(request.body ?? null).includes('Ask about utilities'))).toBe(false);
 });
 
@@ -440,13 +440,13 @@ test('local change checks opt in, seed baseline and show newer observed price ch
   const { requests, listings } = await mockApp(page, { priceHistory: true });
   Object.assign(listings[0], { priceIncludesFees: true });
   await page.reload();
-  await page.getByRole('button', { name: 'Local price and discovery changes', exact: true }).click();
+  await page.getByRole('button', { name: 'Price changes found by a local check', exact: true }).click();
   await page.getByRole('button', { name: 'Check this page and save local baseline', exact: true }).click();
   await expect(page.getByText(/Baseline saved. Check again after a later source observation/)).toBeVisible();
   Object.assign(listings[0], { rent: 1700, priceIncludesFees: true, priceHistory: { sourceId: 'synthetic-fixture', firstObservedAt: '2026-11-14T12:00:00Z', lastObservedAt: '2026-11-14T12:00:00Z', truncated: false,
     observations: [{ checkedAt: '2026-11-14T12:00:00Z', rent: 1700, priceIncludesFees: true }] } });
   await page.reload();
-  await page.getByRole('button', { name: 'Local price and discovery changes', exact: true }).click();
+  await page.getByRole('button', { name: 'Price changes found by a local check', exact: true }).click();
   await page.getByRole('button', { name: 'Check this page and save local baseline', exact: true }).click();
   await expect(page.getByText('Observed price decrease: $1,800 → $1,700/mo', { exact: true })).toBeVisible();
   expect(userRefreshes(requests)).toHaveLength(0);
@@ -602,4 +602,36 @@ test('an open result expires without a provider request and saved apartments rem
   await page.getByRole('tab', { name: 'Saved (1)', exact: true }).click();
   await expect(page.getByText('12 Grove Street', { exact: true }).first()).toBeVisible();
   expect(userRefreshes(requests)).toHaveLength(0);
+});
+
+test('alerts: save one for the current search, send a test, and remove it', async ({ page }) => {
+  await mockApp(page);
+  const posts: any[] = [];
+  let state = { rules: [] as { id: string; name: string; createdAt: string }[], devices: [], recent: [], channels: { email: true, push: null } };
+  await page.route('**/api/alerts', async (route) => {
+    const body = route.request().postDataJSON();
+    if (body) {
+      posts.push(body);
+      if (body.action === 'add-rule') state = { ...state, rules: [{ id: 'rule-1', name: body.rule.name, createdAt: now }] };
+      if (body.action === 'delete-rule') state = { ...state, rules: [] };
+      if (body.action === 'test') return route.fulfill({ json: { ...state, delivered: { email: true, devices: 0 } } });
+    }
+    return route.fulfill({ json: state });
+  });
+  await page.getByRole('tab', { name: 'More', exact: true }).click();
+  await page.getByRole('button', { name: 'Alerts', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Alerts', exact: true })).toBeVisible();
+  await expect(page.getByText('Email: to the address you sign in with.', { exact: true })).toBeVisible();
+  await expect(page.getByText('Phone and browser notifications are not set up on the server.', { exact: true })).toBeVisible();
+  const name = page.getByRole('textbox', { name: 'Alert name', exact: true });
+  await expect(name).toHaveValue('All regions · Any beds · Any price');
+  await name.fill('Everything');
+  await page.getByRole('button', { name: 'Save alert', exact: true }).click();
+  await expect(page.getByText('Alert saved. It will report changes from now on.', { exact: true })).toBeVisible();
+  expect(posts[0]).toMatchObject({ action: 'add-rule', rule: { name: 'Everything', filters: { region: 'all' } } });
+  await page.getByRole('button', { name: 'Send a test alert', exact: true }).click();
+  await expect(page.getByText('Test alert sent.', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Remove Everything', exact: true }).click();
+  await expect(page.getByText('No alerts yet.', { exact: true })).toBeVisible();
+  expect(posts.map(({ action }) => action)).toEqual(['add-rule', 'test', 'delete-rule']);
 });

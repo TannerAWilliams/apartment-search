@@ -1,4 +1,4 @@
-import { parseDashboardCsv } from '../src/dashboard-data.ts';
+import { parseDashboardCsv } from './dashboard-csv.ts';
 import { unzipSync, strFromU8 } from 'fflate';
 import { DASHBOARD_CATALOG } from './data/dashboard-catalog.ts';
 

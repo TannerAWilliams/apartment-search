@@ -15,6 +15,17 @@ export type AppEnv = {
   STREETEASY_PUBLIC_SEARCH?: string;
   TRAVELTIME_APP_ID?: string;
   TRAVELTIME_API_KEY?: string;
+  /** Who may sign in through Cloudflare Access; alert emails go to the same addresses. */
+  ACCESS_ALLOWED_EMAILS?: string;
+  /** The app's address, for links in alerts. */
+  APP_ORIGIN?: string;
+  /** Cloudflare Email Service binding and the sender on an Email Routing domain. */
+  ALERT_EMAIL?: { send(message: { from: string; to: string[]; subject: string; text: string; html: string }): Promise<unknown> };
+  ALERT_EMAIL_FROM?: string;
+  /** Web Push keys: the public key and subject are variables, the private key a secret. */
+  VAPID_PUBLIC_KEY?: string;
+  VAPID_PRIVATE_KEY?: string;
+  VAPID_SUBJECT?: string;
 };
 export type HousingOpportunity = { id: string; name: string; borough: string; closes: string; sizes: number[]; addresses: string[]; buildingKeys: string[]; url: string };
 export type HousingSnapshot = { publishedAt: string | null; checkedAt: string | null; opportunities: HousingOpportunity[] };

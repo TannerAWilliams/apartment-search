@@ -1,9 +1,7 @@
 import type { ListingData, SearchFilters, SourceStatus, Workplace } from './domain.ts';
 import type { RentArea, PackedRentRow } from './rent-history.ts';
 import { bestFit } from './best-fit.ts';
-import base64 from 'base64-js';
-import { gunzipSync, strFromU8 } from 'fflate';
-import { SNAPSHOT_GZIP, SNAPSHOT_MONTH } from './data/snapshot.ts';
+import { SNAPSHOT_MONTH } from './data/snapshot-month.ts';
 import { listingWithVerifiedLinks, mergeListings, orderedListingLinks } from './listings.ts';
 import { matchesRegion } from './regions.ts';
 import { compareResults, isPoint, localWorkplace, matchListings, SearchInputError } from './search.ts';
@@ -17,7 +15,6 @@ const MONTH_FORMAT = new Intl.DateTimeFormat('en-US', {
 export const formatSnapshotMonth = (month = SNAPSHOT_MONTH) => MONTH_FORMAT.format(new Date(month + '-01T00:00:00Z'));
 export const SNAPSHOT_LABEL = formatSnapshotMonth();
 
-let snapshot: ListingData[] | undefined;
 export type MarketRow = [string | number, string, string, string, string, string, string, string, number, number, number, number, string, string, string?];
 
 export function decodeMarketRows(rows: MarketRow[]) {
@@ -34,10 +31,6 @@ export function decodeMarketRows(rows: MarketRow[]) {
   return mergeListings(listings, { preferFirst: true });
 }
 
-export function marketSnapshot() {
-  if (!snapshot) snapshot = decodeMarketRows(JSON.parse(strFromU8(gunzipSync(base64.toByteArray(SNAPSHOT_GZIP)))));
-  return snapshot;
-}
 
 export function localSearch(listings: ListingData[], filters: SearchFilters, workplace: Workplace | null | undefined, mode: string, sources: SourceStatus[] = [], notices: string[] = []) {
   if (!workplace) throw new SearchInputError('Use a workplace preset or enter latitude, longitude when offline.');
@@ -80,12 +73,6 @@ export function formatSearch(listings: ListingData[], filters: SearchFilters, wo
     sources, notices, ...(mapPoints ? { mapPoints } : {}) };
 }
 
-export function snapshotSearch(filters: SearchFilters, workplace = localWorkplace(filters), market = { month: SNAPSHOT_MONTH, listings: marketSnapshot() }) {
-  const result = localSearch(market.listings, filters, workplace, 'snapshot', [
-    { id: 'streeteasy', name: 'StreetEasy', status: 'snapshot' },
-  ]);
-  return { ...result, snapshotMonth: market.month };
-}
 
 export function median(values: number[]) {
   if (values.length === 0) return null;

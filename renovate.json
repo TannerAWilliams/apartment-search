@@ -1,6 +1,17 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": [
-    "config:recommended"
+  "extends": ["config:recommended"],
+  "packageRules": [
+    {
+      "description": "Expo SDK 58 pins these (node_modules/expo/bundledNativeModules.json); update them together with the SDK, not one by one.",
+      "matchPackageNames": ["react", "react-dom", "react-native", "react-native-web", "react-native-safe-area-context", "@react-native-async-storage/async-storage"],
+      "enabled": false
+    },
+    {
+      "description": "The Bun runtime is pinned to 1.4.4 across scripts and CI, and Wrangler runs on Node 22; change those pins deliberately.",
+      "matchPackageNames": ["@types/bun", "@types/node", "node"],
+      "matchUpdateTypes": ["major"],
+      "enabled": false
+    }
   ]
 }

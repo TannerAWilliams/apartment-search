@@ -4,8 +4,9 @@ import assert from 'node:assert/strict';
 import { loadHdcRerentals } from '../server/hdc-rerentals.ts';
 import { parseZillowPage, ZILLOW_LIVE } from '../server/zillow.ts';
 import { parseRealtorPage, REALTOR_LIVE } from '../server/realtor.ts';
-import { retryablePublicSources, decodeSourceImport, encodeSourceImport } from '../src/pull-sources.ts';
-import { bundledRentHistory, rentSeries } from '../src/rent-history.ts';
+import { retryablePublicSources, decodeSourceImport, encodeSourceImport } from '../src/source-import.ts';
+import { rentSeries } from '../src/rent-history.ts';
+import { bundledRentHistory } from '../src/bundled-market.ts';
 const stamp = '2026-11-17T00:00:00Z';
 const hdc = (rows: unknown[], pages = 1, perPage = 2, total = rows.length, page = 1) => ({json: rows, pagination: {'current-page': page, 'page-count': pages, 'per-page': perPage, 'total-results': total}});
 const opportunity = { nid: '123', title: 'Example rental', pdf: '/sites/default/files/example.pdf', address: '1 Main Street', borough: 'Brooklyn' };
@@ -118,4 +119,11 @@ test('HTML fetch rejects unsupported content and oversized declared and streamed
   const body=new ReadableStream({start(controller){controller.enqueue(new Uint8Array(5*1024*1024+1));},cancel(){cancelled=true;}});
   await assert.rejects(fetchPublicHtml(async () => new Response(body,{headers:{'content-type':'text/html'}}),'https://example.com','Example'), /too large/);
   assert.equal(cancelled,true);
+});
+
+test('the browser can read every public export the retry check names', async () => {
+  const { PUBLIC_SOURCE_IDS } = await import('../src/source-import.ts');
+  const { pullPublicSources } = await import('../src/pull-sources.ts');
+  const results = await pullPublicSources({}, async () => { throw new Error('offline'); });
+  assert.deepEqual(Object.keys(results), PUBLIC_SOURCE_IDS);
 });

@@ -5,7 +5,7 @@ import { createMemoryBucket } from './fixtures/memory-bucket.ts';
 import { OPENIGLOO_TRANSPORT } from '../server/openigloo.ts';
 import { refreshSources, refreshStatus } from '../server/refresh.ts';
 import { ZUMPER_TRANSPORT } from '../server/zumper.ts';
-import { encodeSourceImport } from '../src/pull-sources.ts';
+import { encodeSourceImport } from '../src/source-import.ts';
 
 const now = new Date('2026-11-20T12:00:00Z');
 const at = now.toISOString();

@@ -185,7 +185,8 @@ test('only one overlapping refresh can claim the hourly write', async () => {
 });
 
 test('the private writer imports a completed public check without publisher access', async () => {
-  const { encodeSourceImport, pullPublicSources } = await import('../src/pull-sources.ts');
+  const { pullPublicSources } = await import('../src/pull-sources.ts');
+  const { encodeSourceImport } = await import('../src/source-import.ts');
   const inputs = await pullPublicSources({ market: null }, sources(), at);
   const env = { BUCKET: new TestBucket(), APP_ACCESS_TOKEN: 'test-owner' };
   const request = new Request('https://private.test/api/refresh', {

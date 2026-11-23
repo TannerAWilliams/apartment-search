@@ -11,7 +11,9 @@ export async function team(name: string) {
   const pair = await crypto.subtle.generateKey({ name: 'RSASSA-PKCS1-v1_5', modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: 'SHA-256' }, true, ['sign', 'verify']);
   const jwk = { ...await crypto.subtle.exportKey('jwk', pair.publicKey), kid: 'key-1' };
   let keyRequests = 0;
-  const fetcher = async (url: string) => {
+  const fetcher = async (url: string, init?: RequestInit) => {
+    // As in the Workers runtime, which accepts only 'follow' and 'manual'.
+    if (init?.redirect === 'error') throw new TypeError('Invalid redirect value, must be one of "follow" or "manual"');
     assert.equal(url, issuer + '/cdn-cgi/access/certs');
     keyRequests++;
     return Response.json({ keys: [jwk] });

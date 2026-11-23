@@ -4,8 +4,9 @@ import type { AppEnv, Bucket, BucketObject, BucketHead, HousingSnapshot, HdcSnap
 import { withoutCommuteEstimate } from '../src/commute-estimate.ts';
 import { type UnitHistory, type ObservationHistory, recordListingHistory } from './listing-history.ts';
 import { gzipSync, gunzipSync, strFromU8, strToU8 } from 'fflate';
-import { decodeMarketRows, marketSnapshot, packRentMonth, SNAPSHOT_MONTH } from '../src/market.ts';
-import { bundledRentAreas, priorRentMonths } from '../src/rent-history.ts';
+import { decodeMarketRows, packRentMonth, SNAPSHOT_MONTH } from '../src/market.ts';
+import { priorRentMonths } from '../src/rent-history.ts';
+import { bundledRentAreas, marketSnapshot } from '../src/bundled-market.ts';
 import { checkFirstMover, checkPublishedFirstMover } from './firstmover.ts';
 import { configuredFeeds, loadFeed, loadStreetEasyExport, STREETEASY_EXPORT_COVERAGE, STREETEASY_EXPORT_FORMAT, STREETEASY_EXPORT_MAX_AGE } from './listings.ts';
 import { housingDate, loadHousingConnect } from './housing.ts';
