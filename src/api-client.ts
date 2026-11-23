@@ -4,7 +4,7 @@ import type { SourceDefinition, SourceStatus } from './source-status.ts';
 
 export type RefreshInfo = {
   sources: (SourceStatus & { month?: string; transport?: string })[]; checking?: boolean; activeSource?: string | null; state?: string;
-  lastCheckedAt?: string; refreshRetryAt?: number; market?: { revision?: string; catalogEtag?: string; csvEtag?: string } | null;
+  lastCheckedAt?: string | null; refreshRetryAt?: number; market?: { revision?: string; catalogEtag?: string; csvEtag?: string } | null;
 };
 export type ConfigSource = { id: string; name: string; sample?: boolean };
 export type ApiConfig = {

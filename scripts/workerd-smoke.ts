@@ -33,6 +33,11 @@ export const CHECKS: { path: string; init?: RequestInit; status: number; contain
   { path: '/api/dashboard?file=rentalIndex_All.csv', status: 200, contains: '"months"' },
   { path: '/api/search', status: 200, contains: '"matches"', init: { method: 'POST', body: JSON.stringify({ region: 'brooklyn' }) } },
   { path: '/api/vitals', status: 204, init: { method: 'POST', body: JSON.stringify({ page: 'results', metrics: [{ name: 'LCP', value: 900, rating: 'good' }] }) } },
+  { path: '/api/search', status: 422, contains: 'Choose a supported region', init: { method: 'POST', body: JSON.stringify({ region: 'mars' }) } },
+  { path: '/api/search', status: 400, contains: 'Send a JSON request', init: { method: 'POST', body: '{}', headers: { 'Content-Type': 'text/plain' } } },
+  { path: '/api/refresh', status: 200, contains: 'already_checked', init: { method: 'POST', body: JSON.stringify({ check: 'now', sessionStart: true }) } },
+  { path: '/api/config', status: 405, init: { method: 'POST', body: '{}' } },
+  { path: '/api/unknown', status: 404, contains: 'Endpoint not found' },
 ];
 
 async function waitForWorker(deadline: number) {
@@ -63,8 +68,10 @@ if (import.meta.main) {
     for (const { path, init, status, contains } of CHECKS) {
       const response = await fetch(origin + path, { ...init, headers: { 'Content-Type': 'application/json', Origin: origin, ...init?.headers as Record<string, string> } });
       const body = await response.text();
-      const ok = response.status === status && (!contains || body.includes(contains));
-      const label = `${init?.method ?? 'GET'} ${path}${init?.headers ? ' (Access token)' : ''}`;
+      // Every response, including errors, asks browsers to use HTTPS only.
+      const ok = response.status === status && (!contains || body.includes(contains)) &&
+        Boolean(response.headers.get('Strict-Transport-Security'));
+      const label = `${init?.method ?? 'GET'} ${path}${init?.headers ? ' (' + Object.keys(init.headers).join(', ') + ')' : ''}`;
       console.log(`${ok ? 'ok  ' : 'FAIL'} ${label} → ${response.status}`);
       if (!ok) failures.push(`${path}: HTTP ${response.status} ${body.slice(0, 200)}`);
     }

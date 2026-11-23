@@ -1,4 +1,4 @@
-export type SourceStatus = { id: string; name?: string; marketplace?: string; status?: string; checkedAt?: string; updatedAt?: string; retryAt?: string; error?: string; listingCount?: number; total?: number; pages?: number; sampleLimit?: number; partial?: boolean; requestedPages?: number; failedPages?: number };
+export type SourceStatus = { id: string; name?: string; marketplace?: string; status?: string; checkedAt?: string | null; updatedAt?: string | null; retryAt?: string; error?: string; listingCount?: number; total?: number; pages?: number; sampleLimit?: number; partial?: boolean; requestedPages?: number; failedPages?: number };
 export type SourceDefinition = { id: string; name: string; marketplace?: string; coverage?: string; resyncable: boolean; paused?: boolean };
 /**
  * Complete syncs that run in the background Workflow, with how long the app keeps checking on

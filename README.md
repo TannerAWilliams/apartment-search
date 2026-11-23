@@ -12,9 +12,9 @@ Areas: all of New York City (Manhattan, Brooklyn, Queens, the Bronx, Staten Isla
 browser ──▶ apartments.5thof6.com ── Cloudflare Access sign-in
               │  Cf-Access-Jwt-Assertion (signed token)
               ▼
-          apartment-search Worker (server/cloudflare.ts) checks the token (server/access.ts)
+          apartment-search Worker, a Hono app (server/cloudflare.ts), checks the token (server/access.ts)
               ├── web app files ── Workers Static Assets (web-build/)
-              ├── /api/* ── server/api.ts
+              ├── /api/* ── server/api.ts (Hono routes, Valibot request checks)
               ├── D1 apartment-search-observations ── one snapshot per source (server/d1-bucket.ts)
               └── Workflow apartment-cityrealty-sync ── complete syncs: CityRealty → Openigloo → Zumper
 
@@ -35,7 +35,7 @@ your computer ── scripts/sync-streeteasy.ts ── uploads the StreetEasy in
 - **Installable app.** The web app has a manifest, icons (`public/`) and a service worker (`web/`), so it can be added to the Home Screen; iPhone notifications need that. The service worker caches nothing, so the app always loads current code and listings.
 - **Performance.** Screens other than search load on first use: the map, rent charts, alerts, tours, comparison, sources and import. The web build also leaves out the offline snapshot, which only native builds and the Worker use. Real visits report Core Web Vitals to Workers Logs (`src/web-vitals-report.ts`, using Google's `web-vitals`), and `bun run perf` runs a Lighthouse audit (below).
 
-API routes: `config`, `search`, `search-check`, `refresh`, `market`, `housing`, `dashboard`, `building-report`, `geocode`, `alerts` and `vitals`, all under `/api/`.
+- **API.** The routes are a [Hono](https://hono.dev) app (`server/api.ts`): `config`, `search`, `search-check`, `refresh`, `market`, `housing`, `dashboard`, `building-report`, `geocode`, `alerts` and `vitals`, all under `/api/`. Each route checks its input with a [Valibot](https://valibot.dev) schema (`server/api-inputs.ts`; search filters in `src/search.ts`, which the app uses too) and answers a mismatch with a 422 naming the first problem. Every POST must be JSON (`Content-Type: application/json`), which also stops cross-site form posts, and within its size limit (4 KB, or 2 MiB for an authenticated source import). Hono infers each reply's type from the routes, and `test/api-contract.ts` fails the type check if a reply stops matching what the app reads.
 
 ## Listing sources
 
@@ -191,7 +191,7 @@ bun run test && bun run build
 | Path | Contents |
 | --- | --- |
 | `App.tsx`, `index.ts`, `src/` | The Expo app. Non-UI modules in `src/` (search, regions, listings, market data) are shared with the server. |
-| `server/` | The Worker: `cloudflare.ts` entry, `api.ts` routes, `refresh.ts` source orchestration, one module per source, `d1-bucket.ts` storage, `sync-workflow.ts` and `source-registry.ts` for the complete syncs. |
+| `server/` | The Worker: `cloudflare.ts` entry (sign-in, static files), `api.ts` routes and `api-inputs.ts` request schemas, `refresh.ts` source orchestration, one module per source, `d1-bucket.ts` storage, `sync-workflow.ts` and `source-registry.ts` for the complete syncs. |
 | `public/` | Files copied into the web build unchanged: `index.html` template, manifest, icons (`scripts/make-icons.ts`) and the StreetEasy dashboard archive, which only the Worker reads. |
 | `web/` | The notification service worker in TypeScript, checked against the browser's service worker types and built to `sw.js` by `scripts/build-service-worker.ts`. |
 | `types/` | `strict-json.d.ts`: JSON reads return `unknown` in every project. |

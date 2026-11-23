@@ -34,6 +34,7 @@ test('only HTTPS subscriptions on known push services with well-formed keys are 
   assert.equal(validSubscription(subscription), true);
   assert.equal(validSubscription({ ...subscription, endpoint: 'https://fcm.googleapis.com/fcm/send/abc' }), true);
   assert.equal(validSubscription({ ...subscription, endpoint: 'https://example.com/push' }), false);
+  assert.equal(validSubscription({ ...subscription, endpoint: 'not a url' }), false);
   assert.equal(validSubscription({ ...subscription, endpoint: 'http://web.push.apple.com/x' }), false);
   assert.equal(validSubscription({ ...subscription, endpoint: 'https://evil-web.push.apple.com.example/x' }), false);
   assert.equal(validSubscription({ ...subscription, keys: { ...subscription.keys, auth: 'AAAA' } }), false);

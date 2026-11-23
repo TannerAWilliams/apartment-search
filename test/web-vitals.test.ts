@@ -52,7 +52,8 @@ test('automated browsers and non-browser runtimes are not measured', async () =>
 test('the Worker logs valid measurements and refuses anything else', async () => {
   const lines: Record<string, unknown>[] = [];
   log.sink = (_level, line) => { lines.push(logRecord(line)); };
-  const post = (body: unknown) => handleApi(new Request('https://app.test/api/vitals', { method: 'POST', body: JSON.stringify(body) }), {});
+  const post = (body: unknown, type = 'application/json;charset=utf-8') =>
+    handleApi(new Request('https://app.test/api/vitals', { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': type } }), {});
   const ok = await post({ page: 'results', metrics: [{ name: 'LCP', value: 2400, rating: 'good', navigationType: 'navigate' }, { name: 'FID', value: 1, rating: 'good' }, { name: 'CLS', value: -1, rating: 'good' }] });
   assert.equal(ok.status, 204);
   assert.deepEqual(lines, [{ level: 'info', event: 'web_vital', name: 'LCP', value: 2400, rating: 'good', page: 'results', navigationType: 'navigate' }]);
@@ -60,6 +61,7 @@ test('the Worker logs valid measurements and refuses anything else', async () =>
   assert.equal(lines.at(-1)?.page, 'other', 'an unexpected page name is not logged as given');
   assert.equal((await post({ metrics: [] })).status, 400);
   assert.equal((await post('not json')).status, 400);
+  assert.equal((await post({ metrics: [{ name: 'LCP', value: 1, rating: 'good' }] }, 'text/plain')).status, 400, 'only JSON is read');
   assert.equal((await handleApi(new Request('https://app.test/api/vitals'), {})).status, 405);
 });
 

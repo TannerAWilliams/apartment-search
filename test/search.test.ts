@@ -298,9 +298,10 @@ test('only explicitly configured free feeds are queried and verified independent
 // Access control for the private app is in the Cloudflare entry; see test/cloudflare.test.ts.
 test('the API identifies snapshot mode', async () => {
   const result = await handleApi(new Request('https://search.example.test/api/search', {
-    method: 'POST', body: JSON.stringify({ maxMinutes: 45 }),
+    method: 'POST', body: JSON.stringify({ maxMinutes: 45 }), headers: { 'Content-Type': 'application/json' },
   }), {});
   assert.equal(result.status, 422);
+  assert.match((await readJson<ErrorBody>(result)).error, /transit directions link/);
 });
 
 test('company filters match the advertiser field and company URLs can be saved as direct links', async () => {

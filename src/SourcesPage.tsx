@@ -4,7 +4,7 @@ import { MARKETPLACE_NAMES } from './marketplaces.ts';
 import { sourceCoverage, sourceRows, type SourceDefinition, type SourceStatus } from './source-status.ts';
 import { styles } from './styles.ts';
 import { Button } from './ui.tsx';
-const time = (value?: string) => value && Number.isFinite(Date.parse(value)) ? new Date(value).toLocaleString() : 'Never';
+const time = (value?: string | null) => value && Number.isFinite(Date.parse(value)) ? new Date(value).toLocaleString() : 'Never';
 export function SourcesPage({ catalog, refresh, refreshing, cooldownSeconds = 0, onResync }: { catalog: SourceDefinition[]; refresh: { sources: SourceStatus[]; checking?: boolean } | null; refreshing: boolean; cooldownSeconds?: number; onResync: (id?: string) => void }) {
   const [now, setNow] = useState(Date.now);
   useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(timer); }, []);

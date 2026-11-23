@@ -82,8 +82,19 @@ test('a public app accepts same-origin refresh checks but not imports or cross-o
   const importing = await call(env, '/api/refresh', post({ payload: 'abc' }, { Origin: 'https://app.test' }), null);
   assert.equal(importing.status, 403);
   assert.match((await readJson<ErrorBody>(importing)).error, /cannot import/);
+  const checked = await call(env, '/api/refresh', post({ check: 'now', sessionStart: true }, { Origin: 'https://app.test' }), null);
+  assert.equal(checked.status, 200, 'a plain check passes through to the API');
+  assert.equal((await readJson<RefreshInfo>(checked)).state, 'already_checked');
   assert.equal((await call(env, '/api/config', {}, null)).status, 200);
   assert.equal(await (await call(env, '/index.html', {}, null)).text(), 'asset /index.html');
+});
+
+test('a failure outside the API is a 503 with HTTPS enforced, never a crash', async () => {
+  const { env } = await environment();
+  const failing = await call({ ...env, ASSETS: { fetch: async () => { throw new Error('assets unavailable'); } } }, '/index.html');
+  assert.equal(failing.status, 503);
+  assert.match((await readJson<ErrorBody>(failing)).error, /could not complete the request/);
+  assert.match(failing.headers.get('Strict-Transport-Security') ?? '', /max-age=31536000/);
 });
 
 test('oversized requests are refused and unexpected failures keep saved data', async () => {
