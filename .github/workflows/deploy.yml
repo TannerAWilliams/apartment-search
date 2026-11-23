@@ -34,3 +34,13 @@ jobs:
         run: bun run deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      # Email-code sign-in needs BETTER_AUTH_SECRET. It is made once, here, and never printed; later deploys keep it,
+      # so sessions survive deploys.
+      - name: Create the sign-in secret if it is missing
+        run: |
+          wrangler="node ./node_modules/wrangler/bin/wrangler.js"
+          if ! $wrangler secret list -c deploy/cloudflare/wrangler.jsonc | grep -q '"BETTER_AUTH_SECRET"'; then
+            openssl rand -base64 32 | $wrangler secret put BETTER_AUTH_SECRET -c deploy/cloudflare/wrangler.jsonc
+          fi
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
