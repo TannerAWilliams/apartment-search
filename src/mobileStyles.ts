@@ -1,8 +1,20 @@
 import { StyleSheet } from 'react-native';
 import { colors } from './styles.ts';
 export const mobileStyles = StyleSheet.create({
-  searchBar: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderBottomWidth: 1, borderColor: colors.border },
-  summary: { flex: 1, minWidth: 0 },
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: colors.white,
+    borderBottomWidth: 1,
+    borderColor: colors.border,
+  },
+  summary: { flex: 1, minWidth: 0, gap: 2 },
+  summaryTitle: { fontSize: 15, lineHeight: 20, fontWeight: '700', color: colors.ink },
+  destination: { alignSelf: 'flex-start', paddingVertical: 2 },
+  destinationText: { fontSize: 13, lineHeight: 18, color: colors.muted },
   freshness: { fontSize: 12, lineHeight: 18, color: colors.muted, paddingVertical: 4 },
   overlay: { flex: 1, justifyContent: 'flex-end', alignItems: 'center', backgroundColor: '#06174b88' },
   sheet: {
@@ -14,9 +26,11 @@ export const mobileStyles = StyleSheet.create({
     overflow: 'hidden',
     paddingBottom: 20,
   },
-  wideSheet: { maxWidth: 680 },
+  wideSheet: { maxWidth: 680, borderRadius: 20 },
   sheetHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16 },
   bottomNav: { flexDirection: 'row', backgroundColor: colors.white, borderTopWidth: 1, borderColor: colors.border, paddingBottom: 8 },
-  navItem: { flex: 1, minHeight: 52, alignItems: 'center', justifyContent: 'center' },
-  navSelected: { backgroundColor: colors.light, borderTopWidth: 3, borderColor: colors.green },
+  navItem: { flex: 1, minHeight: 56, alignItems: 'center', justifyContent: 'center', gap: 1 },
+  navSelected: { borderTopWidth: 3, borderColor: colors.green },
+  navTextSelected: { color: colors.green },
+  overlayCentered: { justifyContent: 'center', padding: 24 },
 });

@@ -5,6 +5,8 @@ import { styles } from '../styles.ts';
 const date = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', dateStyle: 'medium', timeStyle: 'short' });
 export function CommuteDetails({ listing }: { listing: ListingData }) {
   const estimate = savedCommuteEstimate(listing);
+  // Without a saved estimate there is nothing to show; the directions links above check the trip.
+  if (!estimate) return null;
   return (
     <View style={{ gap: 5 }}>
       <Text accessibilityRole="header" style={styles.fieldLabel}>

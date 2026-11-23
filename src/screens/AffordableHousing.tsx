@@ -95,7 +95,7 @@ export function AffordableHousing({
               })}
             </>
           ) : (
-            <Text style={styles.smallMuted}>No Westchester listings are saved yet, which does not mean there are none.</Text>
+            <Text style={styles.smallMuted}>Nothing saved yet. Resync to check the county’s list, or open it below.</Text>
           )}
           <Link label="Westchester HomeSeeker" url={HOMESEEKER} onError={onError} />
         </View>
@@ -135,9 +135,7 @@ export function AffordableHousing({
               ))}
             </>
           ) : (
-            <Text style={styles.smallMuted}>
-              No Jersey City postings are saved yet, which does not mean there are none. Check the city page.
-            </Text>
+            <Text style={styles.smallMuted}>Nothing saved yet. Resync to check the city’s postings, or open them below.</Text>
           )}
           <View style={styles.actionLinks}>
             <Link label="Official Jersey City postings" url={JERSEY_PAGE} onError={onError} />
@@ -175,8 +173,8 @@ export function AffordableHousing({
         )}
         <Link label="Browse NYC HDC re-rentals" url={HDC_PAGE} onError={onError} />
       </View>
-      <View style={styles.chartSource}>
-        <Text accessibilityRole="header" style={styles.fieldLabel}>
+      <View style={styles.chartCard}>
+        <Text accessibilityRole="header" style={styles.listingTitle}>
           NYC Housing Connect
         </Text>
         <Text style={styles.smallMuted}>

@@ -2,6 +2,7 @@ import { Text, View } from 'react-native';
 import { displayPriceHistory } from '../price-history.ts';
 import { formatRent } from '../search.ts';
 import { styles } from '../styles.ts';
+import { MARKETPLACE_NAMES } from '../marketplaces.ts';
 const date = new Intl.DateTimeFormat('en-US', {
   timeZone: 'America/New_York',
   year: 'numeric',
@@ -24,20 +25,16 @@ export function PriceHistory({ value }: { value: unknown }) {
       ) : (
         <>
           <Text style={styles.smallMuted}>
-            Source: {history.sourceId}. Checks are observations, not proof that an apartment is still available. Missing listings are not
-            marked rented.
+            Seen on {MARKETPLACE_NAMES[history.sourceId.replace(/-live$/, '')] ?? history.sourceId.replace(/-live$/, '')} from{' '}
+            {date.format(new Date(history.firstObservedAt))} to {date.format(new Date(history.lastObservedAt))} ET. A listing seen is not
+            proof it is still available.
           </Text>
-          <Text style={styles.smallMuted}>First observed: {date.format(new Date(history.firstObservedAt))} ET</Text>
-          <Text style={styles.smallMuted}>Last observed: {date.format(new Date(history.lastObservedAt))} ET</Text>
           {history.observations.map((point, index) => (
             <Text key={index} style={styles.bodyText}>
               {date.format(new Date(point.checkedAt))} ET · {formatRent(point.rent)}/mo ·{' '}
               {point.priceIncludesFees ? 'includes reported fees' : 'asking rent; fees not confirmed'}
             </Text>
           ))}
-          <Text style={styles.smallMuted}>
-            Only the first observation and price or fee-basis changes are shown. Different fee bases are not like-for-like comparisons.
-          </Text>
           {history.truncated && <Text style={styles.smallMuted}>Older changes were trimmed; showing the most recent 24 observations.</Text>}
         </>
       )}

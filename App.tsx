@@ -29,6 +29,7 @@ import {
 } from './src/app-shared.ts';
 import { Filters, WebsiteFilter } from './src/components/Filters.tsx';
 import { SignIn } from './src/components/SignIn.tsx';
+import { HeartIcon, MenuIcon, SearchIcon } from './src/components/Icons.tsx';
 import { Marketplaces } from './src/screens/Marketplaces.tsx';
 import { Results } from './src/screens/Results.tsx';
 import { useServer } from './src/hooks/use-server.ts';
@@ -255,12 +256,12 @@ function ApartmentSearch() {
       {(tab === 'results' || tab === 'saved') && (
         <View style={mobileStyles.searchBar}>
           <View style={mobileStyles.summary}>
-            <Text numberOfLines={1} style={styles.fieldLabel}>
+            <Text numberOfLines={1} style={mobileStyles.summaryTitle}>
               {tab === 'saved' ? 'Your saved apartments' : marketArea}
             </Text>
-            <Text numberOfLines={1} style={styles.smallMuted}>
+            <Text numberOfLines={1} style={mobileStyles.destinationText}>
               {tab === 'saved'
-                ? 'All apartment sizes · Any price'
+                ? 'Saved on this device'
                 : bedroomLabel(applied.bedrooms) + ' · ' + (applied.maxRent == null ? 'Any price' : 'Up to ' + formatRent(applied.maxRent))}
             </Text>
           </View>
@@ -269,45 +270,15 @@ function ApartmentSearch() {
               Filters
             </Button>
           )}
-          {WEB_MAP && (
+          {WEB_MAP && !(tab === 'saved' && saved.length === 0) && (
             <Button secondary onPress={() => setMapView(!mapView)}>
               {mapView ? 'List' : 'Map'}
             </Button>
           )}
         </View>
       )}
-      {(tab === 'results' || tab === 'saved') && (
-        <View style={{ paddingHorizontal: 12, paddingVertical: 8, gap: 6, borderBottomWidth: 1, borderColor: colors.border }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <Text style={[styles.fieldLabel, { flex: 1, minWidth: 0 }]} numberOfLines={2}>
-              Commute to: {result.workplace.label}
-            </Text>
-            <Button
-              secondary
-              disabled={busy}
-              onPress={() => {
-                setError('');
-                toggleFilter('commute');
-              }}
-            >
-              Change destination
-            </Button>
-          </View>
-          {(tab === 'saved' || busy || result.commute || result.commuteNotice) && (
-            <Text style={styles.smallMuted}>
-              {tab === 'saved'
-                ? 'Directions use this destination. Automatic travel times are not recalculated on your saved list.'
-                : busy
-                  ? 'Updating search. Previous destination and results remain until it succeeds.'
-                  : result.commute
-                    ? 'Weekday-morning provider estimates; missing routes stay unavailable.'
-                    : result.commuteNotice}
-            </Text>
-          )}
-        </View>
-      )}
       <Modal visible={Boolean(expanded)} transparent animationType="slide" onRequestClose={() => setExpanded('')}>
-        <View style={mobileStyles.overlay}>
+        <View style={[mobileStyles.overlay, wide && mobileStyles.overlayCentered]}>
           <View style={[mobileStyles.sheet, wide && mobileStyles.wideSheet]} accessibilityViewIsModal>
             <View style={mobileStyles.sheetHeader}>
               <Text accessibilityRole="header" style={[styles.panelTitle, { flex: 1, minWidth: 0 }]}>
@@ -332,19 +303,17 @@ function ApartmentSearch() {
                 serverState={serverState}
                 commuteConfigured={commuteConfigured}
                 connect={connect}
-                account={account}
-                onSignOut={() => void signOut()}
                 lookUp={serverState === 'ready' ? (place) => api('geocode', { body: { address: place }, token: activeToken }) : undefined}
+                websites={
+                  <WebsiteFilter
+                    result={result}
+                    applied={draft}
+                    onSelect={(source) => setDraft((current) => ({ ...current, source }))}
+                    onError={setError}
+                    configuredSources={configuredSources}
+                  />
+                }
               />
-              {expanded !== 'commute' && (
-                <WebsiteFilter
-                  result={result}
-                  applied={draft}
-                  onSelect={(source) => setDraft((current) => ({ ...current, source }))}
-                  onError={setError}
-                  configuredSources={configuredSources}
-                />
-              )}
             </ScrollView>
           </View>
         </View>
@@ -369,15 +338,34 @@ function ApartmentSearch() {
               )}
               {(tab === 'results' || tab === 'saved') && (
                 <>
-                  <View style={styles.chipRow}>
-                    {TOOLS[tab]
-                      .filter(([id]) => id !== 'changes' || !staleInventory)
-                      .map(([id, short, full]) => (
-                        <Chip key={id} label={full} selected={tool === id} onPress={() => setTool(tool === id ? '' : id)}>
-                          {short}
-                        </Chip>
-                      ))}
-                  </View>
+                  {!(tab === 'saved' && saved.length === 0) && (
+                    <View style={styles.toolbar}>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel="Change destination"
+                        disabled={busy}
+                        onPress={() => {
+                          setError('');
+                          toggleFilter('commute');
+                        }}
+                        style={{ flexShrink: 1, paddingVertical: 6 }}
+                      >
+                        <Text numberOfLines={1} style={mobileStyles.destinationText}>
+                          To <Text style={{ color: colors.ink, fontWeight: '600' }}>{result.workplace.label}</Text> ·{' '}
+                          <Text style={styles.linkText}>Change</Text>
+                        </Text>
+                      </Pressable>
+                      <View style={styles.chipRow}>
+                        {TOOLS[tab]
+                          .filter(([id]) => id !== 'changes' || !staleInventory)
+                          .map(([id, short, full]) => (
+                            <Chip key={id} label={full} selected={tool === id} onPress={() => setTool(tool === id ? '' : id)}>
+                              {short}
+                            </Chip>
+                          ))}
+                      </View>
+                    </View>
+                  )}
                   {tab === 'saved' && <SavedComparison listings={saved} open={tool === 'compare'} />}
                   {tab === 'saved' && <TourPlanner listings={saved} open={tool === 'tours'} />}
                   {tab === 'results' && (
@@ -398,15 +386,6 @@ function ApartmentSearch() {
                     />
                   )}
                   {tab === 'results' && !staleInventory && <ObservedChanges listings={result.matches} open={tool === 'changes'} />}
-                  {tab === 'results' && (
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel={freshness + ' · Details: source freshness and coverage'}
-                      onPress={() => navigateTab('sources')}
-                    >
-                      <Text style={mobileStyles.freshness}>{freshness} · Details</Text>
-                    </Pressable>
-                  )}
                   {tab === 'results' && staleInventory && (
                     <View style={styles.empty}>
                       <Text accessibilityRole="header" style={styles.panelTitle}>
@@ -439,7 +418,7 @@ function ApartmentSearch() {
                             openCommute={() => setExpanded('commute')}
                             commuteConfigured={commuteConfigured}
                             checkingInventory={refreshing || serverState === 'checking' || busy}
-                            columns={wide}
+                            columns={split ? 1 : width >= 1200 ? 3 : wide ? 2 : 1}
                             savedByKey={savedByKey}
                             showMarkets={() => navigateTab('marketplaces')}
                             showSources={() => navigateTab('sources')}
@@ -449,6 +428,19 @@ function ApartmentSearch() {
                               setSaved((current) => current.filter((item) => listingKey(item) !== listingKey(listing)))
                             }
                             onError={setError}
+                            status={
+                              tab === 'results' ? (
+                                <Pressable
+                                  accessibilityRole="button"
+                                  accessibilityLabel={freshness + ' · Details: source freshness and coverage'}
+                                  onPress={() => navigateTab('sources')}
+                                >
+                                  <Text style={styles.smallMuted}>
+                                    {freshness} · <Text style={styles.linkText}>Details</Text>
+                                  </Text>
+                                </Pressable>
+                              ) : undefined
+                            }
                           />
                         </View>
                       )}
@@ -464,21 +456,44 @@ function ApartmentSearch() {
                 </>
               )}
               {tab === 'more' && (
-                <View style={styles.filters}>
+                <View style={{ gap: 16, maxWidth: 720, width: '100%', alignSelf: 'center' }}>
                   <Text accessibilityRole="header" style={styles.panelTitle}>
                     More
                   </Text>
-                  {[
-                    ['sources', 'Sources & sync'],
-                    ['alerts', 'Alerts'],
-                    ['chart', 'Rent chart'],
-                    ['marketplaces', 'Rental platforms'],
-                    ['affordable', 'Affordable housing'],
-                  ].map(([key, label]) => (
-                    <Button key={key} secondary onPress={() => navigateTab(key)}>
-                      {label}
-                    </Button>
-                  ))}
+                  <View style={styles.menu}>
+                    {[
+                      ['chart', 'Rent chart', 'Rent trends by neighborhood and StreetEasy market history since 2010'],
+                      ['alerts', 'Alerts', 'Email or notify me about new apartments and price drops'],
+                      ['affordable', 'Affordable housing', 'Open lotteries and income-restricted rentals'],
+                      ['marketplaces', 'Rental platforms', 'Search StreetEasy, Zillow and other sites directly'],
+                      ['sources', 'Sources & sync', 'Where listings come from, and refresh them'],
+                    ].map(([key, label, detail], index) => (
+                      <Pressable
+                        key={key}
+                        accessibilityRole="button"
+                        accessibilityLabel={label}
+                        onPress={() => navigateTab(key!)}
+                        style={({ pressed }) => [styles.menuRow, index > 0 && styles.menuDivider, pressed && styles.pressed]}
+                      >
+                        <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+                          <Text style={styles.menuLabel}>{label}</Text>
+                          <Text style={styles.smallMuted}>{detail}</Text>
+                        </View>
+                        <Text style={styles.menuChevron}>›</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                  {account && (
+                    <View style={[styles.menu, styles.menuRow]}>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={styles.menuLabel}>Account</Text>
+                        <Text style={styles.smallMuted}>Signed in as {account}</Text>
+                      </View>
+                      <Button secondary onPress={() => void signOut()}>
+                        Sign out
+                      </Button>
+                    </View>
+                  )}
                 </View>
               )}
               {tab === 'chart' && (
@@ -501,6 +516,17 @@ function ApartmentSearch() {
                       {refreshError}
                     </Text>
                   )}
+                  <SourcesPage
+                    catalog={sourceCatalog}
+                    refresh={refresh}
+                    refreshing={refreshing}
+                    cooldownSeconds={cooldownSeconds}
+                    onResync={(id) => checkSources(id ?? null)}
+                  />
+                  <Text style={[styles.fieldLabel, { marginTop: 8 }]}>Your own listings</Text>
+                  <Text style={styles.smallMuted}>
+                    Add an apartment you found elsewhere, or import a spreadsheet of them, to your saved list.
+                  </Text>
                   <View style={styles.chipRow}>
                     <Button secondary onPress={() => setAdding('single')}>
                       + Add listing
@@ -534,13 +560,6 @@ function ApartmentSearch() {
                       onCancel={() => setAdding(false)}
                     />
                   )}
-                  <SourcesPage
-                    catalog={sourceCatalog}
-                    refresh={refresh}
-                    refreshing={refreshing}
-                    cooldownSeconds={cooldownSeconds}
-                    onResync={(id) => checkSources(id ?? null)}
-                  />
                 </>
               )}
               {tab === 'marketplaces' && (
@@ -570,11 +589,13 @@ function ApartmentSearch() {
         </View>
       </ScrollView>
       <View style={mobileStyles.bottomNav} accessibilityRole="tablist">
-        {[
-          ['results', 'Search'],
-          ['saved', `Saved (${savedResults.total})`],
-          ['more', 'More'],
-        ].map(([key, label]) => {
+        {(
+          [
+            ['results', 'Search', SearchIcon],
+            ['saved', `Saved (${savedResults.total})`, HeartIcon],
+            ['more', 'More', MenuIcon],
+          ] as const
+        ).map(([key, label, Icon]) => {
           const selected = key === 'more' ? !['results', 'saved'].includes(tab) : tab === key;
           return (
             <Pressable
@@ -582,10 +603,12 @@ function ApartmentSearch() {
               accessibilityRole="tab"
               aria-selected={selected}
               accessibilityState={{ selected }}
+              accessibilityLabel={label}
               style={[mobileStyles.navItem, selected && mobileStyles.navSelected]}
               onPress={() => navigateTab(key)}
             >
-              <Text style={styles.tabLabel}>{label}</Text>
+              <Icon color={selected ? colors.green : colors.muted} />
+              <Text style={[styles.tabLabel, selected && mobileStyles.navTextSelected]}>{label}</Text>
             </Pressable>
           );
         })}

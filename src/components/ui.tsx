@@ -1,4 +1,4 @@
-import { type ComponentType, type ReactNode } from 'react';
+import { type ComponentType, type ReactNode, useState } from 'react';
 import type { TextInputProps, ViewProps } from 'react-native';
 import { Linking, Platform, Pressable, Text, TextInput, View } from 'react-native';
 import { colors, styles } from '../styles.ts';
@@ -39,15 +39,20 @@ export function Button({
   onPress,
   secondary = false,
   disabled = false,
+  label,
 }: {
   children: ReactNode;
   onPress: () => void;
   secondary?: boolean;
   disabled?: boolean;
+  /** The accessible name, when the visible text is shorter (Resync for Resync StreetEasy). */
+  label?: string;
 }) {
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityLabel={label}
+      aria-label={label}
       accessibilityState={{ disabled }}
       aria-disabled={disabled}
       onPress={onPress}
@@ -102,17 +107,6 @@ export function Link({ label, url, onError }: { label: string; url: string; onEr
   );
 }
 
-export function SectionTitle({ index, children }: { index: string | number; children: ReactNode }) {
-  return (
-    <View style={styles.sectionTitle}>
-      <Text style={styles.sectionIndex}>{index}</Text>
-      <Text accessibilityRole="header" style={styles.sectionHeading}>
-        {children}
-      </Text>
-    </View>
-  );
-}
-
 export function Field({
   label,
   placeholder,
@@ -138,6 +132,30 @@ export function Field({
         autoCapitalize={secureTextEntry ? 'none' : 'sentences'}
         autoCorrect={false}
       />
+    </View>
+  );
+}
+
+/** A section that stays folded until asked for: its title, a chevron, and the content when open. */
+export function Disclosure({ title, children }: { title: string; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <View style={{ gap: 8 }}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={title}
+        accessibilityState={{ expanded: open }}
+        aria-expanded={open}
+        onPress={() => setOpen(!open)}
+        style={({ pressed }) => [
+          { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', minHeight: 40 },
+          pressed && styles.pressed,
+        ]}
+      >
+        <Text style={styles.linkText}>{title}</Text>
+        <Text style={[styles.linkText, { fontSize: 16 }]}>{open ? '▴' : '▾'}</Text>
+      </Pressable>
+      {open && children}
     </View>
   );
 }

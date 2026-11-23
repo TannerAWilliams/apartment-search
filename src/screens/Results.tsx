@@ -16,22 +16,23 @@ export function ResultNotices({ notices = [] }: { notices?: string[] }) {
   const [expanded, setExpanded] = useState(false);
   if (!notices.length) return null;
   return (
-    <View style={styles.noticePanel}>
-      <Text style={styles.fieldLabel}>Source coverage</Text>
-      {expanded ? (
+    <View style={[{ gap: 4 }, expanded && { flexBasis: '100%' }]}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={expanded ? 'Hide coverage notes' : 'Show coverage notes'}
+        accessibilityState={{ expanded }}
+        onPress={() => setExpanded(!expanded)}
+      >
+        <Text style={styles.linkText}>
+          {notices.length} coverage {notices.length === 1 ? 'note' : 'notes'} {expanded ? '▴' : '▾'}
+        </Text>
+      </Pressable>
+      {expanded &&
         notices.map((notice, index) => (
-          <Text key={`${index}-${notice}`} style={styles.bodyText}>
+          <Text key={`${index}-${notice}`} style={styles.smallMuted}>
             • {notice}
           </Text>
-        ))
-      ) : (
-        <Text style={styles.bodyText}>
-          {notices.length} source coverage {notices.length === 1 ? 'note' : 'notes'}. Review before relying on result completeness.
-        </Text>
-      )}
-      <Pressable accessibilityRole="button" accessibilityState={{ expanded }} onPress={() => setExpanded(!expanded)} style={styles.link}>
-        <Text style={styles.linkText}>{expanded ? 'Hide coverage notes' : 'Show coverage notes'}</Text>
-      </Pressable>
+        ))}
     </View>
   );
 }
@@ -57,6 +58,7 @@ export function Results({
   onRemove,
   onError,
   onCheckBuilding,
+  status,
 }: {
   visible: number;
   setVisible: (value: number) => void;
@@ -69,7 +71,8 @@ export function Results({
   openCommute: () => void;
   commuteConfigured: boolean;
   checkingInventory: boolean;
-  columns: boolean;
+  /** How many cards fit side by side. */
+  columns: number;
   savedByKey: Map<string, ListingData>;
   showMarkets: () => void;
   showSources: () => void;
@@ -78,12 +81,15 @@ export function Results({
   onRemove: (listing: ListingData) => void;
   onError: (message: string) => void;
   onCheckBuilding?: React.ComponentProps<typeof Listing>['onCheckBuilding'];
+  /** One line on how fresh the sources are, shown with the coverage notes. */
+  status?: React.ReactNode;
 }) {
   const { matches } = result;
   const savedView = result.mode === 'saved';
   // A sort with only one option (saved apartments without routing) is not a choice, so it is not shown.
   const sortOptions = Object.entries(RESULT_SORTS).filter(
-    ([id]) => id === 'rent' || (!savedView && id === 'best') || (!savedView && commuteConfigured && id !== 'recent'),
+    // Best fit and the commute sorts weigh travel times, so they are offered only where there are travel times.
+    ([id]) => id === 'rent' || (!savedView && commuteConfigured && id !== 'recent'),
   );
   const unavailable = inventoryUnavailable(result);
   const summary = savedView
@@ -103,35 +109,38 @@ export function Results({
 
   return (
     <>
-      <View style={styles.resultHeading}>
-        <View style={styles.headingCopy}>
-          <Text accessibilityRole="header" style={styles.panelTitle}>
-            {!savedView && checkingInventory && result.total === 0
-              ? 'Checking availability…'
-              : unavailable
-                ? 'Active inventory unavailable'
-                : `${result.total.toLocaleString('en-US')} ${savedView ? 'saved' : 'matching'} ${result.total === 1 ? 'apartment' : 'apartments'}`}
-          </Text>
-          <Text style={styles.smallMuted}>{summary}</Text>
-          <Text style={styles.smallMuted}>To {result.workplace.label}</Text>
-        </View>
-        {sortOptions.length > 1 && (
-          <View style={styles.chipRow}>
-            {sortOptions.map(([id, label]) => (
-              <Chip key={id} selected={sort === id} onPress={() => onSort(id)}>
-                {label}
-              </Chip>
-            ))}
+      {!(savedView && matches.length === 0) && (
+        <View style={styles.resultHeading}>
+          <View style={styles.headingCopy}>
+            <Text accessibilityRole="header" style={styles.panelTitle}>
+              {!savedView && checkingInventory && result.total === 0
+                ? 'Checking availability…'
+                : unavailable
+                  ? 'Active inventory unavailable'
+                  : `${result.total.toLocaleString('en-US')} ${savedView ? 'saved' : 'matching'} ${result.total === 1 ? 'apartment' : 'apartments'}`}
+            </Text>
+            {(savedView || applied.zip || applied.source || applied.maxTransitMinutes != null || applied.maxDrivingMinutes != null) && (
+              <Text style={styles.smallMuted}>{summary}</Text>
+            )}
           </View>
-        )}
-      </View>
+          {sortOptions.length > 1 && (
+            <View style={styles.chipRow}>
+              {sortOptions.map(([id, label]) => (
+                <Chip key={id} selected={sort === id} onPress={() => onSort(id)}>
+                  {label}
+                </Chip>
+              ))}
+            </View>
+          )}
+        </View>
+      )}
       {result.commute && <Text style={styles.smallMuted}>Weekday-morning estimates from TravelTime.</Text>}
       {result.commuteNotice && <Text style={styles.smallMuted}>{result.commuteNotice}</Text>}
-      <ResultNotices notices={result.notices} />
-      {result.total > matches.length && (
-        <Text style={styles.smallMuted}>
-          Showing records {(result.offset ?? 0) + (matches.length ? 1 : 0)}–{(result.offset ?? 0) + matches.length} of {result.total}.
-        </Text>
+      {(status || (result.notices?.length ?? 0) > 0) && (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: 10, rowGap: 2, marginTop: -6 }}>
+          {status}
+          <ResultNotices notices={result.notices} />
+        </View>
       )}
       {matches.length === 0 && (savedView || !checkingInventory) && (
         <View style={styles.empty}>
@@ -169,7 +178,7 @@ export function Results({
           const saved = savedByKey.get(listingKey(listing));
           const withLinks = saved ? { ...listing, sources: mergeSourceLinks(listing.sources, saved.sources) } : listing;
           return (
-            <View key={listing.id} style={columns ? styles.gridCard : styles.fullCard}>
+            <View key={listing.id} style={columns === 3 ? styles.gridCard3 : columns === 2 ? styles.gridCard : styles.fullCard}>
               <Listing
                 listing={withLinks}
                 selectedSource={savedView ? '' : applied.source}
@@ -186,7 +195,7 @@ export function Results({
           );
         })}
       </View>
-      {!savedView && onPage && (
+      {!savedView && onPage && visible >= matches.length && (
         <View style={styles.chipRow}>
           {(result.offset ?? 0) > 0 && (
             <Button secondary disabled={paging} onPress={() => onPage(Math.max(0, result.offset - result.pageSize))}>

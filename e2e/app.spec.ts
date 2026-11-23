@@ -191,7 +191,9 @@ test('resync all uses the batch endpoint while browse-only sources stay disabled
   const { requests } = await mockApp(page);
   await page.getByRole('tab', { name: 'More', exact: true }).click();
   await page.getByRole('button', { name: 'Sources & sync', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Resync unavailable: not connected' }).first()).toBeDisabled();
+  // Sites the app does not read are listed by name, not offered as disabled resync buttons.
+  await expect(page.getByText(/aren’t read by the app; open them from Rental platforms/)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Resync unavailable: not connected' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Resync all connected providers', exact: true }).click();
   await expect.poll(() => userRefreshes(requests).length).toBe(1);
   expect(userRefreshes(requests)[0].body).toEqual({ check: 'now' });
@@ -255,7 +257,7 @@ test('rent filter sends user input and handles an empty result', async ({ page }
 
 test('search shows source coverage notices instead of hiding data caveats', async ({ page }) => {
   await mockApp(page, { notices: ['Synthetic provider returned partial inventory.'] });
-  await expect(page.getByText('1 source coverage note. Review before relying on result completeness.', { exact: true })).toBeVisible();
+  await expect(page.getByText('1 coverage note ▾', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Show coverage notes', exact: true }).click();
   await expect(page.getByText('• Synthetic provider returned partial inventory.', { exact: true })).toBeVisible();
 });
@@ -338,7 +340,7 @@ test('applied filters, expanded results and search scroll survive navigation', a
   const searchScroll = 500;
   const searchesBeforeNavigation = requests.filter((r) => r.path === '/api/search').length;
   await page.getByRole('tab', { name: 'Saved (0)', exact: true }).click();
-  await expect(page.getByText('All apartment sizes · Any price', { exact: true })).toBeVisible();
+  await expect(page.getByText('Saved on this device', { exact: true })).toBeVisible();
   await expect(page.getByText('1 bedroom · Up to $5,000', { exact: true })).toHaveCount(0);
   await page.getByRole('tab', { name: 'More', exact: true }).click();
   await page.getByRole('tab', { name: 'Search', exact: true }).click();
@@ -452,6 +454,7 @@ test('CSV outside supported regions reports the restriction without saving', asy
 test('housing cost inputs require known amounts, calculate, reject invalid input and reset', async ({ page }) => {
   await mockApp(page);
   await page.getByRole('button', { name: 'Details for 12 Grove Street', exact: true }).click();
+  await page.getByRole('button', { name: 'Estimate the full cost of renting', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Housing cost estimate', exact: true })).toBeVisible();
   await page.getByRole('textbox', { name: 'Gross monthly rent', exact: true }).fill('2400');
   await expect(
@@ -499,7 +502,7 @@ test('observed timeline distinguishes historical checks from live availability a
   const { requests } = await mockApp(page, { priceHistory: true });
   await page.getByRole('button', { name: 'Details for 12 Grove Street', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Observed price history', exact: true })).toBeVisible();
-  await expect(page.getByText(/Source: synthetic-fixture.*not proof/)).toBeVisible();
+  await expect(page.getByText(/Seen on synthetic-fixture.*not proof/)).toBeVisible();
   await expect(page.getByText(/\$1,900\/mo · asking rent; fees not confirmed/)).toBeVisible();
   await expect(page.getByText(/\$1,800\/mo · includes reported fees/)).toBeVisible();
   await expect(page.getByText('Older changes were trimmed; showing the most recent 24 observations.', { exact: true })).toBeVisible();
@@ -509,6 +512,7 @@ test('observed timeline distinguishes historical checks from live availability a
 test('feature filters require reported facts rather than matching unknown details', async ({ page }) => {
   const { requests } = await mockApp(page, { listingCount: 2, discovery: true });
   await page.getByRole('button', { name: 'Filters', exact: true }).click();
+  await page.getByRole('button', { name: /^More filters/ }).click();
   await page.getByRole('textbox', { name: 'Minimum bathrooms', exact: true }).fill('1.5');
   await page.getByRole('textbox', { name: 'Minimum square feet', exact: true }).fill('900');
   await page.getByRole('button', { name: 'Require pets allowed', exact: true }).click();

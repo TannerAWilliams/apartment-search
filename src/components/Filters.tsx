@@ -5,9 +5,8 @@ import type { SearchFilters, SearchResult } from '../domain.ts';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { REGIONS, WORKPLACES, marketsForSearch } from '../regions.ts';
 import { marketplaceLinks } from '../marketplaces.ts';
-import { DEFAULT_FILTERS, formatRent } from '../search.ts';
 import { styles } from '../styles.ts';
-import { Button, Chip, Field, Link, SectionTitle } from './ui.tsx';
+import { Button, Chip, Field, Link } from './ui.tsx';
 import { LAUNDRY_LABELS } from '../discovery.ts';
 import { type DraftFilters, SEARCH_DEFAULTS, BEDROOMS, AREA_GROUPS, formDefaults } from '../app-shared.ts';
 
@@ -18,11 +17,10 @@ export function Filters({
   busy,
   serverState,
   connect,
-  account,
-  onSignOut,
   lookUp,
   panel,
   commuteConfigured,
+  websites,
 }: {
   draft: DraftFilters;
   setDraft: React.Dispatch<React.SetStateAction<DraftFilters>>;
@@ -30,14 +28,14 @@ export function Filters({
   busy: boolean;
   serverState: string;
   connect: () => void;
-  /** The email signed in with a code, with a way to sign out. */
-  account: string | null;
-  onSignOut: () => void;
   /** Finds a typed destination, so it can be checked before it is applied. */
   lookUp?: (place: string) => Promise<{ label: string; latitude: number; longitude: number }>;
   panel: string;
   commuteConfigured: boolean;
+  /** The listing-website filter, shown with the other filters. */
+  websites?: React.ReactNode;
 }) {
+  const [moreFilters, setMoreFilters] = useState(false);
   const set =
     <K extends keyof DraftFilters>(field: K) =>
     (value: DraftFilters[K]) =>
@@ -97,48 +95,40 @@ export function Filters({
             keyboardType="number-pad"
             maxLength={6}
           />
-          <View style={styles.chipRow}>
-            <Chip selected={draft.maxRent === ''} onPress={() => set('maxRent')('')}>
-              Any price
-            </Chip>
-            <Chip
-              selected={draft.maxRent === String(DEFAULT_FILTERS.maxRent)}
-              onPress={() => set('maxRent')(String(DEFAULT_FILTERS.maxRent))}
-            >
-              Up to {formatRent(DEFAULT_FILTERS.maxRent ?? 5000)}
-            </Chip>
-          </View>
         </>
       )}
-      {panel === 'more' && (
+      {panel === 'more' && commuteConfigured && (
         <>
-          <Text style={styles.fieldLabel}>Best-fit priorities</Text>
-          <Field
-            label="Rent ranking weight (0–100)"
-            value={String(draft.bestFitRentWeight ?? 60)}
-            onChangeText={set('bestFitRentWeight')}
-            keyboardType="number-pad"
-            maxLength={3}
-          />
-          <Text style={styles.smallMuted}>
-            Commute receives the remaining weight out of 100. Applies to Best fit sorting only. Missing estimates earn no points; changing
-            weights does not request a route.
-          </Text>
+          <Text style={styles.fieldLabel}>Best fit weighs</Text>
           <View style={styles.chipRow}>
-            {[0, 25, 50, 60, 75, 100].map((weight) => (
+            {(
+              [
+                [80, 'Rent first'],
+                [50, 'Rent and commute equally'],
+                [20, 'Commute first'],
+              ] as const
+            ).map(([weight, label]) => (
               <Chip
                 key={weight}
                 selected={Number(draft.bestFitRentWeight ?? 60) === weight}
                 onPress={() => set('bestFitRentWeight')(weight)}
               >
-                Rent {weight} / commute {100 - weight}
+                {label}
               </Chip>
             ))}
           </View>
-          <Text style={styles.fieldLabel}>Reported apartment features</Text>
-          <Text style={styles.smallMuted}>
-            Filters require explicit source data. Unknown details are excluded when a feature is required; verify with the landlord.
-          </Text>
+        </>
+      )}
+      {panel === 'more' && (
+        <>
+          <Pressable accessibilityRole="button" accessibilityState={{ expanded: moreFilters }} onPress={() => setMoreFilters(!moreFilters)}>
+            <Text style={styles.linkText}>{moreFilters ? 'Fewer filters ▴' : 'More filters: bathrooms, size, pets, laundry ▾'}</Text>
+          </Pressable>
+        </>
+      )}
+      {panel === 'more' && moreFilters && (
+        <>
+          <Text style={styles.smallMuted}>Apartments whose listing does not say are left out when you require a feature.</Text>
           <Field
             label="Minimum bathrooms"
             value={draft.minBathrooms == null ? '' : String(draft.minBathrooms)}
@@ -166,19 +156,12 @@ export function Filters({
               </Chip>
             ))}
           </View>
-
-          <View style={styles.divider} />
         </>
       )}
-      {(panel === 'more' || panel === 'commute') && (
+      {panel === 'more' && websites}
+      {panel === 'commute' && (
         <>
-          <SectionTitle index="02">Commute destination</SectionTitle>
-          <Text style={styles.smallMuted}>
-            Choose a preset or type any address or place. Editing stays on this device until you apply. A typed destination is looked up
-            with OpenStreetMap (and the U.S. Census geocoder for exact addresses); when estimates are enabled, apartment and destination
-            coordinates are sent to TravelTime. Directions links open only when you tap them.
-          </Text>
-          <Text style={styles.fieldLabel}>Destination</Text>
+          <Text style={styles.smallMuted}>Where you commute to. Typed places are looked up with OpenStreetMap.</Text>
           <View style={styles.chipRow}>
             {Object.entries(WORKPLACES).map(([key, workplace]) => (
               <Chip key={key} selected={draft.workplace === key} onPress={() => set('workplace')(key)}>
@@ -242,14 +225,6 @@ export function Filters({
         <Button secondary onPress={connect}>
           Retry connection
         </Button>
-      )}
-      {serverState === 'ready' && account && panel === 'more' && (
-        <View style={styles.tokenForm}>
-          <Text style={styles.smallMuted}>Signed in as {account}</Text>
-          <Button secondary onPress={onSignOut}>
-            Sign out
-          </Button>
-        </View>
       )}
       <View style={styles.submit}>
         <Button onPress={submit} disabled={busy}>

@@ -8,13 +8,14 @@ import { matchesRegion, REGIONS, searchBorough } from '../regions.ts';
 import { directionsLink, formatRent } from '../search.ts';
 import { listingLinkLabel, listingPresentation, orderedListingLinks } from '../listings.ts';
 import { colors, styles } from '../styles.ts';
-import { ExternalLink, Link } from './ui.tsx';
+import { Disclosure, Link } from './ui.tsx';
 import { ListingSources } from './ListingSources.tsx';
 import { CommuteDetails } from './CommuteDetails.tsx';
 import { PriceHistory } from './PriceHistory.tsx';
 import { SavedNotes } from './SavedNotes.tsx';
 import { listingKey } from '../listings.ts';
 import { HousingCost } from './HousingCost.tsx';
+import { HeartIcon } from './Icons.tsx';
 
 const CHECK_TIME = new Intl.DateTimeFormat('en-US', {
   timeZone: 'America/New_York',
@@ -26,17 +27,21 @@ const CHECK_TIME = new Intl.DateTimeFormat('en-US', {
 });
 const card = StyleSheet.create({
   headline: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
-  primary: { flex: 1, minWidth: 0, gap: 3 },
-  action: {
-    minHeight: 44,
-    paddingHorizontal: 10,
-    paddingVertical: 10,
+  primary: { flex: 1, minWidth: 0, gap: 2 },
+  priceRow: { flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap', columnGap: 8, rowGap: 4 },
+  per: { fontSize: 14, color: colors.muted, fontWeight: '600' },
+  heart: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 8,
   },
-  actions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
+  title: { fontSize: 16, lineHeight: 22, fontWeight: '700', color: colors.ink },
+  action: { minHeight: 40, justifyContent: 'center', paddingHorizontal: 4 },
+  actions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   notice: { fontSize: 13, lineHeight: 18, color: '#805213' },
   details: { borderTopWidth: 1, borderColor: colors.border, paddingTop: 10, gap: 8 },
 });
@@ -74,6 +79,13 @@ export function Listing({
   const [original] = orderedListingLinks(listing.sources, selectedSource);
   const presentation = listingPresentation(listing);
   const facts = discoveryFacts(listing);
+  // Only what the listing says; unknown details are simply not listed.
+  const knownFacts = [
+    facts.bathrooms === null ? '' : `${facts.bathrooms} baths`,
+    facts.squareFeet === null ? '' : `${facts.squareFeet.toLocaleString('en-US')} sq ft`,
+    facts.petsAllowed === null ? '' : facts.petsAllowed ? 'Pets allowed; verify restrictions' : 'Pets not allowed per source',
+    facts.laundry === null ? '' : LAUNDRY_LABELS[facts.laundry],
+  ].filter(Boolean);
   const checkedAt = listing.checkedAt ?? listing.seenAt;
   const checked = Number.isFinite(Date.parse(checkedAt ?? ''))
     ? 'Checked ' + CHECK_TIME.format(new Date(checkedAt ?? ''))
@@ -83,10 +95,18 @@ export function Listing({
       <View style={styles.rentalCardBody}>
         <View style={card.headline}>
           <View style={card.primary}>
-            <Text style={styles.price}>{presentation.priceKnown ? formatRent(rent) : 'Price unavailable'}</Text>
-            <Text style={styles.smallMuted}>
-              {listing.kind === 'snapshot' ? 'recorded rent / mo' : listing.priceIncludesFees ? 'total price / mo' : 'asking rent / mo'}
-            </Text>
+            <View style={card.priceRow}>
+              <Text style={styles.price}>
+                {presentation.priceKnown ? formatRent(rent) : 'Price unavailable'}
+                {presentation.priceKnown && <Text style={card.per}> /mo</Text>}
+              </Text>
+              <Text style={styles.cardStat}>{presentation.bedsLabel}</Text>
+              {commute && transitSeconds != null && <Text style={styles.cardStat}>{Math.ceil(transitSeconds / 60)} min transit</Text>}
+              {commute && drivingSeconds != null && <Text style={styles.cardStat}>{Math.ceil(drivingSeconds / 60)} min drive</Text>}
+            </View>
+            {(listing.kind === 'snapshot' || listing.priceIncludesFees) && (
+              <Text style={styles.smallMuted}>{listing.kind === 'snapshot' ? 'Recorded rent' : 'Total price, fees included'}</Text>
+            )}
           </View>
           <Pressable
             accessibilityRole="button"
@@ -94,35 +114,17 @@ export function Listing({
             accessibilityState={{ disabled: !onRemove && saved }}
             disabled={!onRemove && saved}
             onPress={() => (onRemove ? onRemove(listing) : onSave(listing))}
-            style={card.action}
+            style={[card.heart, (saved || onRemove) && { backgroundColor: colors.light, borderColor: colors.light }]}
           >
-            <Text style={styles.linkText}>{onRemove ? '♥ Remove' : saved ? '♥ Saved' : '♡ Save'}</Text>
+            <HeartIcon color={colors.green} filled={saved || Boolean(onRemove)} />
           </Pressable>
         </View>
-        <View style={styles.cardStats}>
-          <Text style={styles.cardStat}>{presentation.bedsLabel}</Text>
-          {regionInfo && <Text style={styles.smallMuted}>{regionInfo.label}</Text>}
-          {commute && (
-            <>
-              <Text style={styles.cardStat}>
-                {transitSeconds == null ? 'Transit unavailable' : `${Math.ceil(transitSeconds / 60)} min transit`}
-              </Text>
-              <Text style={styles.cardStat}>
-                {drivingSeconds == null ? 'Driving unavailable' : `${Math.ceil(drivingSeconds / 60)} min drive`}
-              </Text>
-            </>
-          )}
-        </View>
-        {original?.url ? (
-          <ExternalLink url={original.url} onError={onError} accessibilityLabel={title + ' on ' + original.name}>
-            <Text style={styles.listingAddress}>{title}</Text>
-          </ExternalLink>
-        ) : (
-          <Text accessibilityRole="header" style={styles.listingTitle}>
+        <View style={{ gap: 2 }}>
+          <Text accessibilityRole="header" style={card.title}>
             {title}
           </Text>
-        )}
-        <Text style={styles.smallMuted}>{subtitle}</Text>
+          <Text style={styles.smallMuted}>{[subtitle, regionInfo?.label].filter(Boolean).join(' · ')}</Text>
+        </View>
         {listing.bestFit && (
           <View style={{ gap: 3 }}>
             <Text style={styles.fieldLabel}>
@@ -149,7 +151,7 @@ export function Listing({
           </Text>
         ))}
         <View style={card.actions}>
-          {original?.url && <Link label={listingLinkLabel(original)} url={original.url} onError={onError} />}
+          {original?.url ? <Link label={listingLinkLabel(original)} url={original.url} onError={onError} /> : <View />}
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={'Details for ' + title}
@@ -157,7 +159,7 @@ export function Listing({
             onPress={() => setExpanded(!expanded)}
             style={card.action}
           >
-            <Text style={styles.linkText}>{expanded ? 'Hide details' : 'Details'}</Text>
+            <Text style={styles.linkText}>{expanded ? 'Hide details ▴' : 'Details ▾'}</Text>
           </Pressable>
         </View>
         {expanded && (
@@ -177,20 +179,16 @@ export function Listing({
             </View>
             <ListingSources listing={listing} onSaveLink={onSaveLink} onError={onError} />
             {saved && <SavedNotes key={listingKey(listing)} identity={listingKey(listing)} />}
-            <Text style={styles.smallMuted}>
-              Source-reported details: {facts.bathrooms === null ? 'Bathrooms unknown' : `${facts.bathrooms} baths`} ·{' '}
-              {facts.squareFeet === null ? 'Area unknown' : `${facts.squareFeet.toLocaleString('en-US')} sq ft`} ·{' '}
-              {facts.petsAllowed === null
-                ? 'Pet policy unknown'
-                : facts.petsAllowed
-                  ? 'Pets allowed; verify restrictions'
-                  : 'Pets not allowed per source'}{' '}
-              · {facts.laundry === null ? 'Laundry unknown' : LAUNDRY_LABELS[facts.laundry]}
-            </Text>
+            {knownFacts.length > 0 && <Text style={styles.smallMuted}>Source-reported details: {knownFacts.join(' · ')}</Text>}
             <CommuteDetails listing={listing} />
             <PriceHistory value={listing.priceHistory} />
-            <HousingCost />
-            <BuildingReport key={listingKey(listing)} listing={listing} onError={onError} onCheckBuilding={onCheckBuilding} />
+            <Disclosure title="Estimate the full cost of renting">
+              <HousingCost />
+            </Disclosure>
+            {/* NYC's building records cover the five boroughs only; elsewhere there is nothing to check. */}
+            {searchBorough(listing) && (
+              <BuildingReport key={listingKey(listing)} listing={listing} onError={onError} onCheckBuilding={onCheckBuilding} />
+            )}
           </View>
         )}
       </View>
