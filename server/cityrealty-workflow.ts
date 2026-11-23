@@ -36,7 +36,7 @@ export class CityRealtySync extends WorkflowEntrypoint<Environment, RefreshParam
       const result = await step.do(`Verify and save ${NAMES[sourceId]} inventory (attempt ${attempt + 1})`,
         { timeout: completeSync(sourceId)?.stepTimeout ?? '13 minutes', retries: { limit: 0, delay: '1 second' } },
         () => refreshSources({ ...this.env, BUCKET: bucket }, {
-          sourceId, onDemand: true, forceRefresh: true,
+          sourceId, onDemand: true,
           fetcher: (url, options) => fetch(url, { ...options, redirect: 'manual' }),
         }));
       if (result.state !== 'running') {

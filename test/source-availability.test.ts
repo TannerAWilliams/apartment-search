@@ -242,7 +242,7 @@ test('public StreetEasy denial names the failing route and honors the provider r
   const env = { BUCKET: createMemoryBucket(), STREETEASY_PUBLIC_SEARCH: 'true' };
   let calls = 0;
   const refresh = () => refreshSources(env, {
-    sourceId: 'streeteasy-live', onDemand: true, forceRefresh: true,
+    sourceId: 'streeteasy-live', onDemand: true,
     fetcher: async (url) => {
       calls++;
       assert.equal(url, 'https://streeteasy.com/for-rent/nyc');

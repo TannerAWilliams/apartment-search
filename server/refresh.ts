@@ -92,7 +92,6 @@ type RefreshOptions = {
   onDemand?: boolean;
   onlyStreetEasy?: boolean;
   sourceId?: string;
-  forceRefresh?: boolean;
   fallback?: boolean;
   /** Skip the complete syncs because the Workflow runs them. */
   excludeWorkflowSources?: boolean;
@@ -480,7 +479,7 @@ function checkStatus({ id, name }: { id: string; name: string }, result: Promise
   return item;
 }
 
-export async function refreshSources(env: AppEnv, { fetcher = fetch, now = new Date(), imports, onDemand = false, fallback = false, onlyStreetEasy = false, sourceId, forceRefresh = false, excludeWorkflowSources = false }: RefreshOptions = {}) {
+export async function refreshSources(env: AppEnv, { fetcher = fetch, now = new Date(), imports, onDemand = false, fallback = false, onlyStreetEasy = false, sourceId, excludeWorkflowSources = false }: RefreshOptions = {}) {
   const selected = sourceId ?? (onlyStreetEasy ? STREETEASY_LIVE.id : null);
   if (selected && !refreshCatalog(env).some((source) => source.id === selected && source.resyncable)) throw new Error('Unknown or disconnected refresh source.');
   const bucket = env.BUCKET;
@@ -496,19 +495,14 @@ export async function refreshSources(env: AppEnv, { fetcher = fetch, now = new D
   const feeds = configuredFeeds(env);
   const streetEasyPartner = feeds.find(({ id }) => id === STREETEASY_LIVE.marketplace);
   const streetEasyTransport = streetEasyTransportFor(env, streetEasyPartner);
+  /** Whether a source can be checked now: not waiting out a retry, and not paused or left to the Workflow. */
   const ready = (id: string) => {
     const prior = previousById.get(id);
-    if (completeSync(id)) return !excludeWorkflowSources && !coolingDown(prior, now) &&
-      (forceRefresh || selected === id || !sourceRecent({ sources: prior ? [prior] : [] }, id, now));
+    if (completeSync(id) && excludeWorkflowSources) return false;
     if (id !== STREETEASY_LIVE.id) return !coolingDown(prior, now);
     if (env.STREETEASY_SYNC_ENABLED === 'false') return false;
-    if (onDemand && prior?.transport && prior.transport !== streetEasyTransport) return true;
-    if (coolingDown(prior, now)) return false;
-    if (selected === id || forceRefresh || prior?.transport !== streetEasyTransport || prior.status === 'failed') return true;
-    if (streetEasyTransport === STREETEASY_EXPORT_FORMAT) {
-      return now.getTime() - Date.parse(prior.updatedAt ?? '') >= STREETEASY_EXPORT_MAX_AGE;
-    }
-    return now.getTime() - Date.parse(prior.checkedAt ?? '') >= STREETEASY_SYNC_INTERVAL;
+    // A different way of reading StreetEasy is tried even while the previous one waits out a retry.
+    return (onDemand && Boolean(prior?.transport) && prior?.transport !== streetEasyTransport) || !coolingDown(prior, now);
   };
   const feedChecks = onlyStreetEasy || fallback ? [] : feeds.filter(({ id }) => id !== STREETEASY_LIVE.marketplace && (!onDemand || ready(id)));
   const publicChecks = onlyStreetEasy ? [] : fallback ? PUBLIC_IDS.filter((id) => imports?.[id] && previousById.get(id)?.status === 'failed' && ready(id)) :

@@ -290,6 +290,9 @@ export async function handleApi(request: Request, env: AppEnv, { privateAuthenti
   try {
     if (path === '/api/refresh') {
       if (body?.check === 'now') {
+        // The app no longer checks sources when it opens. A page loaded before that change still asks
+        // with sessionStart; it gets the saved status and nothing is fetched.
+        if (body.sessionStart === true) return json({ ...await refreshPlan(env.BUCKET), state: 'already_checked' });
         if (body.source !== undefined && !refreshCatalog(env).some((source) => source.id === body.source && source.resyncable)) return json({ error: 'Unknown or disconnected refresh source.' }, 422);
         if (cityRealtyJob && WORKFLOW_SOURCE_IDS.includes(body.source)) {
           const current = await refreshPlan(env.BUCKET);
@@ -299,8 +302,8 @@ export async function handleApi(request: Request, env: AppEnv, { privateAuthenti
           return json({ ...current, state: 'running', checking: true, activeSource: body.source }, 202);
         }
         const work = refreshSources(env, { fetcher, onDemand: true,
-          sourceId: body.source, forceRefresh: body.sessionStart !== true, excludeWorkflowSources: Boolean(cityRealtyJob) });
-        if (cityRealtyJob && body.source === undefined && body.sessionStart !== true) {
+          sourceId: body.source, excludeWorkflowSources: Boolean(cityRealtyJob) });
+        if (cityRealtyJob && body.source === undefined) {
           try { await cityRealtyJob.start(true); }
           catch (cause) { await work.catch(() => {}); throw cause; }
         }

@@ -81,3 +81,14 @@ test('a feed configuration error is reported as one, separately from storage fai
   assert.equal(response.status, 503);
   assert.match((await response.json()).error, /free feed settings/);
 });
+
+test('opening the app fetches nothing, even from a page that still asks for a check on open', async () => {
+  const bucket = createMemoryBucket();
+  let started = 0;
+  const response = await handleApi(postJson('/api/refresh', { check: 'now', sessionStart: true }), { BUCKET: bucket },
+    { fetcher: noNetwork, cityRealtyJob: { start: async () => { started++; }, pending: async () => null } });
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).state, 'already_checked');
+  assert.equal(started, 0, 'no sync Workflow starts');
+  assert.equal(await bucket.get('rentals/refresh.json'), null, 'no refresh was recorded');
+});

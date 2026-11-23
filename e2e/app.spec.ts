@@ -9,9 +9,9 @@ const fixtures = (count = 1) => Array.from({ length: count }, (_, index) => norm
   status: 'Active', url: `https://streeteasy.com/building/test/${index + 1}`,
 }, { id: 'streeteasy', name: 'StreetEasy', kind: 'feed' }));
 const now = '2026-11-13T12:00:00Z';
-/** Refreshes the user started. Opening the app sends one session-start check, which is expected. */
+/** Source checks sent to the server. Opening the app sends none, so each one is a resync the user started. */
 const userRefreshes = (requests: { path: string; method: string; body: any }[]) =>
-  requests.filter(r => r.path === '/api/refresh' && r.method === 'POST' && r.body?.sessionStart !== true);
+  requests.filter(r => r.path === '/api/refresh' && r.method === 'POST');
 async function mockApp(page: Page, options: { initialRefresh?: boolean; failed?: boolean; searchError?: boolean; listingCount?: number; notices?: string[]; priceHistory?: boolean; discovery?: boolean; commute?: boolean; nyc?: boolean; dashboardAvailable?: boolean; inventoryExpiresAt?: string } = {}) {
   const requests: { path: string; method: string; body: any }[] = [];
   const unexpected: string[] = [];
@@ -90,7 +90,7 @@ test('resync all uses the batch endpoint while browse-only sources stay disabled
   await expect(page.getByRole('button', { name: 'Resync unavailable: not connected' }).first()).toBeDisabled();
   await page.getByRole('button', { name: 'Resync all connected providers', exact: true }).click();
   await expect.poll(() => userRefreshes(requests).length).toBe(1);
-  expect(userRefreshes(requests)[0].body).toEqual({ check: 'now', sessionStart: false });
+  expect(userRefreshes(requests)[0].body).toEqual({ check: 'now' });
 });
 
 test('mouse navigation and browser back restore tabs', async ({ page }) => {

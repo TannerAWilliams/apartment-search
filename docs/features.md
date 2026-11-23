@@ -4,7 +4,7 @@ How each part of the app behaves, including its limits. The [README](../README.m
 
 ## Search and results
 
-- The homepage shows saved active inventory from every connected source across all regions, with no bedroom or rent cap. Results default to **Lowest rent**; **Fastest transit** and **Fastest drive** sort all matches before the list is limited.
+- The homepage shows saved active inventory from every connected source across all regions, with no bedroom or rent cap. Opening the app never fetches from listing sites; use **More → Sources & sync** to resync. Results default to **Lowest rent**; **Fastest transit** and **Fastest drive** sort all matches before the list is limited.
 - **Available rentals** and the map show only apartments reported active by a recently checked source. Listings carry their original check dates and are labelled as last saved results when a refresh fails or expires. Dated historical export rows are excluded.
 - Each search response carries the earliest expiry of the observations it used. An open page hides expired results and their map with a warning, and checks again when it returns to the foreground. This makes no network request and never extends freshness.
 - A search waits for the server connection. Submitting while configuration is loading or offline keeps the current results and draft and shows a recovery message.

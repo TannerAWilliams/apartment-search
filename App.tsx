@@ -423,7 +423,7 @@ function ApartmentSearch() {
     browserImportAllowed.current = config.browserImportAllowed === true;
   }, []);
 
-  const checkSources = useCallback(async (sessionStart = false, source: string | null = null) => {
+  const checkSources = useCallback(async (source: string | null = null) => {
     const signal = sourceSession.current;
     if (!signal || signal.aborted || checking.current === signal) return;
     if (Date.now() < refreshRetryAtRef.current) return;
@@ -431,7 +431,7 @@ function ApartmentSearch() {
     setRefreshing(true);
     setRefreshError('');
     try {
-      const request = await api('refresh', { body: { check: 'now', sessionStart, ...(source ? { source } : {}) }, token: activeToken, signal });
+      const request = await api('refresh', { body: { check: 'now', ...(source ? { source } : {}) }, token: activeToken, signal });
       setRefreshClock(Date.now());
       setRefreshRetryAt(request.refreshRetryAt ?? 0);
       let lastProgress = '';
@@ -509,9 +509,7 @@ function ApartmentSearch() {
           })
           .catch((failure) => { if (!controller.signal.aborted) setError(failure.message || 'Saved inventory could not be loaded. Please try again.'); });
       }
-      // Opening Search shows saved results immediately, then checks the sources.
-      if (config.refresh) void checkSources(true);
-
+      // Opening the app only reads saved inventory; sources are fetched when you resync them.
     }).catch((failure) => {
       if (controller.signal.aborted) return;
       setServerState(failure.status === 401 ? 'locked' : 'offline');
@@ -716,7 +714,7 @@ function ApartmentSearch() {
                   setAdding(false);
                 }}
                 onCancel={() => setAdding(false)} />}
-              <SourcesPage catalog={sourceCatalog} refresh={refresh} refreshing={refreshing} cooldownSeconds={cooldownSeconds} onResync={(id) => checkSources(false, id ?? null)} />
+              <SourcesPage catalog={sourceCatalog} refresh={refresh} refreshing={refreshing} cooldownSeconds={cooldownSeconds} onResync={(id) => checkSources(id ?? null)} />
             </>}
             {tab === 'marketplaces' && <Marketplaces filters={applied} sources={result.sources}
               configuredSources={configuredSources} companies={companies} onCompany={searchCompany} refresh={refresh} refreshing={refreshing} cooldownSeconds={cooldownSeconds}

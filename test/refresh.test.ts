@@ -272,7 +272,7 @@ test('a manual refresh fetches new source data even within the same hour', async
   };
   for (const minute of [26, 27]) {
     const now = new Date('2026-11-10T00:' + minute + ':00Z');
-    const check = await refreshSources(env, { fetcher, now, onDemand: true, forceRefresh: true });
+    const check = await refreshSources(env, { fetcher, now, onDemand: true });
     assert.equal(required(check.sources.find(({ id }: { id: string }) => id === ZUMPER_LIVE.id)).checkedAt, now.toISOString());
     assert.equal(required(check.sources.find(({ id }: { id: string }) => id === 'firstmover')).status, minute === 26 ? 'updated' : 'current');
     const listings = required((await storedDirectRentals(env.BUCKET, ZUMPER_LIVE))).listings;
@@ -423,7 +423,7 @@ test('a failed StreetEasy refresh retains its previous listing as cached', async
   assert.ok(!sourceRecent(failed, STREETEASY_LIVE.id, new Date(now.getTime() + 3 * 60 * 60_000)));
 });
 
-test('session refresh ingests StreetEasy v6 at most daily and checks Apartments.com in both boroughs', async () => {
+test('a resync reads StreetEasy v6 each time and checks Apartments.com in both boroughs', async () => {
   const env = { BUCKET: new TestBucket() };
   const requested: string[] = [];
   const fetcher = (url: string, options: RequestInit = {}) => {
@@ -487,7 +487,7 @@ test('session refresh ingests StreetEasy v6 at most daily and checks Apartments.
   const v6Requests = () => requested.filter((url) => url === 'https://api-v6.streeteasy.com/').length;
   assert.equal(v6Requests(), 2);
   await refreshSources(env, { onDemand: true, fetcher });
-  assert.equal(v6Requests(), 2);
+  assert.equal(v6Requests(), 4, 'a resync is never skipped because saved data is recent');
   const filters = { region: 'brooklyn', bedrooms: 2, maxRent: null, liveOnly: true, source: 'apartments' };
   assert.equal((await search(filters, env)).total, 2);
   assert.equal((await search({ ...filters, maxRent: 5000 }, env)).total, 0);

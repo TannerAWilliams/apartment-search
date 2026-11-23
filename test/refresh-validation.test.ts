@@ -43,7 +43,7 @@ test('an on-demand check saves NYC HDC re-rentals', async () => {
   assert.equal(status?.listingCount, 1);
 });
 
-test('a StreetEasy partner feed must report its total, and a recent export is not fetched again', async () => {
+test('a StreetEasy partner feed must report its total, and a resync reads a complete export again', async () => {
   const feed = { id: 'streeteasy', url: 'https://partner.example.test/streeteasy' };
   const bucket = createMemoryBucket();
   const fetcher = async () => Response.json({ listings: [] });
@@ -56,7 +56,7 @@ test('a StreetEasy partner feed must report its total, and a recent export is no
   const exportEnv = { BUCKET: exported, FREE_PARTNER_FEEDS_JSON: JSON.stringify([{ ...feed, format: 'streeteasy-complete-export-v1' }]) };
   await refreshSources(exportEnv, { now: new Date(now.getTime() + 60_000), onDemand: true,
     fetcher: async (url: string) => { if (url.startsWith('https://partner.example.test')) requests++; return new Response(null, { status: 404 }); } });
-  assert.equal(requests, 0, 'a recent complete export is reused');
+  assert.equal(requests, 1, 'a resync is never skipped because the saved export is recent');
 });
 
 test('an import where every source fails is reported as unavailable', async () => {
