@@ -28,7 +28,8 @@ async function signingKey(issuer: string, kid: string, fetcher: KeyFetch, now: n
   const cached = keyCache.get(issuer);
   const known = cached && cached.expires > now ? cached.keys.find((key) => key.kid === kid) : undefined;
   if (known || (cached && now - cached.fetchedAt < REFETCH_INTERVAL)) return known;
-  const response = await fetcher(issuer + '/cdn-cgi/access/certs', { redirect: 'error', signal: AbortSignal.timeout(5000) });
+  // Workers reject redirect: 'error'. 'manual' leaves a redirect unfollowed, and its 3xx status fails the check below.
+  const response = await fetcher(issuer + '/cdn-cgi/access/certs', { redirect: 'manual', signal: AbortSignal.timeout(5000) });
   if (!response.ok) throw new Error('Cloudflare Access keys returned HTTP ' + response.status + '.');
   const { keys } = await response.json() as { keys?: Jwk[] };
   if (!Array.isArray(keys)) throw new Error('Cloudflare Access returned no signing keys.');
