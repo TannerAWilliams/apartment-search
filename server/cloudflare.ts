@@ -1,8 +1,9 @@
 import { type Context, Hono } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import * as v from 'valibot';
-import { api, jsonBodies, type ApiVariables, type SyncJob } from './api.ts';
-import { RefreshCheck } from './api-inputs.ts';
+import { api } from './api.ts';
+import { jsonBodies, type ApiVariables, type SyncJob } from './routes/context.ts';
+import { RefreshCheckSchema } from './routes/inputs.ts';
 import type { AppEnv, Bucket } from './contracts.ts';
 import { createD1Bucket, type D1Database } from './d1-bucket.ts';
 import { secretsEqual } from './secrets.ts';
@@ -132,7 +133,7 @@ app.post('/api/refresh', async (c, next) => {
     // A copy, so the API still reads the body itself.
     const body: unknown = await c.req.raw.clone().json().catch(() => undefined);
     if (body === undefined) return void (c.res = fail(c, 400, 'Send a JSON request.'));
-    if (!v.is(RefreshCheck, body)) return void (c.res = fail(c, 403, 'Public refresh cannot import listing data.'));
+    if (!v.is(RefreshCheckSchema, body)) return void (c.res = fail(c, 403, 'Public refresh cannot import listing data.'));
     await next();
   });
 });

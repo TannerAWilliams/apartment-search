@@ -130,10 +130,8 @@ export async function routeCommutes<T extends { latitude?: unknown; longitude?: 
   });
 }
 
-export async function geocodeAddress(address: unknown, fetcher: SourceFetch = fetch) {
-  if (typeof address !== 'string' || address.trim().length < 4 || address.length > 160) {
-    throw new SearchInputError('Enter a full street address with city, state and ZIP.');
-  }
+/** One Census geocoder match for a street address (already checked by GeocodeRequestSchema or SearchFiltersSchema). */
+export async function geocodeAddress(address: string, fetcher: SourceFetch = fetch) {
   const query = new URLSearchParams({
     address,
     benchmark: 'Public_AR_Current',

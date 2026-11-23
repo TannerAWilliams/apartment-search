@@ -2,9 +2,10 @@ import { test } from 'bun:test';
 import assert from 'node:assert/strict';
 import { bedroomLabel, parseFilters, SearchInputError } from '../src/search.ts';
 import { listingLinkLabel } from '../src/listings.ts';
-import { geocodeAddress, routeCommutes } from '../server/commute.ts';
+import { routeCommutes } from '../server/commute.ts';
+import { handleApi } from './fixtures/api.ts';
 import { createMemoryBucket } from './fixtures/memory-bucket.ts';
-import { sentJson } from './fixtures/json.ts';
+import { readJson, sentJson, type ErrorBody } from './fixtures/json.ts';
 import type { TravelTimeRequest } from '../server/commute.ts';
 
 test('bedroom labels read naturally', () => {
@@ -28,7 +29,12 @@ test('links say whether they open the live listing or an earlier copy', () => {
 test('address geocoding refuses input that cannot be a street address without a request', async () => {
   let requests = 0;
   const fetcher = async () => { requests++; return new Response('{}'); };
-  for (const address of [undefined, 42, 'NY', 'x'.repeat(161)]) await assert.rejects(geocodeAddress(address, fetcher), /full street address/);
+  for (const address of [undefined, 42, 'NY', 'x'.repeat(161)]) {
+    const response = await handleApi(new Request('https://app.test/api/geocode', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ address }) }), {}, { fetcher });
+    assert.equal(response.status, 422);
+    assert.match((await readJson<ErrorBody>(response)).error, /full street address/);
+  }
   assert.equal(requests, 0);
 });
 

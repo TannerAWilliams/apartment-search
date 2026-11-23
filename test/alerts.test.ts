@@ -1,7 +1,7 @@
 import { afterEach, test } from 'bun:test';
 import assert from 'node:assert/strict';
 import { addDevice, addRule, checkAlerts, composeAlert, deleteRule, readDevices, readRecent, readRules, removeDevice, validateRule, MAX_RULES } from '../server/alerts.ts';
-import { handleApi } from '../server/api.ts';
+import { handleApi } from './fixtures/api.ts';
 import { log } from '../server/log.ts';
 import { toBase64Url } from '../src/base64url.ts';
 import { createMemoryBucket } from './fixtures/memory-bucket.ts';

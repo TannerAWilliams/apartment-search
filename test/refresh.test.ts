@@ -5,7 +5,8 @@ import { gzipSync, strToU8 } from 'fflate';
 import { parseFirstMoverCsv } from '../server/firstmover.ts';
 import { housingDate } from '../server/housing.ts';
 import { refreshSources, saveObservedSnapshot, refreshStatus, sourceRecent, storedDirectRentals, storedFeed, storedHousing, storedMarket } from '../server/refresh.ts';
-import { handleApi, search } from '../server/api.ts';
+import { handleApi } from './fixtures/api.ts';
+import { search } from '../server/search.ts';
 import { APARTMENTS_LIVE } from '../server/apartments-com.ts';
 import { STREETEASY_LIVE } from '../server/streeteasy.ts';
 import { normalizeListing } from '../src/listings.ts';
@@ -18,6 +19,7 @@ import { type GraphQlRequest, readJson, sentJson } from './fixtures/json.ts';
 import type { RefreshInfo } from '../src/api-client.ts';
 import type { SearchResult } from '../src/domain.ts';
 import type { RentMarket } from '../src/rent-history.ts';
+import { parseFilters } from '../src/search.ts';
 
 const CSV = [
   'id,street,unit,state,zip_code,neighborhood,latitude,longitude,bedrooms,price,url,created_at_utc,building_type,ignored',
@@ -316,9 +318,9 @@ test('a rate-limited feed retains cached data and waits until its Retry-After ti
   assert.equal(required(status).updatedAt, at.toISOString());
   const due = Date.parse(required(required(status).retryAt));
   assert.ok(due >= now.getTime() + 600_000);
-  const filters = { bedrooms: 2, zip: '07302' };
+  const filters = parseFilters({ bedrooms: 2, zip: '07302' });
   assert.equal((await search(filters, env)).matches[0].kind, 'cached');
-  assert.equal((await search({ ...filters, liveOnly: true }, env)).total, 0);
+  assert.equal((await search(parseFilters({ ...filters, liveOnly: true }), env)).total, 0);
 
   const deferred = await refreshSources(env, { fetcher, now: new Date(due - 1), onDemand: true });
   assert.deepEqual(deferred.sources.find(({ id }: { id: string }) => id === feed.id), status);
@@ -355,8 +357,8 @@ test('an approved marketplace feed syncs every page before replacing its saved i
   assert.equal(required(status).status, 'updated');
   assert.equal(required(status).pages, 2);
   assert.equal(required(status).listingCount, 5001);
-  assert.equal((await search({ bedrooms: 1, region: 'brooklyn', maxRent: null, liveOnly: true }, env)).total, 5001);
-  assert.equal((await search({ bedrooms: 1, region: 'brooklyn', maxRent: 5000, liveOnly: true }, env)).total, 0);
+  assert.equal((await search(parseFilters({ bedrooms: 1, region: 'brooklyn', maxRent: null, liveOnly: true }), env)).total, 5001);
+  assert.equal((await search(parseFilters({ bedrooms: 1, region: 'brooklyn', maxRent: 5000, liveOnly: true }), env)).total, 0);
   const base = { listings: [home], total: 2 };
   for (const [index, next] of ['https://different.example/rentals', '/rentals', null].entries()) {
     first = { ...base, next };
@@ -395,15 +397,15 @@ test('a failed StreetEasy refresh retains its previous listing as cached', async
     firstmover, housingconnect, [STREETEASY_LIVE.id]: { listings: [listing], pages: 10 },
   } });
   assert.ok(sourceRecent(saved, STREETEASY_LIVE.id, now));
-  assert.equal((await search({ bedrooms: 1, zip: '11215', liveOnly: true }, env)).total, 1);
+  assert.equal((await search(parseFilters({ bedrooms: 1, zip: '11215', liveOnly: true }), env)).total, 1);
   const failed = await refreshSources(env, { now: newer, imports: {
     firstmover: { ...firstmover, changed: false }, housingconnect, [STREETEASY_LIVE.id]: null,
   } });
-  const matches = (await search({ bedrooms: 1, zip: '11215' }, env)).matches;
+  const matches = (await search(parseFilters({ bedrooms: 1, zip: '11215' }), env)).matches;
   assert.equal(matches.length, 1);
   assert.equal(matches[0].rent, 2500);
   assert.equal(matches[0].sources[0].kind, 'cached');
-  assert.equal((await search({ bedrooms: 1, zip: '11215', liveOnly: true }, env)).total, 0);
+  assert.equal((await search(parseFilters({ bedrooms: 1, zip: '11215', liveOnly: true }), env)).total, 0);
 
   const status = failed.sources.find(({ id }: { id: string }) => id === STREETEASY_LIVE.id);
   assert.equal(required(status).status, 'failed');
@@ -477,9 +479,9 @@ test('a resync reads StreetEasy v6 each time and checks Apartments.com in both b
   assert.equal(v6Requests(), 2);
   await refreshSources(env, { onDemand: true, fetcher });
   assert.equal(v6Requests(), 4, 'a resync is never skipped because saved data is recent');
-  const filters = { region: 'brooklyn', bedrooms: 2, maxRent: null, liveOnly: true, source: 'apartments' };
+  const filters = parseFilters({ region: 'brooklyn', bedrooms: 2, maxRent: null, liveOnly: true, source: 'apartments' });
   assert.equal((await search(filters, env)).total, 2);
-  assert.equal((await search({ ...filters, maxRent: 5000 }, env)).total, 0);
+  assert.equal((await search(parseFilters({ ...filters, maxRent: 5000 }), env)).total, 0);
 });
 
 test('a previous live sample remains searchable under All results after it ages out', async () => {
@@ -491,10 +493,10 @@ test('a previous live sample remains searchable under All results after it ages 
     housingconnect: { opportunities: [] },
     [STREETEASY_LIVE.id]: { listings: [listing], pages: 10 },
   } });
-  const filters = { bedrooms: 1, zip: '11215' };
+  const filters = parseFilters({ bedrooms: 1, zip: '11215' });
   const all = await search(filters, env);
   assert.deepEqual(all.matches.map(({ kind, rent }) => [kind, rent]), [['cached', 2500]]);
-  assert.equal((await search({ ...filters, liveOnly: true }, env)).total, 0);
+  assert.equal((await search(parseFilters({ ...filters, liveOnly: true }), env)).total, 0);
 });
 
 test('a new FirstMover month keeps the previous published medians in the six-month chart', async () => {

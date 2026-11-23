@@ -1,7 +1,7 @@
 import { test } from 'bun:test';
 import assert from 'node:assert/strict';
 import { gzipSync, strToU8 } from 'fflate';
-import { handleApi } from '../server/api.ts';
+import { handleApi } from './fixtures/api.ts';
 import { createMemoryBucket } from './fixtures/memory-bucket.ts';
 import { buildingKey, normalizeListing } from '../src/listings.ts';
 import type { Bucket, HousingResponse } from '../server/contracts.ts';

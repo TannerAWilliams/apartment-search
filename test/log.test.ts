@@ -1,7 +1,7 @@
 import { afterEach, test } from 'bun:test';
 import assert from 'node:assert/strict';
 import { log } from '../server/log.ts';
-import { handleApi } from '../server/api.ts';
+import { handleApi } from './fixtures/api.ts';
 import type { Bucket } from '../server/contracts.ts';
 import { logRecord } from './fixtures/json.ts';
 

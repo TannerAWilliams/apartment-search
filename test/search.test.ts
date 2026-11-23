@@ -9,7 +9,9 @@ import { listingKey, mergeListings, normalizeListing, sourceLink } from '../src/
 import { localSearch, median, rentAreas, SNAPSHOT_MONTH } from '../src/market.ts';
 import { marketSnapshot } from '../src/bundled-market.ts';
 import { IMPORT_COLUMNS, parseListingImport } from '../src/import-listings.ts';
-import { appConfig, handleApi, search } from '../server/api.ts';
+import { handleApi } from './fixtures/api.ts';
+import { search } from '../server/search.ts';
+import { appConfig } from '../server/app-config.ts';
 import { type ErrorBody, readJson, sentJson } from './fixtures/json.ts';
 import type { TravelTimeRequest } from '../server/commute.ts';
 

@@ -1,7 +1,7 @@
 import { required } from './test-values.ts';
 import { test, expect } from 'bun:test';
 import { dashboardSnapshot } from '../server/dashboard-snapshot.ts';
-import { handleApi } from '../server/api.ts';
+import { handleApi } from './fixtures/api.ts';
 import { formatDashboardValue } from '../src/dashboard-data.ts';
 import { readJson, type ErrorBody } from './fixtures/json.ts';
 

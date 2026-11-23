@@ -1,6 +1,6 @@
 import { test } from 'bun:test';
 import assert from 'node:assert/strict';
-import { handleApi } from '../server/api.ts';
+import { handleApi } from './fixtures/api.ts';
 import { createMemoryBucket } from './fixtures/memory-bucket.ts';
 import { OPENIGLOO_TRANSPORT } from '../server/openigloo.ts';
 import { refreshSources, refreshStatus } from '../server/refresh.ts';

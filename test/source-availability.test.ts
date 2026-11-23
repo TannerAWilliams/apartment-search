@@ -1,7 +1,8 @@
 import { required } from './test-values.ts';
 import { test } from 'bun:test';
 import assert from 'node:assert/strict';
-import { handleApi, search } from '../server/api.ts';
+import { handleApi } from './fixtures/api.ts';
+import { search } from '../server/search.ts';
 import { createMemoryBucket } from './fixtures/memory-bucket.ts';
 import { refreshSources, storedDirectRentals } from '../server/refresh.ts';
 import { COMPASS_LIVE, parseCompassPage } from '../server/compass.ts';
@@ -11,6 +12,7 @@ import { parseRedfinPage } from '../server/redfin.ts';
 import { normalizeListing } from '../src/listings.ts';
 import { readJson } from './fixtures/json.ts';
 import type { ApiConfig, ConfigSource, RefreshInfo } from '../src/api-client.ts';
+import { parseFilters } from '../src/search.ts';
 
 const at = new Date(Date.now() - 10_000);
 const source = { id: 'compass', name: 'Compass', kind: 'feed' };
@@ -73,7 +75,7 @@ test('an approved RESO feed imports paginated active rentals and skips rows with
   assert.equal(saved?.listingCount, 1);
   assert.equal(saved?.total, 3);
   assert.equal(requests.length, 2);
-  const searched = await search({ source: 'rebny-rls', region: 'nyc', liveOnly: true }, env);
+  const searched = await search(parseFilters({ source: 'rebny-rls', region: 'nyc', liveOnly: true }), env);
   assert.equal(searched.total, 1);
   assert.equal(searched.matches[0]?.rent, 2650);
   assert.equal(searched.matches[0]?.sources[0]?.url, listing.ListingURL);
@@ -116,14 +118,14 @@ test('partial refresh keeps older units dated and cached, and a complete refresh
   const old = saved.listings.find(item => item.unit === 'C')!;
   assert.equal(old.kind, 'cached');
   assert.equal(old.checkedAt, at.toISOString());
-  assert.equal((await search({ liveOnly: true }, env)).total, 2);
-  const visible = await search({ liveOnly: true, includeCached: true, includeMap: true }, env);
+  assert.equal((await search(parseFilters({ liveOnly: true }), env)).total, 2);
+  const visible = await search(parseFilters({ liveOnly: true, includeCached: true, includeMap: true }), env);
   assert.equal(visible.total, 3);
   assert.equal(visible.inventoryExpiresAt, undefined);
   assert.equal(visible.mapPoints?.length, 3);
   await refreshSources(env, { sourceId: COMPASS_LIVE.id, now: new Date(at.getTime() + 2000),
     imports: { [COMPASS_LIVE.id]: { listings: [row(1, 'A')], pages: 3 } } });
-  assert.equal((await search({ liveOnly: true, includeCached: true }, env)).total, 1);
+  assert.equal((await search(parseFilters({ liveOnly: true, includeCached: true }), env)).total, 1);
 });
 
 test('Apartment List imports identified available units without collapsing units sharing a property URL', () => {
@@ -191,12 +193,12 @@ test('the existing StreetEasy resync checks the configured feed, preserves inven
   } });
   const updated = await readJson<RefreshInfo>(run(1));
   assert.equal(updated.sources.find(({ id }) => id === 'streeteasy-live')?.transport, 'partner-feed');
-  const results = await search({ source: 'streeteasy', liveOnly: true }, env);
+  const results = await search(parseFilters({ source: 'streeteasy', liveOnly: true }), env);
   assert.equal(results.matches[0]?.sources[0].url, listing.url);
   assert.equal(results.sources.filter(({ id }) => id === 'streeteasy').length, 1);
   const failed = await readJson<RefreshInfo>(run(2));
   assert.equal(failed.sources.find(({ id }) => id === 'streeteasy-live')?.status, 'failed');
-  const cached = await search({ source: 'streeteasy', liveOnly: true, includeCached: true }, env);
+  const cached = await search(parseFilters({ source: 'streeteasy', liveOnly: true, includeCached: true }), env);
   assert.equal(cached.matches[0]?.sources[0].url, listing.url);
   assert.equal(cached.matches[0]?.kind, 'cached');
 });
@@ -228,7 +230,7 @@ test('StreetEasy resync can read the public active search as a bounded sample', 
   assert.equal(status.total, 15000);
   assert.equal(status.listingCount, 1);
   assert.equal(status.pages, 1);
-  const results = await search({ source: 'streeteasy', liveOnly: true }, env);
+  const results = await search(parseFilters({ source: 'streeteasy', liveOnly: true }), env);
   assert.equal(results.total, 1);
   assert.equal(results.matches[0]?.sources[0].url, 'https://streeteasy.com/rental/12');
   assert.ok(results.notices.some(notice => notice.includes('first page of the public NYC and New Jersey rental search')));
@@ -292,7 +294,7 @@ test('a complete StreetEasy export syncs all rows in one request and preserves t
   assert.equal(first.sources[0].updatedAt, generatedAt);
   assert.equal(first.sources[0].listingCount, 601);
   assert.equal(first.sources[0].requestTransport, complete.schema);
-  const result = await search({ liveOnly: true, source: 'streeteasy' }, env);
+  const result = await search(parseFilters({ liveOnly: true, source: 'streeteasy' }), env);
   assert.equal(result.total, 601);
   const config = await (await handleApi(new Request('https://app.test/api/config'), env)).text();
   const streetEasy = (JSON.parse(config) as { sources: (ConfigSource & { coverage?: string })[] }).sources.find(({ id }) => id === 'streeteasy');

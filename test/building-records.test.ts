@@ -1,6 +1,6 @@
 import { test, expect } from 'bun:test';
 import { exactBuildingAddress, retrieveBuildingRecords } from '../server/building-records.ts';
-import { handleApi } from '../server/api.ts';
+import { handleApi } from './fixtures/api.ts';
 import { readJson } from './fixtures/json.ts';
 const address = { address: '123 MAIN STREET', city: 'Brooklyn', state: 'NY', zip: '11201' };
 const bbl = '3000120004';

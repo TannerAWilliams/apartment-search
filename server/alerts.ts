@@ -1,8 +1,9 @@
 import type { ListingData } from '../src/domain.ts';
 import { checkObservedChanges, MAX_BASELINE_UNITS, type ChangeBaseline, type ObservedChange } from '../src/observed-changes.ts';
 import { localWorkplace, needsCommute, parseFilters, SearchInputError } from '../src/search.ts';
-import type { Bucket } from './contracts.ts';
+import type { AppEnv, Bucket } from './contracts.ts';
 import { log } from './log.ts';
+import { offline, search } from './search.ts';
 import { sendPush, validSubscription, type PushSubscriptionJson, type VapidKeys } from './web-push.ts';
 import * as v from 'valibot';
 
@@ -167,4 +168,31 @@ export async function checkAlerts(bucket: Bucket, loadMatches: (filters: AlertRu
   const delivered = await deliver(bucket, alerts, channels, origin);
   log.info('alerts_sent', { alerts: alerts.length, email: delivered.email, devices: delivered.devices });
   return { alerts, delivered };
+}
+
+/** The channels alerts can use: email when the Email Service binding and sender are set, push when VAPID keys are. */
+export function alertChannels(env: AppEnv): AlertChannels {
+  const to = (env.ACCESS_ALLOWED_EMAILS ?? '').split(',').map((email) => email.trim()).filter(Boolean);
+  return {
+    email: env.ALERT_EMAIL && env.ALERT_EMAIL_FROM && to.length ? env.ALERT_EMAIL : null, from: env.ALERT_EMAIL_FROM, to,
+    vapid: env.VAPID_PUBLIC_KEY && env.VAPID_PRIVATE_KEY && env.VAPID_SUBJECT
+      ? { publicKey: env.VAPID_PUBLIC_KEY, privateKey: env.VAPID_PRIVATE_KEY, subject: env.VAPID_SUBJECT } : null,
+  };
+}
+
+/** A rule's current matches, from saved inventory only. */
+export const alertMatches = (env: AppEnv) => async (filters: AlertRule['filters']) => (await search(filters, env, offline, true)).matches;
+
+/** Checks every saved alert against the saved inventory; runs after refreshes, never on a schedule. */
+export async function runAlerts(env: AppEnv, origin = env.APP_ORIGIN ?? '') {
+  if (!env.BUCKET) return null;
+  return checkAlerts(env.BUCKET, alertMatches(env), alertChannels(env), { origin });
+}
+
+/** What the Alerts page shows: rules, recent alerts, devices (without their push addresses) and the channels set up. */
+export async function alertState(env: AppEnv & { BUCKET: Bucket }) {
+  const channels = alertChannels(env);
+  const [rules, devices, recent] = await Promise.all([readRules(env.BUCKET), readDevices(env.BUCKET), readRecent(env.BUCKET)]);
+  return { rules, recent, devices: devices.map(({ label, createdAt }) => ({ label, createdAt })),
+    channels: { email: Boolean(channels.email), push: channels.vapid ? { publicKey: channels.vapid.publicKey } : null } };
 }
