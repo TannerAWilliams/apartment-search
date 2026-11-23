@@ -22,6 +22,8 @@ export function Filters({
   setToken,
   connect,
   onSignedIn,
+  account,
+  onSignOut,
   panel,
   commuteConfigured,
 }: {
@@ -35,6 +37,9 @@ export function Filters({
   connect: () => void;
   /** After an email-code sign-in, with the session token for the native app. */
   onSignedIn: (token: string) => void;
+  /** The email signed in with a code, with a way to sign out. */
+  account: string | null;
+  onSignOut: () => void;
   panel: string;
   commuteConfigured: boolean;
 }) {
@@ -265,6 +270,14 @@ export function Filters({
         <Button secondary onPress={connect}>
           Retry connection
         </Button>
+      )}
+      {serverState === 'ready' && account && panel === 'more' && (
+        <View style={styles.tokenForm}>
+          <Text style={styles.smallMuted}>Signed in as {account}</Text>
+          <Button secondary onPress={onSignOut}>
+            Sign out
+          </Button>
+        </View>
       )}
       {serverState === 'locked' && <SignIn onSignedIn={onSignedIn} />}
       {serverState === 'locked' && (

@@ -176,3 +176,13 @@ test('costly routes are limited per signed-in person, and other routes are not',
   await post(open, '/api/search', {});
   expect(keys.slice(-2)).toEqual(['SEARCH_LIMIT:ip:203.0.113.9', 'SEARCH_LIMIT:ip:unknown']);
 });
+
+test('the app is told who is signed in, and signing out ends the session', async () => {
+  const { env, sent } = await environment();
+  const { token } = await signIn(env, sent);
+  const bearer = { Authorization: 'Bearer ' + token };
+  const config = await call(env, '/api/config', { headers: bearer });
+  expect(((await config.json()) as { account?: string }).account).toBe(ALLOWED);
+  expect((await post(env, '/api/auth/sign-out', {}, bearer)).status).toBe(200);
+  expect((await call(env, '/api/config', { headers: bearer })).status).toBe(401);
+});

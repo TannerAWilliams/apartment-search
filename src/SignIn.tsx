@@ -6,7 +6,6 @@ import { styles } from './styles.ts';
 import { Button, Field } from './ui.tsx';
 
 async function post(path: string, body: object) {
-  if (API_ORIGIN === null) throw new Error('Could not reach the apartment search server.');
   const response = await fetch(`${API_ORIGIN}/api/auth/${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

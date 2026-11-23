@@ -31,7 +31,7 @@ type Environment = AppEnv & {
   LOOKUP_LIMIT?: RateLimit;
 };
 type RateLimit = { limit(options: { key: string }): Promise<{ success: boolean }> };
-type Worker = { Bindings: Environment; Variables: ApiVariables & { signedIn: boolean; caller: string } };
+type Worker = { Bindings: Environment; Variables: ApiVariables & { signedIn: boolean; caller: string; account: string | null } };
 
 /** The costly routes and the limit each counts against. Search can also ask TravelTime for commute times. */
 const LIMITED_ROUTES: Record<string, 'SEARCH_LIMIT' | 'LOOKUP_LIMIT'> = {
@@ -156,6 +156,7 @@ app.use(async (c, next) => {
     return fail(c, 403, 'Cross-origin request rejected.');
   }
   c.set('signedIn', signedIn);
+  c.set('account', session);
   // Limits count per person: the signed-in email, the app access token, or else the visitor's address.
   c.set('caller', session ?? (bearer ? 'app-access-token' : 'ip:' + (c.req.header('CF-Connecting-IP') ?? 'unknown')));
   return next();
@@ -183,6 +184,7 @@ app.use('/api/*', async (c, next) => {
   c.set('appEnv', appEnv);
   c.set('services', {
     privateAuthenticated: c.var.signedIn,
+    account: c.var.account,
     fetcher: (url, options) => fetch(url, options),
     waitUntil: ctx ? (work) => ctx.waitUntil(work) : undefined,
     syncJob: env.SYNC_WORKFLOW ? workflowJob(env.SYNC_WORKFLOW, appEnv.BUCKET) : undefined,

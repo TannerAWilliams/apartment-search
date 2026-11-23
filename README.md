@@ -83,7 +83,18 @@ bun run dev          # build the web app and serve it at http://localhost:8787
 
 `bun run dev` runs the real Worker locally with Wrangler, a local D1 database and a local Workflow, and sets `PUBLIC_APP=true` so the browser needs no token. Local data stays in `deploy/cloudflare/.wrangler/`. Put optional local credentials in `deploy/cloudflare/.dev.vars` (copy `.dev.vars.example`; Git ignores it). Rebuild after changing the app with `bun run build:web`; Wrangler reloads server changes itself.
 
-`bun run start`, `bun run ios` and `bun run android` open the app in Expo. A native build reaches the API through `EXPO_PUBLIC_API_URL` and asks for the access token.
+`bun run start`, `bun run ios` and `bun run android` open the app in Expo. The native app talks to `https://apartments.5thof6.com` unless `EXPO_PUBLIC_API_URL` names another server (such as `http://localhost:8787`), and signs in with an email code like the web app; it keeps its session in the device's secure storage. **More → Sign out** ends the session.
+
+**App Store builds** use [EAS Build](https://docs.expo.dev/build/introduction/) with the profiles in `eas.json` (`development` for the iOS simulator, `preview` for testers, `production` for the stores; each points at the production server). The App Store build shows only official sources (`SEARCH_DEFAULTS.officialOnly`). The first time, from your own computer:
+
+```sh
+bunx eas-cli login
+bunx eas-cli init                                  # links the app to your Expo account (adds its project ID to app.json)
+bunx eas-cli build --platform ios --profile production
+bunx eas-cli submit --platform ios                 # uploads the build to App Store Connect
+```
+
+EAS keeps the build number and asks for your Apple Developer account the first time. `assets/icon.png` is the 1024×1024 store icon. App Store Connect also needs screenshots, a privacy policy URL and the privacy answers (the app collects the email you sign in with).
 
 | Variable | Where | Purpose |
 | --- | --- | --- |

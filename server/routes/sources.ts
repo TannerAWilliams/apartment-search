@@ -28,9 +28,10 @@ export const sourceRoutes = factory
       log.error('feed_settings_invalid', cause);
       return fail(c, 503, 'The free feed settings need to be corrected on the server.');
     }
-    if (!env.BUCKET) return c.json(config, 200);
+    const account = c.var.services.account ? { account: c.var.services.account } : {};
+    if (!env.BUCKET) return c.json({ ...config, ...account }, 200);
     try {
-      return c.json(await savedAppConfig({ ...env, BUCKET: env.BUCKET }, config), 200);
+      return c.json({ ...(await savedAppConfig({ ...env, BUCKET: env.BUCKET }, config)), ...account }, 200);
     } catch (cause) {
       log.error('storage_read_failed', cause, { path: c.req.path });
       return fail(c, 503, 'Saved source data could not be read. Try again shortly.');

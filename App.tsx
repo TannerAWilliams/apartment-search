@@ -85,6 +85,8 @@ function ApartmentSearch() {
     serverState,
     connect,
     signedIn,
+    signOut,
+    account,
     configuredSources,
     companies,
     sourceCatalog,
@@ -307,6 +309,8 @@ function ApartmentSearch() {
                 commuteConfigured={commuteConfigured}
                 connect={connect}
                 onSignedIn={signedIn}
+                account={account}
+                onSignOut={() => void signOut()}
               />
               {expanded !== 'commute' && (
                 <WebsiteFilter

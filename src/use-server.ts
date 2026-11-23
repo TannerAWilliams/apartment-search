@@ -30,7 +30,7 @@ type SearchLink = {
 };
 
 export function useServer({ appliedFilters, searchVersion, submitted, setResult, setError, setExpanded }: SearchLink) {
-  const [serverState, setServerState] = useState(API_ORIGIN === null ? 'offline' : 'checking');
+  const [serverState, setServerState] = useState('checking');
   const [connectionAttempt, setConnectionAttempt] = useState(0);
   const [configuredSources, setConfiguredSources] = useState<ConfigSource[]>([]);
   const [companies, setCompanies] = useState<Record<string, number>>({});
@@ -46,6 +46,7 @@ export function useServer({ appliedFilters, searchVersion, submitted, setResult,
   const [activeToken, setActiveToken] = useState('');
   const [commuteConfigured, setCommuteConfigured] = useState(false);
   const [dashboardAvailable, setDashboardAvailable] = useState(false);
+  const [account, setAccount] = useState<string | null>(null);
 
   const failedSources = refresh?.sources.filter(({ status }) => status === 'failed') ?? [];
   const freshness = refreshing
@@ -66,6 +67,7 @@ export function useServer({ appliedFilters, searchVersion, submitted, setResult,
     setSourceCatalog(official(catalog));
     setCommuteConfigured(config.commuteConfigured === true);
     setDashboardAvailable(config.dashboardAvailable === true);
+    setAccount(config.account ?? null);
     setCompanies(config.companies ?? {});
     setRefresh(config.refresh ?? null);
     setRefreshClock(Date.now());
@@ -164,7 +166,6 @@ export function useServer({ appliedFilters, searchVersion, submitted, setResult,
   );
 
   useEffect(() => {
-    if (API_ORIGIN === null) return;
     setServerState('checking');
     const controller = new AbortController();
     sourceSession.current = controller.signal;
@@ -252,6 +253,19 @@ export function useServer({ appliedFilters, searchVersion, submitted, setResult,
     }
     setConnectionAttempt((attempt) => attempt + 1);
   };
+  /** Ends the email-code session on the server and forgets it here, then shows the sign-in form. */
+  const signOut = async () => {
+    await fetch(`${API_ORIGIN}/api/auth/sign-out`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(activeToken ? { Authorization: `Bearer ${activeToken}` } : {}) },
+      credentials: 'include',
+      body: '{}',
+    }).catch(() => {});
+    await saveSessionToken('').catch(() => {});
+    setAccount(null);
+    setActiveToken('');
+    setConnectionAttempt((attempt) => attempt + 1);
+  };
   // The native app signs in with the session token it saved last time.
   useEffect(() => {
     void savedSessionToken().then((saved) => {
@@ -263,6 +277,8 @@ export function useServer({ appliedFilters, searchVersion, submitted, setResult,
     serverState,
     connect,
     signedIn,
+    signOut,
+    account,
     configuredSources,
     companies,
     sourceCatalog,

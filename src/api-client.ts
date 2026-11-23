@@ -22,6 +22,8 @@ export type ApiConfig = {
   browserImportAllowed?: boolean;
   dashboardAvailable?: boolean;
   storageMode?: string;
+  /** The email signed in with an email code; absent for the access token or a public app. */
+  account?: string;
 };
 type ApiOptions = { body?: object; token?: string; signal?: AbortSignal };
 type ApiError = Error & { refreshRetryAt: number; status: number; commuteError: boolean };

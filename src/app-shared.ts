@@ -27,7 +27,9 @@ export const failureInfo = (value: unknown) => ({
       : 0,
 });
 
-export const API_ORIGIN = Platform.OS === 'web' ? '' : process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, '') || null;
+/** The deployed server, which the native app uses unless EXPO_PUBLIC_API_URL names another (such as a local one). */
+const PRODUCTION_ORIGIN = 'https://apartments.5thof6.com';
+export const API_ORIGIN = Platform.OS === 'web' ? '' : process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, '') || PRODUCTION_ORIGIN;
 export const WEB_MAP = Platform.OS === 'web';
 export const SEARCH_DEFAULTS: SearchFilters = {
   ...DEFAULT_FILTERS,

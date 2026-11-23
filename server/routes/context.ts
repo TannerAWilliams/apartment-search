@@ -13,8 +13,10 @@ import type { SourceFetch } from '../refresh.ts';
 export type SyncJob = { start(delay: boolean, sources?: string[]): Promise<void>; pending(): Promise<string | boolean | null> };
 /** What a request can use besides the settings and storage. The Worker entry passes the real ones; tests pass stand-ins. */
 export type ApiServices = {
-  /** Signed in with Cloudflare Access or the app access token. */
+  /** Signed in with an email code or the app access token. */
   privateAuthenticated: boolean;
+  /** The email of the person signed in with an email code, so the app can offer to sign out. */
+  account?: string | null;
   fetcher: SourceFetch;
   /** Runs work after the response is sent: the Worker's `ctx.waitUntil`. */
   waitUntil?: (work: Promise<unknown>) => void;
