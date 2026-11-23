@@ -1,5 +1,5 @@
 import type { AppEnv } from './contracts.ts';
-import { isRecord, type ListingData, type Point, type Workplace, type SearchFilters } from '../src/domain.ts';
+import { isRecord, type Point, type SearchFilters } from '../src/domain.ts';
 import type { SourceFetch } from './refresh.ts';
 import type { Bucket } from './contracts.ts';
 import { gunzipSync, gzipSync, strFromU8, strToU8 } from 'fflate';
@@ -25,7 +25,7 @@ const coords = ({ latitude: lat, longitude: lng }: Point) => ({ lat, lng });
 const pointKey = ({ latitude, longitude }: Point) => `${latitude},${longitude}`;
 
 /** Typical weekday-morning estimates change slowly, so routed times are reused for a week. */
-export const COMMUTE_CACHE_DAYS = 7;
+const COMMUTE_CACHE_DAYS = 7;
 const COMMUTE_CACHE_LIMIT = 60_000;
 /** A TravelTime time-filter request: every listing to one workplace, by transit and by car. */
 export type TravelTimeRequest = {

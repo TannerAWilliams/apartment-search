@@ -1,5 +1,4 @@
 import type { ListingData } from './domain.ts';
-import React from 'react';
 import { Text, View } from 'react-native';
 import { savedCommuteEstimate } from './commute-estimate.ts';
 import { styles } from './styles.ts';

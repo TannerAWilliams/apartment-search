@@ -1,12 +1,10 @@
 import base64 from 'base64-js';
 import { gunzipSync, strFromU8 } from 'fflate';
-import type { ListingData, SearchFilters } from './domain.ts';
+import type { ListingData } from './domain.ts';
 import { SNAPSHOT_GZIP } from './data/snapshot.ts';
 import { RENT_HISTORY_GZIP } from './data/rent-history.ts';
-import { SNAPSHOT_MONTH } from './data/snapshot-month.ts';
-import { decodeMarketRows, localSearch, type MarketRow } from './market.ts';
+import { decodeMarketRows, type MarketRow } from './market.ts';
 import { priorRentMonths, type PackedRentRow, type RentHistory } from './rent-history.ts';
-import { localWorkplace } from './search.ts';
 
 /**
  * The FirstMover snapshot and rent history bundled with the code (about 770 KB). The Worker falls back
@@ -22,13 +20,6 @@ const unpack = <T>(encoded: string) => JSON.parse(strFromU8(gunzipSync(base64.to
 export function marketSnapshot() {
   snapshot ??= decodeMarketRows(unpack<MarketRow[]>(SNAPSHOT_GZIP));
   return snapshot;
-}
-
-export function snapshotSearch(filters: SearchFilters, workplace = localWorkplace(filters), market = { month: SNAPSHOT_MONTH, listings: marketSnapshot() }) {
-  const result = localSearch(market.listings, filters, workplace, 'snapshot', [
-    { id: 'streeteasy', name: 'StreetEasy', status: 'snapshot' },
-  ]);
-  return { ...result, snapshotMonth: market.month };
 }
 
 export function bundledRentAreas(month: string, region: string, grouping: string) {

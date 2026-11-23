@@ -1,5 +1,5 @@
 import type { MapPoint } from './domain.ts';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import L from 'leaflet';
 
 declare module 'leaflet' {

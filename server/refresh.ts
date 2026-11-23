@@ -16,7 +16,6 @@ import { loadOpenigloo, OPENIGLOO_COVERAGE, OPENIGLOO_MAX_LISTINGS, OPENIGLOO_MI
 import { requestForRefresh, retrySchedule } from './source-requests.ts';
 import { log } from './log.ts';
 import { MARKETPLACE_NAMES } from '../src/marketplaces.ts';
-import { CITYREALTY_ID } from './cityrealty.ts';
 import { COMPLETE_SYNC_LIFETIME, completeSync, isCompleteSnapshot, WORKFLOW_SOURCE_IDS } from './source-registry.ts';
 import type { SourceDefinition } from '../src/source-status.ts';
 import { loadStreetEasyPublicSearch, STREETEASY_LIVE, STREETEASY_PUBLIC_COVERAGE, STREETEASY_PUBLIC_TRANSPORT } from './streeteasy.ts';
@@ -78,7 +77,7 @@ export type SourceStatus = CheckResult & {
   error?: string;
 };
 
-export type RefreshState = {
+type RefreshState = {
   sources?: SourceStatus[];
   running?: boolean;
   startedAt?: string;

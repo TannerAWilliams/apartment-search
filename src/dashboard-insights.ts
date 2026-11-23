@@ -1,5 +1,5 @@
 import { METRICS, type DashboardFile } from './dashboard-data.ts';
-export function validDashboardValue(value: number | null | undefined): value is number {
+function validDashboardValue(value: number | null | undefined): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0;
 }
 export function shiftDashboardMonth(month: string, offset: number) {

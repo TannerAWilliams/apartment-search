@@ -4,9 +4,10 @@
  * Worker verifies the token itself: RS256 signature against the team's published keys, issuer, audience,
  * expiry, and an allowlist of emails.
  */
+import { fromBase64Url } from '../src/base64url.ts';
 import { isRecord } from '../src/domain.ts';
 
-export type AccessSettings = { issuer: string; audience: string; emails: string[] };
+type AccessSettings = { issuer: string; audience: string; emails: string[] };
 type Jwk = JsonWebKey & { kid?: string };
 type KeyFetch = (url: string, init?: RequestInit) => Promise<Response>;
 
@@ -39,8 +40,7 @@ async function signingKey(issuer: string, kid: string, fetcher: KeyFetch, now: n
   return keys.find((key) => key.kid === kid);
 }
 
-const base64url = (value: string) => Uint8Array.from(atob(value.replaceAll('-', '+').replaceAll('_', '/')), (char) => char.charCodeAt(0));
-const json = (value: string) => JSON.parse(new TextDecoder().decode(base64url(value)));
+const json = (value: string) => JSON.parse(new TextDecoder().decode(fromBase64Url(value)));
 type TokenHeader = { alg?: unknown; kid?: unknown };
 type TokenClaims = { iss?: unknown; aud?: unknown; email?: unknown; exp?: unknown; nbf?: unknown };
 
@@ -67,6 +67,6 @@ export async function verifyAccessToken(token: string | null, settings: AccessSe
   if (!jwk) return null;
   const key = await crypto.subtle.importKey('jwk', jwk, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['verify']);
   let valid = false;
-  try { valid = await crypto.subtle.verify('RSASSA-PKCS1-v1_5', key, base64url(signature), new TextEncoder().encode(head + '.' + body)); } catch {}
+  try { valid = await crypto.subtle.verify('RSASSA-PKCS1-v1_5', key, fromBase64Url(signature), new TextEncoder().encode(head + '.' + body)); } catch {}
   return valid ? email : null;
 }

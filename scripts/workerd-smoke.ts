@@ -20,7 +20,7 @@ const fakeAccessToken = () => [encode({ alg: 'RS256', kid: 'smoke-test' }), enco
 }), 'c2lnbmF0dXJl'].join('.');
 
 /** A route, the request to send, and what a working Worker answers. */
-export const CHECKS: { path: string; init?: RequestInit; status: number; contains?: string }[] = [
+const CHECKS: { path: string; init?: RequestInit; status: number; contains?: string }[] = [
   { path: '/health', status: 200, contains: 'ok' },
   { path: '/', status: 200, contains: '<div id="root">' },
   { path: '/manifest.webmanifest', status: 200, contains: 'Apartment Search' },

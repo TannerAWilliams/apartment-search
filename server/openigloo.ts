@@ -39,7 +39,7 @@ type Page = { total: number; rows: Row[] };
 /** A JSON-RPC reply from the Openigloo MCP server, and the result of its search tool. */
 type RpcMessage = { id?: unknown; error?: unknown; result?: unknown };
 type ToolResult = { isError?: unknown; content?: { text?: unknown }[]; structuredContent?: { total_matches?: unknown; apartments?: unknown } };
-export type OpeniglooSearch = (search: Search) => Promise<Page>;
+type OpeniglooSearch = (search: Search) => Promise<Page>;
 
 /** Opens an MCP session with Openigloo's public server and returns its search tool. */
 export async function openiglooSearch(fetcher: FetchTransport, wait: (ms: number) => Promise<unknown> = (ms) => new Promise((resolve) => setTimeout(resolve, ms))): Promise<OpeniglooSearch> {
@@ -225,7 +225,7 @@ async function geocodeBuildings(listings: ListingData[], fetcher: FetchTransport
   return listings.map((listing) => ({ ...listing, ...byKey.get([listing.address, listing.zip].join('|').toLowerCase()) }));
 }
 
-export type OpeniglooCrawl = { rows: OpeniglooRow[]; total: number; calls: number; unresolved: number };
+type OpeniglooCrawl = { rows: OpeniglooRow[]; total: number; calls: number; unresolved: number };
 
 /** Turns a complete crawl into saved listings, refusing one that misses too much of the reported inventory. */
 export async function finishOpenigloo(crawl: OpeniglooCrawl, fetcher: FetchTransport, now: Date) {

@@ -3,7 +3,7 @@ import type { retrieveBuildingRecords } from '../server/building-records.ts';
 export type BuildingRecordsResult = Awaited<ReturnType<typeof retrieveBuildingRecords>>;
 export type CheckBuilding = (listing: ListingData, signal: AbortSignal) => Promise<BuildingRecordsResult>;
 import { cachedBuildingReport, buildingRequestIdentity } from './building-report-cache.ts';
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Text, View } from 'react-native';
 import { buildingReport, justFixOwnershipUrl, JUSTFIX_RENT_HISTORY_URL } from './building-report.ts';
 import { styles } from './styles.ts';

@@ -12,7 +12,7 @@ import { homedir, userInfo } from 'node:os';
 import { dirname, join } from 'node:path';
 import { configDir, KEYCHAIN_SERVICE } from './streeteasy-daily.ts';
 
-export const LABEL = 'com.apartment-search.streeteasy';
+const LABEL = 'com.apartment-search.streeteasy';
 const REPO = join(import.meta.dir, '..');
 const PLIST = join(homedir(), 'Library/LaunchAgents', LABEL + '.plist');
 /** Matches this job's cron line, including one from the older shell-script runner. */

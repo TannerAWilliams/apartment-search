@@ -191,4 +191,3 @@ bun run test && bun run build
 | `scripts/` | The StreetEasy home sync and its installer, offline data rebuilds, the workerd smoke test, the Lighthouse audit and the coverage report. All run with Bun. |
 | `test/`, `e2e/` | Bun unit and integration tests, and the Playwright suite ([e2e/README.md](e2e/README.md)). |
 | `docs/`, `investigations/` | Feature and source references, and dated research notes. |
-| `cloudflare/streeteasy-container-test/` | A one-off StreetEasy probe for Cloudflare Containers. Not deployed. |

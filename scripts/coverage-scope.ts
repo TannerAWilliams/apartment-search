@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 
 /** UI modules need React Native, which the unit runner cannot load; the Playwright suite covers them. */
-export const isUiModule = (source: string) => /from ['"](react|react-native|@react-native-async-storage\/[^'"]+)['"]/.test(source);
+const isUiModule = (source: string) => /from ['"](react|react-native|@react-native-async-storage\/[^'"]+)['"]/.test(source);
 
 /** Application modules measured by unit-test coverage, relative to the repository root. */
 export function applicationModules(root: URL) {

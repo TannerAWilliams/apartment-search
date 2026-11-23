@@ -11,7 +11,7 @@ function positiveNumber(value: unknown, max: number, halfSteps = false): number 
   return Number.isFinite(parsed) && parsed > 0 && parsed <= max && (!halfSteps || Number.isInteger(parsed * 2)) ? parsed : null;
 }
 /** Only explicit structured facts, never claims inferred from prose, photos or missing values. */
-export type DiscoveryFacts = { bathrooms: number | null; squareFeet: number | null; petsAllowed: boolean | null; laundry: typeof LAUNDRY_OPTIONS[number] | null };
+type DiscoveryFacts = { bathrooms: number | null; squareFeet: number | null; petsAllowed: boolean | null; laundry: typeof LAUNDRY_OPTIONS[number] | null };
 export function discoveryFacts(row: FactFields | null | undefined): DiscoveryFacts {
   return {
     bathrooms: positiveNumber(row?.bathrooms, 20, true),

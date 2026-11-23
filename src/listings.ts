@@ -22,7 +22,7 @@ export function buildingKey(listing: Pick<ListingData, 'address' | 'state' | 'zi
   return street && listing.zip ? `${listing.state}|${listing.zip}|${street}` : null;
 }
 
-export function unitKey(listing: Pick<ListingData, 'address' | 'state' | 'zip' | 'unit'>) {
+function unitKey(listing: Pick<ListingData, 'address' | 'state' | 'zip' | 'unit'>) {
   const address = buildingKey(listing);
   const unit = textKey(listing.unit || listing.address.match(unitSuffix)?.[1] || '')
     .replace(/^(unit|apt|apartment|suite) /, '');

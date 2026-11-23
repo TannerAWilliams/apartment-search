@@ -5,7 +5,7 @@ import { type GraphQlRequest, sentJson } from './fixtures/json.ts';
 for (const state of ['missing', 'stale', 'current']) test('external runner handles ' + state + ' inventory with injected offline transport', async () => {
   let imported = false;
   const old = new Date(Date.now() - 25 * 60 * 60_000).toISOString();
-  const fetcher = async (url: string, options?: RequestInit) => {
+  const fetcher = async (url: string) => {
     if (String(url) === 'https://api-v6.streeteasy.com/') {
       assert.notEqual(state, 'current', 'Current data must not be fetched');
       return Response.json({ data: { searchRentals: { totalCount: 0, edges: [] } } });

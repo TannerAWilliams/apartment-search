@@ -38,7 +38,7 @@ export function useSavedListings(onError: (message: string) => void) {
 }
 
 /** The tabs the URL hash can name; anything else opens Search. */
-export const APP_TABS = ['results', 'saved', 'more', 'sources', 'chart', 'marketplaces', 'affordable', 'alerts'];
+const APP_TABS = ['results', 'saved', 'more', 'sources', 'chart', 'marketplaces', 'affordable', 'alerts'];
 
 /**
  * The current time, updated when the shown live inventory reaches its expiry and whenever the app
@@ -77,7 +77,7 @@ export function useRetryCooldown() {
     const timer = setInterval(() => setRefreshClock(Date.now()), 1000);
     return () => clearInterval(timer);
   }, [refreshRetryAt]);
-  return { refreshRetryAt, setRefreshRetryAt, refreshRetryAtRef, cooldownSeconds, setRefreshClock };
+  return { setRefreshRetryAt, refreshRetryAtRef, cooldownSeconds, setRefreshClock };
 }
 
 /**
@@ -107,5 +107,5 @@ export function useHashNavigation() {
     setExpanded('');
     setTab(next);
   };
-  return { tab, setTab, navigateTab, scope, setScope, expanded, setExpanded };
+  return { tab, navigateTab, scope, setScope, expanded, setExpanded };
 }

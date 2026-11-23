@@ -4,7 +4,7 @@
  * when the Worker could not (FirstMover on GitHub, NYC Open Data). Listing links open in new tabs and are
  * not restricted.
  */
-export const CONTENT_SECURITY_POLICY = [
+const CONTENT_SECURITY_POLICY = [
   "default-src 'self'",
   "script-src 'self'",
   "style-src 'self' 'unsafe-inline'",

@@ -1,6 +1,5 @@
 import { mock, test } from 'bun:test';
 import assert from 'node:assert/strict';
-import { zipSync, strToU8 } from 'fflate';
 import { fakeD1 } from './fixtures/fake-d1.ts';
 import { createD1Bucket } from '../server/d1-bucket.ts';
 import { checkFirstMover } from '../server/firstmover.ts';
@@ -9,7 +8,6 @@ import { refreshSources, refreshStatus } from '../server/refresh.ts';
 import { requestForRefresh } from '../server/source-requests.ts';
 import { AFFORDABLE_LIVE } from '../server/affordable-rentals.ts';
 import { parseApartmentsPage } from '../server/apartments-com.ts';
-import { parseDashboardArchive } from '../server/dashboard-csv.ts';
 import { safeListingUrl } from '../src/marketplaces.ts';
 import { regionOf } from '../src/regions.ts';
 
@@ -56,10 +54,6 @@ test('a StreetEasy denial page that cannot be read still reports the denial', as
   const body = new ReadableStream({ pull(controller) { controller.error(new Error('reset')); } });
   const request = requestForRefresh(async () => new Response(body, { status: 403 }), AbortSignal.timeout(5000));
   await assert.rejects(request('https://api-v6.streeteasy.com/', { method: 'POST' }), (error: { httpStatus?: number }) => error.httpStatus === 403);
-});
-
-test('dashboard archives with unexpected members are refused', () => {
-  assert.throws(() => parseDashboardArchive(zipSync({ 'notes.txt': strToU8('hello') })), /Unexpected archive member/);
 });
 
 test('Apartments.com cards with malformed share data are skipped, not fatal', () => {

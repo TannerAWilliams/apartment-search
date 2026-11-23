@@ -3,7 +3,7 @@ import { test } from 'bun:test';
 import assert from 'node:assert/strict';
 import { handleApi, search } from '../server/api.ts';
 import { createMemoryBucket } from './fixtures/memory-bucket.ts';
-import { refreshSources, refreshStatus, storedDirectRentals } from '../server/refresh.ts';
+import { refreshSources, storedDirectRentals } from '../server/refresh.ts';
 import { COMPASS_LIVE, parseCompassPage } from '../server/compass.ts';
 import { assignedJson, loadPublicPages, deduplicatePublicRentals } from '../server/public-rentals.ts';
 import { parseApartmentListPage } from '../server/apartmentlist.ts';
@@ -21,13 +21,6 @@ const row = (id: number, unit: string, rent = 2500) => normalizeListing({ id: St
   url: `https://www.compass.com/homedetails/example-NY-10001/${id}_lid/`,
 }, source)!;
 
-async function until(check: () => Promise<boolean>) {
-  for (let i = 0; i < 100; i++) {
-    if (await check()) return;
-    await new Promise(resolve => setTimeout(resolve, 2));
-  }
-  throw new Error('Expected refresh progress was not persisted.');
-}
 
 test('every implemented rental provider is visible and resyncable before its first fetch', async () => {
   const result = await readJson<ApiConfig>(handleApi(new Request('https://app.test/api/config'), { BUCKET: createMemoryBucket() }));

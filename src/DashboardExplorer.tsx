@@ -1,8 +1,8 @@
 import { dashboardChoices, dashboardMarket, dashboardSegmentLabel, selectDashboardMetric } from './dashboard-selection.ts';
 import { DashboardVisuals } from './DashboardVisuals.tsx';
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
-import { DASHBOARD_FILES, DASHBOARD_URL, METRICS, formatDashboardValue, type DashboardFile } from './dashboard-data.ts';
+import { DASHBOARD_FILES, DASHBOARD_URL, METRICS, type DashboardFile } from './dashboard-data.ts';
 import { Chip, Field, Link } from './ui.tsx';
 import { styles } from './styles.ts';
 

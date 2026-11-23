@@ -7,7 +7,7 @@ import type { Metric } from 'web-vitals';
  */
 export const VITAL_NAMES = ['CLS', 'FCP', 'INP', 'LCP', 'TTFB'] as const;
 export type VitalMetric = { name: (typeof VITAL_NAMES)[number]; value: number; rating: 'good' | 'needs-improvement' | 'poor'; navigationType?: string };
-export type VitalReport = { page: string; metrics: VitalMetric[] };
+type VitalReport = { page: string; metrics: VitalMetric[] };
 
 export function vitalReport(metrics: Pick<Metric, 'name' | 'value' | 'rating' | 'navigationType'>[], page: string): VitalReport {
   return { page, metrics: metrics.map(({ name, value, rating, navigationType }) =>

@@ -1,6 +1,6 @@
 import { type DashboardFile } from './dashboard-data.ts';
-export type DashboardChoice = Pick<DashboardFile, 'name' | 'metric' | 'segment'>;
-export type DashboardMarket = 'Rentals' | 'Sales';
+type DashboardChoice = Pick<DashboardFile, 'name' | 'metric' | 'segment'>;
+type DashboardMarket = 'Rentals' | 'Sales';
 export function dashboardMarket(metric: DashboardFile['metric']): DashboardMarket {
   return ['rentalInventory', 'medianAskingRent', 'discountShare', 'rentalIndex'].includes(metric) ? 'Rentals' : 'Sales';
 }

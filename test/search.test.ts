@@ -2,15 +2,20 @@ import { required } from './test-values.ts';
 import { test } from 'bun:test';
 import assert from 'node:assert/strict';
 import { parseFilters, DEFAULT_FILTERS, localWorkplace, directionsLink } from '../src/search.ts';
+import type { SearchFilters } from '../src/domain.ts';
 import { MARKETS, NYC_SEARCH_DEFAULT, REGIONS, marketsForSearch, regionOf, searchBorough } from '../src/regions.ts';
 import { marketplaceAddressSearches, marketplaceIdForUrl, marketplaceLinks } from '../src/marketplaces.ts';
 import { listingKey, mergeListings, normalizeListing, sourceLink } from '../src/listings.ts';
 import { localSearch, median, rentAreas, SNAPSHOT_MONTH } from '../src/market.ts';
-import { marketSnapshot, snapshotSearch } from '../src/bundled-market.ts';
+import { marketSnapshot } from '../src/bundled-market.ts';
 import { IMPORT_COLUMNS, parseListingImport } from '../src/import-listings.ts';
 import { appConfig, handleApi, search } from '../server/api.ts';
 import { type ErrorBody, readJson, sentJson } from './fixtures/json.ts';
 import type { TravelTimeRequest } from '../server/commute.ts';
+
+/** A search over the bundled FirstMover snapshot, as the app runs offline. */
+const snapshotSearch = (filters: SearchFilters) => localSearch(marketSnapshot(), filters, localWorkplace(filters), 'snapshot',
+  [{ id: 'streeteasy', name: 'StreetEasy', status: 'snapshot' }]);
 
 const sample = {
   id: 'first', addressLine1: '12 Grove Street', addressLine2: 'Apt 2',

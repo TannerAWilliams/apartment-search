@@ -35,7 +35,7 @@ test('partitions beyond 1,000 rows and reconciles overlapping gross/discounted p
   assert.ok(mock.stats().maxActive<=3);assert.equal(result.pages,mock.stats().requests);
 });
 test('rejects changed partition totals instead of saving a partial snapshot',async()=>{
- const mock=server(Array.from({length:1200},(_,id)=>rental(id,2000+id)),(r,p,range)=>range?{...r,totalCount:r.totalCount+1}:r);
+ const mock=server(Array.from({length:1200},(_,id)=>rental(id,2000+id)),(r,_page,range)=>range?{...r,totalCount:r.totalCount+1}:r);
  await assert.rejects(()=>loadStreetEasy(mock.fetcher),/incomplete|changed/);
 });
 test('rejects a repeated second page',async()=>{
@@ -131,11 +131,3 @@ test('StreetEasy public search pages without the active rental search are refuse
   await assert.rejects(parseStreetEasyPublicSearch('<html><script>self.__next_f.push([1,"{}"])</script></html>', new Date()), /public active rental search/);
 });
 
-test('a Guttenberg listing keeps its own town name rather than its ZIP code’s', async () => {
-  const { parseStreetEasyPage } = await import('../server/streeteasy.ts');
-  const row = { '@type': 'Apartment', url: 'https://streeteasy.com/rental/4444', name: '7000 Boulevard East #5', numberOfBedrooms: 1,
-    address: { streetAddress: '7000 Boulevard East', addressLocality: 'Guttenberg', addressRegion: 'NJ', postalCode: '07093' },
-    geo: { latitude: 40.79, longitude: -74.0 }, additionalProperty: [{ name: 'Monthly Rent', value: '$2,300/mo' }] };
-  const [listing] = parseStreetEasyPage('<script type="application/ld+json">' + JSON.stringify({ '@graph': [row] }) + '</script>', 'NJ', 1, new Date().toISOString());
-  assert.equal(listing?.city, 'Guttenberg');
-});

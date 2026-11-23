@@ -1,9 +1,9 @@
 import { parseFilters } from './search.ts';
 import { isRecord } from './domain.ts';
 import { parseChangeBaseline, MAX_BASELINE_UNITS, type ChangeBaseline, type ObservedChange, type ObservedUnit } from './observed-changes.ts';
-export const MAX_SAVED_SEARCHES = 10;
+const MAX_SAVED_SEARCHES = 10;
 export type SavedSearch = { id: string; name: string; filters: ReturnType<typeof parseFilters>; baseline: ChangeBaseline | null; lastCheckedAt: string | null };
-export type WholeSearchSnapshot = { scope: 'all-cached-search-matches'; total: number; eligible: number; observations: ObservedUnit[]; checkedAt: string; notices: string[] };
+type WholeSearchSnapshot = { scope: 'all-cached-search-matches'; total: number; eligible: number; observations: ObservedUnit[]; checkedAt: string; notices: string[] };
 export function presetFilters(value: unknown) {
   return { ...parseFilters(value), offset: 0, includeMap: false, includeCommute: false };
 }

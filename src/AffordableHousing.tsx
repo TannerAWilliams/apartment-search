@@ -1,5 +1,5 @@
 import type { HousingResponse } from '../server/contracts.ts';
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
 import { NYC_SEARCH_DEFAULT } from './regions.ts';
 import { styles } from './styles.ts';

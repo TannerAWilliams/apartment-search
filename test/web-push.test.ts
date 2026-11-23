@@ -1,6 +1,7 @@
 import { test } from 'bun:test';
 import assert from 'node:assert/strict';
-import { encryptPayload, fromBase64Url, generateVapidKeys, sendPush, toBase64Url, validSubscription } from '../server/web-push.ts';
+import { fromBase64Url, toBase64Url } from '../src/base64url.ts';
+import { encryptPayload, generateVapidKeys, sendPush, validSubscription } from '../server/web-push.ts';
 import { sentJson } from './fixtures/json.ts';
 
 const encoder = new TextEncoder();

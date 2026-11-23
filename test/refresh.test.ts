@@ -7,7 +7,8 @@ import { housingDate } from '../server/housing.ts';
 import { refreshSources, saveObservedSnapshot, refreshStatus, sourceRecent, storedDirectRentals, storedFeed, storedHousing, storedMarket } from '../server/refresh.ts';
 import { handleApi, search } from '../server/api.ts';
 import { APARTMENTS_LIVE } from '../server/apartments-com.ts';
-import { parseStreetEasyPage, STREETEASY_LIVE } from '../server/streeteasy.ts';
+import { STREETEASY_LIVE } from '../server/streeteasy.ts';
+import { normalizeListing } from '../src/listings.ts';
 import { ZUMPER_LIVE, ZUMPER_MARKETS, zumperPacing } from '../server/zumper.ts';
 
 // Real Zumper syncs space pages a second apart; these tests use local fakes.
@@ -234,13 +235,12 @@ test('Trulia collects bounded one- and two-bedroom searches across NYC, NJ, Long
     TRULIA_MARKETS.flatMap(({ city }) => [1, 2].map((beds) => (city === 'Bronx' ? 'The Bronx' : city) + ':' + beds)).sort());
 });
 
-const publicRental = {
-  '@type': 'Apartment', url: 'https://streeteasy.com/rental/222', name: '28 Example Street #2', numberOfBedrooms: 1,
-  address: { streetAddress: '28 Example Street', addressLocality: 'Park Slope', addressRegion: 'NY', postalCode: '11215' },
-  geo: { latitude: 40.67, longitude: -73.99 },
-  additionalProperty: [{ name: 'Monthly Rent', value: '$2,500/mo' }],
-};
-const streetEasyHtml = (rows: unknown[]) => '<script type="application/ld+json">' + JSON.stringify({ '@graph': rows }) + '</script>';
+/** A StreetEasy listing as the sync saves it. */
+const streetEasyListing = (checkedAt: string) => required(normalizeListing({
+  id: '222', url: 'https://streeteasy.com/rental/222', address: '28 Example Street', unit: '2', city: 'Brooklyn', state: 'NY',
+  zipCode: '11215', region: 'nyc', neighborhood: 'Park Slope', latitude: 40.67, longitude: -73.99, bedrooms: 1, rent: 2500,
+  status: 'Active', updatedAt: checkedAt,
+}, { id: 'streeteasy', name: 'StreetEasy', kind: 'feed' }));
 const csvUrl = 'https://raw.githubusercontent.com/benfwalla/firstmover-open-data-project/main/public/data/2026-10.csv';
 
 function publishedCatalog(url: string, options: RequestInit = {}) {
@@ -383,27 +383,11 @@ test('a browser export retry updates only the failed public source it recovered'
   }
 });
 
-test('StreetEasy parses public apartment metadata and skips other sizes, houses, and foreign links', () => {
-  const html = streetEasyHtml([
-    publicRental,
-    { ...publicRental, numberOfBedrooms: 2 },
-    { ...publicRental, '@type': 'SingleFamilyResidence' },
-    { ...publicRental, url: 'https://example.test/rental/222' },
-  ]);
-  const [listing, ...others] = parseStreetEasyPage(html, 'NY', 1, at.toISOString());
-  assert.deepEqual(others, []);
-  assert.equal(required(listing).rent, 2500);
-  assert.equal(required(listing).city, 'Brooklyn');
-  assert.equal(required(listing).unit, '2');
-  assert.equal(required(listing).sources[0].url, 'https://streeteasy.com/rental/222');
-  assert.throws(() => parseStreetEasyPage('<h1>Sign in</h1>', 'NY', 1, at.toISOString()), /recognized rental page/);
-});
-
 test('a failed StreetEasy refresh retains its previous listing as cached', async () => {
   const env = { BUCKET: new TestBucket() };
   const now = new Date();
   const newer = new Date(now.getTime() + 60 * 60_000);
-  const [listing] = parseStreetEasyPage(streetEasyHtml([publicRental]), 'NY', 1, now.toISOString());
+  const listing = streetEasyListing(now.toISOString());
   const firstmover = { changed: true, rows: parseFirstMoverCsv(CSV, '2026-10'),
     month: '2026-10', revision: 'a'.repeat(40), catalogEtag: '"october"' };
   const housingconnect = { opportunities: [] };
@@ -470,7 +454,7 @@ test('a resync reads StreetEasy v6 each time and checks Apartments.com in both b
     const headers = { 'Content-Type': 'text/html' };
     const id = 'rentl' + unit;
     const item = { url: 'https://www.apartments.com/example-unit-' + (unit + 100) + '/' + id + '/',
-      name: street + ' Unit ' + (unit + 100), mainEntity: { address, geo: publicRental.geo },
+      name: street + ' Unit ' + (unit + 100), mainEntity: { address, geo: { latitude: 40.67, longitude: -73.99 } },
       potentialAction: { '@type': 'RentAction' },
       offers: { '@type': 'Offer', price: 6300, priceCurrency: 'USD', availability: 'https://schema.org/InStock' } };
     const collection = { '@graph': [{ '@type': 'CollectionPage', mainEntity: {
@@ -501,7 +485,7 @@ test('a resync reads StreetEasy v6 each time and checks Apartments.com in both b
 test('a previous live sample remains searchable under All results after it ages out', async () => {
   const env = { BUCKET: new TestBucket() };
   const old = new Date(Date.now() - 3 * 60 * 60_000);
-  const [listing] = parseStreetEasyPage(streetEasyHtml([publicRental]), 'NY', 1, old.toISOString());
+  const listing = streetEasyListing(old.toISOString());
   await refreshSources(env, { now: old, imports: {
     firstmover: { changed: true, rows: parseFirstMoverCsv(CSV, '2026-10'), month: '2026-10', revision: 'a'.repeat(40) },
     housingconnect: { opportunities: [] },
@@ -537,7 +521,7 @@ test('external StreetEasy recovery updates only failed inventory and keeps it da
   const initial = await refreshSources(env, { now: at, imports: {
     firstmover: null, housingconnect: null, [STREETEASY_LIVE.id]: null,
   } });
-  const listing = required(parseStreetEasyPage(streetEasyHtml([publicRental]), 'NY', 1, at.toISOString())[0]);
+  const listing = streetEasyListing(at.toISOString());
   const recovered = { listings: [listing], pages: 41, total: 1, rawCount: 1, checkedAt: at.toISOString(), transport: 'v6-daily' };
   const retryAt = new Date(at.getTime() + 1000);
   const result = await refreshSources(env, { now: retryAt, fallback: true, imports: { [STREETEASY_LIVE.id]: recovered } });
@@ -549,7 +533,7 @@ test('external StreetEasy recovery updates only failed inventory and keeps it da
 test('external StreetEasy recovery rejects stale or incomplete receipt without overwriting stored inventory', async()=>{
  const env={BUCKET:new TestBucket()};
  await refreshSources(env,{now:at,imports:{[STREETEASY_LIVE.id]:null}});
- const [listing]=parseStreetEasyPage(streetEasyHtml([publicRental]),'NY',1,at.toISOString());
+ const listing = streetEasyListing(at.toISOString());
  for(const changes of [{rawCount:0},{checkedAt:new Date(at.getTime()-11*60_000).toISOString()}]){
    const result=await refreshSources(env,{now:at,fallback:true,imports:{[STREETEASY_LIVE.id]:{
     listings:[listing],pages:1,total:1,rawCount:1,checkedAt:at.toISOString(),transport:'v6-daily',...changes,
@@ -560,7 +544,7 @@ test('external StreetEasy recovery rejects stale or incomplete receipt without o
 });
 test('external daily StreetEasy sync continues without anyone opening the app',async()=>{
  const env={BUCKET:new TestBucket()};
- const [listing]=parseStreetEasyPage(streetEasyHtml([publicRental]),'NY',1,at.toISOString());
+ const listing = streetEasyListing(at.toISOString());
  const receipt=(now: Date)=>({listings:[listing],pages:1,total:1,rawCount:1,checkedAt:now.toISOString(),transport:'v6-daily'});
  const first=await refreshSources(env,{now:at,fallback:true,imports:{[STREETEASY_LIVE.id]:receipt(at)}});
  assert.equal(required(first.sources.find(s=>s.id===STREETEASY_LIVE.id)).status,'updated');
@@ -571,7 +555,7 @@ test('external daily StreetEasy sync continues without anyone opening the app',a
 
 test('manual StreetEasy refresh bypasses daily cache, preserves other sources and respects retry cooldown',async()=>{
  const env={BUCKET:new TestBucket()};
- const [listing]=parseStreetEasyPage(streetEasyHtml([publicRental]),'NY',1,at.toISOString());
+ const listing = streetEasyListing(at.toISOString());
  const receipt={listings:[listing],pages:1,total:1,rawCount:1,checkedAt:at.toISOString(),transport:'v6-daily'};
  const initial=await refreshSources(env,{now:at,imports:{firstmover:null,'streeteasy-live':receipt}});
  const later=new Date(at.getTime()+1000);
@@ -612,7 +596,7 @@ test('unknown or disconnected targeted provider is rejected before acquiring ref
 
 test('provider 403 without wrapper metadata saves failure, releases lock and preserves inventory', async () => {
   const env = { BUCKET: new TestBucket() };
-  const listing = required(parseStreetEasyPage(streetEasyHtml([publicRental]), 'NY', 1, at.toISOString())[0]);
+  const listing = streetEasyListing(at.toISOString());
   await refreshSources(env, { now: at, sourceId: STREETEASY_LIVE.id,
     imports: { [STREETEASY_LIVE.id]: { listings: [listing], pages: 10 } } });
   const before = await storedDirectRentals(env.BUCKET, STREETEASY_LIVE);
@@ -630,7 +614,7 @@ test('provider 403 without wrapper metadata saves failure, releases lock and pre
 
 test('duplicate imported listing IDs fail without replacing the last valid source snapshot', async () => {
   const env = { BUCKET: new TestBucket() };
-  const listing = required(parseStreetEasyPage(streetEasyHtml([publicRental]), 'NY', 1, at.toISOString())[0]);
+  const listing = streetEasyListing(at.toISOString());
   await refreshSources(env, { now: at, sourceId: STREETEASY_LIVE.id,
     imports: { [STREETEASY_LIVE.id]: { listings: [listing], pages: 10 } } });
   const before = await storedDirectRentals(env.BUCKET, STREETEASY_LIVE);
@@ -668,7 +652,7 @@ test('partner feed pagination duplicates cannot replace a complete cached snapsh
 
 test('price observations persist atomically with successful source snapshots, not failed refreshes', async () => {
   const env = { BUCKET: new TestBucket() };
-  const listing = required(parseStreetEasyPage(streetEasyHtml([publicRental]), 'NY', 1, at.toISOString())[0]);
+  const listing = streetEasyListing(at.toISOString());
   const run = (date: Date, rent: number) => refreshSources(env, { now: date, sourceId: STREETEASY_LIVE.id,
     imports: { [STREETEASY_LIVE.id]: { listings: [{ ...listing, rent }], pages: 10 } } });
   await run(at, 2500);
@@ -689,7 +673,7 @@ test('price observations persist atomically with successful source snapshots, no
 
 test('overlapping source snapshot writes reject stale history instead of overwriting the winner', async () => {
   const bucket = new TestBucket();
-  const listing = required(parseStreetEasyPage(streetEasyHtml([publicRental]), 'NY', 1, at.toISOString())[0]);
+  const listing = streetEasyListing(at.toISOString());
   const key = 'rentals/streeteasy-live.json.gz';
   await saveObservedSnapshot(bucket, key, {}, [listing], STREETEASY_LIVE.id, at.toISOString());
   const get = bucket.get.bind(bucket);

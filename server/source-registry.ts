@@ -7,7 +7,7 @@ import { ZUMPER_COVERAGE, ZUMPER_LIVE, ZUMPER_TRANSPORT } from './zumper.ts';
  * API request, so on Cloudflare they run in the sync Workflow, and their data counts as current
  * for a day. Add a source here, not as special cases in refresh or the API.
  */
-export type CompleteSync = {
+type CompleteSync = {
   id: string;
   name: string;
   /** The transport a complete snapshot records; any other transport is a sample. */

@@ -2,7 +2,7 @@ import type { ListingData, SourceLink, Workplace } from './domain.ts';
 import type { CheckBuilding } from './BuildingReport.tsx';
 import { BuildingReport } from './BuildingReport.tsx';
 import { discoveryFacts, LAUNDRY_LABELS } from './discovery.ts';
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { matchesRegion, REGIONS, searchBorough } from './regions.ts';
 import { directionsLink, formatRent } from './search.ts';

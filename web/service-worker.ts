@@ -6,7 +6,7 @@
  */
 import { alertFromPush } from './alert-message.ts';
 
-export function showAlert(scope: ServiceWorkerGlobalScope, data: { json(): unknown } | null) {
+function showAlert(scope: ServiceWorkerGlobalScope, data: { json(): unknown } | null) {
   const alert = alertFromPush(data);
   return scope.registration.showNotification(alert.title, {
     body: alert.body, tag: alert.tag, icon: '/icons/icon-192.png', badge: '/icons/icon-192.png', data: { url: alert.url },
@@ -14,7 +14,7 @@ export function showAlert(scope: ServiceWorkerGlobalScope, data: { json(): unkno
 }
 
 /** Focuses an open app window on the alert's page, or opens one. */
-export async function openAlert(scope: ServiceWorkerGlobalScope, path: unknown) {
+async function openAlert(scope: ServiceWorkerGlobalScope, path: unknown) {
   const url = new URL(typeof path === 'string' ? path : '/', scope.location.origin).href;
   const windows = await scope.clients.matchAll({ type: 'window', includeUncontrolled: true });
   const open = windows.find((client) => client.url.startsWith(scope.location.origin));

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { addDevice, addRule, checkAlerts, composeAlert, deleteRule, readDevices, readRecent, readRules, removeDevice, validateRule, MAX_RULES } from '../server/alerts.ts';
 import { handleApi } from '../server/api.ts';
 import { log } from '../server/log.ts';
-import { toBase64Url } from '../server/web-push.ts';
+import { toBase64Url } from '../src/base64url.ts';
 import { createMemoryBucket } from './fixtures/memory-bucket.ts';
 import { logRecord, readJson } from './fixtures/json.ts';
 import type { AlertState } from '../src/AlertsPage.tsx';

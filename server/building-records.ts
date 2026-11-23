@@ -58,7 +58,7 @@ async function readOfficialJson(url: string, fetcher: FetchTransport, signal: Ab
   for (const chunk of chunks) { data.set(chunk, offset); offset += chunk.length; }
   return JSON.parse(new TextDecoder().decode(data));
 }
-export async function readRows(dataset: string, query: Record<string, string>, fetcher: FetchTransport, signal: AbortSignal) {
+async function readRows(dataset: string, query: Record<string, string>, fetcher: FetchTransport, signal: AbortSignal) {
   const rows = await readOfficialJson(HOST + dataset + '.json?' + new URLSearchParams(query), fetcher, signal);
   if (!Array.isArray(rows) || !rows.every(isRecord)) throw new Error('Invalid official response.');
   return rows as OfficialRow[];

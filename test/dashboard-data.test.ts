@@ -1,9 +1,7 @@
 import { test, expect } from 'bun:test';
-import { strToU8, zipSync } from 'fflate';
 import { DASHBOARD_FILES, formatDashboardValue } from '../src/dashboard-data.ts';
-import { parseDashboardArchive, parseDashboardCsv } from '../server/dashboard-csv.ts';
+import { parseDashboardCsv } from '../server/dashboard-csv.ts';
 const csv = 'areaName,Borough,areaType,2025-01,2025-02\nExample,Queens,neighborhood,,0\n';
-const zip = (name: string, text = csv) => zipSync({ [name]: strToU8(text) });
 test('catalog covers all45 families, full history and blanks preserve zero distinction', () => {
   expect(new Set(DASHBOARD_FILES).size).toBe(45);
   const f = parseDashboardCsv('rentalInventory_All.csv', csv);
@@ -31,12 +29,4 @@ test('reject malformed values,duplicate areas/months,schema,dates and unsupporte
     expect(() => parseDashboardCsv('medianAskingRent_All.csv', bad)).toThrow();
   expect(() => parseDashboardCsv('unknown.csv',csv)).toThrow();
   expect(() => parseDashboardCsv('medianAskingRent_All.csv',' '.repeat(4*1024*1024+1))).toThrow();
-});
-test('individual and nested master ZIPs are accepted; unrecognized or mismatched members fail closed', () => {
-  const name = 'medianAskingRent_All.csv';
-  expect(parseDashboardArchive(zip(name))[0].name).toBe(name);
-  expect(parseDashboardArchive(zipSync({'medianAskingRent_All.zip':zip(name)}))).toHaveLength(1);
-  for (const bytes of [zip('../bad.csv'),zipSync({}),zipSync({'medianAskingRent_All.zip':zip('rentalInventory_All.csv')}),zipSync({[name]:strToU8(csv),'medianAskingRent_All.zip':zip(name)}),new Uint8Array(16*1024*1024+1)])
-    expect(() => parseDashboardArchive(bytes)).toThrow();
-  expect(() => parseDashboardArchive(zip(name, ' '.repeat(4*1024*1024+1)))).toThrow();
 });

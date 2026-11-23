@@ -12,17 +12,17 @@ import * as v from 'valibot';
  * apartments and price drops are sent by email and to the devices that turned on notifications. A rule's
  * first check only records a baseline, so creating one never sends a flood.
  */
-export const RULES_KEY = 'alerts/rules.json';
-export const DEVICES_KEY = 'alerts/devices.json';
-export const RECENT_KEY = 'alerts/recent.json';
+const RULES_KEY = 'alerts/rules.json';
+const DEVICES_KEY = 'alerts/devices.json';
+const RECENT_KEY = 'alerts/recent.json';
 const BASELINE_PREFIX = 'alerts/baselines/';
 export const MAX_RULES = 10;
 const MAX_DEVICES = 10;
 const MAX_RECENT = 30;
 const SHOWN_UNITS = 4;
 
-export type AlertRule = { id: string; name: string; filters: ReturnType<typeof parseFilters>; createdAt: string };
-export type AlertDevice = PushSubscriptionJson & { label: string; createdAt: string };
+type AlertRule = { id: string; name: string; filters: ReturnType<typeof parseFilters>; createdAt: string };
+type AlertDevice = PushSubscriptionJson & { label: string; createdAt: string };
 export type Alert = { id: string; at: string; ruleId: string; title: string; lines: string[]; newCount: number; dropCount: number };
 export type AlertChannels = {
   email?: { send(message: { from: string; to: string[]; subject: string; text: string; html: string }): Promise<unknown> } | null;

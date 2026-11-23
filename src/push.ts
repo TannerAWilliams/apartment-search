@@ -2,8 +2,10 @@
  * Turning on notifications in the browser. On iPhone and iPad, Safari delivers notifications only to an
  * app added to the Home Screen (iOS 16.4 or later); Android and desktop browsers support them in a tab.
  */
-export type PushSupport = 'available' | 'install-first' | 'blocked' | 'unsupported';
-export type PushSubscriptionJson = { endpoint: string; keys: { p256dh: string; auth: string } };
+import { fromBase64Url } from './base64url.ts';
+import type { PushSubscriptionJson } from '../server/web-push.ts';
+
+type PushSupport = 'available' | 'install-first' | 'blocked' | 'unsupported';
 
 type Registration = { pushManager: {
   getSubscription(): Promise<{ unsubscribe(): Promise<boolean> } | null>;
@@ -43,9 +45,6 @@ export function deviceLabel(userAgent: string) {
   const browser = /Edg\//.test(userAgent) ? 'Edge' : /Firefox\//.test(userAgent) ? 'Firefox' : /Chrome\//.test(userAgent) ? 'Chrome' : /Safari\//.test(userAgent) ? 'Safari' : '';
   return browser ? `${device} · ${browser}` : device;
 }
-
-const fromBase64Url = (value: string) =>
-  Uint8Array.from(atob(value.replaceAll('-', '+').replaceAll('_', '/')), (char) => char.charCodeAt(0));
 
 /** Asks for permission and subscribes this device with the server's public key. */
 export async function subscribePush(publicKey: string, browser: PushBrowser | null = browserPush()): Promise<PushSubscriptionJson> {

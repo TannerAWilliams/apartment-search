@@ -40,7 +40,7 @@ export const RefreshCheck = v.strictObject({
 }, 'Public refresh cannot import listing data.');
 
 /** Saved inventory uploaded by a script with the app token, such as the StreetEasy home sync. */
-export const SourceImport = v.object({
+const SourceImport = v.object({
   payload: v.string('Send a valid compressed source import.'),
   source: v.optional(v.literal('streeteasy-live', 'Unknown refresh source.')),
   /** Use the upload only for sources whose own check failed. */

@@ -4,17 +4,13 @@
  * encrypted for the device (RFC 8291, aes128gcm), so the push service cannot read it.
  */
 import * as v from 'valibot';
+import { fromBase64Url, toBase64Url } from '../src/base64url.ts';
 
 export type PushSubscriptionJson = { endpoint: string; keys: { p256dh: string; auth: string } };
 type Bytes = Uint8Array<ArrayBuffer>;
 export type VapidKeys = { publicKey: string; privateKey: string; subject: string };
 
 const encoder = new TextEncoder();
-
-export const fromBase64Url = (value: string) =>
-  Uint8Array.from(atob(value.replaceAll('-', '+').replaceAll('_', '/')), (char) => char.charCodeAt(0));
-export const toBase64Url = (bytes: Uint8Array) =>
-  btoa(String.fromCharCode(...bytes)).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
 
 function concat(...parts: Uint8Array[]): Bytes {
   const result = new Uint8Array(parts.reduce((total, part) => total + part.length, 0));
@@ -37,7 +33,7 @@ const key = (bytes: number) => v.pipe(v.string(), v.check((value) => {
 }));
 
 /** A browser's push subscription (PushSubscription.toJSON()), for a known push service. */
-export const PushSubscriptionInput = v.object({
+const PushSubscriptionInput = v.object({
   endpoint: v.pipe(v.string(), v.maxLength(1024), v.url(), v.check(pushService)),
   keys: v.object({ p256dh: key(65), auth: key(16) }),
 });

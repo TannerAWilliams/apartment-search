@@ -1,5 +1,5 @@
 import type { ListingData, SourceLink } from './domain.ts';
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Text, View } from 'react-native';
 import { listingLinkLabel, orderedListingLinks, sourceLink } from './listings.ts';
 import { marketplaceAddressSearches } from './marketplaces.ts';
