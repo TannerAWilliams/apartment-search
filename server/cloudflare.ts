@@ -26,8 +26,20 @@ type Environment = AppEnv & {
   APARTMENTS: D1Database;
   ASSETS: { fetch(request: Request): Promise<Response> };
   SYNC_WORKFLOW?: Workflow;
+  /** Workers rate limits (wrangler.jsonc): searches, and lookups that call outside services. */
+  SEARCH_LIMIT?: RateLimit;
+  LOOKUP_LIMIT?: RateLimit;
 };
-type Worker = { Bindings: Environment; Variables: ApiVariables & { signedIn: boolean } };
+type RateLimit = { limit(options: { key: string }): Promise<{ success: boolean }> };
+type Worker = { Bindings: Environment; Variables: ApiVariables & { signedIn: boolean; caller: string } };
+
+/** The costly routes and the limit each counts against. Search can also ask TravelTime for commute times. */
+const LIMITED_ROUTES: Record<string, 'SEARCH_LIMIT' | 'LOOKUP_LIMIT'> = {
+  '/api/search': 'SEARCH_LIMIT',
+  '/api/search-check': 'SEARCH_LIMIT',
+  '/api/geocode': 'LOOKUP_LIMIT',
+  '/api/building-report': 'LOOKUP_LIMIT',
+};
 
 const HEADERS = { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' };
 const fail = <S extends ContentfulStatusCode>(c: Context, status: S, error: string) => c.json({ error }, status, HEADERS);
@@ -144,6 +156,19 @@ app.use(async (c, next) => {
     return fail(c, 403, 'Cross-origin request rejected.');
   }
   c.set('signedIn', signedIn);
+  // Limits count per person: the signed-in email, the app access token, or else the visitor's address.
+  c.set('caller', session ?? (bearer ? 'app-access-token' : 'ip:' + (c.req.header('CF-Connecting-IP') ?? 'unknown')));
+  return next();
+});
+
+// A burst of costly requests, from a stuck page or a leaked token, is refused rather than run.
+app.use('/api/*', async (c, next) => {
+  const binding = c.req.method === 'POST' ? LIMITED_ROUTES[c.req.path] : undefined;
+  const limiter = binding && c.env[binding];
+  if (limiter && !(await limiter.limit({ key: binding + ':' + c.var.caller })).success) {
+    log.warn('rate_limited', { path: c.req.path });
+    return c.json({ error: 'Too many requests. Wait a minute, then try again.' }, 429, { ...HEADERS, 'Retry-After': '60' });
+  }
   return next();
 });
 

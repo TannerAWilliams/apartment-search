@@ -47,6 +47,12 @@
     // sync holds the refresh lock while it saves.
     { "binding": "SYNC_WORKFLOW", "name": "apartment-cityrealty-sync", "class_name": "CityRealtySync", "concurrency": { "limit": 1 } }
   ],
+  // Per-person limits on the costly API routes (server/cloudflare.ts). Each Cloudflare location counts
+  // separately, so they stop bursts rather than enforce an exact total.
+  "ratelimits": [
+    { "name": "SEARCH_LIMIT", "namespace_id": "1001", "simple": { "limit": 120, "period": 60 } },
+    { "name": "LOOKUP_LIMIT", "namespace_id": "1002", "simple": { "limit": 20, "period": 60 } }
+  ],
   "limits": { "cpu_ms": 30000 }, // full Zumper and CityRealty pages parse within one Workflow step
   "observability": { "enabled": true },
   // Stack traces in Workers Logs then point at the TypeScript source (server/log.ts writes them).

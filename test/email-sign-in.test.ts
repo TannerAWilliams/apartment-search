@@ -145,3 +145,34 @@ test('when the sign-in database fails, the request is refused and the failure lo
   }
   expect(lines.some((line) => line.includes('session_check_failed'))).toBe(true);
 });
+
+test('costly routes are limited per signed-in person, and other routes are not', async () => {
+  const { env, sent } = await environment();
+  const keys: string[] = [];
+  const limiter = (allowed: number) => {
+    const counts = new Map<string, number>();
+    return {
+      async limit({ key }: { key: string }) {
+        keys.push(key);
+        counts.set(key, (counts.get(key) ?? 0) + 1);
+        return { success: (counts.get(key) ?? 0) <= allowed };
+      },
+    };
+  };
+  const limited = { ...env, SEARCH_LIMIT: limiter(1), LOOKUP_LIMIT: limiter(0) };
+  const { cookie } = await signIn(limited, sent);
+  const search = () => post(limited, '/api/search', {}, { Cookie: cookie });
+  expect((await search()).status).toBe(200);
+  const refused = await search();
+  expect(refused.status).toBe(429);
+  expect(refused.headers.get('Retry-After')).toBe('60');
+  expect((await post(limited, '/api/geocode', { address: '1 Main St' }, { Cookie: cookie })).status).toBe(429);
+  // Reading the app's settings is cheap and never counted.
+  expect((await call(limited, '/api/config', { headers: { Cookie: cookie } })).status).toBe(200);
+  expect(keys).toEqual(['SEARCH_LIMIT:' + ALLOWED, 'SEARCH_LIMIT:' + ALLOWED, 'LOOKUP_LIMIT:' + ALLOWED]);
+  // Without sign-in (a public app), visitors are counted by address.
+  const open = { ...limited, PUBLIC_APP: 'true', BETTER_AUTH_SECRET: undefined };
+  await post(open, '/api/search', {}, { 'CF-Connecting-IP': '203.0.113.9' });
+  await post(open, '/api/search', {});
+  expect(keys.slice(-2)).toEqual(['SEARCH_LIMIT:ip:203.0.113.9', 'SEARCH_LIMIT:ip:unknown']);
+});
