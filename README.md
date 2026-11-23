@@ -123,15 +123,7 @@ bun run deploy                                          # build the web app and 
 
 The Cloudflare Access application for `apartments.5thof6.com` (who may sign in, and how) is configured in Zero Trust; the Worker's custom domain and its check of the Access token are in this repository. Before the first deploy from this file, set the `ACCESS_ALLOWED_EMAILS` secret, or nobody can sign in.
 
-### One-time move off the gate Worker
-
-`apartments.5thof6.com` used to be served by a separate gate Worker, `apartment-search-access`, which checked the Access sign-in and forwarded requests with the app token. This Worker now does that itself. To switch:
-
-1. `wrangler secret put ACCESS_ALLOWED_EMAILS -c deploy/cloudflare/wrangler.jsonc` with the email you sign in with.
-2. Nothing to detach first: a deploy from GitHub Actions (or any non-interactive run) moves `apartments.5thof6.com` off `apartment-search-access` itself. An interactive `wrangler deploy` asks first.
-3. Run the Deploy workflow (or `bun run deploy`), which attaches the domain to `apartment-search`. The Access application on the hostname keeps protecting it.
-4. Open `apartments.5thof6.com`, sign in, and check that search works.
-5. Delete `apartment-search-access` and its `APARTMENT_BACKEND_KEY` secret.
+`apartments.5thof6.com` used to be served by a separate gate Worker, `apartment-search-access`, which checked the Access sign-in and forwarded requests with the app token. This Worker checks the sign-in itself, and the gate Worker was deleted on 2026-11-23.
 
 ## Email alerts
 
