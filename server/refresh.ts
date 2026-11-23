@@ -11,6 +11,7 @@ import { checkFirstMover, checkPublishedFirstMover } from './firstmover.ts';
 import { configuredFeeds, loadFeed, loadStreetEasyExport, STREETEASY_EXPORT_COVERAGE, STREETEASY_EXPORT_FORMAT, STREETEASY_EXPORT_MAX_AGE } from './listings.ts';
 import { housingDate, loadHousingConnect } from './housing.ts';
 import { HDC_RERENTALS, loadHdcRerentals } from './hdc-rerentals.ts';
+import { JERSEY_AFFORDABLE, refreshJerseyAffordable } from './jersey-affordable.ts';
 import { AUTO_RENTAL_SOURCES, DIRECT_RENTAL_SOURCES } from './direct-rentals.ts';
 import { loadOpenigloo, OPENIGLOO_COVERAGE, OPENIGLOO_MAX_LISTINGS, OPENIGLOO_MIN_COVERAGE, OPENIGLOO_TRANSPORT } from './openigloo.ts';
 import { requestForRefresh, retrySchedule } from './source-requests.ts';
@@ -108,6 +109,7 @@ export function refreshCatalog(env: AppEnv): SourceDefinition[] {
     { id: 'firstmover', name: 'FirstMover rent history', coverage: 'Historical rent charts, not active inventory', resyncable: true },
     { id: 'housingconnect', name: 'NYC Housing Connect', coverage: 'NYC affordable housing opportunities', resyncable: true },
     { ...HDC_RERENTALS, coverage: 'NYC affordable re-rentals', resyncable: true },
+    { ...JERSEY_AFFORDABLE, coverage: 'Jersey City income-restricted application notices, not market inventory', resyncable: true },
     { id: 'openigloo', name: 'Openigloo', coverage: OPENIGLOO_COVERAGE, resyncable: true },
     ...DIRECT_RENTAL_SOURCES.map(({ id, name, marketplace, coverage }) => ({ id, name, marketplace,
       coverage: id !== STREETEASY_LIVE.id ? coverage : streetEasyPartner?.format === STREETEASY_EXPORT_FORMAT ? STREETEASY_EXPORT_COVERAGE :
@@ -217,9 +219,9 @@ export async function refreshPlan(bucket: Bucket | undefined, now = new Date()) 
   const [{ value }, object] = await Promise.all([readState(bucket), bucket?.head(MARKET_KEY)]);
   const market = marketBaseline(object, value.market);
   const hour = now.toISOString().slice(0, 13);
-  const privateFeeds = value.sources?.map(({ id }) => id).filter((id) => !PUBLIC_IDS.includes(id) && !LIVE_IDS.includes(id) && id !== HDC_RERENTALS.id) ?? [];
+  const privateFeeds = value.sources?.map(({ id }) => id).filter((id) => !PUBLIC_IDS.includes(id) && !LIVE_IDS.includes(id) && id !== HDC_RERENTALS.id && id !== JERSEY_AFFORDABLE.id) ?? [];
   return { ready: Boolean(bucket), market,
-    alreadyChecked: Boolean(market) && !value.running && checkedDuring(value.sources, [...PUBLIC_IDS, ...AUTO_IDS, HDC_RERENTALS.id, ...privateFeeds], hour),
+    alreadyChecked: Boolean(market) && !value.running && checkedDuring(value.sources, [...PUBLIC_IDS, ...AUTO_IDS, HDC_RERENTALS.id, JERSEY_AFFORDABLE.id, ...privateFeeds], hour),
     publicAlreadyChecked: Boolean(market) && !value.running && checkedDuring(value.sources, PUBLIC_IDS, hour),
     ...publicStatus(value, now) };
 }
@@ -433,7 +435,7 @@ function checkStatus({ id, name }: { id: string; name: string }, result: Promise
     if (onDemand && streetEasyTransport !== STREETEASY_TRANSPORT) item.requestTransport = streetEasyTransport;
   }
   if (completeSync(id) && id !== 'openigloo' && next?.transport) item.transport = next.transport;
-  if (id === HDC_RERENTALS.id) item.listingCount = next?.listingCount ?? older?.listingCount;
+  if (id === HDC_RERENTALS.id || id === JERSEY_AFFORDABLE.id) item.listingCount = next?.listingCount ?? older?.listingCount;
   if (id === 'firstmover') {
     item.month = next?.month ?? older?.month ?? SNAPSHOT_MONTH;
     if (!next) item.error = failure instanceof Error &&
@@ -523,7 +525,8 @@ export async function refreshSources(env: AppEnv, { fetcher = fetch, now = new D
   const liveChecks = env.STREETEASY_SYNC_ENABLED === 'false' || (!onDemand && streetEasyPartner) ?
     requestedLiveChecks.filter((id) => id !== STREETEASY_LIVE.id) : requestedLiveChecks;
   const checkHdc = onDemand && !onlyStreetEasy && !fallback && ready(HDC_RERENTALS.id);
-  const ids = [...publicChecks, ...liveChecks, ...feedChecks.map(({ id }) => id), ...(checkHdc ? [HDC_RERENTALS.id] : [])].filter((id) => !selected || id === selected);
+  const checkJersey = onDemand && !onlyStreetEasy && !fallback && ready(JERSEY_AFFORDABLE.id);
+  const ids = [...publicChecks, ...liveChecks, ...feedChecks.map(({ id }) => id), ...(checkHdc ? [HDC_RERENTALS.id] : []), ...(checkJersey ? [JERSEY_AFFORDABLE.id] : [])].filter((id) => !selected || id === selected);
   if (ids.length === 0 || (!onDemand && !selected && !onlyStreetEasy && !previous.running && !imported<{ changed?: boolean }>('firstmover')?.changed && checkedDuring(previous.sources, ids, hour))) {
     return { state: 'already_checked', ...publicStatus(previous) };
   }
@@ -547,6 +550,7 @@ export async function refreshSources(env: AppEnv, { fetcher = fetch, now = new D
       await bucket.put(HDC_KEY, JSON.stringify({ ...data, checkedAt: at }));
       return { status: 'updated', updatedAt: at, listingCount: data.results.length };
     } }] : []),
+    ...(checkJersey ? [{ ...JERSEY_AFFORDABLE, work: () => refreshJerseyAffordable(bucket, sourceFetch, now, at) }] : []),
     ...(liveChecks.includes('openigloo') ? [{ id: 'openigloo', name: 'Openigloo', work: async () =>
       refreshOpenigloo(bucket, await liveData('openigloo', loadOpenigloo), at) }] : []),
     ...DIRECT_RENTAL_SOURCES.filter(({ id }) => liveChecks.includes(id)).map((source) => ({
@@ -600,7 +604,7 @@ export async function refreshSources(env: AppEnv, { fetcher = fetch, now = new D
       cause: result.reason instanceof Error ? result.reason.message : String(result.reason), httpStatus: result.reason?.httpStatus });
   }
 
-  const retainedIds = new Set([...PUBLIC_IDS, ...LIVE_IDS, HDC_RERENTALS.id, ...feeds.map(({ id }) => id)]);
+  const retainedIds = new Set([...PUBLIC_IDS, ...LIVE_IDS, HDC_RERENTALS.id, JERSEY_AFFORDABLE.id, ...feeds.map(({ id }) => id)]);
   const sources = [...attempted, ...(previous.sources ?? []).filter(({ id }) => !ids.includes(id) && retainedIds.has(id))];
   const marketResult = results[checks.findIndex(({ id }) => id === 'firstmover')];
   const market = marketResult?.status === 'fulfilled' ? marketResult.value : previous.market;

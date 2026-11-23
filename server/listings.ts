@@ -4,6 +4,7 @@ import { isRecord, type ListingData } from '../src/domain.ts';
 import { normalizeListing } from '../src/listings.ts';
 import { DIRECT_RENTAL_SOURCES } from './direct-rentals.ts';
 import { HDC_RERENTALS } from './hdc-rerentals.ts';
+import { JERSEY_AFFORDABLE } from './jersey-affordable.ts';
 import { STREETEASY_LIVE, streetEasyListingUrl } from './streeteasy.ts';
 import { RESO_FEED_FORMAT, resoRentalRow } from './reso-rentals.ts';
 
@@ -11,7 +12,7 @@ export const STREETEASY_EXPORT_FORMAT = 'streeteasy-complete-export-v1';
 export const STREETEASY_EXPORT_COVERAGE = 'provider-supplied complete active StreetEasy export';
 export const STREETEASY_EXPORT_MAX_AGE = 12 * 60 * 60_000;
 
-const RESERVED_FEEDS = new Set(['firstmover', 'housingconnect', 'openigloo', HDC_RERENTALS.id,
+const RESERVED_FEEDS = new Set(['firstmover', 'housingconnect', 'openigloo', HDC_RERENTALS.id, JERSEY_AFFORDABLE.id,
   ...DIRECT_RENTAL_SOURCES.map(({ id }) => id)]);
 const MAX_PAGES = 40;
 const MAX_ROWS = 25000;

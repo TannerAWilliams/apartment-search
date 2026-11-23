@@ -52,6 +52,7 @@ your computer ── scripts/sync-streeteasy.ts ── uploads the StreetEasy in
 | Redfin | Active, individually identified units from its public NYC search. |
 | Trulia | The first two pages of one- and two-bedroom searches in the five boroughs and the same outer markets as Zumper. |
 | AffordableHousing.com | Apartments available now from the first two pages in each borough, geocoded with the free U.S. Census batch geocoder. |
+| Jersey City affordable housing | The city's [current affordable housing postings](https://www.jerseycitynj.gov/CityHall/HousingAndDevelopment/affordable_housing/recent_affordable_housing_postings): income-restricted buildings taking applications, with the apartments each describes by size, shown in the Affordable tab. Not market inventory; a failed or older check keeps the last good copy. |
 | NYC Housing Connect | Advertised rental lotteries from [NYC Open Data](https://data.cityofnewyork.us/d/vy5i-a666), shown in the Affordable tab. |
 | FirstMover Open Data | The monthly [FirstMover](https://www.firstmovernyc.com/open-data) snapshot behind the rent charts and dated listings. |
 | Rent.com, Apartment Guide, Craigslist, Facebook Marketplace, Linecity, Settled.nyc | Browse links only; not counted as listing feeds. |
