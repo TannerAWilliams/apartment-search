@@ -28,6 +28,13 @@ test('no source uses `any` or turns the type checker off', async () => {
   expect(offenders).toEqual([]);
 });
 
+test('tests use bun:test, not Node assertion modules', async () => {
+  const tests = sources.filter((path) => path.startsWith('test/'));
+  const nodeAssert = [];
+  for (const path of tests) if (/from ['"](?:node:)?assert(?:\/strict)?['"]/.test(await Bun.file(root + path).text())) nodeAssert.push(path);
+  expect(nodeAssert).toStrictEqual([]);
+});
+
 test('every TypeScript project is strict and checks JSON as unknown', async () => {
   for (const project of ['tsconfig.json', 'web/tsconfig.json']) {
     const text = await Bun.file(root + project).text();

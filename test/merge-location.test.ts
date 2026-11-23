@@ -1,6 +1,5 @@
 import { required } from './test-values.ts';
-import { test } from 'bun:test';
-import assert from 'node:assert/strict';
+import { expect, test } from 'bun:test';
 import { mergeListings, normalizeListing } from '../src/listings.ts';
 import { distanceMiles, isPoint } from '../src/search.ts';
 
@@ -21,11 +20,11 @@ test('newer malformed coordinates cannot discard a valid location from another o
     const fresh = listing({ ...point, rent: 1900, updatedAt: '2026-11-13T12:00:00Z' });
     for (const observations of [[old, fresh], [fresh, old]]) {
       const [merged] = mergeListings(observations);
-      assert.equal(merged.rent, 1900);
-      assert.equal(merged.seenAt, '2026-11-13T12:00:00Z');
-      assert.equal(merged.latitude, row.latitude);
-      assert.equal(merged.longitude, row.longitude);
-      assert.equal(distanceMiles(merged, row), 0);
+      expect(merged.rent).toBe(1900);
+      expect(merged.seenAt).toBe('2026-11-13T12:00:00Z');
+      expect(merged.latitude).toBe(row.latitude);
+      expect(merged.longitude).toBe(row.longitude);
+      expect(distanceMiles(merged, row)).toBe(0);
     }
   }
 });
@@ -33,21 +32,21 @@ test('newer malformed coordinates cannot discard a valid location from another o
 test('valid newer coordinate pairs, including zero and world bounds, stay preferred', () => {
   for (const point of [{ latitude: 0, longitude: 0 }, { latitude: 90, longitude: 180 }, { latitude: -90, longitude: -180 }]) {
     const [merged] = mergeListings([listing(), listing({ ...point, updatedAt: '2026-11-13T12:00:00Z' })]);
-    assert.equal(isPoint(merged), true);
-    assert.equal(merged.latitude, point.latitude);
-    assert.equal(merged.longitude, point.longitude);
+    expect(isPoint(merged)).toBe(true);
+    expect(merged.latitude).toBe(point.latitude);
+    expect(merged.longitude).toBe(point.longitude);
   }
 });
 
 test('preferFirst preserves listing precedence but falls back to a valid location pair', () => {
   const [merged] = mergeListings([listing({ latitude: 100, rent: 1700 }), listing()], { preferFirst: true });
-  assert.equal(merged.rent, 1700);
-  assert.equal(merged.latitude, row.latitude);
-  assert.equal(merged.longitude, row.longitude);
+  expect(merged.rent).toBe(1700);
+  expect(merged.latitude).toBe(row.latitude);
+  expect(merged.longitude).toBe(row.longitude);
 });
 
 test('two invalid observations do not invent a map or commute location', () => {
   const [merged] = mergeListings([listing({ latitude: 100 }), listing({ longitude: 200 })]);
-  assert.equal(isPoint(merged), false);
-  assert.equal(distanceMiles(merged, row), null);
+  expect(isPoint(merged)).toBe(false);
+  expect(distanceMiles(merged, row)).toBeNull();
 });

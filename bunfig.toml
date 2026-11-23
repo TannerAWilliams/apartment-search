@@ -1,5 +1,7 @@
 [test]
-preload = ["./test/fixtures/offline-network.ts", "./test/fixtures/quiet-logs.ts"]
+# Unit tests live in test/; the Playwright suite in e2e/ runs with its own runner.
+root = "./test"
+preload = ["./test/fixtures/offline-network.ts", "./test/fixtures/quiet-logs.ts", "./test/fixtures/cloudflare-workers.ts"]
 timeout = 30000
 coverageSkipTestFiles = true
 coverageReporter = ["lcov"]

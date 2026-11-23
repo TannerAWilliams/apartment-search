@@ -1,5 +1,4 @@
-import { test } from 'bun:test';
-import assert from 'node:assert/strict';
+import { expect, test } from 'bun:test';
 import { routeCommutes } from '../server/commute.ts';
 import { createMemoryBucket } from './fixtures/memory-bucket.ts';
 import { sentJson } from './fixtures/json.ts';
@@ -28,26 +27,25 @@ test('commute times are routed once per origin and reused for a week', async () 
   const api = traveltime();
   const day = (n: number) => new Date(Date.UTC(2026, 10, 1 + n));
   const first = await routeCommutes([point(1), point(2)], workplace, credentials, api.fetcher, day(0), bucket);
-  assert.deepEqual(api.sent, [2]);
-  assert.equal(first[1].transitSeconds, null, 'no transit route');
+  expect(api.sent).toStrictEqual([2]);
+  expect(first[1].transitSeconds, 'no transit route').toBeNull();
   const again = await routeCommutes([point(1), point(2)], workplace, credentials, api.fetcher, day(1), bucket);
-  assert.deepEqual(api.sent, [2], 'a repeat search sends no origins');
-  assert.deepEqual(again.map(({ transitSeconds, drivingSeconds }) => [transitSeconds, drivingSeconds]),
-    first.map(({ transitSeconds, drivingSeconds }) => [transitSeconds, drivingSeconds]));
-  assert.equal(again[0].commuteEstimate?.checkedAt, day(0).toISOString(), 'the estimate keeps its routed date');
+  expect(api.sent, 'a repeat search sends no origins').toStrictEqual([2]);
+  expect(again.map(({ transitSeconds, drivingSeconds }) => [transitSeconds, drivingSeconds])).toStrictEqual(first.map(({ transitSeconds, drivingSeconds }) => [transitSeconds, drivingSeconds]));
+  expect(again[0].commuteEstimate?.checkedAt, 'the estimate keeps its routed date').toBe(day(0).toISOString());
   await routeCommutes([point(1), point(2), point(3)], workplace, credentials, api.fetcher, day(2), bucket);
-  assert.deepEqual(api.sent, [2, 1], 'only the new origin is sent');
+  expect(api.sent, 'only the new origin is sent').toStrictEqual([2, 1]);
   await routeCommutes([point(1)], workplace, credentials, api.fetcher, day(8), bucket);
-  assert.deepEqual(api.sent, [2, 1, 1], 'week-old estimates are routed again');
+  expect(api.sent, 'week-old estimates are routed again').toStrictEqual([2, 1, 1]);
   await routeCommutes([point(1)], { ...workplace, label: 'Elsewhere', latitude: 40.7 }, credentials, api.fetcher, day(8), bucket);
-  assert.deepEqual(api.sent, [2, 1, 1, 1], 'another workplace has its own cache');
+  expect(api.sent, 'another workplace has its own cache').toStrictEqual([2, 1, 1, 1]);
 });
 
 test('commute routing without a cache still routes every origin', async () => {
   const api = traveltime();
   await routeCommutes([point(1)], workplace, credentials, api.fetcher);
   await routeCommutes([point(1)], workplace, credentials, api.fetcher);
-  assert.deepEqual(api.sent, [1, 1]);
+  expect(api.sent).toStrictEqual([1, 1]);
 });
 
 test('commute caches use a bounded number of storage slots however many workplaces are searched', async () => {
@@ -58,8 +56,8 @@ test('commute caches use a bounded number of storage slots however many workplac
   for (let n = 0; n < 60; n++) {
     await routeCommutes([point(1)], { label: 'Custom ' + n, latitude: 40.6 + n / 1000, longitude: -73.9 }, credentials, api.fetcher, new Date(), tracked);
   }
-  assert.ok(keys.size <= 16, `${keys.size} cache objects`);
+  expect(keys.size <= 16, `${keys.size} cache objects`).toBeTruthy();
   const before = api.sent.length;
   await routeCommutes([point(1)], { label: 'Custom 59', latitude: 40.6 + 59 / 1000, longitude: -73.9 }, credentials, api.fetcher, new Date(), tracked);
-  assert.equal(api.sent.length, before, 'the most recent workplace is still cached');
+  expect(api.sent.length, 'the most recent workplace is still cached').toBe(before);
 });
