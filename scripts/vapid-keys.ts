@@ -5,5 +5,5 @@
 import { generateVapidKeys } from '../server/web-push.ts';
 
 const { publicKey, privateKey } = await generateVapidKeys();
-process.stderr.write(`VAPID_PUBLIC_KEY=${publicKey}\n`);
-process.stdout.write(privateKey);
+await Bun.write(Bun.stderr, `VAPID_PUBLIC_KEY=${publicKey}\n`);
+await Bun.write(Bun.stdout, privateKey);

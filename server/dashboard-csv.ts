@@ -1,5 +1,4 @@
 import { parse } from 'csv-parse/browser/esm/sync';
-import { unzipSync, strFromU8 } from 'fflate';
 import { DASHBOARD_FILES, METRICS, type DashboardFile } from '../src/dashboard-data.ts';
 
 /** Parses the StreetEasy dashboard CSVs on the server, so the web app does not bundle a CSV parser for them. */
@@ -44,29 +43,4 @@ export function parseDashboardCsv(name: string, csv: string): DashboardFile {
   }
   validateMonths(months);
   return { name, metric, segment, months, areas };
-}
-export function parseDashboardArchive(bytes: Uint8Array): DashboardFile[] {
-  if (bytes.length > 16 * 1024 * 1024) throw new Error('Archive exceeds 16 MB.');
-  let total = 0;
-  const extract = (input: Uint8Array) => unzipSync(input, { filter(entry) {
-    total += entry.originalSize;
-    if (entry.originalSize > 4 * 1024 * 1024 || total > 32 * 1024 * 1024) throw new Error('Expanded archive exceeds safe limits.');
-    return true;
-  } });
-  const files: DashboardFile[] = [];
-  const seen = new Set<string>();
-  function csv(name: string, content: Uint8Array) {
-    if (seen.has(name)) throw new Error('Duplicate CSV in archive.');
-    seen.add(name); files.push(parseDashboardCsv(name, strFromU8(content)));
-  }
-  for (const [name, content] of Object.entries(extract(bytes))) {
-    if (name.endsWith('.csv')) csv(name, content);
-    else if (DASHBOARD_FILES.includes(name.replace(/\.zip$/, '.csv')) && name.endsWith('.zip')) {
-      const nested = Object.entries(extract(content));
-      if (nested.length !== 1 || nested[0][0] !== name.replace(/\.zip$/, '.csv')) throw new Error('Unexpected nested archive.');
-      csv(nested[0][0], nested[0][1]);
-    } else throw new Error('Unexpected archive member.');
-  }
-  if (!files.length || files.length > 45) throw new Error('Empty or unsupported archive.');
-  return files;
 }

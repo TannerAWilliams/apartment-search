@@ -1,5 +1,5 @@
 import type { ListingData } from './domain.ts';
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Text, View } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { checkObservedChanges, parseChangeBaseline, type ObservedChange } from './observed-changes.ts';

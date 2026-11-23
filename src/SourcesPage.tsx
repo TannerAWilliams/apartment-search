@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
 import { MARKETPLACE_NAMES } from './marketplaces.ts';
 import { sourceCoverage, sourceRows, type SourceDefinition, type SourceStatus } from './source-status.ts';

@@ -1,14 +1,10 @@
-import { afterEach, mock, test } from 'bun:test';
-import assert from 'node:assert/strict';
+import { afterEach, expect, test } from 'bun:test';
 import { fakeD1 } from './fixtures/fake-d1.ts';
 import { team } from './fixtures/access-team.ts';
 import { readJson, type ErrorBody } from './fixtures/json.ts';
 import type { RefreshInfo } from '../src/api-client.ts';
 
 // The Workers runtime module does not exist under Bun; the Workflow class only needs a base class.
-mock.module('cloudflare:workers', () => ({
-  WorkflowEntrypoint: class { env: unknown; constructor(_ctx: unknown, env: unknown) { this.env = env; } },
-}));
 const { default: worker } = await import('../server/cloudflare.ts');
 const { createD1Bucket } = await import('../server/d1-bucket.ts');
 const { SYNC_PROGRESS_KEY } = await import('../server/source-registry.ts');
@@ -47,76 +43,76 @@ const post = (body: unknown, extra: Record<string, string> = {}) =>
 
 test('health and static assets are served without the API', async () => {
   const { env } = await environment();
-  assert.equal(await (await call(env, '/health')).text(), 'ok');
-  assert.equal(await (await call(env, '/index.html')).text(), 'asset /index.html');
+  expect(await (await call(env, '/health')).text()).toBe('ok');
+  expect(await (await call(env, '/index.html')).text()).toBe('asset /index.html');
 });
 
 test('the web app is served with its security policy, and only fingerprinted files are cached long-term', async () => {
   const { env } = await environment();
   const page = await call(env, '/');
-  assert.match(page.headers.get('Content-Security-Policy') ?? '', /frame-ancestors 'none'/);
-  assert.equal(page.headers.get('Referrer-Policy'), 'no-referrer');
-  assert.equal(page.headers.get('Cache-Control'), 'private, no-cache');
+  expect(page.headers.get('Content-Security-Policy') ?? '').toMatch(/frame-ancestors 'none'/);
+  expect(page.headers.get('Referrer-Policy')).toBe('no-referrer');
+  expect(page.headers.get('Cache-Control')).toBe('private, no-cache');
   const bundle = await call(env, '/_expo/static/js/web/index-0123abcd.js');
-  assert.equal(bundle.headers.get('Cache-Control'), 'private, max-age=31536000, immutable');
+  expect(bundle.headers.get('Cache-Control')).toBe('private, max-age=31536000, immutable');
   const missing = await call({ ...env, ASSETS: { fetch: async () => new Response('not found', { status: 404, headers: { 'Cache-Control': 'no-store' } }) } }, '/_expo/static/gone.js');
-  assert.equal(missing.headers.get('Cache-Control'), 'no-store', 'a missing file is never cached long-term');
+  expect(missing.headers.get('Cache-Control'), 'a missing file is never cached long-term').toBe('no-store');
 });
 
 test('the private app requires the access token for every request, assets included', async () => {
   const { env } = await environment();
   for (const path of ['/api/config', '/index.html', '/health']) {
     const denied = await call(env, path, {}, null);
-    assert.equal(denied.status, 401, path);
-    assert.equal(denied.headers.get('Cache-Control'), 'no-store');
+    expect(denied.status, path).toBe(401);
+    expect(denied.headers.get('Cache-Control')).toBe('no-store');
   }
-  assert.equal((await call(env, '/api/config', {}, 'wrong-token')).status, 401);
-  assert.equal((await call({ ...env, APP_ACCESS_TOKEN: '' }, '/api/config', {}, '')).status, 401, 'an unset token opens nothing');
-  assert.equal((await call(env, '/api/config')).status, 200);
+  expect((await call(env, '/api/config', {}, 'wrong-token')).status).toBe(401);
+  expect((await call({ ...env, APP_ACCESS_TOKEN: '' }, '/api/config', {}, '')).status, 'an unset token opens nothing').toBe(401);
+  expect((await call(env, '/api/config')).status).toBe(200);
 });
 
 test('a public app accepts same-origin refresh checks but not imports or cross-origin writes', async () => {
   const { env } = await environment({ publicApp: true });
-  assert.equal((await call(env, '/api/refresh', post({ check: 'now' }, { Origin: 'https://elsewhere.test' }), null)).status, 403);
-  assert.equal((await call(env, '/api/refresh', { method: 'POST', body: 'not json', headers: { Origin: 'https://app.test' } }, null)).status, 400);
+  expect((await call(env, '/api/refresh', post({ check: 'now' }, { Origin: 'https://elsewhere.test' }), null)).status).toBe(403);
+  expect((await call(env, '/api/refresh', { method: 'POST', body: 'not json', headers: { Origin: 'https://app.test' } }, null)).status).toBe(400);
   const importing = await call(env, '/api/refresh', post({ payload: 'abc' }, { Origin: 'https://app.test' }), null);
-  assert.equal(importing.status, 403);
-  assert.match((await readJson<ErrorBody>(importing)).error, /cannot import/);
+  expect(importing.status).toBe(403);
+  expect((await readJson<ErrorBody>(importing)).error).toMatch(/cannot import/);
   const checked = await call(env, '/api/refresh', post({ check: 'now', sessionStart: true }, { Origin: 'https://app.test' }), null);
-  assert.equal(checked.status, 200, 'a plain check passes through to the API');
-  assert.equal((await readJson<RefreshInfo>(checked)).state, 'already_checked');
-  assert.equal((await call(env, '/api/config', {}, null)).status, 200);
-  assert.equal(await (await call(env, '/index.html', {}, null)).text(), 'asset /index.html');
+  expect(checked.status, 'a plain check passes through to the API').toBe(200);
+  expect((await readJson<RefreshInfo>(checked)).state).toBe('already_checked');
+  expect((await call(env, '/api/config', {}, null)).status).toBe(200);
+  expect(await (await call(env, '/index.html', {}, null)).text()).toBe('asset /index.html');
 });
 
 test('a failure outside the API is a 503 with HTTPS enforced, never a crash', async () => {
   const { env } = await environment();
   const failing = await call({ ...env, ASSETS: { fetch: async () => { throw new Error('assets unavailable'); } } }, '/index.html');
-  assert.equal(failing.status, 503);
-  assert.match((await readJson<ErrorBody>(failing)).error, /could not complete the request/);
-  assert.match(failing.headers.get('Strict-Transport-Security') ?? '', /max-age=31536000/);
+  expect(failing.status).toBe(503);
+  expect((await readJson<ErrorBody>(failing)).error).toMatch(/could not complete the request/);
+  expect(failing.headers.get('Strict-Transport-Security') ?? '').toMatch(/max-age=31536000/);
 });
 
 test('oversized requests are refused and unexpected failures keep saved data', async () => {
   const { env } = await environment({ publicApp: true });
   const large = await call(env, '/api/search', { method: 'POST', body: 'x'.repeat(5000), headers: { 'Content-Type': 'application/json' } }, null);
-  assert.equal(large.status, 413);
+  expect(large.status).toBe(413);
   const broken = { ...env, APARTMENTS: { prepare() { throw new Error('database down'); }, batch() { throw new Error('database down'); } } };
   const failed = await call(broken, '/api/config');
-  assert.equal(failed.status, 503);
-  assert.match((await readJson<ErrorBody>(failed)).error, /Saved source data could not be read/, 'a storage failure is not blamed on feed settings');
+  expect(failed.status).toBe(503);
+  expect((await readJson<ErrorBody>(failed)).error, 'a storage failure is not blamed on feed settings').toMatch(/Saved source data could not be read/);
 });
 
 test('a manual resync of a complete source starts its Workflow job and reports it running', async () => {
   const { env, created } = await environment();
   const response = await call(env, '/api/refresh', post({ check: 'now', source: 'openigloo' }));
-  assert.equal(response.status, 202);
-  assert.equal(created.length, 1);
-  assert.match(created[0].id, /^cityrealty-\d+-openigloo$/);
-  assert.deepEqual(created[0].params, { delay: false, sources: ['openigloo'] });
+  expect(response.status).toBe(202);
+  expect(created.length).toBe(1);
+  expect(created[0].id).toMatch(/^cityrealty-\d+-openigloo$/);
+  expect(created[0].params).toStrictEqual({ delay: false, sources: ['openigloo'] });
   const status = await readJson<RefreshInfo>(call(env, '/api/refresh'));
-  assert.equal(status.checking, true);
-  assert.equal(status.activeSource, 'openigloo', 'a single-source job is named by its id');
+  expect(status.checking).toBe(true);
+  expect(status.activeSource, 'a single-source job is named by its id').toBe('openigloo');
 });
 
 test('status names the source the Workflow recorded, and nothing once jobs finish', async () => {
@@ -124,11 +120,11 @@ test('status names the source the Workflow recorded, and nothing once jobs finis
   const { env } = await environment({ instances });
   instances.set('cityrealty-' + Math.floor(Date.now() / 120_000), { status: 'running' });
   await createD1Bucket(env.APARTMENTS).put(SYNC_PROGRESS_KEY, JSON.stringify({ source: 'zumper-live' }));
-  assert.equal((await readJson<RefreshInfo>(call(env, '/api/refresh'))).activeSource, 'zumper-live');
+  expect((await readJson<RefreshInfo>(call(env, '/api/refresh'))).activeSource).toBe('zumper-live');
   await createD1Bucket(env.APARTMENTS).put(SYNC_PROGRESS_KEY, JSON.stringify({ source: 'unknown-source' }));
-  assert.equal((await readJson<RefreshInfo>(call(env, '/api/refresh'))).activeSource, 'cityrealty-live', 'a full run falls back to its first source');
+  expect((await readJson<RefreshInfo>(call(env, '/api/refresh'))).activeSource, 'a full run falls back to its first source').toBe('cityrealty-live');
   for (const instance of instances.values()) instance.status = 'complete';
-  assert.ok(!(await readJson<RefreshInfo>(call(env, '/api/refresh'))).checking);
+  expect(!(await readJson<RefreshInfo>(call(env, '/api/refresh'))).checking).toBeTruthy();
 });
 
 test('starting a job that already exists is accepted, but a failure with no job is reported', async () => {
@@ -136,10 +132,10 @@ test('starting a job that already exists is accepted, but a failure with no job 
   const existing = await environment({ createError: duplicate });
   const id = 'cityrealty-' + Math.floor(Date.now() / 120_000) + '-zumper-live';
   existing.instances.set(id, { status: 'running' });
-  assert.equal((await call(existing.env, '/api/refresh', post({ check: 'now', source: 'zumper-live' }))).status, 202);
+  expect((await call(existing.env, '/api/refresh', post({ check: 'now', source: 'zumper-live' }))).status).toBe(202);
   const failing = await environment({ createError: new Error('Workflows unavailable') });
   const failed = await call(failing.env, '/api/refresh', post({ check: 'now', source: 'zumper-live' }));
-  assert.ok(failed.status >= 500, 'a job that could not start is reported as a server error');
+  expect(failed.status >= 500, 'a job that could not start is reported as a server error').toBeTruthy();
 });
 
 test('provider requests keep redirects unfollowed, in the form Workers accept', async () => {
@@ -150,8 +146,8 @@ test('provider requests keep redirects unfollowed, in the form Workers accept', 
     return new Response('unavailable', { status: 503 });
   }) as typeof fetch;
   await call(env, '/api/refresh', post({ check: 'now', source: 'housingconnect' }));
-  assert.ok(redirects.length > 0, 'the refresh reached the provider');
-  assert.ok(redirects.every((redirect) => redirect === 'manual'), String(redirects));
+  expect(redirects.length > 0, 'the refresh reached the provider').toBeTruthy();
+  expect(redirects.every((redirect) => redirect === 'manual'), String(redirects)).toBeTruthy();
 });
 
 test('the dashboard archive is read once through the assets binding and cannot be downloaded directly', async () => {
@@ -164,13 +160,13 @@ test('the dashboard archive is read once through the assets binding and cannot b
     return new Response(bytes);
   } };
   const withArchive = { ...env, ASSETS };
-  assert.equal((await call(withArchive, '/data/streeteasy-dashboard-2026-11-17.zip')).status, 404);
-  assert.equal(reads, 0, 'a direct request never reaches the archive');
-  assert.equal((await call(withArchive, '/api/dashboard?file=rentalIndex_All.csv')).status, 200);
-  assert.equal((await call(withArchive, '/api/dashboard?file=totalInventory_All.csv')).status, 200);
-  assert.equal(reads, 1, 'the archive is read and verified once');
+  expect((await call(withArchive, '/data/streeteasy-dashboard-2026-11-17.zip')).status).toBe(404);
+  expect(reads, 'a direct request never reaches the archive').toBe(0);
+  expect((await call(withArchive, '/api/dashboard?file=rentalIndex_All.csv')).status).toBe(200);
+  expect((await call(withArchive, '/api/dashboard?file=totalInventory_All.csv')).status).toBe(200);
+  expect(reads, 'the archive is read and verified once').toBe(1);
   const missing = { ...env, ASSETS: { fetch: async () => new Response('missing', { status: 404 }) } };
-  assert.equal((await call(missing, '/api/dashboard?file=rentalIndex_All.csv')).status, 503);
+  expect((await call(missing, '/api/dashboard?file=rentalIndex_All.csv')).status).toBe(503);
 });
 
 test('a Cloudflare Access sign-in opens the app; its writes must come from the app itself', async () => {
@@ -182,14 +178,14 @@ test('a Cloudflare Access sign-in opens the app; its writes must come from the a
   const token = await access.sign({ ...access.claims, exp: seconds + 600, nbf: seconds - 10 });
   const signedIn = (path: string, init: RequestInit = {}) =>
     call(configured, path, { ...init, headers: { 'Cf-Access-Jwt-Assertion': token, ...init.headers as Record<string, string> } }, null);
-  assert.equal(await (await signedIn('/index.html')).text(), 'asset /index.html');
-  assert.equal((await signedIn('/api/config')).status, 200);
-  assert.equal((await signedIn('/api/refresh', post({ check: 'now', source: 'openigloo' }, { Origin: 'https://app.test' }))).status, 202);
-  assert.equal((await signedIn('/api/refresh', post({ check: 'now' }, { Origin: 'https://elsewhere.test' }))).status, 403);
-  assert.equal((await signedIn('/api/refresh', post({ check: 'now' }))).status, 403, 'a write with no Origin is refused');
-  assert.equal((await call(configured, '/api/config', { headers: { 'Cf-Access-Jwt-Assertion': token.slice(0, -4) + 'AAAA' } }, null)).status, 401);
-  assert.equal((await call({ ...configured, ACCESS_ALLOWED_EMAILS: 'someone-else@example.com' }, '/api/config', { headers: { 'Cf-Access-Jwt-Assertion': token } }, null)).status, 401);
-  assert.equal((await call(configured, '/api/config')).status, 200, 'the app access token still works for scripts');
+  expect(await (await signedIn('/index.html')).text()).toBe('asset /index.html');
+  expect((await signedIn('/api/config')).status).toBe(200);
+  expect((await signedIn('/api/refresh', post({ check: 'now', source: 'openigloo' }, { Origin: 'https://app.test' }))).status).toBe(202);
+  expect((await signedIn('/api/refresh', post({ check: 'now' }, { Origin: 'https://elsewhere.test' }))).status).toBe(403);
+  expect((await signedIn('/api/refresh', post({ check: 'now' }))).status, 'a write with no Origin is refused').toBe(403);
+  expect((await call(configured, '/api/config', { headers: { 'Cf-Access-Jwt-Assertion': token.slice(0, -4) + 'AAAA' } }, null)).status).toBe(401);
+  expect((await call({ ...configured, ACCESS_ALLOWED_EMAILS: 'someone-else@example.com' }, '/api/config', { headers: { 'Cf-Access-Jwt-Assertion': token } }, null)).status).toBe(401);
+  expect((await call(configured, '/api/config')).status, 'the app access token still works for scripts').toBe(200);
 });
 
 test('when Access keys cannot be read, nobody signs in through Access', async () => {
@@ -199,12 +195,12 @@ test('when Access keys cannot be read, nobody signs in through Access', async ()
   const configured = { ...env, ACCESS_TEAM_DOMAIN: access.issuer, ACCESS_AUD: 'app-audience', ACCESS_ALLOWED_EMAILS: 'owner@example.com' };
   const seconds = Date.now() / 1000;
   const token = await access.sign({ ...access.claims, exp: seconds + 600, nbf: seconds - 10 });
-  assert.equal((await call(configured, '/api/config', { headers: { 'Cf-Access-Jwt-Assertion': token } }, null)).status, 401);
+  expect((await call(configured, '/api/config', { headers: { 'Cf-Access-Jwt-Assertion': token } }, null)).status).toBe(401);
 });
 
 test('every response, including a refusal, tells browsers to use HTTPS only', async () => {
   const { env } = await environment();
   for (const [path, token] of [['/index.html', TOKEN], ['/api/config', TOKEN], ['/health', TOKEN], ['/api/config', null]] as const) {
-    assert.equal((await call(env, path, {}, token)).headers.get('Strict-Transport-Security'), 'max-age=31536000; includeSubDomains', path);
+    expect((await call(env, path, {}, token)).headers.get('Strict-Transport-Security'), path).toBe('max-age=31536000; includeSubDomains');
   }
 });

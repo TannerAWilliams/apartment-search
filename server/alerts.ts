@@ -1,8 +1,9 @@
 import type { ListingData } from '../src/domain.ts';
 import { checkObservedChanges, MAX_BASELINE_UNITS, type ChangeBaseline, type ObservedChange } from '../src/observed-changes.ts';
 import { localWorkplace, needsCommute, parseFilters, SearchInputError } from '../src/search.ts';
-import type { Bucket } from './contracts.ts';
+import type { AppEnv, Bucket } from './contracts.ts';
 import { log } from './log.ts';
+import { offline, search } from './search.ts';
 import { sendPush, validSubscription, type PushSubscriptionJson, type VapidKeys } from './web-push.ts';
 import * as v from 'valibot';
 
@@ -12,17 +13,17 @@ import * as v from 'valibot';
  * apartments and price drops are sent by email and to the devices that turned on notifications. A rule's
  * first check only records a baseline, so creating one never sends a flood.
  */
-export const RULES_KEY = 'alerts/rules.json';
-export const DEVICES_KEY = 'alerts/devices.json';
-export const RECENT_KEY = 'alerts/recent.json';
+const RULES_KEY = 'alerts/rules.json';
+const DEVICES_KEY = 'alerts/devices.json';
+const RECENT_KEY = 'alerts/recent.json';
 const BASELINE_PREFIX = 'alerts/baselines/';
 export const MAX_RULES = 10;
 const MAX_DEVICES = 10;
 const MAX_RECENT = 30;
 const SHOWN_UNITS = 4;
 
-export type AlertRule = { id: string; name: string; filters: ReturnType<typeof parseFilters>; createdAt: string };
-export type AlertDevice = PushSubscriptionJson & { label: string; createdAt: string };
+type AlertRule = { id: string; name: string; filters: ReturnType<typeof parseFilters>; createdAt: string };
+type AlertDevice = PushSubscriptionJson & { label: string; createdAt: string };
 export type Alert = { id: string; at: string; ruleId: string; title: string; lines: string[]; newCount: number; dropCount: number };
 export type AlertChannels = {
   email?: { send(message: { from: string; to: string[]; subject: string; text: string; html: string }): Promise<unknown> } | null;
@@ -43,13 +44,13 @@ export const readRecent = (bucket: Bucket) => read<Alert[]>(bucket, RECENT_KEY, 
 /** Checks a new rule: a name, and filters a stored search can run without routing or geocoding. */
 const NAMED = 'Give the alert a name of up to 60 characters.';
 /** A new rule as sent: a name, and filters checked by parseFilters. */
-const RuleInput = v.object({
+const NewRuleSchema = v.object({
   name: v.pipe(v.string(NAMED), v.trim(), v.minLength(1, NAMED), v.maxLength(60, NAMED)),
   filters: v.nullish(v.unknown(), {}),
 }, NAMED);
 
 export function validateRule(raw: unknown, now = new Date()): AlertRule {
-  const input = v.safeParse(RuleInput, raw);
+  const input = v.safeParse(NewRuleSchema, raw);
   if (!input.success) throw new SearchInputError(input.issues[0].message);
   const { name, filters: rawFilters } = input.output;
   const filters = parseFilters(rawFilters);
@@ -167,4 +168,31 @@ export async function checkAlerts(bucket: Bucket, loadMatches: (filters: AlertRu
   const delivered = await deliver(bucket, alerts, channels, origin);
   log.info('alerts_sent', { alerts: alerts.length, email: delivered.email, devices: delivered.devices });
   return { alerts, delivered };
+}
+
+/** The channels alerts can use: email when the Email Service binding and sender are set, push when VAPID keys are. */
+export function alertChannels(env: AppEnv): AlertChannels {
+  const to = (env.ACCESS_ALLOWED_EMAILS ?? '').split(',').map((email) => email.trim()).filter(Boolean);
+  return {
+    email: env.ALERT_EMAIL && env.ALERT_EMAIL_FROM && to.length ? env.ALERT_EMAIL : null, from: env.ALERT_EMAIL_FROM, to,
+    vapid: env.VAPID_PUBLIC_KEY && env.VAPID_PRIVATE_KEY && env.VAPID_SUBJECT
+      ? { publicKey: env.VAPID_PUBLIC_KEY, privateKey: env.VAPID_PRIVATE_KEY, subject: env.VAPID_SUBJECT } : null,
+  };
+}
+
+/** A rule's current matches, from saved inventory only. */
+export const alertMatches = (env: AppEnv) => async (filters: AlertRule['filters']) => (await search(filters, env, offline, true)).matches;
+
+/** Checks every saved alert against the saved inventory; runs after refreshes, never on a schedule. */
+export async function runAlerts(env: AppEnv, origin = env.APP_ORIGIN ?? '') {
+  if (!env.BUCKET) return null;
+  return checkAlerts(env.BUCKET, alertMatches(env), alertChannels(env), { origin });
+}
+
+/** What the Alerts page shows: rules, recent alerts, devices (without their push addresses) and the channels set up. */
+export async function alertState(env: AppEnv & { BUCKET: Bucket }) {
+  const channels = alertChannels(env);
+  const [rules, devices, recent] = await Promise.all([readRules(env.BUCKET), readDevices(env.BUCKET), readRecent(env.BUCKET)]);
+  return { rules, recent, devices: devices.map(({ label, createdAt }) => ({ label, createdAt })),
+    channels: { email: Boolean(channels.email), push: channels.vapid ? { publicKey: channels.vapid.publicKey } : null } };
 }

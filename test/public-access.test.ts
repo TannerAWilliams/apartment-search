@@ -1,12 +1,11 @@
-import { test } from 'bun:test';
-import assert from 'node:assert/strict';
+import { expect, test } from 'bun:test';
 import * as v from 'valibot';
-import { RefreshCheck } from '../server/api-inputs.ts';
+import { RefreshCheckSchema } from '../server/routes/inputs.ts';
 
 test('public refresh allows fetching but rejects anonymous imports and extra properties', () => {
-  assert.equal(v.is(RefreshCheck, { check: 'now' }), true);
-  assert.equal(v.is(RefreshCheck, { check: 'now', source: 'streeteasy-live', sessionStart: false }), true);
+  expect(v.is(RefreshCheckSchema, { check: 'now' })).toBe(true);
+  expect(v.is(RefreshCheckSchema, { check: 'now', source: 'streeteasy-live', sessionStart: false })).toBe(true);
   for (const body of [null, [], {}, { check: 'now', imports: {} }, { check: 'now', fallback: true }, { check: 'now', source: {} }, { check: 'now', sessionStart: 'true' }]) {
-    assert.equal(v.is(RefreshCheck, body), false);
+    expect(v.is(RefreshCheckSchema, body)).toBe(false);
   }
 });

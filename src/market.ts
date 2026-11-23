@@ -4,7 +4,7 @@ import { bestFit } from './best-fit.ts';
 import { SNAPSHOT_MONTH } from './data/snapshot-month.ts';
 import { listingWithVerifiedLinks, mergeListings, orderedListingLinks } from './listings.ts';
 import { matchesRegion } from './regions.ts';
-import { compareResults, isPoint, localWorkplace, matchListings, SearchInputError } from './search.ts';
+import { compareResults, isPoint, matchListings, SearchInputError } from './search.ts';
 
 export { SNAPSHOT_MONTH };
 export const SNAPSHOT_SOURCE = 'https://www.firstmovernyc.com/open-data';
@@ -13,7 +13,6 @@ const MONTH_FORMAT = new Intl.DateTimeFormat('en-US', {
   month: 'long', year: 'numeric', timeZone: 'UTC',
 });
 export const formatSnapshotMonth = (month = SNAPSHOT_MONTH) => MONTH_FORMAT.format(new Date(month + '-01T00:00:00Z'));
-export const SNAPSHOT_LABEL = formatSnapshotMonth();
 
 export type MarketRow = [string | number, string, string, string, string, string, string, string, number, number, number, number, string, string, string?];
 

@@ -1,5 +1,6 @@
 import { test, expect } from 'bun:test';
-import { appConfig, handleApi } from '../server/api.ts';
+import { handleApi } from './fixtures/api.ts';
+import { appConfig } from '../server/app-config.ts';
 import { readJson } from './fixtures/json.ts';
 
 /** The dashboard catalog and one dashboard file, as the API returns them. */

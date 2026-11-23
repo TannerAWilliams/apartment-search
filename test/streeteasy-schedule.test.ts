@@ -1,7 +1,5 @@
 import { expect, test } from 'bun:test';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { $ } from 'bun';
 import { cronLine, launchdPlist, parseArgs, syncTime, withoutSyncJob } from '../scripts/install-streeteasy-schedule.ts';
 import { configDir, savedOrigin, savedToken } from '../scripts/streeteasy-daily.ts';
 
@@ -36,19 +34,20 @@ test('cron quotes every path and replaces an older shell-script job, keeping oth
 });
 
 test('the runner reads the saved origin and token, preferring flags and the environment', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'apartment-search-'));
+  const dir = `${Bun.env.TMPDIR ?? '/tmp'}/apartment-search-${crypto.randomUUID()}`;
+  await $`mkdir -p ${dir}`;
   try {
-    expect(configDir({ XDG_CONFIG_HOME: dir })).toBe(join(dir, 'apartment-search'));
+    expect(configDir({ XDG_CONFIG_HOME: dir })).toBe(`${dir}/apartment-search`);
     expect(configDir({ XDG_CONFIG_HOME: '' })).toEndWith('/.config/apartment-search');
     await expect(savedOrigin([], {}, dir)).rejects.toThrow('Set APARTMENT_SEARCH_ORIGIN');
     await expect(savedToken(dir, 'linux')).rejects.toThrow('No app access token found');
-    await Bun.write(join(dir, 'origin'), 'https://saved.example.dev\n');
-    await Bun.write(join(dir, 'token'), 'token-from-file\n');
+    await Bun.write(`${dir}/origin`, 'https://saved.example.dev\n');
+    await Bun.write(`${dir}/token`, 'token-from-file\n');
     expect(await savedOrigin([], {}, dir)).toBe('https://saved.example.dev');
     expect(await savedOrigin([], { APARTMENT_SEARCH_ORIGIN: 'https://env.example.dev' }, dir)).toBe('https://env.example.dev');
     expect(await savedOrigin(['--origin=https://flag.example.dev/path'], {}, dir)).toBe('https://flag.example.dev');
     expect(await savedToken(dir, 'linux')).toBe('token-from-file');
   } finally {
-    await rm(dir, { recursive: true, force: true });
+    await $`rm -rf ${dir}`;
   }
 });

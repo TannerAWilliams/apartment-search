@@ -1,6 +1,5 @@
 import { required } from './test-values.ts';
-import { test } from 'bun:test';
-import assert from 'node:assert/strict';
+import { expect, test } from 'bun:test';
 import { createMemoryBucket } from './fixtures/memory-bucket.ts';
 
 test('oversized binary writes are rejected before copying the payload', async () => {
@@ -9,11 +8,11 @@ test('oversized binary writes are rejected before copying the payload', async ()
   const payload = new Uint8Array(5);
   let copied = false;
   payload[Symbol.iterator] = function () { copied = true; return [1, 2, 3, 4, 5].values(); };
-  await assert.rejects(bucket.put('inventory', payload), /capacity exceeded/);
-  assert.equal(copied, false);
+  await expect(bucket.put('inventory', payload)).rejects.toThrow(/capacity exceeded/);
+  expect(copied).toBe(false);
   const saved = await bucket.get('inventory');
-  assert.equal(required(saved).etag, required(prior).etag);
-  assert.equal(await required(saved).text(), 'old');
+  expect(required(saved).etag).toBe(required(prior).etag);
+  expect(await required(saved).text()).toBe('old');
 });
 
 test('string preflight counts UTF-8 bytes, including replacement characters', async () => {
@@ -21,10 +20,10 @@ test('string preflight counts UTF-8 bytes, including replacement characters', as
     const bytes = new TextEncoder().encode(text).byteLength;
     const exact = createMemoryBucket(bytes);
     await exact.put('inventory', text);
-    assert.equal((await required((await exact.get('inventory'))).arrayBuffer()).byteLength, bytes);
+    expect((await required((await exact.get('inventory'))).arrayBuffer()).byteLength).toBe(bytes);
     const short = createMemoryBucket(bytes - 1);
-    await assert.rejects(short.put('inventory', text), /capacity exceeded/);
-    assert.equal(await short.get('inventory'), null);
+    await expect(short.put('inventory', text)).rejects.toThrow(/capacity exceeded/);
+    expect(await short.get('inventory')).toBeNull();
   }
 });
 
@@ -32,10 +31,10 @@ test('preflight credits only the replaced object and preserves conditional write
   const bucket = createMemoryBucket(6);
   const prior = await bucket.put('inventory', 'old');
   await bucket.put('other', '123');
-  await assert.rejects(bucket.put('inventory', '🏠'), /capacity exceeded/);
-  assert.equal(await bucket.put('inventory', new Uint8Array(100), { onlyIf: { etagMatches: 'stale' } }), null);
+  await expect(bucket.put('inventory', '🏠')).rejects.toThrow(/capacity exceeded/);
+  expect(await bucket.put('inventory', new Uint8Array(100), { onlyIf: { etagMatches: 'stale' } })).toBeNull();
   await bucket.put('inventory', 'é', { onlyIf: { etagMatches: required(prior).etag } });
   await bucket.put('remaining', 'x');
-  await assert.rejects(bucket.put('overflow', 'x'), /capacity exceeded/);
-  assert.equal(await required((await bucket.get('other'))).text(), '123');
+  await expect(bucket.put('overflow', 'x')).rejects.toThrow(/capacity exceeded/);
+  expect(await required((await bucket.get('other'))).text()).toBe('123');
 });

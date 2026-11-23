@@ -1,5 +1,5 @@
 import type { ListingData, Point } from './domain.ts';
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Text, View } from 'react-native';
 import { normalizeListing } from './listings.ts';
 import { safeListingUrl } from './marketplaces.ts';

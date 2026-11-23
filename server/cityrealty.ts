@@ -93,7 +93,7 @@ async function retryTimedOut<T>(request: () => Promise<T>): Promise<T> {
   }
 }
 
-export async function loadCityRealty(fetcher: FetchTransport, now: Date) {
+async function loadCityRealty(fetcher: FetchTransport, now: Date) {
   const getPage = (page: number) => retryTimedOut(() => searchPage(fetcher, page));
   const first = await getPage(1);
   const { total } = first;

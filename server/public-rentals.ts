@@ -2,7 +2,7 @@ import type { ListingData } from '../src/domain.ts';
 import type { FetchTransport } from '../src/fetch-type.ts';
 import { mergeListings } from '../src/listings.ts';
 
-export const MAX_PUBLIC_HTML_BYTES = 5 * 1024 * 1024;
+const MAX_PUBLIC_HTML_BYTES = 5 * 1024 * 1024;
 
 /** Parse an embedded JSON assignment without depending on its script wrapper or executing it. */
 export function assignedJson(html: string, assignment: RegExp): unknown {
@@ -66,7 +66,7 @@ export async function fetchPublicHtml(fetcher: FetchTransport, url: string, name
  * The schema.org fields listing pages publish as JSON-LD, as this app reads them. Parsers still check
  * each value, and normalizeListing validates every field it keeps.
  */
-export type SchemaThing = {
+type SchemaThing = {
   '@type'?: string; '@graph'?: SchemaThing[]; url?: string; name?: string; description?: string;
   mainEntity?: SchemaThing; itemListElement?: { item?: SchemaThing }[];
   address?: { streetAddress?: string; addressLocality?: string; addressRegion?: string; postalCode?: string };

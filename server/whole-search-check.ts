@@ -1,13 +1,12 @@
-import { localWorkplace, needsCommute, parseFilters, SearchInputError } from '../src/search.ts';
+import { localWorkplace, needsCommute, SearchInputError } from '../src/search.ts';
 import { checkObservedChanges, MAX_BASELINE_UNITS } from '../src/observed-changes.ts';
 import type { ListingData, SearchFilters, SourceStatus } from '../src/domain.ts';
 import type { AppEnv } from './contracts.ts';
 
 /** A bounded, coherent read of all matching cached inventory, never a source refresh. */
-export async function wholeSearchCheck(raw: unknown, env: AppEnv,
+export async function wholeSearchCheck(filters: SearchFilters, env: AppEnv,
   load: (filters: SearchFilters) => Promise<{ matches: ListingData[]; notices?: string[]; sources?: SourceStatus[] }>) {
   if (!env.BUCKET) throw new SearchInputError('Saved inventory is unavailable. No baseline was changed.');
-  const filters = parseFilters(raw);
   if (needsCommute(filters)) throw new SearchInputError('Whole-search checks cannot run commute-time filters or sorts without requesting routing. Use a search without commute-time requirements.');
   if (!localWorkplace(filters)) throw new SearchInputError('Use a workplace preset or coordinates for whole-search checks. Custom addresses need a separate geocoding request.');
   const before = await env.BUCKET.get('rentals/refresh.json');

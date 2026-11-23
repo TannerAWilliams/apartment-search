@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
 import type { SearchFilters } from './domain.ts';
 import { browserPush, deviceLabel, pushSupport, subscribePush } from './push.ts';

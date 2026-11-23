@@ -11,8 +11,8 @@ export type ApiConfig = {
   sources: ConfigSource[]; sourceCatalog?: SourceDefinition[]; commuteConfigured?: boolean; companies?: Record<string, number>;
   refresh?: RefreshInfo; refreshRetryAt?: number; browserImportAllowed?: boolean; dashboardAvailable?: boolean; storageMode?: string;
 };
-export type ApiOptions = { body?: object; token?: string; signal?: AbortSignal };
-export type ApiError = Error & { refreshRetryAt: number; status: number; commuteError: boolean };
+type ApiOptions = { body?: object; token?: string; signal?: AbortSignal };
+type ApiError = Error & { refreshRetryAt: number; status: number; commuteError: boolean };
 
 const UNREACHABLE = 'Could not reach the apartment search server.';
 

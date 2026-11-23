@@ -1,4 +1,4 @@
-export type DisplayPriceHistory = {
+type DisplayPriceHistory = {
   sourceId: string; firstObservedAt: string; lastObservedAt: string; truncated: boolean;
   observations: { checkedAt: string; rent: number; priceIncludesFees: boolean }[];
 };

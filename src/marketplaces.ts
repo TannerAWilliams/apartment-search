@@ -45,10 +45,6 @@ export function marketplaceLinks(market: { city: string; state: string; region: 
   const apartmentFilters = [apartmentBeds, max === null ? '' : `under-${max}`].filter(Boolean).join('-');
   const apartmentArea = filters.zip || slug;
   const location = encodeURIComponent(city.replaceAll(' ', '_')) + ',' + state;
-  const realtorArea = filters.zip || titleSlug + '_' + state;
-  const realtorBeds = beds !== null && beds > 0 ? `/beds-${beds}-${beds}` : '';
-  const hotpadsPath = max === null ? 'apartments-for-rent' : `apartments-under-${max}`;
-  const redfinArea = ({ 'New York': '30749/NY/New-York', 'Jersey City': '9168/NJ/Jersey-City' } as Record<string, string>)[city];
   const craigslistZone = region === 'pa' ? (
     ['Philadelphia', 'Doylestown'].includes(city) ? 'philadelphia' : city === 'Stroudsburg' ? 'poconos' : 'allentown'
   ) : region === 'li' ? 'longisland' : region === 'ct' ?
@@ -97,7 +93,7 @@ export function marketplaceLinks(market: { city: string; state: string; region: 
   return links.map(([id, url, detail]) => ({ id, url, detail, name: MARKETPLACE_NAMES[id] }));
 }
 
-export const MARKETPLACE_DOMAINS = {
+const MARKETPLACE_DOMAINS = {
   streeteasy: 'streeteasy.com', zillow: 'zillow.com', apartments: 'apartments.com',
   realtor: 'realtor.com', redfin: 'redfin.com', trulia: 'trulia.com', hotpads: 'hotpads.com',
   zumper: 'zumper.com', apartmentlist: 'apartmentlist.com', rent: 'rent.com',

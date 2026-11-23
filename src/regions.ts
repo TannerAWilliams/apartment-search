@@ -1,4 +1,4 @@
-import type { ListingData, SearchFilters, Workplace } from './domain.ts';
+import type { Workplace } from './domain.ts';
 type Location = { state: string; city?: string; county?: string; zip?: string; region?: string };
 export const WORKPLACES: Record<string, Workplace> = {
   rockefeller: { label: 'Rockefeller Center', latitude: 40.75874, longitude: -73.97867 },
@@ -18,9 +18,9 @@ export const NYC_SEARCH_AREAS = {
 export const NYC_SEARCH_DEFAULT = 'manhattan-brooklyn';
 /** Borough keys, as returned by searchBorough. */
 export const NYC_BOROUGHS = ['manhattan', 'brooklyn', 'queens', 'bronx', 'staten-island'] as const;
-export type NycBorough = typeof NYC_BOROUGHS[number];
+type NycBorough = typeof NYC_BOROUGHS[number];
 /** Areas inside a broader region, searched by county or ZIP prefix. */
-export const SUB_REGIONS: Record<string, { parent: string; state: string; counties: string[]; zipPrefixes: number[] }> = {
+const SUB_REGIONS: Record<string, { parent: string; state: string; counties: string[]; zipPrefixes: number[] }> = {
   westchester: { parent: 'metroNorth', state: 'NY', counties: ['westchester'], zipPrefixes: [105, 106, 107, 108] },
 };
 
@@ -77,7 +77,7 @@ export const MARKETS = [
   ['Philadelphia', 'Philadelphia', 'PA', '19103', 'pa'],
 ].map(([label, city, state, zip, region]) => ({ label, city, state, zip, region }));
 
-export const NYC_SEARCH_MARKETS = MARKETS.filter(({ region, label }) => region === 'nyc' && label !== 'New York City');
+const NYC_SEARCH_MARKETS = MARKETS.filter(({ region, label }) => region === 'nyc' && label !== 'New York City');
 
 /** The region a search area belongs to: a borough's is nyc, Westchester's is metroNorth. */
 export function parentRegion(region: string) {

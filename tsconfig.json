@@ -9,6 +9,12 @@
       "react"
     ],
     "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "verbatimModuleSyntax": true,
     "noUncheckedSideEffectImports": true
   },
   "include": [
@@ -21,11 +27,7 @@
     "test/**/*.ts",
     "e2e/**/*.ts",
     "playwright.config.ts",
-    "cloudflare/**/*.ts",
     "web/alert-message.ts",
     "types/strict-json.d.ts"
-  ],
-  // Checked in their own projects: the probe Worker against Cloudflare's runtime types, and the service worker
-  // against the browser's service worker types.
-  "exclude": ["cloudflare/streeteasy-container-test/worker.ts", "cloudflare/streeteasy-container-test/worker-configuration.d.ts"]
+  ]
 }

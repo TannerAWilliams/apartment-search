@@ -1,6 +1,5 @@
 import { required } from './test-values.ts';
-import { test } from 'bun:test';
-import assert from 'node:assert/strict';
+import { expect, test } from 'bun:test';
 import { compareResults, parseFilters } from '../src/search.ts';
 
 const listing = (id: string, rent: number, seenAt: string | null, kind = 'feed') => ({ id, rent, seenAt, kind, address: 'Test apartment', city: 'Brooklyn', state: 'NY', zip: '11201', bedrooms: 1, sources: [] });
@@ -8,25 +7,25 @@ const ordered = (rows: ReturnType<typeof listing>[], sort = 'recent') => [...row
 
 test('recent sort orders checked listings by timestamp before rent', () => {
   const rows = [listing('old', 1000, '2026-11-01T00:00:00Z'), listing('new', 4000, '2026-11-13T00:00:00Z')];
-  assert.deepEqual(ordered(rows), ['new', 'old']);
-  assert.deepEqual(ordered(rows, 'rent'), ['old', 'new']);
+  expect(ordered(rows)).toStrictEqual(['new', 'old']);
+  expect(ordered(rows, 'rent')).toStrictEqual(['old', 'new']);
 });
 
 test('recent sort keeps checked feeds before historical snapshots', () => {
-  assert.deepEqual(ordered([listing('snapshot', 1000, '2026-11-14T00:00:00Z', 'snapshot'),
-    listing('feed', 4000, '2026-11-13T00:00:00Z')]), ['feed', 'snapshot']);
+  expect(ordered([listing('snapshot', 1000, '2026-11-14T00:00:00Z', 'snapshot'),
+    listing('feed', 4000, '2026-11-13T00:00:00Z')])).toStrictEqual(['feed', 'snapshot']);
 });
 
 test('recent sort handles missing and invalid dates without an unstable comparator', () => {
   const rows = [listing('missing', 1000, null), listing('invalid', 1200, 'invalid'),
     listing('dated', 4000, '2026-11-13T00:00:00Z')];
-  assert.deepEqual(ordered(rows), ['dated', 'missing', 'invalid']);
-  for (const a of rows) for (const b of rows) assert.ok(Number.isFinite(compareResults(a, b, 'recent')));
+  expect(ordered(rows)).toStrictEqual(['dated', 'missing', 'invalid']);
+  for (const a of rows) for (const b of rows) expect(Number.isFinite(compareResults(a, b, 'recent'))).toBeTruthy();
 });
 
 test('recent ties retain deterministic price and ID ordering', () => {
-  assert.deepEqual(ordered([listing('b', 2000, '2026-11-13T00:00:00Z'),
-    listing('a', 2000, '2026-11-12T19:00:00-05:00'), listing('cheap', 1000, '2026-11-13T00:00:00Z')]), ['cheap', 'a', 'b']);
+  expect(ordered([listing('b', 2000, '2026-11-13T00:00:00Z'),
+    listing('a', 2000, '2026-11-12T19:00:00-05:00'), listing('cheap', 1000, '2026-11-13T00:00:00Z')])).toStrictEqual(['cheap', 'a', 'b']);
 });
 
 test('recent sort is applied across the complete result set before pagination', async () => {
@@ -37,10 +36,10 @@ test('recent sort is applied across the complete result set before pagination', 
   }));
   const first = formatSearch(rows, parseFilters({ sort: 'recent', offset: 0 }), required({ label: 'Fixture', latitude: 0, longitude: 0 }), 'live', [], []);
   const last = formatSearch(rows, parseFilters({ sort: 'recent', offset: 100 }), required({ label: 'Fixture', latitude: 0, longitude: 0 }), 'live', [], []);
-  assert.equal(first.total, 105);
-  assert.equal(first.matches[0].id, '104');
-  assert.equal(required(first.matches.at(-1)).id, '005');
-  assert.equal(first.nextOffset, 100);
-  assert.deepEqual(last.matches.map(row => row.id), ['004', '003', '002', '001', '000']);
-  assert.equal(last.nextOffset, null);
+  expect(first.total).toBe(105);
+  expect(first.matches[0].id).toBe('104');
+  expect(required(first.matches.at(-1)).id).toBe('005');
+  expect(first.nextOffset).toBe(100);
+  expect(last.matches.map(row => row.id)).toStrictEqual(['004', '003', '002', '001', '000']);
+  expect(last.nextOffset).toBeNull();
 });

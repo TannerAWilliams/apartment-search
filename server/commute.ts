@@ -1,5 +1,5 @@
 import type { AppEnv } from './contracts.ts';
-import { isRecord, type ListingData, type Point, type Workplace, type SearchFilters } from '../src/domain.ts';
+import { isRecord, type Point, type SearchFilters } from '../src/domain.ts';
 import type { SourceFetch } from './refresh.ts';
 import type { Bucket } from './contracts.ts';
 import { gunzipSync, gzipSync, strFromU8, strToU8 } from 'fflate';
@@ -25,7 +25,7 @@ const coords = ({ latitude: lat, longitude: lng }: Point) => ({ lat, lng });
 const pointKey = ({ latitude, longitude }: Point) => `${latitude},${longitude}`;
 
 /** Typical weekday-morning estimates change slowly, so routed times are reused for a week. */
-export const COMMUTE_CACHE_DAYS = 7;
+const COMMUTE_CACHE_DAYS = 7;
 const COMMUTE_CACHE_LIMIT = 60_000;
 /** A TravelTime time-filter request: every listing to one workplace, by transit and by car. */
 export type TravelTimeRequest = {
@@ -130,10 +130,8 @@ export async function routeCommutes<T extends { latitude?: unknown; longitude?: 
   });
 }
 
-export async function geocodeAddress(address: unknown, fetcher: SourceFetch = fetch) {
-  if (typeof address !== 'string' || address.trim().length < 4 || address.length > 160) {
-    throw new SearchInputError('Enter a full street address with city, state and ZIP.');
-  }
+/** One Census geocoder match for a street address (already checked by GeocodeRequestSchema or SearchFiltersSchema). */
+export async function geocodeAddress(address: string, fetcher: SourceFetch = fetch) {
   const query = new URLSearchParams({
     address,
     benchmark: 'Public_AR_Current',

@@ -1,7 +1,7 @@
 import type { ListingData } from './domain.ts';
 import type { RentArea, RentMarket, RentHistory } from './rent-history.ts';
 import type { LoadDashboard } from './DashboardExplorer.tsx';
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { formatSnapshotMonth, RENT_GROUPINGS, rentAreas, SNAPSHOT_MONTH, SNAPSHOT_SOURCE } from './market.ts';
 // Resolves to offline-rent-data.web.ts on the web, which bundles no data.

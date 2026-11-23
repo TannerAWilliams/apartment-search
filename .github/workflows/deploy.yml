@@ -21,6 +21,7 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version-file: .bun-version
+      # Wrangler, Cloudflare's tool that builds and deploys the Worker, runs on Node.
       - uses: actions/setup-node@v7
         with:
           node-version: 26

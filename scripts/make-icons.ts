@@ -24,7 +24,7 @@ const icons: [string, number, Parameters<typeof svg>[1]?][] = [
   ['favicon-32.png', 32, { inset: 0.08 }],
 ];
 // PLAYWRIGHT_CHROMIUM_EXECUTABLE selects an installed Chromium, as in the browser tests.
-const browser = await chromium.launch(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE } : {});
+const browser = await chromium.launch(Bun.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? { executablePath: Bun.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE } : {});
 const page = await browser.newPage();
 for (const [name, size, options] of icons) {
   await page.setViewportSize({ width: size, height: size });

@@ -3,6 +3,8 @@
 //   bun run build:web && bun run test:workerd
 // The Access check fetches Cloudflare's published keys from the internet. Where workerd has no direct internet
 // access (some sandboxes), WORKERD_SMOKE_OFFLINE=1 skips that one check; CI runs it.
+import { toBase64Url } from '../src/base64url.ts';
+
 const PORT = 8790;
 const origin = `http://127.0.0.1:${PORT}`;
 const wrangler = ['./node_modules/wrangler/bin/wrangler.js', '-c', 'deploy/cloudflare/wrangler.jsonc'];
@@ -12,7 +14,7 @@ const wrangler = ['./node_modules/wrangler/bin/wrangler.js', '-c', 'deploy/cloud
  * Worker fetch Cloudflare Access's published keys in workerd, the step that failed in production on
  * 2026-11-23; the token itself is then refused, and the app stays public for this run.
  */
-const encode = (value: object) => Buffer.from(JSON.stringify(value)).toString('base64url');
+const encode = (value: object) => toBase64Url(new TextEncoder().encode(JSON.stringify(value)));
 const PLACEHOLDER_EMAIL = 'smoke-test@example.com';
 const fakeAccessToken = () => [encode({ alg: 'RS256', kid: 'smoke-test' }), encode({
   iss: 'https://empty-term-4661.cloudflareaccess.com', aud: ['026b1766294a95474b5fbbac3408e95ac51397636366322b7b9ad582f462ade0'],
@@ -20,13 +22,13 @@ const fakeAccessToken = () => [encode({ alg: 'RS256', kid: 'smoke-test' }), enco
 }), 'c2lnbmF0dXJl'].join('.');
 
 /** A route, the request to send, and what a working Worker answers. */
-export const CHECKS: { path: string; init?: RequestInit; status: number; contains?: string }[] = [
+const CHECKS: { path: string; init?: RequestInit; status: number; contains?: string }[] = [
   { path: '/health', status: 200, contains: 'ok' },
   { path: '/', status: 200, contains: '<div id="root">' },
   { path: '/manifest.webmanifest', status: 200, contains: 'Apartment Search' },
   { path: '/data/streeteasy-dashboard-2026-11-17.zip', status: 404 },
   { path: '/api/config', status: 200, contains: '"storageMode":"persistent"' },
-  ...process.env.WORKERD_SMOKE_OFFLINE === '1' ? [] : [{ path: '/api/config', status: 200, init: { headers: { 'Cf-Access-Jwt-Assertion': fakeAccessToken() } } }],
+  ...Bun.env.WORKERD_SMOKE_OFFLINE === '1' ? [] : [{ path: '/api/config', status: 200, init: { headers: { 'Cf-Access-Jwt-Assertion': fakeAccessToken() } } }],
   { path: '/api/refresh', status: 200 },
   { path: '/api/alerts', status: 200, contains: '"rules":[]' },
   { path: '/api/dashboard', status: 200, contains: '"files"' },
@@ -52,7 +54,7 @@ if (import.meta.main) {
   // A fresh local D1 database with the production schema.
   const schema = Bun.spawnSync(['node', ...wrangler, 'd1', 'execute', 'apartment-search-observations', '--local', '--file', 'deploy/cloudflare/schema.sql']);
   if (schema.exitCode !== 0) throw new Error('Could not create the local database:\n' + schema.stderr.toString());
-  // Wrangler's local server runs on Node: under Bun it cannot forward requests to workerd.
+  // Wrangler runs on Node, its supported runtime; it runs the Worker in workerd.
   const worker = Bun.spawn(['node', ...wrangler, 'dev', '--var', 'PUBLIC_APP:true', '--var', `ACCESS_ALLOWED_EMAILS:${PLACEHOLDER_EMAIL}`,
     '--port', String(PORT), '--ip', '127.0.0.1'], { stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' });
   let output = '';

@@ -1,5 +1,4 @@
-import { test } from 'bun:test';
-import assert from 'node:assert/strict';
+import { expect, test } from 'bun:test';
 import { browserPush, deviceLabel, pushSupport, subscribePush, type PushBrowser } from '../src/push.ts';
 
 const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1';
@@ -19,31 +18,31 @@ function browser(overrides: Partial<PushBrowser> = {}, { permission = 'granted',
 }
 
 test('notification support depends on the browser, permission, and Home Screen install on iPhone', () => {
-  assert.equal(pushSupport(null), 'unsupported');
-  assert.equal(pushSupport(browser().value), 'available');
-  assert.equal(pushSupport(browser({ permission: 'denied' }).value), 'blocked');
-  assert.equal(pushSupport(browser({ permission: null, standalone: false }).value), 'install-first');
-  assert.equal(pushSupport(browser({ permission: null, userAgent: ANDROID }).value), 'unsupported');
-  assert.equal(browserPush(), null, 'no browser under Bun');
+  expect(pushSupport(null)).toBe('unsupported');
+  expect(pushSupport(browser().value)).toBe('available');
+  expect(pushSupport(browser({ permission: 'denied' }).value)).toBe('blocked');
+  expect(pushSupport(browser({ permission: null, standalone: false }).value)).toBe('install-first');
+  expect(pushSupport(browser({ permission: null, userAgent: ANDROID }).value)).toBe('unsupported');
+  expect(browserPush(), 'no browser under Bun').toBeNull();
 });
 
 test('devices are labelled by type and browser', () => {
-  assert.equal(deviceLabel(IPHONE), 'iPhone · Safari');
-  assert.equal(deviceLabel(ANDROID), 'Android · Chrome');
-  assert.equal(deviceLabel('Mozilla/5.0 (Windows NT 10.0) Gecko/20100101 Firefox/140.0'), 'Windows · Firefox');
-  assert.equal(deviceLabel('Mozilla/5.0 (Macintosh) AppleWebKit Chrome/141 Safari/537.36 Edg/141'), 'Mac · Edge');
-  assert.equal(deviceLabel('curl/8'), 'Computer');
-  assert.equal(deviceLabel('Mozilla/5.0 (iPad; CPU OS 18_0)'), 'iPad');
+  expect(deviceLabel(IPHONE)).toBe('iPhone · Safari');
+  expect(deviceLabel(ANDROID)).toBe('Android · Chrome');
+  expect(deviceLabel('Mozilla/5.0 (Windows NT 10.0) Gecko/20100101 Firefox/140.0')).toBe('Windows · Firefox');
+  expect(deviceLabel('Mozilla/5.0 (Macintosh) AppleWebKit Chrome/141 Safari/537.36 Edg/141')).toBe('Mac · Edge');
+  expect(deviceLabel('curl/8')).toBe('Computer');
+  expect(deviceLabel('Mozilla/5.0 (iPad; CPU OS 18_0)')).toBe('iPad');
 });
 
 test('subscribing asks permission, replaces an old subscription, and uses the server key', async () => {
   const key = btoa(String.fromCharCode(...new Uint8Array(65).fill(4))).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
   const fresh = browser({}, { existing: true });
-  assert.deepEqual(await subscribePush(key, fresh.value), { endpoint: 'https://web.push.apple.com/x', keys: { p256dh: 'p', auth: 'a' } });
-  assert.deepEqual(fresh.calls, ['ask', 'unsubscribe', 'subscribe:65']);
-  await assert.rejects(subscribePush(key, browser({}, { permission: 'denied' }).value), /not allowed/);
-  await assert.rejects(subscribePush(key, browser({ register: () => null }).value), /cannot show notifications/);
-  await assert.rejects(subscribePush(key, null), /cannot show notifications/);
+  expect(await subscribePush(key, fresh.value)).toStrictEqual({ endpoint: 'https://web.push.apple.com/x', keys: { p256dh: 'p', auth: 'a' } });
+  expect(fresh.calls).toStrictEqual(['ask', 'unsubscribe', 'subscribe:65']);
+  await expect(subscribePush(key, browser({}, { permission: 'denied' }).value)).rejects.toThrow(/not allowed/);
+  await expect(subscribePush(key, browser({ register: () => null }).value)).rejects.toThrow(/cannot show notifications/);
+  await expect(subscribePush(key, null)).rejects.toThrow(/cannot show notifications/);
 });
 
 test('in a browser, support and registration come from the real APIs', async () => {
@@ -56,13 +55,13 @@ test('in a browser, support and registration come from the real APIs', async () 
     Object.defineProperty(navigator, 'serviceWorker', { configurable: true, value: { register: async (url: string) => { registered.push(url); return {}; } } });
     Object.defineProperty(navigator, 'standalone', { configurable: true, value: true });
     const real = browserPush()!;
-    assert.equal(real.permission, 'default');
-    assert.equal(real.standalone, true);
+    expect(real.permission).toBe('default');
+    expect(real.standalone).toBe(true);
     await real.register();
-    assert.deepEqual(registered, ['/sw.js']);
-    assert.equal(await real.requestPermission(), 'granted');
+    expect(registered).toStrictEqual(['/sw.js']);
+    expect(await real.requestPermission()).toBe('granted');
     globals.window = { matchMedia: () => ({ matches: true }) };
-    assert.equal(browserPush()!.register(), null, 'no push support, nothing registered');
+    expect(browserPush()!.register(), 'no push support, nothing registered').toBeNull();
   } finally {
     globals.window = saved.window; globals.Notification = saved.Notification;
     Object.defineProperty(navigator, 'serviceWorker', { configurable: true, value: saved.serviceWorker });

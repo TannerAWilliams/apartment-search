@@ -1,6 +1,5 @@
-import { required } from './test-values.ts';
-import { test } from 'bun:test';
-import assert from 'node:assert/strict';
+import { instanceOf, rejection, required } from './test-values.ts';
+import { expect, test } from 'bun:test';
 import { requestForRefresh, retrySchedule, SourceResponseError } from '../server/source-requests.ts';
 
 test('a transient response with exhausted quota is not immediately retried', async () => {
@@ -12,13 +11,10 @@ test('a transient response with exhausted quota is not immediately retried', asy
       'X-RateLimit-Remaining': '0', 'X-RateLimit-Reset': String(reset),
     } });
   }, new AbortController().signal);
-  await assert.rejects(request('https://example.test', {}), (error: unknown) => {
-    assert.ok(error instanceof SourceResponseError);
-    assert.equal(error.httpStatus, 503);
-    assert.equal(Date.parse(required(retrySchedule(error, undefined, Date.now()).retryAt)), reset * 1000);
-    return true;
-  });
-  assert.equal(calls, 1);
+  const failure = instanceOf(await rejection(request('https://example.test', {})), SourceResponseError);
+  expect(failure.httpStatus).toBe(503);
+  expect(Date.parse(required(retrySchedule(failure, undefined, Date.now()).retryAt))).toBe(reset * 1000);
+  expect(calls).toBe(1);
 });
 
 test('exhausted quota without a reset still suppresses the immediate retry', async () => {
@@ -27,16 +23,16 @@ test('exhausted quota without a reset still suppresses the immediate retry', asy
     calls++;
     return new Response(null, { status: 503, headers: { 'X-RateLimit-Remaining': '0' } });
   }, new AbortController().signal);
-  await assert.rejects(request('https://example.test', {}), /HTTP 503/);
-  assert.equal(calls, 1);
+  await expect(request('https://example.test', {})).rejects.toThrow(/HTTP 503/);
+  expect(calls).toBe(1);
 });
 
 test('ordinary transient GET errors still retry once', async () => {
   let calls = 0;
   const request = requestForRefresh(async () => ++calls === 1
     ? new Response(null, { status: 503 }) : Response.json({ ok: true }), new AbortController().signal);
-  assert.equal((await request('https://example.test', { method: 'get' })).status, 200);
-  assert.equal(calls, 2);
+  expect((await request('https://example.test', { method: 'get' })).status).toBe(200);
+  expect(calls).toBe(2);
 });
 
 test('non-idempotent POST is never retried after a transient error', async () => {
@@ -45,16 +41,16 @@ test('non-idempotent POST is never retried after a transient error', async () =>
     calls++;
     return new Response(null, { status: 503 });
   }, new AbortController().signal);
-  await assert.rejects(request('https://example.test', { method: 'POST' }), /HTTP 503/);
-  assert.equal(calls, 1);
+  await expect(request('https://example.test', { method: 'POST' })).rejects.toThrow(/HTTP 503/);
+  expect(calls).toBe(1);
 });
 
 test('provider auth/rate errors without request-wrapper metadata still get cooldowns', () => {
   const startedAt = Date.parse('2026-11-13T15:00:00Z');
   for (const [httpStatus, minutes] of [[401, 15], [403, 15], [429, 1]]) {
     const result = retrySchedule({ httpStatus }, undefined, startedAt);
-    assert.equal(result.retryAttempts, 1);
-    assert.equal(Date.parse(result.retryAt), startedAt + minutes * 60_000);
+    expect(result.retryAttempts).toBe(1);
+    expect(Date.parse(required(result.retryAt))).toBe(startedAt + minutes * 60_000);
   }
 });
 
@@ -63,7 +59,7 @@ test('malformed optional timestamps do not break failure status persistence', ()
   for (const timestamp of [undefined, null, NaN, Infinity, 'invalid']) {
     const result = retrySchedule({ httpStatus: 403, receivedAt: timestamp, retryAfter: timestamp },
       { retryAttempts: 1 }, startedAt);
-    assert.equal(Date.parse(required(result.retryAt)), startedAt + 30 * 60_000);
+    expect(Date.parse(required(result.retryAt))).toBe(startedAt + 30 * 60_000);
   }
 });
 
@@ -74,16 +70,22 @@ test('classifies a verification page without returning upstream body text or ret
     return new Response('<div id="px-captcha">upstream-private-text</div>', { status: 403 });
   }, new AbortController().signal);
   const verifyDenial = (error: unknown) => {
-    assert.ok(error instanceof SourceResponseError);
-    assert.equal(error.httpStatus, 403);
-    assert.equal(error.providerDenial, 'browser verification challenge');
-    assert.doesNotMatch(JSON.stringify(error), /upstream-private-text/);
-    return true;
+    const failure = instanceOf(error, SourceResponseError);
+    expect(failure.httpStatus).toBe(403);
+    expect(failure.providerDenial).toBe('browser verification challenge');
+    expect(JSON.stringify(failure)).not.toMatch(/upstream-private-text/);
   };
-  await assert.rejects(request('https://api-v6.streeteasy.com/', { method: 'POST' }), verifyDenial);
-  assert.equal(calls, 1);
-  await assert.rejects(request('https://streeteasy.com/for-rent/nyc'), verifyDenial);
-  assert.equal(calls, 2);
+  verifyDenial(await rejection(request('https://api-v6.streeteasy.com/', { method: 'POST' })));
+  expect(calls).toBe(1);
+  verifyDenial(await rejection(request('https://streeteasy.com/for-rent/nyc')));
+  expect(calls).toBe(2);
+});
+
+test('a refusal whose page names no known block is reported without a reason', async () => {
+  const request = requestForRefresh(async () => new Response('<h1>Forbidden</h1>', { status: 403 }), new AbortController().signal);
+  const failure = instanceOf(await rejection(request('https://streeteasy.com/for-rent/nyc')), SourceResponseError);
+  expect(failure.httpStatus).toBe(403);
+  expect(failure.providerDenial).toBeUndefined();
 });
 
 test('an explicit Cloudflare challenge fails the refresh regardless of status', async () => {
@@ -93,15 +95,11 @@ test('an explicit Cloudflare challenge fails the refresh regardless of status', 
       calls++;
       return new Response('<html>upstream-private-text</html>', { status, headers: { 'cf-mitigated': 'challenge' } });
     }, new AbortController().signal);
-    await assert.rejects(request('https://streeteasy.com/for-rent/nyc'), (error: unknown) => {
-      assert.ok(error instanceof SourceResponseError);
-      assert.equal(error.httpStatus, status);
-      assert.equal(error.providerDenial, 'Cloudflare verification challenge');
-      assert.equal(Date.parse(required(retrySchedule(error, undefined, error.receivedAt).retryAt)),
-        error.receivedAt + 15 * 60_000);
-      assert.doesNotMatch(JSON.stringify(error), /upstream-private-text/);
-      return true;
-    });
-    assert.equal(calls, 1);
+    const failure = instanceOf(await rejection(request('https://streeteasy.com/for-rent/nyc')), SourceResponseError);
+    expect(failure.httpStatus).toBe(status);
+    expect(failure.providerDenial).toBe('Cloudflare verification challenge');
+    expect(Date.parse(required(retrySchedule(failure, undefined, failure.receivedAt).retryAt))).toBe(failure.receivedAt + 15 * 60_000);
+    expect(JSON.stringify(failure)).not.toMatch(/upstream-private-text/);
+    expect(calls).toBe(1);
   }
 });

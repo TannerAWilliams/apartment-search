@@ -1,5 +1,5 @@
 /** User-entered estimates only. Blank values are unknown, never assumed to be zero. */
-export type HousingCostInput = {
+type HousingCostInput = {
   grossMonthlyRent: string;
   leaseMonths: string;
   totalConcessions: string;

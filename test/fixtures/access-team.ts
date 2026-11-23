@@ -1,4 +1,4 @@
-import assert from 'node:assert/strict';
+import { expect } from 'bun:test';
 import { accessSettings } from '../../server/access.ts';
 import { checkWorkersFetchInit } from './workers-fetch.ts';
 
@@ -14,7 +14,7 @@ export async function team(name: string) {
   let keyRequests = 0;
   const fetcher = async (url: string, init?: RequestInit) => {
     checkWorkersFetchInit(init);
-    assert.equal(url, issuer + '/cdn-cgi/access/certs');
+    expect(url).toBe(issuer + '/cdn-cgi/access/certs');
     keyRequests++;
     return Response.json({ keys: [jwk] });
   };

@@ -1,5 +1,5 @@
 import type { SearchFilters } from './domain.ts';
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Text, View } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Button, Field } from './ui.tsx';

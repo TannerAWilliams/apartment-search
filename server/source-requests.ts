@@ -31,8 +31,8 @@ async function streetEasyDenial(response: Response): Promise<string | undefined>
   }
   if (/request blocked by (?:the )?egress|outbound network policy/i.test(prefix)) return 'outbound network policy';
   if (/<title[^>]*>\s*Access Denied\s*<\/title>/i.test(prefix)) return 'upstream access-denied page';
+  return undefined;
 }
-
 
 /** A source that answered with an error status; its fields say when to retry and why it refused. */
 export class SourceResponseError extends Error {

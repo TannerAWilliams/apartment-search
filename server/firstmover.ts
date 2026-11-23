@@ -89,7 +89,7 @@ export function parseFirstMoverCsv(csv: string, month: string) {
   return listings;
 }
 
-export type FirstMoverState = { month?: string; revision?: string; catalogEtag?: string; csvEtag?: string };
+type FirstMoverState = { month?: string; revision?: string; catalogEtag?: string; csvEtag?: string };
 /** A file in GitHub's directory listing; sha and size are checked before use. */
 type CatalogFile = { type: 'file'; name: string; sha?: unknown; size?: unknown };
 

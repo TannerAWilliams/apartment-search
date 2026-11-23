@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { handleApi } from '../server/api.ts';
+import { handleApi } from './fixtures/api.ts';
 import { CITYREALTY_ID } from '../server/cityrealty.ts';
 import type { FetchTransport } from '../src/fetch-type.ts';
 import { createMemoryBucket } from './fixtures/memory-bucket.ts';

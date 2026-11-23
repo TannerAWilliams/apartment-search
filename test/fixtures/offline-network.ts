@@ -3,7 +3,7 @@
 import { requirePinnedBun } from '../../scripts/check-runtime.ts';
 import { checkWorkersFetchInit } from './workers-fetch.ts';
 
-requirePinnedBun('The tests');
+requirePinnedBun();
 const localFetch = globalThis.fetch;
 globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
   checkWorkersFetchInit(init);

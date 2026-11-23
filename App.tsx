@@ -5,7 +5,7 @@ import { useHashNavigation, useInventoryClock, useRetryCooldown, useSavedListing
 import { inventoryExpired } from './src/inventory-freshness.ts';
 import { inventoryUnavailable } from './src/inventory-state.ts';
 import type { ListingData, SourceLink, SearchFilters, SearchResult } from './src/domain.ts';
-import type { SourceDefinition, SourceStatus } from './src/source-status.ts';
+import type { SourceDefinition } from './src/source-status.ts';
 import React, { Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 // Screens off the first page load on first use, so opening the app downloads only what search needs:
@@ -25,15 +25,15 @@ Modal, Platform, Pressable, ScrollView, StatusBar, Text, View, useWindowDimensio
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { NYC_COMPANIES } from './src/companies.ts';
-import { NYC_SEARCH_AREAS, NYC_SEARCH_DEFAULT, NYC_SEARCH_MARKETS, REGIONS, WORKPLACES, marketsForSearch, matchesRegion, regionOf, searchBorough } from './src/regions.ts';
+import { REGIONS, WORKPLACES, marketsForSearch, regionOf } from './src/regions.ts';
 import { MARKETPLACE_NAMES, marketplaceLinks } from './src/marketplaces.ts';
 import {
-  DEFAULT_FILTERS, RESULT_SORTS, bedroomLabel, directionsLink, formatRent, localWorkplace, needsCommute, parseFilters,
+  DEFAULT_FILTERS, RESULT_SORTS, bedroomLabel, formatRent, localWorkplace, needsCommute, parseFilters,
 } from './src/search.ts';
 import { mobileStyles } from './src/mobileStyles.ts';
 import { colors, styles } from './src/styles.ts';
 import { formatSnapshotMonth, localSearch, SNAPSHOT_SOURCE } from './src/market.ts';
-import { listingKey, listingLinkLabel, mergeListings, mergeSourceLinks, orderedListingLinks } from './src/listings.ts';
+import { listingKey, mergeListings, mergeSourceLinks } from './src/listings.ts';
 import { Button, Chip, ExternalLink, Field, Link, SectionTitle } from './src/ui.tsx';
 import { encodeSourceImport, retryablePublicSources } from './src/source-import.ts';
 import { startVitals } from './src/web-vitals-report.ts';
@@ -199,7 +199,7 @@ function Filters({ draft, setDraft, submit, busy, serverState, token, setToken, 
   </View>;
 }
 
-function Marketplaces({ filters, sources, configuredSources, companies, onCompany, refresh, refreshing, cooldownSeconds, onRefresh, onError }: { filters: SearchFilters; sources: SearchResult['sources']; configuredSources: ConfigSource[]; companies: Record<string, number>; onCompany: (name: string) => void; refresh: RefreshInfo | null; refreshing: boolean; cooldownSeconds: number; onRefresh: () => void; onError: (message: string) => void }) {
+function Marketplaces({ filters, sources, configuredSources, companies, onCompany, refresh, onError }: { filters: SearchFilters; sources: SearchResult['sources']; configuredSources: ConfigSource[]; companies: Record<string, number>; onCompany: (name: string) => void; refresh: RefreshInfo | null; onError: (message: string) => void }) {
   const markets = marketsForSearch(filters);
   const [marketLabel, setMarketLabel] = useState('');
   const market = markets.find((item) => item.label === marketLabel) ??
@@ -380,7 +380,7 @@ function ApartmentSearch() {
   const [sourceCatalog, setSourceCatalog] = useState<SourceDefinition[]>([]);
   const [refresh, setRefresh] = useState<RefreshInfo | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const { refreshRetryAt, setRefreshRetryAt, refreshRetryAtRef, cooldownSeconds, setRefreshClock } = useRetryCooldown();
+  const { setRefreshRetryAt, refreshRetryAtRef, cooldownSeconds, setRefreshClock } = useRetryCooldown();
   const [refreshError, setRefreshError] = useState('');
   const browserImportAllowed = useRef(false);
   const checking = useRef<AbortSignal | null>(null);
@@ -392,7 +392,7 @@ function ApartmentSearch() {
   const [activeToken, setActiveToken] = useState('');
   const [commuteConfigured, setCommuteConfigured] = useState(false);
   const [dashboardAvailable, setDashboardAvailable] = useState(false);
-  const { tab, setTab, navigateTab, scope, setScope, expanded, setExpanded } = useHashNavigation();
+  const { tab, navigateTab, scope, setScope, expanded, setExpanded } = useHashNavigation();
   /** The open tool panel below the commute box: one at a time. */
   const [tool, setTool] = useState('');
   const [adding, setAdding] = useState<false | 'single' | 'import'>(false);
@@ -595,17 +595,6 @@ function ApartmentSearch() {
     submit(nextDraft);
   }
 
-  function showMarket() {
-    setScope('market');
-    setAdding(false);
-  }
-
-  function selectSource(source: string) {
-    if (busy) return;
-    setDraft((current) => ({ ...current, source }));
-    submit({ ...applied, source });
-  }
-
   function selectSort(sort: string) {
     if (busy || sort === applied.sort) return;
     setDraft((current) => ({ ...current, sort }));
@@ -632,10 +621,6 @@ function ApartmentSearch() {
   const split = WEB_MAP && wide && mapView;
   const listVisible = !WEB_MAP || !mapView || wide;
   const marketArea = (Object.entries(REGIONS).find(([key]) => key === applied.region)?.[1].label ?? applied.region);
-  const commuteLabel = [
-    applied.maxTransitMinutes != null && `Transit ≤ ${applied.maxTransitMinutes} min`,
-    applied.maxDrivingMinutes != null && `Drive ≤ ${applied.maxDrivingMinutes} min`,
-  ].filter(Boolean).join(' · ') || 'Commute';
 
   return <SafeAreaView style={styles.safe}>
     <StatusBar barStyle="light-content" {...{ backgroundColor: colors.navy }} />
@@ -731,8 +716,7 @@ function ApartmentSearch() {
               <SourcesPage catalog={sourceCatalog} refresh={refresh} refreshing={refreshing} cooldownSeconds={cooldownSeconds} onResync={(id) => checkSources(id ?? null)} />
             </>}
             {tab === 'marketplaces' && <Marketplaces filters={applied} sources={result.sources}
-              configuredSources={configuredSources} companies={companies} onCompany={searchCompany} refresh={refresh} refreshing={refreshing} cooldownSeconds={cooldownSeconds}
-              onRefresh={() => checkSources()} onError={setError} />}
+              configuredSources={configuredSources} companies={companies} onCompany={searchCompany} refresh={refresh} onError={setError} />}
             {tab === 'alerts' && <AlertsPage request={alertRequest} filters={applied} summary={searchSummary} onError={setError} />}
             {tab === 'affordable' && <AffordableHousing region={applied.region}
               loadHousing={serverState === 'ready' ? loadHousing : undefined} onError={setError} />}

@@ -1,5 +1,5 @@
 import type { ListingData } from './domain.ts';
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { listingKey } from './listings.ts';
 import { comparisonOptions, comparisonRows, comparisonTitle, MAX_COMPARISON, toggleComparison } from './comparison.ts';

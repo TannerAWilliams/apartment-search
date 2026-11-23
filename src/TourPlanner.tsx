@@ -1,5 +1,5 @@
 import type { ListingData } from './domain.ts';
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Platform, Pressable, ScrollView, Share, Text, View } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Button, Chip, Field, Link } from './ui.tsx';

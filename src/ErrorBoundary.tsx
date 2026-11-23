@@ -8,17 +8,17 @@ import { styles } from './styles.ts';
  * storage, so reloading loses nothing.
  */
 export class ErrorBoundary extends React.Component<{ children: ReactNode }, { failed: boolean }> {
-  state = { failed: false };
+  override state = { failed: false };
 
   static getDerivedStateFromError() {
     return { failed: true };
   }
 
-  componentDidCatch(error: unknown) {
+  override componentDidCatch(error: unknown) {
     console.error('Apartment Search could not render:', error);
   }
 
-  render() {
+  override render() {
     if (!this.state.failed) return this.props.children;
     return <View accessibilityRole="alert" style={styles.filters}>
       <Text style={styles.sectionHeading}>Something went wrong</Text>

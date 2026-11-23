@@ -1,4 +1,4 @@
-import React, { type ComponentType, type ReactNode } from 'react';
+import { type ComponentType, type ReactNode } from 'react';
 import type { TextInputProps, ViewProps } from 'react-native';
 import { Linking, Platform, Pressable, Text, TextInput, View } from 'react-native';
 import { colors, styles } from './styles.ts';

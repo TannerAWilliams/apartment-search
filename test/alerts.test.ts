@@ -1,9 +1,8 @@
-import { afterEach, test } from 'bun:test';
-import assert from 'node:assert/strict';
+import { afterEach, expect, test } from 'bun:test';
 import { addDevice, addRule, checkAlerts, composeAlert, deleteRule, readDevices, readRecent, readRules, removeDevice, validateRule, MAX_RULES } from '../server/alerts.ts';
-import { handleApi } from '../server/api.ts';
+import { handleApi } from './fixtures/api.ts';
 import { log } from '../server/log.ts';
-import { toBase64Url } from '../server/web-push.ts';
+import { toBase64Url } from '../src/base64url.ts';
 import { createMemoryBucket } from './fixtures/memory-bucket.ts';
 import { logRecord, readJson } from './fixtures/json.ts';
 import type { AlertState } from '../src/AlertsPage.tsx';
@@ -28,11 +27,11 @@ async function device() {
 }
 
 test('a rule needs a name and filters that a stored search can run without routing', () => {
-  assert.equal(validateRule(rule).name, 'Brooklyn 1BR');
-  assert.throws(() => validateRule({ ...rule, name: ' ' }), /name/);
-  assert.throws(() => validateRule({ ...rule, name: 'x'.repeat(61) }), /name/);
-  assert.throws(() => validateRule({ ...rule, filters: { ...rule.filters, maxTransitMinutes: 30 } }), /commute/);
-  assert.throws(() => validateRule({ ...rule, filters: { ...rule.filters, workplace: 'custom', customWorkplace: '1 Main Street, New York' } }), /workplace preset/);
+  expect(validateRule(rule).name).toBe('Brooklyn 1BR');
+  expect(() => validateRule({ ...rule, name: ' ' })).toThrow(/name/);
+  expect(() => validateRule({ ...rule, name: 'x'.repeat(61) })).toThrow(/name/);
+  expect(() => validateRule({ ...rule, filters: { ...rule.filters, maxTransitMinutes: 30 } })).toThrow(/commute/);
+  expect(() => validateRule({ ...rule, filters: { ...rule.filters, workplace: 'custom', customWorkplace: '1 Main Street, New York' } })).toThrow(/workplace preset/);
 });
 
 test('alerts report new apartments and price drops since the last check, and nothing on the first', async () => {
@@ -47,19 +46,19 @@ test('alerts report new apartments and price drops since the last check, and not
     vapid: { publicKey: 'BAAA', privateKey: 'x', subject: 'https://example.com' },
     pushFetcher: async (url: string) => { pushes.push(url); return new Response(null, { status: 201 }); } };
   await addRule(bucket, rule, load);
-  assert.equal((await checkAlerts(bucket, load, channels, { origin: 'https://apartments.example' })).alerts.length, 0, 'unchanged since the rule was saved');
+  expect((await checkAlerts(bucket, load, channels, { origin: 'https://apartments.example' })).alerts.length, 'unchanged since the rule was saved').toBe(0);
 
   inventory = [unit('10', 2850, '2026-11-22T00:00:00Z', 3000), unit('12', 3100, '2026-11-22T00:00:00Z'), unit('14 <b>', 3200, '2026-11-22T00:00:00Z')];
   const { alerts } = await checkAlerts(bucket, load, { ...channels, vapid: null }, { origin: 'https://apartments.example' });
-  assert.equal(alerts.length, 1);
-  assert.equal(alerts[0].title, 'Brooklyn 1BR: 2 new apartments, 1 price drop');
-  assert.deepEqual(alerts[0].lines, ['10 Example Street, Unit 2A, Brooklyn: $3,000 → $2,850', '12 Example Street, Unit 2A, Brooklyn: $3,100', '14 <b> Example Street, Unit 2A, Brooklyn: $3,200']);
-  assert.equal(sent.length, 1);
-  assert.deepEqual(sent[0].to, ['owner@example.com']);
-  assert.match(sent[0].text, /Open Apartment Search: https:\/\/apartments\.example\//);
-  assert.match(sent[0].html, /14 &#60;b&#62; Example/, 'listing text is escaped in the email');
-  assert.equal((await readRecent(bucket))[0].title, alerts[0].title);
-  assert.equal((await checkAlerts(bucket, load, channels, { origin: '' })).alerts.length, 0, 'the same changes are reported once');
+  expect(alerts.length).toBe(1);
+  expect(alerts[0].title).toBe('Brooklyn 1BR: 2 new apartments, 1 price drop');
+  expect(alerts[0].lines).toStrictEqual(['10 Example Street, Unit 2A, Brooklyn: $3,000 → $2,850', '12 Example Street, Unit 2A, Brooklyn: $3,100', '14 <b> Example Street, Unit 2A, Brooklyn: $3,200']);
+  expect(sent.length).toBe(1);
+  expect(sent[0].to).toStrictEqual(['owner@example.com']);
+  expect(sent[0].text).toMatch(/Open Apartment Search: https:\/\/apartments\.example\//);
+  expect(sent[0].html, 'listing text is escaped in the email').toMatch(/14 &#60;b&#62; Example/);
+  expect((await readRecent(bucket))[0].title).toBe(alerts[0].title);
+  expect((await checkAlerts(bucket, load, channels, { origin: '' })).alerts.length, 'the same changes are reported once').toBe(0);
 });
 
 test('a long alert lists four apartments and a count; price increases are not alerts', () => {
@@ -67,9 +66,9 @@ test('a long alert lists four apartments and a count; price increases are not al
   const added = Array.from({ length: 6 }, (_, index) => ({ kind: 'newly_encountered' as const, current: { key: String(index), label: `Unit ${index}`, sourceId: 's', checkedAt: at, rent: 3000, includesFees: false } }));
   const rising = { kind: 'price' as const, current: { ...added[0].current, rent: 3100 }, previous: added[0].current };
   const alert = composeAlert({ id: 'r', name: 'Search', filters: parseFilters({}), createdAt: at }, [...added, rising], new Date(at))!;
-  assert.equal(alert.title, 'Search: 6 new apartments');
-  assert.deepEqual(alert.lines.slice(-1), ['and 2 more']);
-  assert.equal(composeAlert({ id: 'r', name: 'Search', filters: parseFilters({}), createdAt: at }, [rising], new Date(at)), null);
+  expect(alert.title).toBe('Search: 6 new apartments');
+  expect(alert.lines.slice(-1)).toStrictEqual(['and 2 more']);
+  expect(composeAlert({ id: 'r', name: 'Search', filters: parseFilters({}), createdAt: at }, [rising], new Date(at))).toBeNull();
 });
 
 test('notifications go to each device, and a device that unsubscribed is removed', async () => {
@@ -87,35 +86,34 @@ test('notifications go to each device, and a device that unsubscribed is removed
     if (url === unreachable.endpoint) throw new Error('connection reset');
     return new Response(null, { status: url === gone.endpoint ? 410 : url === failing.endpoint ? 500 : 201 });
   } }, { origin: '' });
-  assert.equal(result.delivered.devices, 1);
-  assert.deepEqual((await readDevices(bucket)).map(({ endpoint }) => endpoint), [kept.endpoint, failing.endpoint, unreachable.endpoint],
-    'a device that could not be reached is kept for the next alert');
-  assert.ok(lines.includes('alert_push_failed'));
+  expect(result.delivered.devices).toBe(1);
+  expect((await readDevices(bucket)).map(({ endpoint }) => endpoint), 'a device that could not be reached is kept for the next alert').toStrictEqual([kept.endpoint, failing.endpoint, unreachable.endpoint]);
+  expect(lines.includes('alert_push_failed')).toBeTruthy();
 });
 
 test('rules, devices and failures are bounded and reported', async () => {
   const bucket = createMemoryBucket();
   const none = async () => [];
   for (let index = 0; index < MAX_RULES; index++) await addRule(bucket, { ...rule, name: 'Rule ' + index }, none);
-  await assert.rejects(addRule(bucket, rule, none), /up to 10 alerts/);
+  await expect(addRule(bucket, rule, none)).rejects.toThrow(/up to 10 alerts/);
   await deleteRule(bucket, (await readRules(bucket))[0].id);
-  await assert.rejects(addRule(bucket, rule, async () => Array.from({ length: 2001 }, () => testListing())), /Narrow it/);
-  await assert.rejects(addDevice(bucket, { endpoint: 'https://example.com/push', keys: { p256dh: 'x', auth: 'y' } }, ''), /subscription/);
+  await expect(addRule(bucket, rule, async () => Array.from({ length: 2001 }, () => testListing()))).rejects.toThrow(/Narrow it/);
+  await expect(addDevice(bucket, { endpoint: 'https://example.com/push', keys: { p256dh: 'x', auth: 'y' } }, '')).rejects.toThrow(/subscription/);
   const phone = await device();
   await addDevice(bucket, phone, '');
   await addDevice(bucket, phone, 'Renamed');
-  assert.deepEqual((await readDevices(bucket)).map(({ label }) => label), ['Renamed'], 'subscribing again replaces the device');
+  expect((await readDevices(bucket)).map(({ label }) => label), 'subscribing again replaces the device').toStrictEqual(['Renamed']);
   await removeDevice(bucket, phone.endpoint);
-  assert.equal((await readDevices(bucket)).length, 0);
+  expect((await readDevices(bucket)).length).toBe(0);
 
   const events: string[] = [];
   log.sink = (_level, line) => { events.push(logRecord(line).event); };
   const broken = await checkAlerts(bucket, async () => { throw new Error('storage down'); }, {}, { origin: '' });
-  assert.equal(broken.alerts.length, 0);
-  assert.ok(events.includes('alert_check_failed'));
+  expect(broken.alerts.length).toBe(0);
+  expect(events.includes('alert_check_failed')).toBeTruthy();
   events.length = 0;
   await checkAlerts(bucket, async () => Array.from({ length: 2001 }, () => testListing()), {}, { origin: '' });
-  assert.ok(events.includes('alert_rule_too_broad'));
+  expect(events.includes('alert_rule_too_broad')).toBeTruthy();
 });
 
 test('a failed email is logged and push still goes out', async () => {
@@ -126,8 +124,8 @@ test('a failed email is logged and push still goes out', async () => {
   const events: string[] = [];
   log.sink = (_level, line) => { events.push(logRecord(line).event); };
   const result = await checkAlerts(bucket, async () => inventory, { email: { send: async () => { throw new Error('E_RECIPIENT_NOT_ALLOWED'); } }, from: 'a@example.com', to: ['b@example.com'] }, { origin: '' });
-  assert.equal(result.delivered.email, false);
-  assert.ok(events.includes('alert_email_failed'));
+  expect(result.delivered.email).toBe(false);
+  expect(events.includes('alert_email_failed')).toBeTruthy();
 });
 
 test('the alerts API lists, adds and removes rules and devices, and sends a test alert', async () => {
@@ -136,24 +134,24 @@ test('the alerts API lists, adds and removes rules and devices, and sends a test
   const env = { BUCKET: bucket, ACCESS_ALLOWED_EMAILS: 'owner@example.com', ALERT_EMAIL_FROM: 'alerts@example.com', ALERT_EMAIL: { send: async (message: unknown) => { sent.push(message); } } };
   const call = (body?: unknown) => handleApi(new Request('https://app.test/api/alerts', body === undefined ? {} : { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }), env);
   const empty = await readJson<AlertState>(call());
-  assert.deepEqual(empty, { rules: [], recent: [], devices: [], channels: { email: true, push: null } });
+  expect(empty).toStrictEqual({ rules: [], recent: [], devices: [], channels: { email: true, push: null } });
   const added = await readJson<AlertState>(call({ action: 'add-rule', rule }));
-  assert.equal(added.rules[0].name, 'Brooklyn 1BR');
+  expect(added.rules[0].name).toBe('Brooklyn 1BR');
   const phone = await device();
   const withDevice = await readJson<AlertState>(call({ action: 'add-device', subscription: phone, label: 'iPhone' }));
-  assert.deepEqual(withDevice.devices.map(({ label }) => label), ['iPhone']);
-  assert.equal(JSON.stringify(withDevice).includes(phone.endpoint), false, 'device addresses stay on the server');
+  expect(withDevice.devices.map(({ label }) => label)).toStrictEqual(['iPhone']);
+  expect(JSON.stringify(withDevice).includes(phone.endpoint), 'device addresses stay on the server').toBe(false);
   const tested = await readJson<AlertState>(call({ action: 'test' }));
-  assert.deepEqual(tested.delivered, { email: true, devices: 0 });
-  assert.equal(sent.length, 1);
-  assert.equal((await readJson<AlertState>(call({ action: 'remove-device', endpoint: phone.endpoint }))).devices.length, 0);
-  assert.equal((await readJson<AlertState>(call({ action: 'delete-rule', id: added.rules[0].id }))).rules.length, 0);
-  assert.equal((await call({ action: 'explode' })).status, 422);
-  assert.equal((await call({ action: 'add-rule', rule: { name: '' } })).status, 422);
-  assert.equal((await handleApi(new Request('https://app.test/api/alerts'), {})).status, 400);
-  assert.equal((await handleApi(new Request('https://app.test/api/alerts', { method: 'POST', body: '{}', headers: { 'Content-Type': 'application/json' } }), {})).status, 400);
+  expect(tested.delivered).toStrictEqual({ email: true, devices: 0 });
+  expect(sent.length).toBe(1);
+  expect((await readJson<AlertState>(call({ action: 'remove-device', endpoint: phone.endpoint }))).devices.length).toBe(0);
+  expect((await readJson<AlertState>(call({ action: 'delete-rule', id: added.rules[0].id }))).rules.length).toBe(0);
+  expect((await call({ action: 'explode' })).status).toBe(422);
+  expect((await call({ action: 'add-rule', rule: { name: '' } })).status).toBe(422);
+  expect((await handleApi(new Request('https://app.test/api/alerts'), {})).status).toBe(400);
+  expect((await handleApi(new Request('https://app.test/api/alerts', { method: 'POST', body: '{}', headers: { 'Content-Type': 'application/json' } }), {})).status).toBe(400);
   const broken = { get: async () => { throw new Error('down'); }, head: async () => null, put: async () => null };
-  assert.equal((await handleApi(new Request('https://app.test/api/alerts'), { BUCKET: broken })).status, 503);
+  expect((await handleApi(new Request('https://app.test/api/alerts'), { BUCKET: broken })).status).toBe(503);
 });
 
 test('a resync that saved listings is followed by an alert check after the response', async () => {
@@ -164,8 +162,8 @@ test('a resync that saved listings is followed by an alert check after the respo
   log.sink = (_level, line) => { events.push(logRecord(line).event); };
   const response = await handleApi(new Request('https://app.test/api/refresh', { method: 'POST', body: JSON.stringify({ check: 'now', source: 'housingconnect' }), headers: { 'Content-Type': 'application/json' } }),
     { BUCKET: bucket }, { fetcher: async () => new Response('busy', { status: 503 }), waitUntil: (work) => { waits.push(work); } });
-  assert.equal(response.status, 200);
+  expect(response.status).toBe(200);
   await Promise.all(waits);
-  assert.equal(waits.length, 2, 'the refresh, then the alert check');
-  assert.deepEqual(events.filter((event) => event.startsWith('alert')), []);
+  expect(waits.length, 'the refresh, then the alert check').toBe(2);
+  expect(events.filter((event) => event.startsWith('alert'))).toStrictEqual([]);
 });

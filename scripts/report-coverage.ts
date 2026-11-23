@@ -5,7 +5,7 @@ import { applicationModules } from './coverage-scope.ts';
 const MIN_LINES = 0.98;
 const MIN_FUNCTIONS = 0.96;
 const root = new URL('../', import.meta.url);
-const { measured, ui } = applicationModules(root);
+const { measured, ui } = await applicationModules(root);
 const records = new Map<string, Record<string, number>>();
 for (const record of (await Bun.file(new URL('coverage/lcov.info', root)).text()).split('end_of_record')) {
   const lines = record.trim().split('\n');

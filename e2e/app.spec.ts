@@ -3,6 +3,7 @@ import { localSearch } from '../src/market.ts';
 import { normalizeListing } from '../src/listings.ts';
 import { parseFilters, localWorkplace } from '../src/search.ts';
 import type { ListingData } from '../src/domain.ts';
+import type { HousingResponse } from '../server/contracts.ts';
 
 const fixtures = (count = 1) => Array.from({ length: count }, (_, index) => normalizeListing({
   id: `fixture-${index + 1}`, addressLine1: `${12 + index} Grove Street`, city: 'Jersey City', state: 'NJ', zipCode: '07302',
@@ -14,7 +15,7 @@ const now = '2026-11-13T12:00:00Z';
 type MockRequest = { path: string; method: string; body: Record<string, unknown> | null };
 const userRefreshes = (requests: MockRequest[]) =>
   requests.filter(r => r.path === '/api/refresh' && r.method === 'POST');
-async function mockApp(page: Page, options: { failed?: boolean; searchError?: boolean; listingCount?: number; notices?: string[]; priceHistory?: boolean; discovery?: boolean; commute?: boolean; nyc?: boolean; dashboardAvailable?: boolean; inventoryExpiresAt?: string } = {}) {
+async function mockApp(page: Page, options: { failed?: boolean; searchError?: boolean; listingCount?: number; notices?: string[]; priceHistory?: boolean; discovery?: boolean; commute?: boolean; nyc?: boolean; dashboardAvailable?: boolean; inventoryExpiresAt?: string; housing?: HousingResponse } = {}) {
   const requests: MockRequest[] = [];
   const unexpected: string[] = [];
   const listings = fixtures(options.listingCount);
@@ -34,6 +35,7 @@ async function mockApp(page: Page, options: { failed?: boolean; searchError?: bo
     let data: unknown;
     if (url.pathname === '/api/config') data = { mode: 'live', storageMode: 'persistent', dashboardAvailable: options.dashboardAvailable === true, browserImportAllowed: false, commuteConfigured: false, sources: [{ id: 'streeteasy', name: 'StreetEasy' }], sourceCatalog: [{ id: 'streeteasy-live', marketplace: 'streeteasy', name: 'StreetEasy', coverage: 'Synthetic test feed', resyncable: true }], refresh };
     else if (url.pathname === '/api/refresh') data = refresh;
+    else if (url.pathname === '/api/housing' && options.housing) data = options.housing;
     else if (url.pathname === '/api/building-report' && options.nyc) data = {
       status: 'matched', checkedAt: now,
       identity: { address: '12 Grove Street, 11201', borough: 'BROOKLYN', buildingId: '123', bin: '3000001', bbl: '3000120004' },
@@ -310,14 +312,18 @@ test('reimporting the same apartment does not duplicate saved inventory', async 
   await expect(page.getByText('100 Test Street, Unit 2A', { exact: true })).toHaveCount(0);
 });
 
-test('oversized CSV file rejects safely and a valid file can be selected next', async ({ page }) => {
+test('oversized CSV file rejects safely and a valid file can be selected next', async ({ page }, testInfo) => {
   await mockApp(page);
   await openImport(page);
   const upload = page.getByLabel('Upload listing CSV', { exact: true });
-  await upload.setInputFiles({ name: 'too-large.csv', mimeType: 'text/csv', buffer: Buffer.alloc(256001, 'a') });
+  const tooLarge = testInfo.outputPath('too-large.csv');
+  const valid = testInfo.outputPath('valid.csv');
+  await Bun.write(tooLarge, 'a'.repeat(256001));
+  await Bun.write(valid, `${importHeader}\n${importRow}`);
+  await upload.setInputFiles(tooLarge);
   await expect(page.getByRole('alert').filter({ hasText: 'under 256 KB' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Save listings', exact: true })).toBeDisabled();
-  await upload.setInputFiles({ name: 'valid.csv', mimeType: 'text/csv', buffer: Buffer.from(`${importHeader}\n${importRow}`) });
+  await upload.setInputFiles(valid);
   await expect(page.getByRole('textbox', { name: 'Listing CSV', exact: true })).toHaveValue(`${importHeader}\n${importRow}`);
   await page.getByRole('button', { name: 'Save listings', exact: true }).click();
   await page.getByRole('tab', { name: 'Saved (1)', exact: true }).click();
@@ -552,6 +558,26 @@ test('unavailable dashboard capability explains access without requesting source
   expect(requests.filter(request => request.path === '/api/dashboard')).toHaveLength(0);
 });
 
+test('Jersey City affordable notices show with official links and stay out of apartment search', async ({ page }) => {
+  const { requests, unexpected } = await mockApp(page, { housing: {
+    publishedAt: null, checkedAt: null, opportunities: [], rerentals: null,
+    jersey: { revision: '2026-11-16', checkedAt: now, total: 3,
+      sourceUrl: 'https://www.jerseycitynj.gov/CityHall/HousingAndDevelopment/affordable_housing/recent_affordable_housing_postings',
+      applicationUrl: 'https://affordablehousingjc.com/',
+      notices: [{ id: 'fixture', name: 'Example affordable building', address: '10 Example St, Jersey City, NJ 07302', sizes: [1, 2, 0, 0, 0], total: 3 }] },
+  } });
+  await expect(page.getByText('Example affordable building', { exact: true })).toHaveCount(0);
+  await page.getByRole('tab', { name: 'More', exact: true }).click();
+  await page.getByRole('button', { name: 'Affordable housing', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Jersey City affordable housing applications' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Example affordable building', exact: true })).toBeVisible();
+  await expect(page.getByText('1 BR · 2', { exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Jersey City application portal' })).toHaveAttribute('href', 'https://affordablehousingjc.com/');
+  await page.getByRole('tab', { name: 'Search', exact: true }).click();
+  await expect(page.getByText('Example affordable building', { exact: true })).toHaveCount(0);
+  expect(userRefreshes(requests)).toHaveLength(0);
+  expect(unexpected).toEqual([]);
+});
 
 for (const width of [320, 375, 390]) {
   test(`narrow ${width}px navigation keeps Affordable housing fully reachable`, async ({ page }, testInfo) => {

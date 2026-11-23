@@ -1,6 +1,7 @@
 import { test, expect, setSystemTime } from 'bun:test';
-import { search } from '../server/api.ts';
+import { search } from '../server/search.ts';
 import type { SourceFetch } from '../server/refresh.ts';
+import { parseFilters } from '../src/search.ts';
 
 const base = { city: 'Jersey City', state: 'NJ', zipCode: '07302', bedrooms: 1, price: 2000, status: 'Active', longitude: -74.04 };
 const selectedRows = [
@@ -28,7 +29,7 @@ function mock() {
 
 test('selected website routes only its origins while retaining all-source counts without commute limits', async () => {
   const fixture = mock();
-  const result = await search({ source: 'zillow', liveOnly: true, includeCommute: true }, env, fixture.fetcher);
+  const result = await search(parseFilters({ source: 'zillow', liveOnly: true, includeCommute: true }), env, fixture.fetcher);
   expect(fixture.routedLatitudes).toEqual([[40.72, 40.73]]);
   expect(result.total).toBe(2);
   expect(result.eligibleTotal).toBe(3);
@@ -38,7 +39,7 @@ test('selected website routes only its origins while retaining all-source counts
 
 test('commute limits exclude unrequested unknown routes and disclose scoped eligible counts', async () => {
   const fixture = mock();
-  const result = await search({ source: 'zillow', liveOnly: true, maxTransitMinutes: 30 }, env, fixture.fetcher);
+  const result = await search(parseFilters({ source: 'zillow', liveOnly: true, maxTransitMinutes: 30 }), env, fixture.fetcher);
   expect(fixture.routedLatitudes).toEqual([[40.72, 40.73]]);
   expect(result.total).toBe(1);
   expect(result.eligibleTotal).toBe(1);
@@ -49,7 +50,7 @@ test('commute limits exclude unrequested unknown routes and disclose scoped elig
 
 test('an empty selected website sends no routing request, preserving inventory counts', async () => {
   const fixture = mock();
-  const result = await search({ source: 'no-matching-site', liveOnly: true, includeCommute: true }, env, fixture.fetcher);
+  const result = await search(parseFilters({ source: 'no-matching-site', liveOnly: true, includeCommute: true }), env, fixture.fetcher);
   expect(fixture.routedLatitudes).toEqual([]);
   expect(result.total).toBe(0);
   expect(result.eligibleTotal).toBe(3);
@@ -57,7 +58,7 @@ test('an empty selected website sends no routing request, preserving inventory c
 
 test('all-websites selection still routes all matching origins', async () => {
   const fixture = mock();
-  const result = await search({ liveOnly: true, includeCommute: true }, env, fixture.fetcher);
+  const result = await search(parseFilters({ liveOnly: true, includeCommute: true }), env, fixture.fetcher);
   expect(fixture.routedLatitudes[0].sort()).toEqual([40.72, 40.73, 40.74]);
   expect(result.total).toBe(3);
 });
@@ -78,14 +79,14 @@ test('live search reports earliest contributing saved-source expiry without refr
     { id: 'openigloo', name: 'Openigloo', status: 'updated', checkedAt: older, updatedAt: older },
     { id: 'streeteasy-live', name: 'StreetEasy', status: 'updated', transport: 'v6-daily', checkedAt: fresh, updatedAt: fresh },
   ] }));
-  const result = await search({ liveOnly: true }, { BUCKET: bucket }, () => { throw new Error('No external requests permitted'); });
+  const result = await search(parseFilters({ liveOnly: true }), { BUCKET: bucket }, () => { throw new Error('No external requests permitted'); });
   expect(result.inventoryExpiresAt).toBe(new Date(Date.parse(older) + 24 * 60 * 60_000).toISOString());
   expect(result.total).toBe(1);
 });
 
 test('verified unit links participate in source selection before routing', async () => {
   let origins = 0;
-  const result = await search({ source: 'brodsky', liveOnly: true, includeCommute: true }, env, async (url, options) => {
+  const result = await search(parseFilters({ source: 'brodsky', liveOnly: true, includeCommute: true }), env, async (url, options) => {
     if (url === 'https://synthetic.example.test/zillow') return Response.json([{ ...selectedRows[0], url: 'https://streeteasy.com/building/one-columbus-place/s21d' }]);
     if (url === 'https://synthetic.example.test/realtor') return Response.json([]);
     expect(url).toBe('https://api.traveltimeapp.com/v4/time-filter/fast');
@@ -115,7 +116,7 @@ test('inventory deadline survives expiry while awaiting routing', async () => {
   ] }));
   setSystemTime(started);
   try {
-    const result = await search({ liveOnly: true, includeCommute: true }, {
+    const result = await search(parseFilters({ liveOnly: true, includeCommute: true }), {
       BUCKET: bucket, TRAVELTIME_APP_ID: 'synthetic-app', TRAVELTIME_API_KEY: 'synthetic-key',
     }, async (url, options) => {
       expect(url).toBe('https://api.traveltimeapp.com/v4/time-filter/fast');
@@ -147,7 +148,7 @@ test('inventory refreshed during destination resolution retains its expiry', asy
   await bucket.put('rentals/openigloo.json.gz', gzipSync(strToU8(JSON.stringify({ listings: [listing] }))));
   setSystemTime(started);
   try {
-    const result = await search({ liveOnly: true, workplace: 'custom', customWorkplace: '350 Fifth Avenue, New York, NY 10118' }, { BUCKET: bucket }, async url => {
+    const result = await search(parseFilters({ liveOnly: true, workplace: 'custom', customWorkplace: '350 Fifth Avenue, New York, NY 10118' }), { BUCKET: bucket }, async url => {
       expect(new URL(url).hostname).toBe('geocoding.geo.census.gov');
       setSystemTime(refreshed);
       await bucket.put('rentals/refresh.json', JSON.stringify({ sources: [

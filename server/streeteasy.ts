@@ -2,7 +2,7 @@ import type { FetchTransport } from '../src/fetch-type.ts';
 import { isRecord } from '../src/domain.ts';
 import { normalizeListing } from '../src/listings.ts';
 import { NJ_ZIPS, nycBorough } from './firstmover.ts';
-import { assignedJson, deduplicatePublicRentals, fetchPublicHtml, jsonLd, publicListingUrl } from './public-rentals.ts';
+import { assignedJson, deduplicatePublicRentals, fetchPublicHtml, publicListingUrl } from './public-rentals.ts';
 
 const MAX_STREETEASY_RENT = 2_147_483_647;
 const SOURCE = { id: 'streeteasy', name: 'StreetEasy', kind: 'feed', maxBedrooms: 100, maxRent: MAX_STREETEASY_RENT };
@@ -40,51 +40,11 @@ export const STREETEASY_LIVE = {
   regions: ['nyc', 'nj', 'li', 'metroNorth', 'ct'], minPages: 1, maxPages: MAX_PAGES,
   rowsPerPage: PAGE_SIZE, listingUrl: streetEasyListingUrl, load: loadStreetEasy,
 };
-const MULTIFAMILY = new Set(['TWOFAMILY', 'THREEFAMILY', 'MULTIFAMILY']);
 
 export function streetEasyListingUrl(value: unknown) {
   return publicListingUrl(value, ORIGIN, /^\/(?:rental\/\d+|building\/[^/]+\/(?:[^/]+|rental\/\d+))$/);
 }
 
-type LegacyRental = { address?: { streetAddress?: string; addressLocality?: string; addressRegion?: string; postalCode?: string }; url?: string; name?: string; additionalProperty?: { name?: string; value?: string }[]; '@type'?: string; offers?: { availability?: string }; numberOfBedrooms?: number; geo?: { latitude?: number; longitude?: number } };
-function normalizeRental(row: LegacyRental, state: string, bedrooms: number, checkedAt: string) {
-  const { streetAddress, addressLocality, addressRegion, postalCode } = row.address ?? {};
-  const url = streetEasyListingUrl(row.url);
-  const unit = typeof row.name === 'string' ? row.name.match(/\s#\s*([^#]+)$/)?.[1] : '';
-  const properties = Array.isArray(row.additionalProperty) ? row.additionalProperty : [];
-  const property = (name: string) => properties.find((entry) => entry?.name === name)?.value;
-  const buildingType = property('Building Type');
-  const isApartment = row['@type'] === 'Apartment' || (unit && MULTIFAMILY.has(buildingType ?? ''));
-  const availability = row.offers?.availability ?? property('Status');
-  if (!isApartment || !url || typeof streetAddress !== 'string' ||
-      addressRegion !== state || typeof postalCode !== 'string' || !/^\d{5}$/.test(postalCode) || row.numberOfBedrooms !== bedrooms ||
-      (availability && !/^(?:active|available|(?:https?:\/\/schema\.org\/)?instock)$/i.test(availability))) return null;
-
-  const rentText = property('Monthly Rent');
-  const rent = typeof rentText === 'string' ? rentText.match(/^\$([\d,]+(?:\.\d{2})?)\/mo$/)?.[1] : null;
-  const { latitude, longitude } = row.geo ?? {};
-  if (!rent || typeof latitude !== 'number' || typeof longitude !== 'number' || !Number.isFinite(latitude) || !Number.isFinite(longitude) ||
-      latitude < 40 || latitude > 42 || longitude < -75 || longitude > -72) return null;
-
-  const [njCity, county] = NJ_ZIPS[postalCode] ?? [];
-  const city = state === 'NY' ? nycBorough(postalCode) :
-    postalCode === '07093' && addressLocality === 'Guttenberg' ? 'Guttenberg' : njCity ?? addressLocality;
-  const path = new URL(url).pathname;
-  const rentalId = path.match(/\/rental\/(\d+)$/)?.[1];
-  return normalizeListing({
-    id: rentalId ?? path, url, address: streetAddress, unit, city, county, state, zipCode: postalCode,
-    region: state === 'NY' ? 'nyc' : 'nj', neighborhood: addressLocality, latitude, longitude,
-    bedrooms, rent: Number(rent.replaceAll(',', '')), status: 'Active', updatedAt: checkedAt,
-  }, SOURCE);
-}
-
-export function parseStreetEasyPage(html: string, state: string, bedrooms: number, checkedAt: string) {
-  // StreetEasy's older pages publish each rental in the JSON-LD graph.
-  const rentals = (jsonLd(html) as ({ '@graph'?: (LegacyRental | null)[] } | null)[]).flatMap((schema) => Array.isArray(schema?.['@graph']) ?
-    schema['@graph'].filter((row): row is LegacyRental => Boolean(row?.address?.postalCode && row.url)) : []);
-  if (!rentals.length) throw new Error('StreetEasy did not return a recognized rental page.');
-  return rentals.map((row) => normalizeRental(row, state, bedrooms, checkedAt)).filter((listing) => listing !== null);
-}
 
 export const STREETEASY_PUBLIC_TRANSPORT = 'public-search';
 export const STREETEASY_PUBLIC_COVERAGE = 'first page of the public NYC and New Jersey rental search';

@@ -1,5 +1,5 @@
 /** What a pushed alert shows. Shared by the service worker and its tests. */
-export type PushedAlert = { title: string; body: string; tag?: string; url: string };
+type PushedAlert = { title: string; body: string; tag?: string; url: string };
 
 /** The notification for a push message, with safe defaults for anything missing or malformed. */
 export function alertFromPush(data: { json(): unknown } | null): PushedAlert {

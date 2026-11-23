@@ -1,6 +1,4 @@
-import { mock, test } from 'bun:test';
-import assert from 'node:assert/strict';
-import { zipSync, strToU8 } from 'fflate';
+import { expect, test } from 'bun:test';
 import { fakeD1 } from './fixtures/fake-d1.ts';
 import { createD1Bucket } from '../server/d1-bucket.ts';
 import { checkFirstMover } from '../server/firstmover.ts';
@@ -9,16 +7,14 @@ import { refreshSources, refreshStatus } from '../server/refresh.ts';
 import { requestForRefresh } from '../server/source-requests.ts';
 import { AFFORDABLE_LIVE } from '../server/affordable-rentals.ts';
 import { parseApartmentsPage } from '../server/apartments-com.ts';
-import { parseDashboardArchive } from '../server/dashboard-csv.ts';
 import { safeListingUrl } from '../src/marketplaces.ts';
 import { regionOf } from '../src/regions.ts';
 
-mock.module('cloudflare:workers', () => ({ WorkflowEntrypoint: class {} }));
 
 test('values outside every supported area or URL rule are rejected quietly', () => {
-  assert.equal(safeListingUrl('https://[not a host'), null);
-  assert.equal(regionOf({ state: 'NY', zip: '12207' }), null, 'Albany');
-  assert.equal(regionOf({ state: 'TX', zip: '75201' }), null);
+  expect(safeListingUrl('https://[not a host')).toBeNull();
+  expect(regionOf({ state: 'NY', zip: '12207' }), 'Albany').toBeNull();
+  expect(regionOf({ state: 'TX', zip: '75201' })).toBeNull();
 });
 
 test('a D1 snapshot missing one of its parts is reported, not returned truncated', async () => {
@@ -26,7 +22,7 @@ test('a D1 snapshot missing one of its parts is reported, not returned truncated
   const bucket = createD1Bucket(d1);
   await bucket.put('two-parts', 'x'.repeat(3_000_000));
   sqlite.run("DELETE FROM apartment_object_parts WHERE key = 'two-parts' AND part = 1");
-  await assert.rejects(bucket.get('two-parts'), /snapshot is incomplete/);
+  await expect(bucket.get('two-parts')).rejects.toThrow(/snapshot is incomplete/);
 });
 
 test('the Cloudflare entry answers a request body that breaks off with an error, without crashing', async () => {
@@ -35,13 +31,13 @@ test('the Cloudflare entry answers a request body that breaks off with an error,
   const body = new ReadableStream({ pull(controller) { controller.error(new Error('connection reset')); } });
   const response = await worker.fetch(new Request('https://app.test/api/search', { method: 'POST', body, duplex: 'half', headers: { Authorization: 'Bearer token-0123456789abcdef', 'Content-Type': 'application/json' } } as RequestInit),
     { APARTMENTS: d1, APP_ACCESS_TOKEN: 'token-0123456789abcdef', ASSETS: { fetch: async () => new Response() } } as never);
-  assert.equal(response.status, 400);
-  assert.deepEqual(await response.json(), { error: 'Send a JSON request.' });
+  expect(response.status).toBe(400);
+  expect(await response.json()).toStrictEqual({ error: 'Send a JSON request.' });
 });
 
 test('FirstMover refuses a catalog whose newest monthly CSV is missing or too large', async () => {
   const fetcher = async () => Response.json([{ type: 'file', name: 'Listings-2026-10.csv', sha: 'a'.repeat(40), size: 500 * 1024 * 1024 }]);
-  await assert.rejects(checkFirstMover(null, fetcher), /unavailable or too large/);
+  await expect(checkFirstMover(null, fetcher)).rejects.toThrow(/unavailable or too large/);
 });
 
 test('a StreetEasy partner feed whose rows are all unusable is not saved as an empty inventory', async () => {
@@ -49,23 +45,19 @@ test('a StreetEasy partner feed whose rows are all unusable is not saved as an e
   const env = { BUCKET: bucket, FREE_PARTNER_FEEDS_JSON: JSON.stringify([{ id: 'streeteasy', url: 'https://partner.example.test/se' }]) };
   await refreshSources(env, { now: new Date(), onDemand: true, sourceId: 'streeteasy-live', fetcher: async () => Response.json({ listings: [{ unusable: true }], total: 1 }) });
   const status = (await refreshStatus(bucket)).sources.find(({ id }) => id === 'streeteasy-live');
-  assert.equal(status?.status, 'failed');
+  expect(status?.status).toBe('failed');
 });
 
 test('a StreetEasy denial page that cannot be read still reports the denial', async () => {
   const body = new ReadableStream({ pull(controller) { controller.error(new Error('reset')); } });
   const request = requestForRefresh(async () => new Response(body, { status: 403 }), AbortSignal.timeout(5000));
-  await assert.rejects(request('https://api-v6.streeteasy.com/', { method: 'POST' }), (error: { httpStatus?: number }) => error.httpStatus === 403);
-});
-
-test('dashboard archives with unexpected members are refused', () => {
-  assert.throws(() => parseDashboardArchive(zipSync({ 'notes.txt': strToU8('hello') })), /Unexpected archive member/);
+  await expect(request('https://api-v6.streeteasy.com/', { method: 'POST' })).rejects.toMatchObject({ httpStatus: 403 });
 });
 
 test('Apartments.com cards with malformed share data are skipped, not fatal', () => {
   const page = '<script type="application/ld+json">' + JSON.stringify({ '@graph': [{ '@type': 'CollectionPage', mainEntity: { itemListElement: [{ item: {} }] } }] }) + '</script>' +
     `<article data-listing-key="abc1234" data-listing-share-lines='{not json'></article>`;
-  assert.deepEqual(parseApartmentsPage(page, { borough: 'manhattan', bedrooms: 1 }, new Date().toISOString()), []);
+  expect(parseApartmentsPage(page, { borough: 'manhattan', bedrooms: 1 }, new Date().toISOString())).toStrictEqual([]);
 });
 
 test('AffordableHousing.com keeps its listings when geocoding is unavailable', async () => {
@@ -80,5 +72,5 @@ test('AffordableHousing.com keeps its listings when geocoding is unavailable', a
     return new Response(pages[slug] ?? '<article data-listing-card-type="x"></article>', { headers: { 'content-type': 'text/html' } });
   };
   const result = await AFFORDABLE_LIVE.load(fetcher, new Date());
-  assert.ok(result.listings.length >= 1);
+  expect(result.listings.length >= 1).toBeTruthy();
 });

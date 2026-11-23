@@ -4,7 +4,7 @@ import { createD1Bucket, type D1Database } from './d1-bucket.ts';
 import { crawlOpeniglooCell, finishOpeniglooRun, OPENIGLOO_CELL_COUNT } from './openigloo-sync.ts';
 import { refreshSources } from './refresh.ts';
 import { log } from './log.ts';
-import { runAlerts } from './api.ts';
+import { runAlerts } from './alerts.ts';
 import { completeSync, SYNC_PROGRESS_KEY, WORKFLOW_SOURCE_IDS } from './source-registry.ts';
 
 type Environment = AppEnv & { APARTMENTS: D1Database };

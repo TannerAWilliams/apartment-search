@@ -1,6 +1,5 @@
-import { test } from 'bun:test';
-import assert from 'node:assert/strict';
-import { handleApi } from '../server/api.ts';
+import { expect, test } from 'bun:test';
+import { handleApi } from './fixtures/api.ts';
 import { createMemoryBucket } from './fixtures/memory-bucket.ts';
 import { OPENIGLOO_TRANSPORT } from '../server/openigloo.ts';
 import { refreshSources, refreshStatus } from '../server/refresh.ts';
@@ -20,17 +19,17 @@ test('imports that do not prove a complete inventory are refused and keep saved 
     openigloo: { listings: [], total: 10, rawCount: 10, pages: 1, checkedAt: at, transport: 'sample' },
     'zumper-live': { listings: [], total: 10, rawCount: 9, pages: 20, checkedAt: at, transport: ZUMPER_TRANSPORT },
   } });
-  assert.equal((await statusOf(bucket, 'openigloo'))?.error, 'Openigloo did not return a verifiable complete inventory.');
-  assert.match((await statusOf(bucket, 'zumper-live'))?.status ?? '', /failed/);
+  expect((await statusOf(bucket, 'openigloo'))?.error).toBe('Openigloo did not return a verifiable complete inventory.');
+  expect((await statusOf(bucket, 'zumper-live'))?.status ?? '').toMatch(/failed/);
   const complete = { listings: [], total: 0, rawCount: 0, pages: 25, checkedAt: at, transport: OPENIGLOO_TRANSPORT };
   await refreshSources({ BUCKET: bucket }, { now: new Date(now.getTime() + 3_600_000), imports: { openigloo: complete } });
-  assert.equal((await statusOf(bucket, 'openigloo'))?.status, 'updated');
+  expect((await statusOf(bucket, 'openigloo'))?.status).toBe('updated');
 });
 
 test('a FirstMover import with malformed rows is refused', async () => {
   const bucket = createMemoryBucket();
   await refreshSources({ BUCKET: bucket }, { now, imports: { firstmover: { changed: true, month: '2026-11', revision: 'a'.repeat(40), rows: [['not', 'a', 'row']] } } });
-  assert.equal((await statusOf(bucket, 'firstmover'))?.error, 'The FirstMover import had invalid listings.');
+  expect((await statusOf(bucket, 'firstmover'))?.error).toBe('The FirstMover import had invalid listings.');
 });
 
 test('an on-demand check saves NYC HDC re-rentals', async () => {
@@ -42,8 +41,8 @@ test('an on-demand check saves NYC HDC re-rentals', async () => {
   };
   await refreshSources({ BUCKET: bucket }, { now, onDemand: true, sourceId: 'hdc-rerentals', fetcher });
   const status = await statusOf(bucket, 'hdc-rerentals');
-  assert.equal(status?.status, 'updated');
-  assert.equal(status?.listingCount, 1);
+  expect(status?.status).toBe('updated');
+  expect(status?.listingCount).toBe(1);
 });
 
 test('a StreetEasy partner feed must report its total, and a resync reads a complete export again', async () => {
@@ -51,7 +50,7 @@ test('a StreetEasy partner feed must report its total, and a resync reads a comp
   const bucket = createMemoryBucket();
   const fetcher = async () => Response.json({ listings: [] });
   await refreshSources({ BUCKET: bucket, FREE_PARTNER_FEEDS_JSON: JSON.stringify([feed]) }, { now, onDemand: true, sourceId: 'streeteasy-live', fetcher });
-  assert.match((await statusOf(bucket, 'streeteasy-live'))?.error ?? '', /StreetEasy/);
+  expect((await statusOf(bucket, 'streeteasy-live'))?.error ?? '').toMatch(/StreetEasy/);
 
   const exported = createMemoryBucket();
   await exported.put('rentals/refresh.json', JSON.stringify({ sources: [{ id: 'streeteasy-live', name: 'StreetEasy', status: 'updated', checkedAt: at, updatedAt: at, transport: 'streeteasy-complete-export-v1' }] }));
@@ -59,7 +58,7 @@ test('a StreetEasy partner feed must report its total, and a resync reads a comp
   const exportEnv = { BUCKET: exported, FREE_PARTNER_FEEDS_JSON: JSON.stringify([{ ...feed, format: 'streeteasy-complete-export-v1' }]) };
   await refreshSources(exportEnv, { now: new Date(now.getTime() + 60_000), onDemand: true,
     fetcher: async (url: string) => { if (url.startsWith('https://partner.example.test')) requests++; return new Response(null, { status: 404 }); } });
-  assert.equal(requests, 1, 'a resync is never skipped because the saved export is recent');
+  expect(requests, 'a resync is never skipped because the saved export is recent').toBe(1);
 });
 
 test('an import where every source fails is reported as unavailable', async () => {
@@ -67,7 +66,7 @@ test('an import where every source fails is reported as unavailable', async () =
   const body = { ...encodeSourceImport({ 'streeteasy-live': { listings: 'not a list' } }), fallback: false };
   const response = await handleApi(new Request('https://app.test/api/refresh', { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }),
     { BUCKET: bucket }, { privateAuthenticated: true });
-  assert.ok([200, 502].includes(response.status));
+  expect([200, 502].includes(response.status)).toBeTruthy();
   const result = await readJson<RefreshInfo>(response);
-  if (result.state === 'partial' && result.sources.every(({ status }) => oneOf(['failed', 'feed_required'], status))) assert.equal(response.status, 502);
+  if (result.state === 'partial' && result.sources.every(({ status }) => oneOf(['failed', 'feed_required'], status))) expect(response.status).toBe(502);
 });

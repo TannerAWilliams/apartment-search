@@ -35,7 +35,7 @@ your computer ── scripts/sync-streeteasy.ts ── uploads the StreetEasy in
 - **Installable app.** The web app has a manifest, icons (`public/`) and a service worker (`web/`), so it can be added to the Home Screen; iPhone notifications need that. The service worker caches nothing, so the app always loads current code and listings.
 - **Performance.** Screens other than search load on first use: the map, rent charts, alerts, tours, comparison, sources and import. The web build also leaves out the offline snapshot, which only native builds and the Worker use. Real visits report Core Web Vitals to Workers Logs (`src/web-vitals-report.ts`, using Google's `web-vitals`), and `bun run perf` runs a Lighthouse audit (below).
 
-- **API.** The routes are a [Hono](https://hono.dev) app (`server/api.ts`): `config`, `search`, `search-check`, `refresh`, `market`, `housing`, `dashboard`, `building-report`, `geocode`, `alerts` and `vitals`, all under `/api/`. Each route checks its input with a [Valibot](https://valibot.dev) schema (`server/api-inputs.ts`; search filters in `src/search.ts`, which the app uses too) and answers a mismatch with a 422 naming the first problem. Every POST must be JSON (`Content-Type: application/json`), which also stops cross-site form posts, and within its size limit (4 KB, or 2 MiB for an authenticated source import). Hono infers each reply's type from the routes, and `test/api-contract.ts` fails the type check if a reply stops matching what the app reads.
+- **API.** The routes are a [Hono](https://hono.dev) app: `config`, `search`, `search-check`, `refresh`, `market`, `housing`, `dashboard`, `building-report`, `geocode`, `alerts` and `vitals`, all under `/api/`. `server/api.ts` mounts the route groups in `server/routes/` (sources, search, data, alerts, vitals), which are created from one typed factory (`server/routes/context.ts`) and leave the work to the domain modules (`server/search.ts`, `server/app-config.ts`, `server/alerts.ts`, `server/refresh.ts`). Each route checks its input once, with a [Valibot](https://valibot.dev) schema (`server/routes/inputs.ts`; search filters in `src/search.ts`, which the app uses too), and answers a mismatch with a 422 naming the first problem. Every POST must be JSON (`Content-Type: application/json`), which also stops cross-site form posts, and within its size limit (4 KB, or 2 MiB for an authenticated source import). Hono infers each reply's type from the routes, and `test/api-contract.ts` fails the type check if a reply stops matching what the app reads.
 
 ## Listing sources
 
@@ -52,6 +52,7 @@ your computer ── scripts/sync-streeteasy.ts ── uploads the StreetEasy in
 | Redfin | Active, individually identified units from its public NYC search. |
 | Trulia | The first two pages of one- and two-bedroom searches in the five boroughs and the same outer markets as Zumper. |
 | AffordableHousing.com | Apartments available now from the first two pages in each borough, geocoded with the free U.S. Census batch geocoder. |
+| Jersey City affordable housing | The city's [current affordable housing postings](https://www.jerseycitynj.gov/CityHall/HousingAndDevelopment/affordable_housing/recent_affordable_housing_postings): income-restricted buildings taking applications, with the apartments each describes by size, shown in the Affordable tab. Not market inventory; a failed or older check keeps the last good copy. |
 | NYC Housing Connect | Advertised rental lotteries from [NYC Open Data](https://data.cityofnewyork.us/d/vy5i-a666), shown in the Affordable tab. |
 | FirstMover Open Data | The monthly [FirstMover](https://www.firstmovernyc.com/open-data) snapshot behind the rent charts and dated listings. |
 | Rent.com, Apartment Guide, Craigslist, Facebook Marketplace, Linecity, Settled.nyc | Browse links only; not counted as listing feeds. |
@@ -61,9 +62,9 @@ A sample source replaces only the listings it confirmed; earlier units stay as c
 
 ## Develop
 
-Requires [Bun](https://bun.sh) at the version in `.bun-version` (1.4.5) for the app, tests and scripts, and Node.js 22.12 or later for Wrangler, whose local server does not run under Bun.
+Requires [Bun](https://bun.sh) at the version in `.bun-version` (1.4.5) for the app, tests and scripts, and Node.js 22.12 or later for Wrangler, Cloudflare's command-line tool, which runs on Node.
 
-**Languages and runtimes.** Every source file is TypeScript, checked in strict mode, with no `any` and no comments that switch the checker off. JSON from the network, storage or a request is `unknown` until the code checks it (`types/strict-json.d.ts`). `test/typed-codebase.test.ts` fails if a JavaScript or shell file, an `any` or a suppression comes back. Bun runs everything outside production: the tests (`bun test`), the service worker build (`Bun.build`), the scripts (Bun Shell, `Bun.file`, `Bun.spawn`) and the browser tests' web server (`Bun.serve`). In production the Worker runs on Cloudflare's own runtime, workerd, not on Bun, and the two differ in places (workerd refuses `fetch` with `redirect: 'error'`, for example). `bun run test:workerd` runs the built Worker in workerd and calls its main routes, and the test setup refuses what workerd refuses. Wrangler, Cloudflare's tool for local development and deploys, is the one part that needs Node.js.
+**Languages and runtimes.** Every source file is TypeScript, checked in strict mode, with no `any` and no comments that switch the checker off. JSON from the network, storage or a request is `unknown` until the code checks it (`types/strict-json.d.ts`). `test/typed-codebase.test.ts` fails if a JavaScript or shell file, an `any` or a suppression comes back. Bun runs everything outside production: the tests (`bun test`), the service worker build (`Bun.build`), the scripts (Bun Shell, `Bun.file`, `Bun.spawn`) and the browser tests' web server (`Bun.serve`). In production the Worker runs on Cloudflare's own runtime, workerd, not on Bun, and the two differ in places (workerd refuses `fetch` with `redirect: 'error'`, for example). `bun run test:workerd` runs the built Worker in workerd and calls its main routes, and the test setup refuses what workerd refuses. Wrangler, Cloudflare's tool for local development, builds and deploys, runs on Node.js, its supported runtime; Node is only a tool here. The code itself uses Hono, web-standard and Bun APIs, never `node:` modules, and the Worker runs without Node.js compatibility. Where Hono has a built-in for something (security headers, body size limits, 405 replies, constant-time comparison, the browser tests' static server), the code uses it.
 
 ```sh
 bun install --frozen-lockfile
@@ -102,7 +103,7 @@ bun run build            # web build plus a Wrangler dry-run bundle of the Worke
 bun run perf             # Lighthouse audit of the running app (bun run dev first); fails below its budgets
 ```
 
-The test preload (`test/fixtures/offline-network.ts`) blocks external requests, so provider tests use synthetic responses and never refresh a real source; `test/fixtures/quiet-logs.ts` keeps the expected failure logs out of the report. D1 is tested against SQLite with the production schema (`test/fixtures/fake-d1.ts`), and the Workflow and Worker entry are tested with a stub of `cloudflare:workers`.
+Tests use `bun:test` (`expect`) throughout. The test preloads (`bunfig.toml`) block external requests (`test/fixtures/offline-network.ts`), so provider tests use synthetic responses and never refresh a real source; keep the expected failure logs out of the report (`test/fixtures/quiet-logs.ts`); and give every test the same stand-in for `cloudflare:workers` (`test/fixtures/cloudflare-workers.ts`). D1 is tested against SQLite with the production schema (`test/fixtures/fake-d1.ts`), and the API is called directly through `test/fixtures/api.ts`.
 
 Coverage measures the application modules: every `.ts` file in `server/` and the non-UI files in `src/`. `test/module-coverage.test.ts` loads them all, so an untested module counts against the total. React UI modules are covered by the Playwright suite instead, which runs the exported web app with mocked API responses on desktop, Android-size and iPhone-size Chromium layouts. Its server sends the production security headers, and `e2e/fixtures.ts` fails any test whose page breaks the Content Security Policy. `scripts/coverage-scope.ts` holds the rules. Bun does not report branch coverage.
 
@@ -183,7 +184,7 @@ bun run test && bun run build
 | Path | Contents |
 | --- | --- |
 | `App.tsx`, `index.ts`, `src/` | The Expo app. Non-UI modules in `src/` (search, regions, listings, market data) are shared with the server. |
-| `server/` | The Worker: `cloudflare.ts` entry (sign-in, static files), `api.ts` routes and `api-inputs.ts` request schemas, `refresh.ts` source orchestration, one module per source, `d1-bucket.ts` storage, `sync-workflow.ts` and `source-registry.ts` for the complete syncs. |
+| `server/` | The Worker: `cloudflare.ts` entry (sign-in, static files), `api.ts` and `routes/` for the API, `search.ts`, `app-config.ts` and `alerts.ts` behind it, `refresh.ts` source orchestration, one module per source, `d1-bucket.ts` storage, `sync-workflow.ts` and `source-registry.ts` for the complete syncs. |
 | `public/` | Files copied into the web build unchanged: `index.html` template, manifest, icons (`scripts/make-icons.ts`) and the StreetEasy dashboard archive, which only the Worker reads. |
 | `web/` | The notification service worker in TypeScript, checked against the browser's service worker types and built to `sw.js` by `scripts/build-service-worker.ts`. |
 | `types/` | `strict-json.d.ts`: JSON reads return `unknown` in every project. |
@@ -191,4 +192,3 @@ bun run test && bun run build
 | `scripts/` | The StreetEasy home sync and its installer, offline data rebuilds, the workerd smoke test, the Lighthouse audit and the coverage report. All run with Bun. |
 | `test/`, `e2e/` | Bun unit and integration tests, and the Playwright suite ([e2e/README.md](e2e/README.md)). |
 | `docs/`, `investigations/` | Feature and source references, and dated research notes. |
-| `cloudflare/streeteasy-container-test/` | A one-off StreetEasy probe for Cloudflare Containers. Not deployed. |

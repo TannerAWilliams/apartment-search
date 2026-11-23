@@ -1,4 +1,3 @@
-import React from 'react';
 import { Text, View } from 'react-native';
 import { displayPriceHistory } from './price-history.ts';
 import { formatRent } from './search.ts';

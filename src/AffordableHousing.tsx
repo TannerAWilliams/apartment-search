@@ -1,5 +1,5 @@
 import type { HousingResponse } from '../server/contracts.ts';
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
 import { NYC_SEARCH_DEFAULT } from './regions.ts';
 import { styles } from './styles.ts';
@@ -9,6 +9,8 @@ const SIZE_LABELS = ['Studio', '1 BR', '2 BR', '3 BR', '4+ BR'];
 const HOUSING_PORTAL = 'https://housingconnect.nyc.gov/PublicWeb/';
 const HOUSING_DATA = 'https://data.cityofnewyork.us/d/vy5i-a666';
 const HDC_PAGE = 'https://www.nychdc.com/find-re-rentals';
+const JERSEY_PAGE = 'https://www.jerseycitynj.gov/CityHall/HousingAndDevelopment/affordable_housing/recent_affordable_housing_postings';
+const JERSEY_APPLICATION = 'https://affordablehousingjc.com/';
 const DATE = new Intl.DateTimeFormat('en-US', {
   timeZone: 'UTC', month: 'short', day: 'numeric', year: 'numeric',
 });
@@ -34,10 +36,30 @@ export function AffordableHousing({ region, loadHousing, onError }: { region: st
   }
   const rerentals = data?.rerentals?.results.filter(inArea) ?? [];
   const opportunities = data?.opportunities.filter(inArea) ?? [];
+  const showJersey = region === 'nj' || region === 'all';
 
   return <View style={styles.marketplacePanel}>
     <Text accessibilityRole="header" style={styles.panelTitle}>Affordable housing</Text>
     <Text style={styles.bodyText}>Check lotteries, waitlists, and voucher listings separately from market-rate apartments.</Text>
+    {showJersey && <View style={styles.chartCard}>
+      <Text accessibilityRole="header" style={styles.listingTitle}>Jersey City affordable housing applications</Text>
+      <Text style={styles.smallMuted}>Income-restricted application notices, not available units or market-rate listings. Confirm rent, eligibility and deadlines with the city.</Text>
+      {data?.jersey ? <>
+        <Text style={styles.smallMuted}>{data.jersey.notices.length} buildings · {data.jersey.total} apartments described · City update {showDate(data.jersey.revision)} · Checked {showDate(data.jersey.checkedAt)}</Text>
+        {data.jersey.notices.map((notice) => <View key={notice.id} style={styles.listing}>
+          <Text accessibilityRole="header" style={styles.listingTitle}>{notice.name}</Text>
+          <Text style={styles.smallMuted}>{notice.address}</Text>
+          <View style={styles.chipRow}>
+            {notice.sizes.map((count, index) => count > 0 &&
+              <Text key={index} style={styles.cardStat}>{SIZE_LABELS[index]} · {count}</Text>)}
+          </View>
+        </View>)}
+      </> : <Text style={styles.smallMuted}>No Jersey City postings are saved yet, which does not mean there are none. Check the city page.</Text>}
+      <View style={styles.actionLinks}>
+        <Link label="Official Jersey City postings" url={JERSEY_PAGE} onError={onError} />
+        <Link label="Jersey City application portal" url={JERSEY_APPLICATION} onError={onError} />
+      </View>
+    </View>}
     <View style={styles.chartCard}>
       <Text accessibilityRole="header" style={styles.listingTitle}>NYC HDC re-rentals and waitlists</Text>
       {data?.rerentals && <>

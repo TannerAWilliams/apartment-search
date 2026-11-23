@@ -52,7 +52,7 @@ const flag = v.fallback(v.boolean(), false);
  * Search filters as the app and API accept them, checked in this order with the first problem reported.
  * Blank or missing fields take their defaults; unknown fields are dropped.
  */
-export const SearchFiltersInput = v.pipe(
+export const SearchFiltersSchema = v.pipe(
   v.custom<Record<string, unknown>>(isRecord, 'Enter a valid set of search filters.'),
   v.object({
     region: v.nullish(v.picklist(Object.keys(REGIONS), 'Choose a supported region.'), DEFAULT_FILTERS.region),
@@ -106,7 +106,7 @@ export const SearchFiltersInput = v.pipe(
 
 /** Checked search filters; the first problem becomes a SearchInputError with a message for the user. */
 export function parseFilters(rawInput: unknown = {}): SearchFilters {
-  const result = v.safeParse(SearchFiltersInput, rawInput, { abortEarly: true });
+  const result = v.safeParse(SearchFiltersSchema, rawInput, { abortEarly: true });
   if (!result.success) throw new SearchInputError(result.issues[0].message);
   return result.output;
 }
