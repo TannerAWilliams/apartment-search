@@ -84,3 +84,22 @@ test('separate app credential preserves legacy auth and denies invalid keys', as
  assert.equal(calls,2);
  }finally{server.closeAllConnections();await new Promise<void>(r=>server.close(()=>r()));}
 });
+
+test('the relay reports a failed source request as 502, and starts from environment settings', async () => {
+  const { startRelay } = await import('../server/relay-service.ts');
+  const token = 'test-only-key-that-is-long-enough-123456789';
+  const failing = createRelay(token, async () => { throw new Error('upstream reset'); });
+  await new Promise<void>((resolve) => failing.listen(0, '127.0.0.1', resolve));
+  const address = failing.address();
+  assert.ok(address && typeof address !== 'string');
+  try {
+    const response = await fetch(`http://127.0.0.1:${address.port}/fetch`, { method: 'POST', headers: { Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ source: 'streeteasy', page: 1 }) });
+    assert.equal(response.status, 502);
+  } finally { failing.closeAllConnections(); await new Promise<void>((resolve) => failing.close(() => resolve())); }
+  const started = startRelay({ LISTING_RELAY_TOKEN: token, PORT: '0' }, '127.0.0.1');
+  try {
+    await new Promise<void>((resolve) => started.listening ? resolve() : started.once('listening', () => resolve()));
+    assert.equal(started.requestTimeout, 20000);
+  } finally { await new Promise<void>((resolve) => started.close(() => resolve())); }
+});

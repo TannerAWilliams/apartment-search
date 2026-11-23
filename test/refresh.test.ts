@@ -131,7 +131,7 @@ test('worker integration refreshes active rentals, scopes cards and pins, and re
   assert.deepEqual(after.mapPoints, []);
   await Promise.all(waits);
   } finally { fetchMock.mockRestore(); }
-});
+}, 30_000); // Bundles the Worker with Bun.build, which can take several seconds under a full test run.
 
 const at = new Date('2026-11-10T00:25:00Z');
 const next = new Date('2026-11-10T01:00:00Z');
@@ -201,7 +201,7 @@ test('an hourly refresh persists each source, makes charts use the imported reco
   assert.equal(updated.sources[1].status, 'current');
   assert.equal(updated.sources[0].updatedAt, at.toISOString());
   assert.equal(updated.lastCheckedAt, next.toISOString());
-});
+}, 30_000); // Bundles the Worker with Bun.build, which can take several seconds under a full test run.
 
 test('failed sources preserve the last data and expired lotteries are removed at the Eastern date boundary', async () => {
   const env = { BUCKET: new TestBucket() };

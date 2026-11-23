@@ -55,11 +55,17 @@ export function createRelay(token: string, fetcher: FetchTransport = fetch, appT
     } finally { clearTimeout(timer); active--; }
   });
 }
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const server = createRelay(process.env.LISTING_RELAY_TOKEN ?? '', fetch, process.env.LISTING_RELAY_APP_TOKEN);
+/** Starts the relay from environment settings; returns the listening server. */
+export function startRelay(env: Record<string, string | undefined> = process.env, host = '0.0.0.0') {
+  const server = createRelay(env.LISTING_RELAY_TOKEN ?? '', fetch, env.LISTING_RELAY_APP_TOKEN);
   server.requestTimeout = 20000;
   server.headersTimeout = 10000;
-  server.listen(Number(process.env.PORT ?? 10000), '0.0.0.0');
+  server.listen(Number(env.PORT ?? 10000), host);
+  return server;
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const server = startRelay();
   process.on('SIGTERM', () => { server.close(() => process.exit(0)); setTimeout(() => process.exit(1), 20000).unref(); });
 }
 

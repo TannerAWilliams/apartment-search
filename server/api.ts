@@ -217,8 +217,10 @@ export async function handleApi(request: Request, env: AppEnv, { privateAuthenti
   }
   if (path === '/api/config') {
     if (request.method !== 'GET') return json({ error: 'Use GET for app configuration.' }, 405);
+    let config;
+    try { config = appConfig(env); }
+    catch { return json({ error: 'The free feed settings need to be corrected on the server.' }, 503); }
     try {
-      const config = appConfig(env);
       if (!env.BUCKET) return json(config);
       const refresh = await refreshStatus(env.BUCKET);
       const sourceCatalog = refreshCatalog(env);
@@ -237,7 +239,7 @@ export async function handleApi(request: Request, env: AppEnv, { privateAuthenti
         snapshotMonth: refresh.sources.find(({ id }) => id === 'firstmover')?.month ?? SNAPSHOT_MONTH,
       });
     } catch {
-      return json({ error: 'The free feed settings need to be corrected on the server.' }, 503);
+      return json({ error: 'Saved source data could not be read. Try again shortly.' }, 503);
     }
   }
   if (path === '/api/housing') {

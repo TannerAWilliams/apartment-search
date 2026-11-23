@@ -77,3 +77,23 @@ test('a running sync job reports the source it is on, not always CityRealty', as
   expect(await status({ start: async () => {}, pending: async () => 'openigloo' })).toMatchObject({ checking: true, activeSource: 'openigloo' });
   expect((await status({ start: async () => {}, pending: async () => null })).checking).toBeFalsy();
 });
+
+test('CityRealty search pages and listings that cannot be verified stop the sync', async () => {
+  const { CITYREALTY_LIVE } = await import('../server/cityrealty.ts');
+  const load = (fetcher: FetchTransport) => CITYREALTY_LIVE.load(fetcher, new Date('2026-11-20T00:00:00Z'));
+  const good = mockCityRealty();
+  await expect(load(async () => new Response('<html>blocked</html>', { headers: { 'content-type': 'text/html' } }))).rejects.toThrow(/recognizable rental search results/);
+  await expect(load(async () => Response.json({ items: [], tableTools: { pagination: { total: 5, rowsPerPage: 52, currentPage: 1 } } }))).rejects.toThrow(/unexpected page or result count/);
+  // A search row marked active whose link does not match its own listing ID.
+  await expect(load(async (input, init) => {
+    const response = await good(input, init);
+    if (!String(input).includes('get-rental-listings')) return response;
+    const body = await response.json();
+    body.items[0].mask_id = 'another-mask';
+    return Response.json(body);
+  })).rejects.toThrow(/without verifiable listing details/);
+  // A listing page that describes a different apartment than the search row.
+  await expect(load(async (input, init) => String(input).includes('get-rental-listings') ? good(input, init) :
+    new Response('<script>window.dataLayer.push({"utype":"anonymous","ptype":"listing","lid":"elsewhere"});</script>', { headers: { 'content-type': 'text/html' } })))
+    .rejects.toThrow(/could not verify active listing/);
+});

@@ -71,3 +71,24 @@ test('oversized later page rejects the entire feed instead of returning a partia
   }), { code: 'incomplete_feed' });
   assert.deepEqual(urls, [feed.url, 'https://feed.example.test/page2']);
 });
+
+test('feed configuration rejects too many feeds, missing details and unsupported export formats', async () => {
+  const { configuredFeeds } = await import('../server/listings.ts');
+  const feed = (id: string, extra = {}) => ({ id, name: 'Feed ' + id, url: 'https://feeds.example.test/' + id, ...extra });
+  const config = (feeds: unknown) => configuredFeeds({ FREE_PARTNER_FEEDS_JSON: JSON.stringify(feeds) });
+  assert.throws(() => config(Array.from({ length: 16 }, (_, index) => feed('feed' + index))), /up to 15/);
+  assert.throws(() => config({ id: 'feed' }), /up to 15/);
+  assert.throws(() => config([feed('feed', { url: 'http://insecure.example.test' })]), /unique ID, name, or HTTPS URL/);
+  assert.throws(() => config([feed('feed'), feed('feed')]), /unique ID/);
+  assert.throws(() => config([feed('feed', { format: 'csv' })]), /unsupported export format/);
+  assert.equal(config([feed('feed')]).length, 1);
+});
+
+test('a feed whose total changes between pages, or whose next page is unusable, is incomplete', async () => {
+  const page = (body: object) => new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } });
+  const changing = [page({ listings: [], total: 2, next: '/page2' }), page({ listings: [], total: 3 })];
+  await assert.rejects(loadFeed(feed, async () => changing.shift()!), { code: 'incomplete_feed' });
+  for (const next of [' ', 7, 'http://[bad']) {
+    await assert.rejects(loadFeed(feed, async () => page({ listings: [], next })), { code: 'incomplete_feed' });
+  }
+});

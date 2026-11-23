@@ -6,6 +6,7 @@ declare module 'cloudflare:workers' {
   };
   export abstract class WorkflowEntrypoint<Env, Payload> {
     protected env: Env;
+    constructor(ctx: unknown, env: Env);
     abstract run(event: WorkflowEvent<Payload>, step: WorkflowStep): Promise<unknown>;
   }
 }
