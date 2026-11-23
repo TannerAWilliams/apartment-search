@@ -84,6 +84,7 @@ function ApartmentSearch() {
   const {
     serverState,
     connect,
+    signedIn,
     configuredSources,
     companies,
     sourceCatalog,
@@ -305,6 +306,7 @@ function ApartmentSearch() {
                 setToken={setToken}
                 commuteConfigured={commuteConfigured}
                 connect={connect}
+                onSignedIn={signedIn}
               />
               {expanded !== 'commute' && (
                 <WebsiteFilter

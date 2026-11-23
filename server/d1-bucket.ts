@@ -1,14 +1,17 @@
 import { fromByteArray, toByteArray } from 'base64-js';
 import type { Bucket, BucketHead } from './contracts.ts';
 
-type Result<T> = { results: T[]; meta?: { changes?: number } };
+type Result<T> = { results: T[]; meta: { changes: number; last_row_id: number } };
+/** The parts of Cloudflare's D1 binding the app uses: the storage here, and Better Auth (server/auth.ts). */
 export type D1Statement = {
-  bind(...values: (string | number | null)[]): D1Statement;
+  bind(...values: unknown[]): D1Statement;
   first<T>(): Promise<T | null>;
+  all<T = Record<string, unknown>>(): Promise<Result<T>>;
 };
 export type D1Database = {
   prepare(sql: string): D1Statement;
-  batch<T>(statements: D1Statement[]): Promise<Result<T>[]>;
+  batch<T = unknown>(statements: D1Statement[]): Promise<Result<T>[]>;
+  exec(query: string): Promise<unknown>;
 };
 
 type StoredObject = { etag: string; metadata: string; part_count: number };

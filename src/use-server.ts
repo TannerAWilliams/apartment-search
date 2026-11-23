@@ -16,6 +16,7 @@ import { useRetryCooldown } from './app-hooks.ts';
 import { localWorkplace, needsCommute } from './search.ts';
 import { encodeSourceImport, retryablePublicSources } from './source-import.ts';
 import { refreshSummary, type SourceDefinition } from './source-status.ts';
+import { savedSessionToken, saveSessionToken } from './session-token.ts';
 
 type SearchLink = {
   /** The filters of the search on screen, and a number that changes with every new search. */
@@ -243,10 +244,25 @@ export function useServer({ appliedFilters, searchVersion, submitted, setResult,
     if (serverState === 'locked') setActiveToken(token.trim());
     setConnectionAttempt((attempt) => attempt + 1);
   };
+  /** Connects again after an email-code sign-in. The native app keeps its session token for next time. */
+  const signedIn = (sessionToken: string) => {
+    if (sessionToken) {
+      setActiveToken(sessionToken);
+      void saveSessionToken(sessionToken).catch(() => {});
+    }
+    setConnectionAttempt((attempt) => attempt + 1);
+  };
+  // The native app signs in with the session token it saved last time.
+  useEffect(() => {
+    void savedSessionToken().then((saved) => {
+      if (saved) setActiveToken((current) => current || saved);
+    });
+  }, []);
 
   return {
     serverState,
     connect,
+    signedIn,
     configuredSources,
     companies,
     sourceCatalog,

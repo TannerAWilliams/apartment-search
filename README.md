@@ -21,7 +21,8 @@ browser ──▶ apartments.5thof6.com ── Cloudflare Access sign-in
 your computer ── scripts/sync-streeteasy.ts ── uploads the StreetEasy inventory daily (workers.dev URL, app token)
 ```
 
-- **One Worker, two ways in.** `server/cloudflare.ts` serves the web app and the API at `apartments.5thof6.com` and its workers.dev URL. Every request, including the web app's files, needs one of:
+- **One Worker, three ways in.** `server/cloudflare.ts` serves the web app and the API at `apartments.5thof6.com` and its workers.dev URL. The API and data need one of the sign-ins below; with email-code sign-in on, the web app's own files load signed out so they can show the sign-in form.
+  - an **email-code sign-in** with Better Auth (`server/auth.ts`), which the App Store app needs: type your email, get a six-digit code, type it in. Only `ACCESS_ALLOWED_EMAILS` get a code or an account; anyone else sees the same reply and gets nothing. Codes last 10 minutes with 3 tries; asking for codes is limited to 3 a minute. Sessions last 30 days, in a cookie on the web and in the device's secure storage in the native app, which sends it as a bearer token. Users, sessions, codes and rate limits are tables in D1. It turns on when the `BETTER_AUTH_SECRET` secret is set, and sends codes through the same email binding as alerts (see [Email alerts](#email-alerts)).
   - a **Cloudflare Access sign-in**, with a passkey (Face ID or Touch ID) or an emailed one-time code. Sessions last 24 hours. Access signs a token for each request it lets through. The Worker verifies it against the team's published keys (issuer, audience, expiry, signature) and allows only the emails in `ACCESS_ALLOWED_EMAILS`. Workers with Static Assets don't receive `ctx.access`, so the Worker checks the token itself. Changes from a signed-in browser must come from the app's own pages (same `Origin`).
   - the **app access token** (`Authorization: Bearer <APP_ACCESS_TOKEN>`), for scripts such as the StreetEasy home sync.
 
@@ -80,7 +81,8 @@ bun run dev          # build the web app and serve it at http://localhost:8787
 
 | Variable | Where | Purpose |
 | --- | --- | --- |
-| `ACCESS_ALLOWED_EMAILS` | Worker secret | Required for browser sign-in: comma-separated emails Access may let in. Kept out of the repository. |
+| `ACCESS_ALLOWED_EMAILS` | Worker secret | Required for sign-in: comma-separated emails that may sign in, by email code or Access. Kept out of the repository. |
+| `BETTER_AUTH_SECRET` | Worker secret | Turns on email-code sign-in and signs its sessions. Make one with `openssl rand -base64 32`. |
 | `ACCESS_TEAM_DOMAIN`, `ACCESS_AUD` | `wrangler.jsonc` vars | The Access team domain and the application's audience tag. Sign-in is off unless these and the emails are set. |
 | `APP_ACCESS_TOKEN` | Worker secret | The token scripts send, such as the StreetEasy home sync. |
 | `TRAVELTIME_APP_ID`, `TRAVELTIME_API_KEY` | Worker secrets | Optional commute estimates. |
@@ -124,6 +126,8 @@ bun run deploy                                          # build the web app and 
 
 `deploy/cloudflare/wrangler.jsonc` defines the Worker, its static assets, the D1 binding, the Workflow (limited to one run at a time) and a 30-second CPU limit. Before the first deploy from this file, compare it with the live Worker's settings (routes, workers.dev) so the deploy changes only code. Set secrets with `wrangler secret put NAME -c deploy/cloudflare/wrangler.jsonc`. Apply schema changes to the production database with `wrangler d1 execute apartment-search-observations --remote --file deploy/cloudflare/schema.sql -c deploy/cloudflare/wrangler.jsonc`; the schema only creates missing tables.
 
+To turn on email-code sign-in: apply the schema (above) so D1 has the sign-in tables, set up email (see [Email alerts](#email-alerts)), then `openssl rand -base64 32 | node ./node_modules/wrangler/bin/wrangler.js secret put BETTER_AUTH_SECRET -c deploy/cloudflare/wrangler.jsonc` and deploy. While the Cloudflare Access application stays in front of `apartments.5thof6.com`, Access still asks you to sign in first; once email-code sign-in works, you can delete that Access application in Zero Trust. `scripts/auth-schema.ts` regenerates the sign-in tables in `schema.sql` after a change to `server/auth.ts`, and a test checks they match.
+
 The Cloudflare Access application for `apartments.5thof6.com` (who may sign in, and how) is configured in Zero Trust; the Worker's custom domain and its check of the Access token are in this repository. Before the first deploy from this file, set the `ACCESS_ALLOWED_EMAILS` secret, or nobody can sign in.
 
 `apartments.5thof6.com` used to be served by a separate gate Worker, `apartment-search-access`, which checked the Access sign-in and forwarded requests with the app token. This Worker checks the sign-in itself, and the gate Worker was deleted on 2026-11-23.
@@ -136,7 +140,7 @@ Notifications work as soon as the Worker is deployed. Email needs two settings i
 2. Email Routing → Destination addresses → add the address you sign in with, then open the verification email Cloudflare sends.
 3. In `deploy/cloudflare/wrangler.jsonc`, add `"send_email": [{ "name": "ALERT_EMAIL" }]` and the variable `"ALERT_EMAIL_FROM": "alerts@5thof6.com"`, then deploy.
 
-Alerts → **Send a test alert** checks both channels.
+Alerts → **Send a test alert** checks both channels. The same email setup sends sign-in codes.
 
 ## Daily StreetEasy sync from your own computer
 

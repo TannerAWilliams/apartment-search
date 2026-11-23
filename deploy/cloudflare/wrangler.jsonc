@@ -31,7 +31,8 @@
   },
   // Email alerts: once Email Routing is on for 5thof6.com and your address is verified there, add
   //   "send_email": [{ "name": "ALERT_EMAIL" }]
-  // and the variable "ALERT_EMAIL_FROM": "alerts@5thof6.com". Alerts go to ACCESS_ALLOWED_EMAILS.
+  // and the variable "ALERT_EMAIL_FROM": "alerts@5thof6.com". Alerts go to ACCESS_ALLOWED_EMAILS. The same binding
+  // sends email-code sign-in codes.
   // Every request reaches the Worker first, so sign-in also protects the web app's files.
   "assets": { "directory": "../../web-build", "binding": "ASSETS", "run_worker_first": true },
   "d1_databases": [
@@ -48,6 +49,7 @@
   // Stack traces in Workers Logs then point at the TypeScript source (server/log.ts writes them).
   "upload_source_maps": true
   // Secrets, set with `wrangler secret put`: ACCESS_ALLOWED_EMAILS (required for sign-in; comma-separated),
+  // BETTER_AUTH_SECRET (turns on email-code sign-in; `openssl rand -base64 32`),
   // APP_ACCESS_TOKEN (for scripts) and VAPID_PRIVATE_KEY (alert notifications). Optional: TRAVELTIME_APP_ID, TRAVELTIME_API_KEY,
   // FREE_PARTNER_FEEDS_JSON. Local values go in deploy/cloudflare/.dev.vars (see .dev.vars.example).
 }

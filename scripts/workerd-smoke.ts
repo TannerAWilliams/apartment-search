@@ -39,6 +39,15 @@ const CHECKS: { path: string; init?: RequestInit; status: number; contains?: str
     ? []
     : [{ path: '/api/config', status: 200, init: { headers: { 'Cf-Access-Jwt-Assertion': fakeAccessToken() } } }]),
   { path: '/api/refresh', status: 200 },
+  // Better Auth in workerd with D1: a session check, and a code request for an email that may not sign in,
+  // which is answered like any other but sends nothing (this run has no email binding).
+  { path: '/api/auth/get-session', status: 200, contains: 'null' },
+  {
+    path: '/api/auth/email-otp/send-verification-otp',
+    status: 200,
+    contains: '"success":true',
+    init: { method: 'POST', body: JSON.stringify({ email: 'not-allowed@example.com', type: 'sign-in' }) },
+  },
   { path: '/api/alerts', status: 200, contains: '"rules":[]' },
   { path: '/api/dashboard', status: 200, contains: '"files"' },
   { path: '/api/dashboard?file=rentalIndex_All.csv', status: 200, contains: '"months"' },
@@ -95,6 +104,18 @@ if (import.meta.main) {
     'deploy/cloudflare/schema.sql',
   ]);
   if (schema.exitCode !== 0) throw new Error('Could not create the local database:\n' + schema.stderr.toString());
+  // Sign-in rate limits and codes from an earlier run would refuse this run's requests.
+  const reset = Bun.spawnSync([
+    'node',
+    ...wrangler,
+    'd1',
+    'execute',
+    'apartment-search-observations',
+    '--local',
+    '--command',
+    'DELETE FROM "rateLimit"; DELETE FROM "verification";',
+  ]);
+  if (reset.exitCode !== 0) throw new Error('Could not reset the local sign-in tables:\n' + reset.stderr.toString());
   // Wrangler runs on Node, its supported runtime; it runs the Worker in workerd.
   const worker = Bun.spawn(
     [
@@ -105,6 +126,14 @@ if (import.meta.main) {
       'PUBLIC_APP:true',
       '--var',
       `ACCESS_ALLOWED_EMAILS:${PLACEHOLDER_EMAIL}`,
+      // Email-code sign-in (Better Auth) on, checking the browser's origin against this local one.
+      '--var',
+      'BETTER_AUTH_SECRET:workerd-smoke-test-only-secret-0123456789abcdef',
+      '--var',
+      `APP_ORIGIN:${origin}`,
+      // Without this, wrangler dev presents requests as coming to the production domain in the Worker's route.
+      '--local-upstream',
+      `127.0.0.1:${PORT}`,
       '--port',
       String(PORT),
       '--ip',

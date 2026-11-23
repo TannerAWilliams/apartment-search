@@ -7,6 +7,7 @@ import { RefreshCheckSchema } from './routes/inputs.ts';
 import type { AppEnv, Bucket } from './contracts.ts';
 import { createD1Bucket, type D1Database } from './d1-bucket.ts';
 import { timingSafeEqual } from 'hono/utils/buffer';
+import { type Auth, createAuth, sessionEmail } from './auth.ts';
 import { log } from './log.ts';
 import { securityHeaders, withCacheControl } from './web-headers.ts';
 import { accessSettings, verifyAccessToken } from './access.ts';
@@ -24,6 +25,8 @@ type Environment = AppEnv & {
   ACCESS_AUD?: string;
   /** Secret: comma-separated emails allowed to sign in, kept out of the repository. */
   ACCESS_ALLOWED_EMAILS?: string;
+  /** Secret: turns on sign-in with an email code (server/auth.ts) and signs its sessions. */
+  BETTER_AUTH_SECRET?: string;
   APARTMENTS: D1Database;
   ASSETS: { fetch(request: Request): Promise<Response> };
   SYNC_WORKFLOW?: Workflow;
@@ -103,9 +106,25 @@ const app = new Hono<Worker>();
 // Hono's secure headers on every response, sign-in refusals included: HTTPS only, the Content Security Policy and the rest.
 app.use(securityHeaders);
 
-// The deployed app is private. A browser signs in with Cloudflare Access, whose token this Worker
-// verifies; scripts such as the StreetEasy home sync send the app access token instead. Every request,
-// assets included, needs one of them. PUBLIC_APP opens the app for local development.
+/** Better Auth for these settings, made once per isolate, or null when email-code sign-in is not set up. */
+const auths = new WeakMap<Environment, Auth>();
+function authFor(env: Environment) {
+  if (!env.BETTER_AUTH_SECRET) return null;
+  const auth = auths.get(env) ?? createAuth(env, env.APARTMENTS);
+  auths.set(env, auth);
+  return auth;
+}
+
+// Sign-in itself (sending and checking codes, signing out) works before signing in; AUTH_BASE_PATH in server/auth.ts.
+app.on(['GET', 'POST'], '/api/auth/*', async (c): Promise<Response> => {
+  const auth = authFor(c.env);
+  return auth ? auth.handler(c.req.raw) : fail(c, 404, 'Not found.');
+});
+
+// The deployed app is private. You sign in with an email code (Better Auth) or Cloudflare Access, whose
+// token this Worker verifies; scripts such as the StreetEasy home sync send the app access token instead.
+// With email-code sign-in the app's own pages load signed out, so they can show the sign-in form; the API
+// and data always need one of the three. PUBLIC_APP opens the app for local development.
 app.use(async (c, next) => {
   const env = c.env;
   const bearer = Boolean(
@@ -118,10 +137,22 @@ app.use(async (c, next) => {
         return null;
       })
     : null;
-  const signedIn = bearer || accessEmail !== null;
-  if (env.PUBLIC_APP !== 'true' && !signedIn) return fail(c, 401, 'Sign in to the private apartment app.');
-  // An Access session rides on a browser cookie, so changes must come from the app's own pages.
-  if (accessEmail && !['GET', 'HEAD'].includes(c.req.method) && c.req.header('Origin') !== new URL(c.req.url).origin) {
+  const auth = bearer || accessEmail ? null : authFor(env);
+  const session = auth
+    ? await sessionEmail(auth, env, c.req.raw.headers).catch((cause) => {
+        log.error('session_check_failed', cause);
+        return null;
+      })
+    : null;
+  const signedIn = bearer || accessEmail !== null || session !== null;
+  const reading = ['GET', 'HEAD'].includes(c.req.method);
+  if (env.PUBLIC_APP !== 'true' && !signedIn && !(auth && reading && !c.req.path.startsWith('/api/'))) {
+    return fail(c, 401, 'Sign in to the private apartment app.');
+  }
+  // Access and the web app's session ride on browser cookies, so changes must come from the app's own pages.
+  // The native app sends its session as a bearer token, which another site cannot make a browser send.
+  const cookie = accessEmail !== null || (session !== null && !c.req.header('Authorization'));
+  if (cookie && !reading && c.req.header('Origin') !== new URL(c.req.url).origin) {
     return fail(c, 403, 'Cross-origin request rejected.');
   }
   c.set('signedIn', signedIn);

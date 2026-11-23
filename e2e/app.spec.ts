@@ -42,10 +42,13 @@ async function mockApp(
     dashboardAvailable?: boolean;
     inventoryExpiresAt?: string;
     housing?: HousingResponse;
+    /** The server asks for sign-in until the email-code sign-in succeeds. */
+    signIn?: boolean;
   } = {},
 ) {
   const requests: MockRequest[] = [];
   const unexpected: string[] = [];
+  let signedIn = false;
   const listings = fixtures(options.listingCount);
   if (options.nyc) Object.assign(listings[0], { city: 'Brooklyn', state: 'NY', county: 'Kings', zip: '11201', region: 'nyc' });
   if (options.commute)
@@ -97,7 +100,13 @@ async function mockApp(
     const body = request.postDataJSON();
     requests.push({ path: url.pathname, method: request.method(), body });
     let data: unknown;
-    if (url.pathname === '/api/config')
+    if (options.signIn && url.pathname === '/api/auth/email-otp/send-verification-otp') data = { success: true };
+    else if (options.signIn && url.pathname === '/api/auth/sign-in/email-otp') {
+      if (body?.otp !== '123456') return route.fulfill({ status: 401, json: { message: 'Invalid code' } });
+      signedIn = true;
+      data = { token: 'session' };
+    } else if (options.signIn && !signedIn) return route.fulfill({ status: 401, json: { error: 'Sign in to the private apartment app.' } });
+    else if (url.pathname === '/api/config')
       data = {
         mode: 'live',
         storageMode: 'persistent',
@@ -143,7 +152,8 @@ async function mockApp(
     await route.fulfill({ json: data });
   });
   await page.goto('/');
-  await expect.poll(() => requests.filter((r) => r.path === '/api/search').length).toBeGreaterThan(0);
+  // Signed out, the app searches only after sign-in.
+  if (!options.signIn) await expect.poll(() => requests.filter((r) => r.path === '/api/search').length).toBeGreaterThan(0);
   return { requests, unexpected, listings };
 }
 
@@ -691,6 +701,24 @@ test('unavailable dashboard capability explains access without requesting source
     ),
   ).toBeVisible();
   expect(requests.filter((request) => request.path === '/api/dashboard')).toHaveLength(0);
+});
+
+test('signing in with an email code opens the app', async ({ page }) => {
+  const { requests, unexpected } = await mockApp(page, { signIn: true });
+  await page.getByLabel('Email', { exact: true }).fill('Renter@Example.test');
+  await page.getByRole('button', { name: 'Email me a sign-in code', exact: true }).click();
+  await expect(page.getByText('If renter@example.test can sign in, a code is on its way.', { exact: false })).toBeVisible();
+  await page.getByLabel('Sign-in code', { exact: true }).fill('000000');
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await expect(page.getByRole('alert').filter({ hasText: 'Check the code and try again.' })).toBeVisible();
+  await page.getByLabel('Sign-in code', { exact: true }).fill('123456');
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await expect(page.getByText('12 Grove Street', { exact: true })).toBeVisible();
+  expect(requests.find((r) => r.path === '/api/auth/email-otp/send-verification-otp')?.body).toEqual({
+    email: 'renter@example.test',
+    type: 'sign-in',
+  });
+  expect(unexpected).toEqual([]);
 });
 
 test('Jersey City affordable notices show with official links and stay out of apartment search', async ({ page }) => {

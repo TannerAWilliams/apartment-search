@@ -1,4 +1,5 @@
 import React from 'react';
+import { SignIn } from './SignIn.tsx';
 import { type ConfigSource } from './api-client.ts';
 import type { SearchFilters, SearchResult } from './domain.ts';
 
@@ -20,6 +21,7 @@ export function Filters({
   token,
   setToken,
   connect,
+  onSignedIn,
   panel,
   commuteConfigured,
 }: {
@@ -31,6 +33,8 @@ export function Filters({
   token: string;
   setToken: (value: string) => void;
   connect: () => void;
+  /** After an email-code sign-in, with the session token for the native app. */
+  onSignedIn: (token: string) => void;
   panel: string;
   commuteConfigured: boolean;
 }) {
@@ -262,8 +266,10 @@ export function Filters({
           Retry connection
         </Button>
       )}
+      {serverState === 'locked' && <SignIn onSignedIn={onSignedIn} />}
       {serverState === 'locked' && (
         <View style={styles.tokenForm}>
+          <Text style={styles.smallMuted}>Or connect with the server access token.</Text>
           <Field
             label="Server access token"
             placeholder="Enter your server token"
