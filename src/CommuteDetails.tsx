@@ -1,9 +1,10 @@
+import type { ListingData } from './domain.ts';
 import React from 'react';
 import { Text, View } from 'react-native';
 import { savedCommuteEstimate } from './commute-estimate.ts';
 import { styles } from './styles.ts';
 const date = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', dateStyle: 'medium', timeStyle: 'short' });
-export function CommuteDetails({ listing }: { listing: any }) {
+export function CommuteDetails({ listing }: { listing: ListingData }) {
   const estimate = savedCommuteEstimate(listing);
   return <View style={{ gap: 5 }}>
     <Text accessibilityRole="header" style={styles.fieldLabel}>Commute context</Text>

@@ -4,6 +4,8 @@ import { CITYREALTY_ID } from '../server/cityrealty.ts';
 import type { FetchTransport } from '../src/fetch-type.ts';
 import { createMemoryBucket } from './fixtures/memory-bucket.ts';
 import { refreshSources, storedDirectRentals } from '../server/refresh.ts';
+import { readJson } from './fixtures/json.ts';
+import type { RefreshInfo } from '../src/api-client.ts';
 
 function mockCityRealty({ duplicate = false }: { duplicate?: boolean } = {}): FetchTransport {
   return (input) => {
@@ -73,7 +75,7 @@ test('Cloudflare queues manual CityRealty refresh and reports a pending job whil
 test('a running sync job reports the source it is on, not always CityRealty', async () => {
   const env = { BUCKET: createMemoryBucket() };
   const status = async (job: { start: () => Promise<void>; pending: () => Promise<string | boolean | null> }) =>
-    (await handleApi(new Request('https://app.test/api/refresh'), env, { syncJob: job })).json();
+    readJson<RefreshInfo>(handleApi(new Request('https://app.test/api/refresh'), env, { syncJob: job }));
   expect(await status({ start: async () => {}, pending: async () => 'openigloo' })).toMatchObject({ checking: true, activeSource: 'openigloo' });
   expect((await status({ start: async () => {}, pending: async () => null })).checking).toBeFalsy();
 });
@@ -88,7 +90,7 @@ test('CityRealty search pages and listings that cannot be verified stop the sync
   await expect(load(async (input, init) => {
     const response = await good(input, init);
     if (!String(input).includes('get-rental-listings')) return response;
-    const body = await response.json();
+    const body = await readJson<{ items: { mask_id: string }[] }>(response);
     body.items[0].mask_id = 'another-mask';
     return Response.json(body);
   })).rejects.toThrow(/without verifiable listing details/);

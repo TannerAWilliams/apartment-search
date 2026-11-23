@@ -1,0 +1,15 @@
+{
+  // The service worker runs in the browser's service worker scope, so it gets those types, not the page's DOM.
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "WebWorker"],
+    "types": [],
+    "strict": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "skipLibCheck": true
+  },
+  "files": ["service-worker.ts", "../types/strict-json.d.ts"]
+}

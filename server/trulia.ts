@@ -1,4 +1,5 @@
 import type { FetchTransport } from '../src/fetch-type.ts';
+import { isRecord } from '../src/domain.ts';
 import { normalizeListing } from '../src/listings.ts';
 import { boroughKey, boroughLabel, searchBorough } from '../src/regions.ts';
 import { loadPublicPages, publicListingUrl } from './public-rentals.ts';
@@ -36,21 +37,29 @@ export const TRULIA_LIVE = {
   listingUrl, load: (fetcher: FetchTransport, now: Date) => loadPublicPages(SOURCE, MARKETS, parseTruliaPage, fetcher, now),
 };
 
+/** A Trulia search result as this parser reads it; normalizeListing checks every field it keeps. */
+type TruliaRow = {
+  url?: unknown; metadata?: { unifiedListingType?: unknown }; activeListing?: { __typename?: unknown };
+  location?: { streetAddress?: string; stateCode?: string; zipCode?: string; city?: string; coordinates?: { latitude?: unknown; longitude?: unknown } };
+  price?: { price?: unknown; min?: unknown; max?: unknown; typeDescription?: unknown };
+  bedrooms?: { value?: unknown; min?: unknown; max?: unknown };
+};
+
 export function parseTruliaPage(html: string, market: {city:string; state:string; region:string; bedrooms:number}, checkedAt: string) {
   const script = html.match(/<script\b[^>]*\bid=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script\s*>/i);
-  const rows = script && JSON.parse(script[1])?.props?.searchData?.homes;
+  const rows = script ? (JSON.parse(script[1]) as { props?: { searchData?: { homes?: unknown } } } | null)?.props?.searchData?.homes : null;
   if (!Array.isArray(rows)) throw new Error('Trulia did not return a recognized rental page.');
-  return rows.flatMap((row) => {
-    const url = listingUrl(row?.url);
-    const location = row?.location;
+  return (rows.filter(isRecord) as TruliaRow[]).flatMap((row) => {
+    const url = listingUrl(row.url);
+    const location = row.location;
     const address = location?.streetAddress?.match(/^(\d.+?)(?:\s+#\s*|,\s*Unit\s+|\s+APT\s+)([\w-]+)$/i);
     const { latitude, longitude } = location?.coordinates ?? {};
-    if (!url || !address || row.metadata?.unifiedListingType !== 'RENTAL_SINGLE_UNIT' ||
+    if (!url || !location?.stateCode || !address || row.metadata?.unifiedListingType !== 'RENTAL_SINGLE_UNIT' ||
         row.activeListing?.['__typename'] !== 'HOME_ForRentListing' ||
         location.stateCode !== market.state ||
         (boroughKey(market.city) ? searchBorough({ state: location.stateCode, zip: location.zipCode }) !== boroughKey(market.city) :
           location.city?.trim().toLowerCase() !== market.city.toLowerCase()) ||
-        !Number.isFinite(latitude) || !Number.isFinite(longitude) || !/^\d{5}$/.test(location.zipCode)) return [];
+        !Number.isFinite(latitude) || !Number.isFinite(longitude) || !/^\d{5}$/.test(location.zipCode ?? '')) return [];
 
     const rent = row.price?.price ?? (row.price?.min === row.price?.max ? row.price?.min : null);
     const bedrooms = row.bedrooms?.value ?? (row.bedrooms?.min === row.bedrooms?.max ? row.bedrooms?.min : null);

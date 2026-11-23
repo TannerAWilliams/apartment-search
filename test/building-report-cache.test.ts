@@ -19,5 +19,6 @@ test('unknown responses expire sooner and invalid/failed responses are never cac
   let now = 0, calls = 0; const load = createBuildingReportCache(() => now); const signal = new AbortController().signal;
   const request = async () => { calls++; return { ...report, status: 'unavailable' }; };
   await load(listing, request, signal); now = 30001; await load(listing, request, signal); expect(calls).toBe(2);
-  await expect(load({ ...listing, address: 'other' }, async () => ({}), signal)).rejects.toThrow();
+  // A malformed server response is never cached.
+  await expect(load({ ...listing, address: 'other' }, async () => ({}) as { status: string; checkedAt: string }, signal)).rejects.toThrow();
 });

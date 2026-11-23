@@ -1,6 +1,6 @@
 import type { AppEnv } from './contracts.ts';
-import type { ListingData, Point, Workplace, SearchFilters } from '../src/domain.ts';
-import type { SourceFetch } from "./refresh.ts";
+import { isRecord, type ListingData, type Point, type Workplace, type SearchFilters } from '../src/domain.ts';
+import type { SourceFetch } from './refresh.ts';
 import type { Bucket } from './contracts.ts';
 import { gunzipSync, gzipSync, strFromU8, strToU8 } from 'fflate';
 import { SearchInputError, isPoint, localWorkplace } from '../src/search.ts';
@@ -27,6 +27,12 @@ const pointKey = ({ latitude, longitude }: Point) => `${latitude},${longitude}`;
 /** Typical weekday-morning estimates change slowly, so routed times are reused for a week. */
 export const COMMUTE_CACHE_DAYS = 7;
 const COMMUTE_CACHE_LIMIT = 60_000;
+/** A TravelTime time-filter request: every listing to one workplace, by transit and by car. */
+export type TravelTimeRequest = {
+  locations: { id: string; coords: { lat: number; lng: number } }[];
+  arrival_searches: { many_to_one: { id: string; arrival_location_id: string; departure_location_ids: string[]; transportation: { type: string };
+    travel_time: number; arrival_time_period: string; properties: string[] }[] };
+};
 type CachedTimes = { transit: number | null; driving: number | null; checkedAt: string };
 type CommuteCache = { version: 1; workplace?: string; entries: Record<string, CachedTimes> };
 /**
@@ -45,9 +51,10 @@ function cacheKey(workplace: Point) {
 async function readCommuteCache(bucket: Bucket, workplace: Point): Promise<CommuteCache> {
   try {
     const object = await bucket.get(cacheKey(workplace));
-    const value = object ? JSON.parse(strFromU8(gunzipSync(new Uint8Array(await object.arrayBuffer())))) : null;
-    return value?.version === 1 && value.workplace === workplaceId(workplace) && value.entries && typeof value.entries === 'object' ?
-      value : { version: 1, workplace: workplaceId(workplace), entries: {} };
+    // Written by saveCommuteCache below.
+    const value = object ? JSON.parse(strFromU8(gunzipSync(new Uint8Array(await object.arrayBuffer())))) as Partial<CommuteCache> | null : null;
+    return value?.version === 1 && value.workplace === workplaceId(workplace) && isRecord(value.entries) ?
+      { version: 1, workplace: value.workplace, entries: value.entries } : { version: 1, workplace: workplaceId(workplace), entries: {} };
   } catch {
     return { version: 1, workplace: workplaceId(workplace), entries: {} };
   }
@@ -80,21 +87,22 @@ export async function routeCommutes<T extends { latitude?: unknown; longitude?: 
     id, arrival_location_id: 'workplace', departure_location_ids,
     transportation: { type }, travel_time: 10800, arrival_time_period: 'weekday_morning', properties: ['travel_time'],
   }));
-  const body = { locations: [...locations, { id: 'workplace', coords: coords(workplace) }],
+  const body: TravelTimeRequest = { locations: [...locations, { id: 'workplace', coords: coords(workplace) }],
     arrival_searches: { many_to_one: searches } };
 
   let results: { search_id?: string; locations?: { id: string; properties?: { travel_time?: number } }[] }[] = [];
   if (locations.length) try {
     const response = await fetcher(TRAVELTIME_URL, {
-      method: 'POST', redirect: 'error', signal: AbortSignal.timeout(20000),
+      method: 'POST', redirect: 'manual', signal: AbortSignal.timeout(20000),
       headers: { 'Content-Type': 'application/json', 'X-Application-Id': credentials.appId, 'X-Api-Key': credentials.apiKey },
       body: JSON.stringify(body),
     });
     if ([401, 403].includes(response.status)) throw new CommuteError('The routing service rejected the server credentials.');
     if (response.status === 429) throw new CommuteError('TravelTime reached its request limit. Try the commute search again later.');
     if (!response.ok) throw new Error('Routing request failed');
-    ({ results } = await response.json());
-    if (!Array.isArray(results)) throw new Error('Invalid routing response');
+    const routed = await response.json() as { results?: typeof results } | null;
+    if (!Array.isArray(routed?.results)) throw new Error('Invalid routing response');
+    results = routed.results;
   } catch (error) {
     if (error instanceof CommuteError) throw error;
     throw new CommuteError('TravelTime couldn’t calculate routes. Try again, or search without commute times.');
@@ -132,21 +140,17 @@ export async function geocodeAddress(address: unknown, fetcher: SourceFetch = fe
     format: 'json',
   });
   const response = await fetcher(`https://geocoding.geo.census.gov/geocoder/locations/onelineaddress?${query}`, {
-    redirect: 'error',
+    redirect: 'manual',
     signal: AbortSignal.timeout(8000),
   });
   if (!response.ok) throw new Error('Address geocoding is temporarily unavailable.');
-  const body = await response.json();
+  const body = await response.json() as { result?: { addressMatches?: ({ matchedAddress?: string; coordinates?: { x?: unknown; y?: unknown } } | null)[] } } | null;
   const matches = body?.result?.addressMatches;
   if (!Array.isArray(matches) || matches.length !== 1 || !matches[0]?.coordinates) {
     throw new SearchInputError('Use a full street address with city, state, and ZIP, or enter coordinates.');
   }
-  const match = matches[0];
-  const point = {
-    label: match.matchedAddress || address,
-    latitude: match.coordinates.y,
-    longitude: match.coordinates.x,
-  };
+  const { matchedAddress, coordinates } = matches[0];
+  const point = { label: matchedAddress || address, latitude: coordinates.y, longitude: coordinates.x };
   if (!isPoint(point)) throw new SearchInputError('The address could not be located.');
   return point;
 }

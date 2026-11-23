@@ -4,6 +4,7 @@ import { localWorkplace, needsCommute, parseFilters, SearchInputError } from '..
 import type { Bucket } from './contracts.ts';
 import { log } from './log.ts';
 import { sendPush, validSubscription, type PushSubscriptionJson, type VapidKeys } from './web-push.ts';
+import * as v from 'valibot';
 
 /**
  * Saved-search alerts. Nothing runs on a schedule: after a resync you start, the sync Workflow, or the
@@ -40,13 +41,21 @@ export const readDevices = (bucket: Bucket) => read<AlertDevice[]>(bucket, DEVIC
 export const readRecent = (bucket: Bucket) => read<Alert[]>(bucket, RECENT_KEY, []);
 
 /** Checks a new rule: a name, and filters a stored search can run without routing or geocoding. */
+const NAMED = 'Give the alert a name of up to 60 characters.';
+/** A new rule as sent: a name, and filters checked by parseFilters. */
+const RuleInput = v.object({
+  name: v.pipe(v.string(NAMED), v.trim(), v.minLength(1, NAMED), v.maxLength(60, NAMED)),
+  filters: v.nullish(v.unknown(), {}),
+}, NAMED);
+
 export function validateRule(raw: unknown, now = new Date()): AlertRule {
-  const { name, filters: rawFilters } = (raw ?? {}) as { name?: unknown; filters?: unknown };
-  if (typeof name !== 'string' || !name.trim() || name.trim().length > 60) throw new SearchInputError('Give the alert a name of up to 60 characters.');
-  const filters = parseFilters((rawFilters ?? {}) as Record<string, unknown>);
+  const input = v.safeParse(RuleInput, raw);
+  if (!input.success) throw new SearchInputError(input.issues[0].message);
+  const { name, filters: rawFilters } = input.output;
+  const filters = parseFilters(rawFilters);
   if (needsCommute(filters)) throw new SearchInputError('Alerts cannot use commute-time limits or sorts, which need routing for every check. Remove them and try again.');
   if (!localWorkplace(filters)) throw new SearchInputError('Alerts need a workplace preset or coordinates, not a typed address.');
-  return { id: crypto.randomUUID(), name: name.trim(), filters: { ...filters, offset: 0, includeMap: false, includeCommute: false }, createdAt: now.toISOString() };
+  return { id: crypto.randomUUID(), name, filters: { ...filters, offset: 0, includeMap: false, includeCommute: false }, createdAt: now.toISOString() };
 }
 
 /** Saves a rule and records what it matches now, so its alerts report only changes from here on. */

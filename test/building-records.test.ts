@@ -1,24 +1,26 @@
 import { test, expect } from 'bun:test';
 import { exactBuildingAddress, retrieveBuildingRecords } from '../server/building-records.ts';
 import { handleApi } from '../server/api.ts';
+import { readJson } from './fixtures/json.ts';
 const address = { address: '123 MAIN STREET', city: 'Brooklyn', state: 'NY', zip: '11201' };
 const bbl = '3000120004';
 const building = { buildingid: '12345', boroid: '3', boro: 'BROOKLYN', housenumber: '123', streetname: 'MAIN STREET', zip: '11201', bin: '3000001', block: '12', lot: '4', recordstatus: 'Active' };
 const registered = { attributes: { bbl, zip_code: 11201, last_year_registered: 2026, registered_units: 18 } };
 const annual = { building_id: '12345', bin: '3000001', of_dwelling_units: '20', infested_dwelling_unit_count: '2', eradicated_unit_count: '1', re_infested_dwelling_unit: '1', filing_date: '2026-01-01T00:00:00.000', filing_period_start_date: '2024-11-01T00:00:00.000', filling_period_end_date: '2025-10-31T00:00:00.000' };
 const now = new Date('2026-11-17T12:00:00Z');
-function source(override: { buildings?: any; violations?: any; complaints?: any; bedbugs?: any; dob?: any; requests311?: any;
-  owner?: any; registration?: any; flood?: any; floodMetadata?: any } = {}) {
+/** Replacement replies from the official sources, each as JSON. */
+type Overrides = { [K in 'buildings' | 'violations' | 'complaints' | 'bedbugs' | 'dob' | 'requests311' | 'owner' | 'registration' | 'flood' | 'floodMetadata']?: unknown };
+function source(override: Overrides = {}) {
   return async (url: string, options?: RequestInit) => {
     const u = new URL(url);
     if (u.hostname === 'a841-dotweb01.nyc.gov') return Response.json(u.pathname.endsWith('/7') ? (override.floodMetadata ?? { name: 'Current 100-Year Floodplain (2015 PFIRM)' }) : (override.flood ?? { features: [] }));
     if (u.hostname === 'services8.arcgis.com') {
       expect(u.pathname).toEndWith('/registered_buildings_unit_counts/FeatureServer/0/query');
       expect(u.searchParams.get('where')).toBe(`bbl='${bbl}' AND zip_code=11201`);
-      expect(options?.redirect).toBe('error');
+      expect(options?.redirect).toBe('manual');
       return Response.json(override.registration ?? { features: [registered] });
     }
-    expect(u.origin).toBe('https://data.cityofnewyork.us'); expect(options?.redirect).toBe('error');
+    expect(u.origin).toBe('https://data.cityofnewyork.us'); expect(options?.redirect).toBe('manual');
     if (u.pathname.includes('kj4p')) return Response.json(override.buildings ?? [building]);
     if (u.pathname.includes('64uk-42ks')) {
       expect(u.searchParams.get('$where')).toBe(`bbl=${bbl}`);
@@ -64,6 +66,11 @@ test('missing state registrations and invalid matched tax lot responses never im
   const multiple = await retrieveBuildingRecords(address, source({ registration: { features: [registered,
     { attributes: { ...registered.attributes, last_year_registered: 2025, registered_units: 20 } }] } }), now);
   expect(multiple.rentRegistration).toEqual({ matched: true, latestYear: 2026, registeredUnits: null });
+  for (const registration of [{ error: { code: 400 } }, { exceededTransferLimit: true, features: [] }, { features: null }, []]) {
+    const refused = await retrieveBuildingRecords(address, source({ registration }), now);
+    expect(refused.rentRegistration).toBeNull();
+    expect(refused.errors).toContain('State rent registration could not be checked.');
+  }
 });
 test('unmatched, ambiguous and inactive/mismatched identities never query findings', async () => {
   for (const buildings of [[], [building, building], [{ ...building, zip: '11202' }], [{ ...building, buildingid: '1 OR 1=1' }], [{ ...building, recordstatus: 'Inactive' }], [{ ...building, boroid: '1' }]]) {
@@ -95,7 +102,7 @@ test('official network, oversized and invalid JSON failures stay sanitized', asy
 });
 test('HTTP API uses bounded report path and injected official transport', async () => {
   const response = await handleApi(new Request('https://fixture.invalid/api/building-report', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(address) }), {}, { fetcher: source() });
-  expect(response.status).toBe(200); expect((await response.json()).status).toBe('matched');
+  expect(response.status).toBe(200); expect((await readJson<{ status: string }>(response)).status).toBe('matched');
 });
 
 test('complaint window uses NYC calendar dates and excludes future timestamps', async () => {

@@ -1,6 +1,6 @@
 /** Shared storage contract, including metadata-only object heads. */
 export type BucketHead = { etag: string; customMetadata: Record<string, string> };
-export type BucketObject = BucketHead & { arrayBuffer(): Promise<ArrayBuffer>; text(): Promise<string>; json(): Promise<any> };
+export type BucketObject = BucketHead & { arrayBuffer(): Promise<ArrayBuffer>; text(): Promise<string>; json<T = unknown>(): Promise<T> };
 export type Bucket = {
   get(key: string): Promise<BucketObject | null>;
   head(key: string): Promise<BucketHead | null>;

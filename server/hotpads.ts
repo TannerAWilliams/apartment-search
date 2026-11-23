@@ -34,8 +34,8 @@ export function parseHotpadsPage(html: string, market: {city:string; state:strin
     if (!url || !unit || item['@type'] !== 'Apartment' || address?.addressRegion !== market.state ||
         (market.state !== 'NY' && address?.addressLocality?.toLowerCase() !== market.city.toLowerCase()) ||
         !/^\d/.test(address?.streetAddress ?? '') || !/^\d{5}$/.test(address?.postalCode ?? '') ||
-        !rent || offer.priceCurrency !== 'USD' || offer.availability !== 'https://schema.org/InStock' ||
-        /\b(?:room for rent|shared|roommate)\b/i.test(item.name)) return [];
+        !rent || !offer || offer.priceCurrency !== 'USD' || offer.availability !== 'https://schema.org/InStock' ||
+        /\b(?:room for rent|shared|roommate)\b/i.test(item.name ?? '')) return [];
     const listing = normalizeListing({
       id: url.slice(ORIGIN.length), url, address: address.streetAddress, unit,
       city: address.addressLocality, state: market.state, zip: address.postalCode,

@@ -19,7 +19,13 @@
     "server/**/*.ts",
     "scripts/**/*.ts",
     "test/**/*.ts",
-    "e2e/serve.ts",
-    "e2e/fixtures.ts"
-  ]
+    "e2e/**/*.ts",
+    "playwright.config.ts",
+    "cloudflare/**/*.ts",
+    "web/alert-message.ts",
+    "types/strict-json.d.ts"
+  ],
+  // Checked in their own projects: the probe Worker against Cloudflare's runtime types, and the service worker
+  // against the browser's service worker types.
+  "exclude": ["cloudflare/streeteasy-container-test/worker.ts", "cloudflare/streeteasy-container-test/worker-configuration.d.ts"]
 }

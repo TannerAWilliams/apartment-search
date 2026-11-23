@@ -48,7 +48,7 @@ test('subscribing asks permission, replaces an old subscription, and uses the se
 
 test('in a browser, support and registration come from the real APIs', async () => {
   const globals = globalThis as Record<string, unknown>;
-  const saved = { window: globals.window, Notification: globals.Notification, serviceWorker: (navigator as any).serviceWorker, standalone: (navigator as any).standalone };
+  const saved = { window: globals.window, Notification: globals.Notification, serviceWorker: navigator.serviceWorker, standalone: (navigator as { standalone?: boolean }).standalone };
   const registered: string[] = [];
   try {
     globals.Notification = { permission: 'default', requestPermission: async () => 'granted' };

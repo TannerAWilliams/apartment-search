@@ -18,12 +18,21 @@ export const COMPASS_LIVE = {
   listingUrl, load: (fetcher: FetchTransport, now: Date) => loadPublicPages(SOURCE, PAGES, parseCompassPage, fetcher, now),
 };
 
+/** The listing card data Compass embeds in its search page, as far as this parser reads it. Anything else fails the page. */
+type CompassRow = {
+  pageLink?: string; subtitles?: string[]; status?: number; title?: string;
+  badges?: { cornerBadges?: { displayText: string }[] }; location?: { latitude?: number; longitude?: number };
+  subStats?: { titleLabel: string; subtitle?: string | number }[]; footer?: { data?: { text?: { content?: string } } }[];
+};
+type CompassPage = { sharedReactAppProps?: { initialResults?: { lolResults?: { data?: { listing?: CompassRow }[] } } } };
+
 export function parseCompassPage(html: string, market: {city:string; state:string; region:string}, checkedAt: string) {
-  const state = assignedJson(html, /\bglobal\.uc\s*=\s*(?=\{)/);
+  const state = assignedJson(html, /\bglobal\.uc\s*=\s*(?=\{)/) as CompassPage | null;
   const rows = state?.sharedReactAppProps?.initialResults?.lolResults?.data;
   if (!Array.isArray(rows)) return parseRenderedRentals(html, market, checkedAt);
   return rows.flatMap(({ listing: row }) => {
-    const url = listingUrl(row?.pageLink);
+    if (!row) return [];
+    const url = listingUrl(row.pageLink);
     const title = row?.subtitles?.[0];
     const location = url?.match(/-([A-Z]{2})-(\d{5})\/(\d+)_lid\/?$/);
     const fullAddress = title?.match(/^(.+), ([^,]+), ([A-Z]{2}) (\d{5})$/);
@@ -38,13 +47,13 @@ export function parseCompassPage(html: string, market: {city:string; state:strin
     const rent = row.title?.match(/^\$([\d,]+)$/)?.[1];
     const beds = row.subStats?.find(({ titleLabel }: { titleLabel: string }) => titleLabel === 'Bedrooms')?.subtitle;
     if (!rent || !Number.isFinite(latitude) || !Number.isFinite(longitude)) return [];
-    const courtesy = row.footer?.find(({ data }: { data?: { text?: { content?: string } } }) => data?.text?.content?.startsWith('Listing Courtesy of '))?.data.text.content;
+    const courtesy = row.footer?.find(({ data }: { data?: { text?: { content?: string } } }) => data?.text?.content?.startsWith('Listing Courtesy of '))?.data?.text?.content;
     const company = badges.some(({ displayText }: { displayText: string }) => displayText === 'Listed By Compass') ? 'Compass' :
       courtesy?.slice('Listing Courtesy of '.length);
     const listing = normalizeListing({
       id: location[3], url, address: address[1], unit: address[2].trim(), city, state: market.state,
       region: market.region, zipCode: location[2], latitude, longitude,
-      neighborhood: market.region === 'nyc' ? row.subtitles[1] : '', bedrooms: beds === 'Studio' ? 0 : beds,
+      neighborhood: market.region === 'nyc' ? row.subtitles?.[1] ?? '' : '', bedrooms: beds === 'Studio' ? 0 : beds,
       rent: Number(rent.replaceAll(',', '')), company, status: 'Active', updatedAt: checkedAt,
     }, SOURCE);
     return listing ? [listing] : [];

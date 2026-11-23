@@ -4,7 +4,10 @@ import { gzipSync, strToU8 } from 'fflate';
 import { handleApi } from '../server/api.ts';
 import { createMemoryBucket } from './fixtures/memory-bucket.ts';
 import { buildingKey, normalizeListing } from '../src/listings.ts';
-import type { Bucket } from '../server/contracts.ts';
+import type { Bucket, HousingResponse } from '../server/contracts.ts';
+import type { RefreshInfo } from '../src/api-client.ts';
+import type { SearchResult } from '../src/domain.ts';
+import { readJson, type ErrorBody } from './fixtures/json.ts';
 
 const url = (path: string) => 'https://app.test' + path;
 const get = (path: string) => new Request(url(path));
@@ -17,12 +20,12 @@ test('affordable housing: GET only, saved lotteries and re-rentals, and an hones
   const bucket = createMemoryBucket();
   assert.equal((await handleApi(postJson('/api/housing', {}), { BUCKET: bucket })).status, 405);
   await bucket.put('rentals/housing-connect.json', JSON.stringify({ publishedAt: null, opportunities: [{ id: '1', name: 'Lottery', closes: '2999-01-01', addresses: [], buildingKeys: [], sizes: [], borough: 'Bronx', url: 'https://housingconnect.nyc.gov/1' }] }), { customMetadata: { updatedAt: '2026-11-20T00:00:00Z' } });
-  const saved = await (await handleApi(get('/api/housing'), { BUCKET: bucket })).json();
+  const saved = await readJson<HousingResponse>(handleApi(get('/api/housing'), { BUCKET: bucket }));
   assert.equal(saved.opportunities.length, 1);
   assert.equal(saved.rerentals, null);
   const failed = await handleApi(get('/api/housing'), { BUCKET: failingBucket });
   assert.equal(failed.status, 503);
-  assert.match((await failed.json()).error, /Housing Connect data could not be read/);
+  assert.match((await readJson<ErrorBody>(failed)).error, /Housing Connect data could not be read/);
 });
 
 test('rent charts reject unknown regions and groupings, and report unreadable data', async () => {
@@ -30,7 +33,7 @@ test('rent charts reject unknown regions and groupings, and report unreadable da
   assert.equal((await handleApi(get('/api/market?region=nyc&grouping=planet'), { BUCKET: createMemoryBucket() })).status, 422);
   const failed = await handleApi(get('/api/market?region=nyc'), { BUCKET: failingBucket });
   assert.equal(failed.status, 503);
-  assert.match((await failed.json()).error, /rent data could not be read/);
+  assert.match((await readJson<ErrorBody>(failed)).error, /rent data could not be read/);
 });
 
 test('malformed requests are refused before any work', async () => {
@@ -67,11 +70,11 @@ test('search results link NYC apartments to open affordable-housing lotteries in
   await bucket.put('rentals/housing-connect.json', JSON.stringify({ publishedAt: null, opportunities: [
     { id: '1', name: 'Example Lottery', closes: '2999-01-01', addresses: [], buildingKeys: [buildingKey(listing)], sizes: [1], borough: 'Brooklyn', url: 'https://housingconnect.nyc.gov/1' },
   ] }), { customMetadata: { updatedAt: now } });
-  const result = await (await handleApi(postJson('/api/search', { region: 'brooklyn', liveOnly: true }), { BUCKET: bucket }, { fetcher: noNetwork })).json();
+  const result = await readJson<SearchResult>(handleApi(postJson('/api/search', { region: 'brooklyn', liveOnly: true }), { BUCKET: bucket }, { fetcher: noNetwork }));
   assert.deepEqual(result.matches[0].buildingLinks, [{ name: 'Example Lottery', url: 'https://housingconnect.nyc.gov/1' }]);
   // Unreadable lottery data leaves the search intact rather than failing it.
   await bucket.put('rentals/housing-connect.json', 'not json');
-  const without = await (await handleApi(postJson('/api/search', { region: 'brooklyn', liveOnly: true }), { BUCKET: bucket }, { fetcher: noNetwork })).json();
+  const without = await readJson<SearchResult>(handleApi(postJson('/api/search', { region: 'brooklyn', liveOnly: true }), { BUCKET: bucket }, { fetcher: noNetwork }));
   assert.equal(without.matches.length, 1);
   assert.equal(without.matches[0].buildingLinks, undefined);
 });
@@ -79,7 +82,7 @@ test('search results link NYC apartments to open affordable-housing lotteries in
 test('a feed configuration error is reported as one, separately from storage failures', async () => {
   const response = await handleApi(get('/api/config'), { BUCKET: createMemoryBucket(), FREE_PARTNER_FEEDS_JSON: '{not json' });
   assert.equal(response.status, 503);
-  assert.match((await response.json()).error, /free feed settings/);
+  assert.match((await readJson<ErrorBody>(response)).error, /free feed settings/);
 });
 
 test('opening the app fetches nothing, even from a page that still asks for a check on open', async () => {
@@ -88,7 +91,7 @@ test('opening the app fetches nothing, even from a page that still asks for a ch
   const response = await handleApi(postJson('/api/refresh', { check: 'now', sessionStart: true }), { BUCKET: bucket },
     { fetcher: noNetwork, syncJob: { start: async () => { started++; }, pending: async () => null } });
   assert.equal(response.status, 200);
-  assert.equal((await response.json()).state, 'already_checked');
+  assert.equal((await readJson<RefreshInfo>(response)).state, 'already_checked');
   assert.equal(started, 0, 'no sync Workflow starts');
   assert.equal(await bucket.get('rentals/refresh.json'), null, 'no refresh was recorded');
 });

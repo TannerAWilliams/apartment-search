@@ -1,4 +1,8 @@
+import type { ListingData, Loose, SearchFilters } from './domain.ts';
+
 export const LAUNDRY_OPTIONS = ['in_unit', 'in_building', 'none'] as const;
+const isLaundry = (value: unknown): value is typeof LAUNDRY_OPTIONS[number] => LAUNDRY_OPTIONS.some((option) => option === value);
+type FactFields = Loose<Pick<ListingData, 'bathrooms' | 'squareFeet' | 'petsAllowed' | 'laundry' | 'discoveryConflicts' | 'sources'>>;
 export const LAUNDRY_LABELS = { in_unit: 'In-unit laundry', in_building: 'Laundry in building', none: 'No laundry (reported)' };
 function positiveNumber(value: unknown, max: number, halfSteps = false): number | null {
   if (typeof value !== 'number' && typeof value !== 'string') return null;
@@ -8,15 +12,15 @@ function positiveNumber(value: unknown, max: number, halfSteps = false): number 
 }
 /** Only explicit structured facts, never claims inferred from prose, photos or missing values. */
 export type DiscoveryFacts = { bathrooms: number | null; squareFeet: number | null; petsAllowed: boolean | null; laundry: typeof LAUNDRY_OPTIONS[number] | null };
-export function discoveryFacts(row: any): DiscoveryFacts {
+export function discoveryFacts(row: FactFields | null | undefined): DiscoveryFacts {
   return {
     bathrooms: positiveNumber(row?.bathrooms, 20, true),
     squareFeet: positiveNumber(row?.squareFeet, 100000),
     petsAllowed: typeof row?.petsAllowed === 'boolean' ? row.petsAllowed : null,
-    laundry: LAUNDRY_OPTIONS.includes(row?.laundry) ? row.laundry as typeof LAUNDRY_OPTIONS[number] : null,
+    laundry: isLaundry(row?.laundry) ? row.laundry : null,
   };
 }
-export function matchesDiscovery(listing: any, filters: any): boolean {
+export function matchesDiscovery(listing: FactFields, filters: Partial<Pick<SearchFilters, 'minBathrooms' | 'minSquareFeet' | 'petsRequired' | 'laundry'>>): boolean {
   const facts = discoveryFacts(listing);
   return !(filters.minBathrooms != null && (facts.bathrooms === null || facts.bathrooms < filters.minBathrooms)) &&
     !(filters.minSquareFeet != null && (facts.squareFeet === null || facts.squareFeet < filters.minSquareFeet)) &&
@@ -25,8 +29,9 @@ export function matchesDiscovery(listing: any, filters: any): boolean {
 }
 
 /** Do not fill preferred-source unknowns from another source without field provenance. */
-export function mergeDiscoveryFacts(preferred: any, alternate: any) {
-  const sourceIds = (listing: any) => new Set((listing.sources ?? []).map((source: { id?: string; url?: string | null }) => source.id ?? source.url).filter(Boolean));
+export function mergeDiscoveryFacts(preferred: FactFields, alternate: FactFields) {
+  const sourceIds = (listing: FactFields) => new Set((Array.isArray(listing.sources) ? listing.sources as { id?: string; url?: string | null }[] : [])
+    .map((source) => source.id ?? source.url).filter(Boolean));
   const first = sourceIds(preferred), second = sourceIds(alternate);
   // Without per-field provenance, overlapping merged source sets are ambiguous.
   // Only identical single-source observations are confidently same-source updates.

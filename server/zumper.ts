@@ -1,7 +1,7 @@
 import type { FetchTransport } from '../src/fetch-type.ts';
 import { normalizeListing } from '../src/listings.ts';
 import { boroughKey, NYC_SEARCH_AREAS, searchBorough } from '../src/regions.ts';
-import type { ListingData } from '../src/domain.ts';
+import { isRecord, type ListingData } from '../src/domain.ts';
 import { deduplicatePublicRentals, publicListingUrl } from './public-rentals.ts';
 
 const SOURCE = { id: 'zumper', name: 'Zumper', kind: 'feed', maxBedrooms: 20, maxRent: 200_000 };
@@ -44,12 +44,22 @@ export const ZUMPER_LIVE = {
 };
 
 type ZumperMarket = typeof ZUMPER_MARKETS[number];
+/** A Zumper search result as this parser reads it; normalizeListing checks every field it keeps. */
+type ZumperRow = {
+  listing_id?: unknown; url?: unknown; title?: string; description?: string; address?: unknown; city?: string; state?: string; zipcode?: string;
+  listing_status?: unknown; listing_type?: number; property_type?: number; lat?: unknown; lng?: unknown;
+  min_price?: unknown; max_price?: unknown; min_bedrooms?: unknown; max_bedrooms?: unknown; neighborhood_name?: unknown; brokerage_name?: unknown;
+};
+type ZumperState = { currentSearch?: { hasMoreListables?: unknown; listables?: { listables?: unknown } } } | null;
+const hasListingId = (row: ZumperRow): row is ZumperRow & { listing_id: number } =>
+  typeof row.listing_id === 'number' && Number.isSafeInteger(row.listing_id);
+
 function searchState(html: string) {
   const state = html.match(/window\.__PRELOADED_STATE__\s*=\s*(\{[\s\S]*?\});\s*window\.__GIT_SHA__/);
-  const search = state && JSON.parse(state[1])?.currentSearch;
+  const search = state ? (JSON.parse(state[1]) as ZumperState)?.currentSearch : undefined;
   const rows = search?.listables?.listables;
   if (!Array.isArray(rows)) throw new Error('Zumper did not return a recognized rental page.');
-  return { rows, hasMore: search?.hasMoreListables !== false };
+  return { rows: rows.filter(isRecord) as ZumperRow[], hasMore: search?.hasMoreListables !== false };
 }
 
 export function parseZumperPage(html: string, market: {city:string; state:string; region:string; borough:string|null}, checkedAt: string) {
@@ -72,7 +82,7 @@ export async function loadZumper(fetcher: FetchTransport = fetch, now = new Date
     const gap = last + zumperPacing.intervalMs - Date.now();
     if (gap > 0) await wait(gap);
     last = Date.now();
-    const response = await fetcher(marketUrl(market, page), { headers: { Accept: 'text/html' }, redirect: 'error', signal: AbortSignal.timeout(20000) });
+    const response = await fetcher(marketUrl(market, page), { headers: { Accept: 'text/html' }, redirect: 'manual', signal: AbortSignal.timeout(20000) });
     if (!response.ok) throw Object.assign(new Error('Zumper returned HTTP ' + response.status + '.'), { httpStatus: response.status });
     return searchState(await response.text());
   }
@@ -84,7 +94,7 @@ export async function loadZumper(fetcher: FetchTransport = fetch, now = new Date
       if (page > MAX_MARKET_PAGES) throw new Error(`Zumper ${market.city} has more search pages than the sync allows.`);
       const { rows, hasMore } = await fetchPage(market, page);
       pages++;
-      const fresh = rows.filter((row) => Number.isSafeInteger(row?.listing_id) && !seen.has(row.listing_id));
+      const fresh = rows.filter(hasListingId).filter((row) => !seen.has(row.listing_id));
       for (const row of fresh) seen.add(row.listing_id);
       buildings += fresh.filter((row) => !entries.has(row.listing_id) && (row.min_price !== row.max_price || row.min_bedrooms !== row.max_bedrooms)).length;
       for (const row of fresh) entries.add(row.listing_id);
@@ -97,18 +107,19 @@ export async function loadZumper(fetcher: FetchTransport = fetch, now = new Date
   return { listings: deduplicatePublicRentals([...listings.values()]), pages, total: entries.size, rawCount: entries.size, buildings, checkedAt, transport: ZUMPER_TRANSPORT };
 }
 
-function zumperListings(rows: any[], market: {city:string; state:string; region:string; borough:string|null}, checkedAt: string): ListingData[] {
+function zumperListings(rows: ZumperRow[], market: {city:string; state:string; region:string; borough:string|null}, checkedAt: string): ListingData[] {
   return rows.flatMap((row) => {
-    const url = listingUrl(row?.url);
-    const borough = searchBorough({ state: row?.state, zip: row?.zipcode });
+    const url = listingUrl(row.url);
+    const borough = row.state ? searchBorough({ state: row.state, zip: row.zipcode }) : null;
     // listing_type 3 is a broker listing whose building number Zumper hides ("E 13th St #3AB");
     // it is kept when it names a unit, since its map position is still exact.
     const address = String(row.address ?? '');
     const identified = /^\d/.test(address) || (row.listing_type === 3 && /#\s*\w+$/.test(address));
-    if (!url || row.listing_status !== 1 || ![1, 3].includes(row.listing_type) || !RESIDENTIAL_TYPES.has(row.property_type) ||
-        row.state !== market.state || !/^\d{5}$/.test(row.zipcode) || !identified ||
+    if (!url || row.listing_status !== 1 || ![1, 3].includes(row.listing_type ?? 0) || !RESIDENTIAL_TYPES.has(row.property_type ?? -1) ||
+        row.state !== market.state || !/^\d{5}$/.test(row.zipcode ?? '') || !identified ||
         (market.borough ? borough !== market.borough : row.city?.trim().toLowerCase() !== market.city.toLowerCase()) || sharedRental.test(url + ' ' + (row.title ?? '') + ' ' + (row.description ?? '')) ||
-        row.min_price !== row.max_price || row.min_bedrooms !== row.max_bedrooms || !(row.min_price > 0 && row.min_price <= 200_000) ||
+        row.min_price !== row.max_price || row.min_bedrooms !== row.max_bedrooms ||
+        typeof row.min_price !== 'number' || !(row.min_price > 0 && row.min_price <= 200_000) ||
         !Number.isFinite(row.lat) || !Number.isFinite(row.lng)) return [];
 
     const city = market.borough && borough ? NYC_SEARCH_AREAS[borough].label : market.city;

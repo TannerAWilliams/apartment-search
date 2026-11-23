@@ -3,6 +3,8 @@
  * with WebCrypto only: VAPID identifies this server to the push service (RFC 8292), and the message is
  * encrypted for the device (RFC 8291, aes128gcm), so the push service cannot read it.
  */
+import * as v from 'valibot';
+
 export type PushSubscriptionJson = { endpoint: string; keys: { p256dh: string; auth: string } };
 type Bytes = Uint8Array<ArrayBuffer>;
 export type VapidKeys = { publicKey: string; privateKey: string; subject: string };
@@ -24,15 +26,23 @@ function concat(...parts: Uint8Array[]): Bytes {
 /** Push services this server will deliver to; a subscription naming any other host is refused. */
 const PUSH_HOSTS = ['web.push.apple.com', 'fcm.googleapis.com', 'updates.push.services.mozilla.com', 'push.services.mozilla.com', 'notify.windows.com'];
 
-export function validSubscription(value: unknown): value is PushSubscriptionJson {
-  const subscription = value as PushSubscriptionJson;
-  try {
-    const url = new URL(subscription.endpoint);
-    return url.protocol === 'https:' && subscription.endpoint.length <= 1024 &&
-      PUSH_HOSTS.some((host) => url.hostname === host || url.hostname.endsWith('.' + host)) &&
-      fromBase64Url(subscription.keys.p256dh).length === 65 && fromBase64Url(subscription.keys.auth).length === 16;
-  } catch { return false; }
-}
+const pushService = (endpoint: string) => {
+  if (!URL.canParse(endpoint)) return false;
+  const { protocol, hostname } = new URL(endpoint);
+  return protocol === 'https:' && PUSH_HOSTS.some((host) => hostname === host || hostname.endsWith('.' + host));
+};
+/** A base64url key that decodes to this many bytes. */
+const key = (bytes: number) => v.pipe(v.string(), v.check((value) => {
+  try { return fromBase64Url(value).length === bytes; } catch { return false; }
+}));
+
+/** A browser's push subscription (PushSubscription.toJSON()), for a known push service. */
+export const PushSubscriptionInput = v.object({
+  endpoint: v.pipe(v.string(), v.maxLength(1024), v.url(), v.check(pushService)),
+  keys: v.object({ p256dh: key(65), auth: key(16) }),
+});
+
+export const validSubscription = (value: unknown): value is PushSubscriptionJson => v.is(PushSubscriptionInput, value);
 
 /** A new VAPID key pair: the public key for clients and the private scalar for the server's secret. */
 export async function generateVapidKeys() {

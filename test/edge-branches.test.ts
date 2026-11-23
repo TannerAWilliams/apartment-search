@@ -29,13 +29,14 @@ test('a D1 snapshot missing one of its parts is reported, not returned truncated
   await assert.rejects(bucket.get('two-parts'), /snapshot is incomplete/);
 });
 
-test('the Cloudflare entry turns an unreadable request body into a 503 without crashing', async () => {
+test('the Cloudflare entry answers a request body that breaks off with an error, without crashing', async () => {
   const { default: worker } = await import('../server/cloudflare.ts');
   const { d1 } = await fakeD1();
   const body = new ReadableStream({ pull(controller) { controller.error(new Error('connection reset')); } });
-  const response = await worker.fetch(new Request('https://app.test/api/search', { method: 'POST', body, duplex: 'half', headers: { Authorization: 'Bearer token-0123456789abcdef' } } as RequestInit),
+  const response = await worker.fetch(new Request('https://app.test/api/search', { method: 'POST', body, duplex: 'half', headers: { Authorization: 'Bearer token-0123456789abcdef', 'Content-Type': 'application/json' } } as RequestInit),
     { APARTMENTS: d1, APP_ACCESS_TOKEN: 'token-0123456789abcdef', ASSETS: { fetch: async () => new Response() } } as never);
-  assert.equal(response.status, 503);
+  assert.equal(response.status, 400);
+  assert.deepEqual(await response.json(), { error: 'Send a JSON request.' });
 });
 
 test('FirstMover refuses a catalog whose newest monthly CSV is missing or too large', async () => {

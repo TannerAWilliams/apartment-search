@@ -2,18 +2,20 @@ import { test, expect, type Page } from './fixtures.ts';
 import { localSearch } from '../src/market.ts';
 import { normalizeListing } from '../src/listings.ts';
 import { parseFilters, localWorkplace } from '../src/search.ts';
+import type { ListingData } from '../src/domain.ts';
 
 const fixtures = (count = 1) => Array.from({ length: count }, (_, index) => normalizeListing({
   id: `fixture-${index + 1}`, addressLine1: `${12 + index} Grove Street`, city: 'Jersey City', state: 'NJ', zipCode: '07302',
   latitude: 40.72 + index / 10000, longitude: -74.04, bedrooms: 1, price: 1800 + index * 25,
   status: 'Active', url: `https://streeteasy.com/building/test/${index + 1}`,
-}, { id: 'streeteasy', name: 'StreetEasy', kind: 'feed' }));
+}, { id: 'streeteasy', name: 'StreetEasy', kind: 'feed' })).filter((listing): listing is ListingData => listing !== null);
 const now = '2026-11-13T12:00:00Z';
 /** Source checks sent to the server. Opening the app sends none, so each one is a resync the user started. */
-const userRefreshes = (requests: { path: string; method: string; body: any }[]) =>
+type MockRequest = { path: string; method: string; body: Record<string, unknown> | null };
+const userRefreshes = (requests: MockRequest[]) =>
   requests.filter(r => r.path === '/api/refresh' && r.method === 'POST');
 async function mockApp(page: Page, options: { failed?: boolean; searchError?: boolean; listingCount?: number; notices?: string[]; priceHistory?: boolean; discovery?: boolean; commute?: boolean; nyc?: boolean; dashboardAvailable?: boolean; inventoryExpiresAt?: string } = {}) {
-  const requests: { path: string; method: string; body: any }[] = [];
+  const requests: MockRequest[] = [];
   const unexpected: string[] = [];
   const listings = fixtures(options.listingCount);
   if (options.nyc) Object.assign(listings[0], { city: 'Brooklyn', state: 'NY', county: 'Kings', zip: '11201', region: 'nyc' });
@@ -56,7 +58,7 @@ test('homepage searches saved all-region inventory without starting a refresh', 
   const { requests, unexpected } = await mockApp(page);
   await expect(page.getByText('12 Grove Street', { exact: true })).toBeVisible();
   expect(userRefreshes(requests)).toHaveLength(0);
-  expect(requests.find(r => r.path === '/api/search')!.body.region).toBe('all');
+  expect(requests.find(r => r.path === '/api/search')!.body?.region).toBe('all');
   const searchesBeforeReload = requests.filter(r => r.path === '/api/search').length;
   await page.reload();
   await expect.poll(() => requests.filter(r => r.path === '/api/search').length).toBeGreaterThan(searchesBeforeReload);
@@ -75,7 +77,7 @@ test('sources exposes blocked refresh honestly and retains cached rentals', asyn
   await expect(page.getByText('StreetEasy returned HTTP 403. Verification required.', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Resync StreetEasy', exact: true }).click();
   await expect(page.getByRole('alert').filter({ hasText: 'not a fresh fetch' })).toBeVisible();
-  expect(userRefreshes(requests)[0].body.source).toBe('streeteasy-live');
+  expect(userRefreshes(requests)[0].body?.source).toBe('streeteasy-live');
   await page.getByRole('tab', { name: 'Search', exact: true }).click();
   const listOnly = page.getByRole('button', { name: 'List', exact: true });
   if (await listOnly.isVisible()) await listOnly.click();
@@ -144,7 +146,7 @@ test('rent filter sends user input and handles an empty result', async ({ page }
   await page.getByRole('button', { name: 'Filters', exact: true }).click();
   await page.getByRole('textbox', { name: 'Max rent per month ($)', exact: true }).fill('1000');
   await page.getByRole('button', { name: 'Search apartments →', exact: true }).click();
-  await expect.poll(() => requests.filter(r => r.path === '/api/search').at(-1)?.body.maxRent).toBe(1000);
+  await expect.poll(() => requests.filter(r => r.path === '/api/search').at(-1)?.body?.maxRent).toBe(1000);
   await expect(page.getByRole('button', { name: 'Save apartment', exact: true })).toHaveCount(0);
 });
 
@@ -216,8 +218,8 @@ test('applied filters, expanded results and search scroll survive navigation', a
   await page.getByRole('button', { name: '1 BR', exact: true }).click();
   await page.getByRole('textbox', { name: 'Max rent per month ($)', exact: true }).fill('5000');
   await page.getByRole('button', { name: 'Search apartments →', exact: true }).click();
-  await expect.poll(() => requests.filter(r => r.path === '/api/search').at(-1)?.body.maxRent).toBe(5000);
-  expect(requests.filter(r => r.path === '/api/search').at(-1)?.body.bedrooms).toBe(1);
+  await expect.poll(() => requests.filter(r => r.path === '/api/search').at(-1)?.body?.maxRent).toBe(5000);
+  expect(requests.filter(r => r.path === '/api/search').at(-1)?.body?.bedrooms).toBe(1);
   await expect(page.getByText('1 bedroom · Up to $5,000', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Show more (12 of 20)', exact: true }).click();
   await expect(page.getByRole('button', { name: /^Details for / })).toHaveCount(20);
@@ -398,10 +400,10 @@ test('feature filters require reported facts rather than matching unknown detail
   await expect(page.getByText('12 Grove Street', { exact: true })).toBeVisible();
   await expect(page.getByText('13 Grove Street', { exact: true })).toHaveCount(0);
   const search = requests.filter(request => request.path === '/api/search').at(-1)!;
-  expect(search.body.minBathrooms).toBe(1.5);
-  expect(search.body.minSquareFeet).toBe(900);
-  expect(search.body.petsRequired).toBe(true);
-  expect(search.body.laundry).toBe('in_unit');
+  expect(search.body?.minBathrooms).toBe(1.5);
+  expect(search.body?.minSquareFeet).toBe(900);
+  expect(search.body?.petsRequired).toBe(true);
+  expect(search.body?.laundry).toBe('in_unit');
   await page.getByRole('button', { name: 'Details for 12 Grove Street', exact: true }).click();
   await expect(page.getByText(/Source-reported details: 1.5 baths · 900 sq ft/)).toBeVisible();
 });
@@ -606,7 +608,7 @@ test('an open result expires without a provider request and saved apartments rem
 
 test('alerts: save one for the current search, send a test, and remove it', async ({ page }) => {
   await mockApp(page);
-  const posts: any[] = [];
+  const posts: { action: string; rule?: { name: string; filters: Record<string, unknown> } }[] = [];
   let state = { rules: [] as { id: string; name: string; createdAt: string }[], devices: [], recent: [], channels: { email: true, push: null } };
   await page.route('**/api/alerts', async (route) => {
     const body = route.request().postDataJSON();

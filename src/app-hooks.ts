@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { AppState, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { ListingData, SearchResult } from './domain.ts';
+import { isRecord, type ListingData, type SearchResult } from './domain.ts';
 import { mergeListings } from './listings.ts';
 
 const SAVED_KEY = 'apartment-search:saved-listings:v1';
@@ -22,7 +22,9 @@ export function useSavedListings(onError: (message: string) => void) {
       if (value && active) {
         const data = JSON.parse(value);
         if (!Array.isArray(data)) throw new Error('Invalid saved listings');
-        setSaved((current) => mergeListings([...current, ...data]));
+        // Listings this app saved on this device; an entry without an ID is dropped.
+        const stored = data.filter((item) => isRecord(item) && typeof item.id === 'string') as ListingData[];
+        setSaved((current) => mergeListings([...current, ...stored]));
       }
       if (active) setLoaded(true);
     }).catch(() => { if (active) reportError.current('Saved listings could not be loaded from this device.'); });

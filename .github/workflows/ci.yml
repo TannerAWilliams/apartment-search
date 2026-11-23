@@ -15,23 +15,26 @@ concurrency:
 
 jobs:
   check:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.4
+          bun-version-file: .bun-version
       # Wrangler, which bundles the Worker, runs on Node.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version: 26
       - run: bun install --frozen-lockfile
       - run: bun run typecheck
       - name: Unit tests and coverage
         run: bun run test:coverage
       - name: Build the web app and bundle the Worker
         run: bun run build
+      # The Worker in Cloudflare's own runtime (workerd), which unit tests under Bun cannot catch.
+      - name: Worker routes in workerd
+        run: bun run test:workerd
       - name: Install Chromium
         run: bun ./node_modules/playwright/cli.js install --with-deps chromium
       # Ubuntu 24.04 can block the user namespaces Chromium's sandbox needs; allow them rather than turn the sandbox off.
@@ -39,7 +42,7 @@ jobs:
       - name: Browser tests
         run: bun ./node_modules/playwright/cli.js test --trace off
       - if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-report
           path: playwright-report/

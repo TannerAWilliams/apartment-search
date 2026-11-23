@@ -1,3 +1,4 @@
+import type { ListingData } from './domain.ts';
 import React, { useState } from 'react';
 import { Text, View } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -7,7 +8,7 @@ import { formatRent } from './search.ts';
 import { styles } from './styles.ts';
 const KEY = 'apartment-search:observed-changes:v1';
 /** When `open` is given, the parent shows the toggle (a tool chip) and this renders only the panel. */
-export function ObservedChanges({ listings, open: shown }: { listings: any[]; open?: boolean }) {
+export function ObservedChanges({ listings, open: shown }: { listings: ListingData[]; open?: boolean }) {
   const [ownOpen, setOpen] = useState(false), [busy, setBusy] = useState(false);
   const open = shown ?? ownOpen;
   const [message, setMessage] = useState('');

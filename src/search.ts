@@ -1,4 +1,5 @@
-import type { ListingData, Point, SearchFilters } from './domain.ts';
+import * as v from 'valibot';
+import { isRecord, type ListingData, type Loose, type Point, type SearchFilters } from './domain.ts';
 import { LAUNDRY_OPTIONS, matchesDiscovery } from './discovery.ts';
 import { companyMatches } from './companies.ts';
 import { REGIONS, WORKPLACES, matchesRegion, regionOf } from './regions.ts';
@@ -30,75 +31,84 @@ export const formatRent = new Intl.NumberFormat('en-US', { style: 'currency', cu
 export const RESULT_SORTS = { best: 'Best fit: rent + commute', recent: 'Recently checked', rent: 'Lowest rent', transit: 'Fastest transit', driving: 'Fastest drive' };
 const SORT_METRICS: Record<string, 'miles' | 'transitSeconds' | 'drivingSeconds'> = { distance: 'miles', transit: 'transitSeconds', driving: 'drivingSeconds' };
 
-export const needsCommute = (filters: Partial<SearchFilters>) => filters.maxTransitMinutes != null || filters.maxDrivingMinutes != null ||
+export const needsCommute = (filters: Loose<Pick<SearchFilters, 'maxTransitMinutes' | 'maxDrivingMinutes' | 'sort'>>) => filters.maxTransitMinutes != null || filters.maxDrivingMinutes != null ||
   filters.sort === 'transit' || filters.sort === 'driving';
 
 export class SearchInputError extends Error {}
 
-function optionalNumber(value: unknown, label: string, min: number, max: number, whole = true) {
-  if (value === null || value === undefined || value === '') return null;
-  if (!['number', 'string'].includes(typeof value) ||
-      (typeof value === 'string' && !/^\d+(\.\d+)?$/.test(value.trim()))) {
-    throw new SearchInputError(`Enter a number for ${label}.`);
-  }
-  const number = Number(value);
-  if (!Number.isFinite(number) || number < min || number > max || (whole && !Number.isInteger(number))) {
-    throw new SearchInputError(`Enter ${label} between ${min} and ${max}${whole ? ' as a whole number' : ''}.`);
-  }
-  return number;
-}
+/** A number field: blank means none, and digits typed as text count, as forms send them. */
+const optionalNumber = (label: string, min: number, max: number, whole = true) => v.optional(v.pipe(
+  v.unknown(),
+  v.transform((value) => value === '' ? null : value),
+  v.union([v.null(), v.number(), v.pipe(v.string(), v.trim(), v.regex(/^\d+(\.\d+)?$/), v.transform(Number))], `Enter a number for ${label}.`),
+  v.check((value) => value === null || (Number.isFinite(value) && value >= min && value <= max && (!whole || Number.isInteger(value))),
+    `Enter ${label} between ${min} and ${max}${whole ? ' as a whole number' : ''}.`),
+), null);
+/** Free text: trimmed, and anything that is not text counts as blank. */
+const text = v.fallback(v.pipe(v.string(), v.trim()), '');
+const flag = v.fallback(v.boolean(), false);
 
+/**
+ * Search filters as the app and API accept them, checked in this order with the first problem reported.
+ * Blank or missing fields take their defaults; unknown fields are dropped.
+ */
+export const SearchFiltersInput = v.pipe(
+  v.custom<Record<string, unknown>>(isRecord, 'Enter a valid set of search filters.'),
+  v.object({
+    region: v.nullish(v.picklist(Object.keys(REGIONS), 'Choose a supported region.'), DEFAULT_FILTERS.region),
+    workplace: v.nullish(v.picklist(['custom', ...Object.keys(WORKPLACES)], 'Choose a workplace.'), DEFAULT_FILTERS.workplace),
+    customWorkplace: text,
+    sort: v.nullish(v.picklist(['distance', ...Object.keys(RESULT_SORTS)], 'Choose a sort order.'), DEFAULT_FILTERS.sort),
+    source: v.optional(v.pipe(text, v.regex(/^(?:[a-z0-9][a-z0-9_.-]{0,127})?$/, 'Choose a listing website.')), ''),
+    zip: v.optional(v.pipe(text, v.regex(/^(?:\d{5})?$/, 'Enter a five-digit ZIP code.')), ''),
+    maxMinutes: v.nullish(v.literal('', 'Use the transit directions link on a listing to check travel time.')),
+    laundry: v.nullish(v.picklist(['', ...LAUNDRY_OPTIONS], 'Choose a supported laundry option.'), ''),
+    petsRequired: v.nullish(v.boolean('Choose whether pets must be allowed.'), false),
+    bestFitRentWeight: optionalNumber('rent ranking weight', 0, 100),
+    minBathrooms: optionalNumber('minimum bathrooms', 0.5, 20, false),
+    minSquareFeet: optionalNumber('minimum square feet', 1, 100000),
+    offset: optionalNumber('result offset', 0, 1000000),
+    bedrooms: optionalNumber('bedroom count', 0, 4),
+    maxRent: optionalNumber('maximum rent', 1, 100000),
+    maxMiles: optionalNumber('maximum distance', 0.1, 250, false),
+    maxTransitMinutes: optionalNumber('maximum transit time in minutes', 1, 180),
+    maxDrivingMinutes: optionalNumber('maximum driving time in minutes', 1, 180),
+    liveOnly: flag, includeCached: flag, includeMap: flag, includeCommute: flag,
+    company: v.optional(v.pipe(text, v.transform((company) => company.slice(0, 80))), ''),
+  }),
+  v.check(({ workplace, customWorkplace }) => workplace !== 'custom' || (customWorkplace.length >= 4 && customWorkplace.length <= 160),
+    'Enter a full workplace address or latitude, longitude.'),
+  v.transform((input): SearchFilters => ({
+    bestFitRentWeight: input.bestFitRentWeight ?? 60,
+    minBathrooms: input.minBathrooms,
+    minSquareFeet: input.minSquareFeet,
+    petsRequired: input.petsRequired,
+    laundry: input.laundry,
+    region: input.region,
+    offset: input.offset ?? 0,
+    workplace: input.workplace,
+    customWorkplace: input.workplace === 'custom' ? input.customWorkplace : '',
+    zip: input.zip,
+    liveOnly: input.liveOnly,
+    includeCached: input.includeCached,
+    includeMap: input.includeMap,
+    source: input.source,
+    sort: input.sort,
+    includeCommute: input.includeCommute,
+    company: input.company,
+    bedrooms: input.bedrooms,
+    maxRent: input.maxRent,
+    maxMiles: input.maxMiles,
+    maxTransitMinutes: input.maxTransitMinutes,
+    maxDrivingMinutes: input.maxDrivingMinutes,
+  })),
+);
+
+/** Checked search filters; the first problem becomes a SearchInputError with a message for the user. */
 export function parseFilters(rawInput: unknown = {}): SearchFilters {
-  if (!rawInput || typeof rawInput !== 'object' || Array.isArray(rawInput)) {
-    throw new SearchInputError('Enter a valid set of search filters.');
-  }
-  const input = rawInput as Record<string, unknown>;
-  const region = input.region ?? DEFAULT_FILTERS.region;
-  if (typeof region !== 'string' || !Object.hasOwn(REGIONS, region)) throw new SearchInputError('Choose a supported region.');
-  const workplace = input.workplace ?? DEFAULT_FILTERS.workplace;
-  if (typeof workplace !== 'string' || (workplace !== 'custom' && !Object.hasOwn(WORKPLACES, workplace))) {
-    throw new SearchInputError('Choose a workplace.');
-  }
-  const customWorkplace = typeof input.customWorkplace === 'string' ? input.customWorkplace.trim() : '';
-  if (workplace === 'custom' && (customWorkplace.length < 4 || customWorkplace.length > 160)) {
-    throw new SearchInputError('Enter a full workplace address or latitude, longitude.');
-  }
-  const zip = typeof input.zip === 'string' ? input.zip.trim() : '';
-  const source = typeof input.source === 'string' ? input.source.trim() : '';
-  const sort = input.sort ?? DEFAULT_FILTERS.sort;
-  if (typeof sort !== 'string' || (sort !== 'distance' && !Object.hasOwn(RESULT_SORTS, sort))) throw new SearchInputError('Choose a sort order.');
-  if (source && !/^[a-z0-9][a-z0-9_.-]{0,127}$/.test(source)) throw new SearchInputError('Choose a listing website.');
-  if (zip && !/^\d{5}$/.test(zip)) throw new SearchInputError('Enter a five-digit ZIP code.');
-  if (input.maxMinutes !== null && input.maxMinutes !== undefined && input.maxMinutes !== '') {
-    throw new SearchInputError('Use the transit directions link on a listing to check travel time.');
-  }
-
-  if (input.laundry != null && input.laundry !== '' && !LAUNDRY_OPTIONS.includes(input.laundry as any)) throw new SearchInputError('Choose a supported laundry option.');
-  if (input.petsRequired != null && typeof input.petsRequired !== 'boolean') throw new SearchInputError('Choose whether pets must be allowed.');
-  return {
-    bestFitRentWeight: optionalNumber(input.bestFitRentWeight, 'rent ranking weight', 0, 100) ?? 60,
-    minBathrooms: optionalNumber(input.minBathrooms, 'minimum bathrooms', 0.5, 20, false),
-    minSquareFeet: optionalNumber(input.minSquareFeet, 'minimum square feet', 1, 100000),
-    petsRequired: input.petsRequired === true,
-    laundry: (input.laundry ?? '') as string,
-    region,
-    offset: optionalNumber(input.offset, 'result offset', 0, 1000000) ?? 0,
-    workplace,
-    customWorkplace: workplace === 'custom' ? customWorkplace : '',
-    zip,
-    liveOnly: input.liveOnly === true,
-    includeCached: input.includeCached === true,
-    includeMap: input.includeMap === true,
-    source,
-    sort,
-    includeCommute: input.includeCommute === true,
-    company: typeof input.company === 'string' ? input.company.trim().slice(0, 80) : '',
-    bedrooms: optionalNumber(input.bedrooms, 'bedroom count', 0, 4),
-    maxRent: optionalNumber(input.maxRent, 'maximum rent', 1, 100000),
-    maxMiles: optionalNumber(input.maxMiles, 'maximum distance', 0.1, 250, false),
-    maxTransitMinutes: optionalNumber(input.maxTransitMinutes, 'maximum transit time in minutes', 1, 180),
-    maxDrivingMinutes: optionalNumber(input.maxDrivingMinutes, 'maximum driving time in minutes', 1, 180),
-  };
+  const result = v.safeParse(SearchFiltersInput, rawInput, { abortEarly: true });
+  if (!result.success) throw new SearchInputError(result.issues[0].message);
+  return result.output;
 }
 
 export function isPoint(point: unknown): point is Point {

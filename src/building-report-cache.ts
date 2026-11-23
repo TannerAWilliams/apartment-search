@@ -1,17 +1,22 @@
 const TTL = 5 * 60_000;
 const MAX = 100;
-const clone = (value: any) => JSON.parse(JSON.stringify(value)); // Reports are JSON; works on native JS engines too.
-export function buildingRequestIdentity(listing: any) {
-  return JSON.stringify(['address', 'city', 'county', 'state', 'zip'].map(key => typeof listing?.[key] === 'string' ? listing[key] : ''));
+import type { ListingData, Loose } from './domain.ts';
+
+type Report = { status: string; checkedAt: string };
+type Location = Loose<Pick<ListingData, 'address' | 'city' | 'county' | 'state' | 'zip'>>;
+const clone = <T>(value: T) => JSON.parse(JSON.stringify(value)) as T; // Reports are JSON; works on native JS engines too.
+const text = (value: unknown) => typeof value === 'string' ? value : '';
+export function buildingRequestIdentity(listing: Location | null | undefined) {
+  return JSON.stringify([text(listing?.address), text(listing?.city), text(listing?.county), text(listing?.state), text(listing?.zip)]);
 }
 /** Session-memory only. No credentials, notes or private user data enter this cache. */
 export function createBuildingReportCache(clock = Date.now) {
-  const records = new Map<string, { until: number; value: any }>();
-  return async (listing: any, request: (listing: any, signal: AbortSignal) => Promise<any>, signal: AbortSignal) => {
+  const records = new Map<string, { until: number; value: Report }>();
+  return async <L extends Location, R extends Report>(listing: L, request: (listing: L, signal: AbortSignal) => Promise<R>, signal: AbortSignal): Promise<R> => {
     if (signal.aborted) throw new Error('Building report request canceled.');
     const key = buildingRequestIdentity(listing);
     const cached = records.get(key);
-    if (cached && cached.until > clock()) return clone(cached.value);
+    if (cached && cached.until > clock()) return clone(cached.value) as R;
     records.delete(key);
     const value = await request(listing, signal);
     if (signal.aborted) throw new Error('Building report request canceled.'); // Canceled/late responses must never seed a cache.

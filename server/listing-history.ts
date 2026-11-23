@@ -1,8 +1,11 @@
+import type { ListingData } from '../src/domain.ts';
 import { listingKey } from '../src/listings.ts';
 
 export type PriceObservation = { checkedAt: string; rent: number; priceIncludesFees: boolean };
 export type UnitHistory = { identity: string; sourceId: string; firstObservedAt: string; lastObservedAt: string; observations: PriceObservation[]; truncated: boolean };
 export type ObservationHistory = { version: 1; entries: UnitHistory[]; truncated: boolean; lastCheckedAt?: string };
+/** A listing as saved after an observation: with the server's own price history, or none. */
+export type ObservedListing = ListingData & { priceHistory?: UnitHistory };
 export const MAX_HISTORY_UNITS = 20000;
 export const MAX_PRICE_OBSERVATIONS = 24;
 
@@ -11,8 +14,8 @@ export const MAX_PRICE_OBSERVATIONS = 24;
  * Only listings in this observation keep their price history, unless keepUnseen is set for a
  * partial observation that carries earlier listings forward.
  */
-export function recordListingHistory(listings: any[], previous: ObservationHistory | undefined, sourceId: string, checkedAt: string,
-  { keepUnseen = false }: { keepUnseen?: boolean } = {}): { listings: any[]; observationHistory: ObservationHistory } {
+export function recordListingHistory(listings: ListingData[], previous: ObservationHistory | undefined, sourceId: string, checkedAt: string,
+  { keepUnseen = false }: { keepUnseen?: boolean } = {}): { listings: ObservedListing[]; observationHistory: ObservationHistory } {
   if (!sourceId || !Number.isFinite(Date.parse(checkedAt))) throw new Error('Invalid observation context.');
   if (previous && (previous.version !== 1 || !Array.isArray(previous.entries))) throw new Error('Unrecognized listing history.');
   if (previous?.lastCheckedAt && (!Number.isFinite(Date.parse(previous.lastCheckedAt)) || Date.parse(previous.lastCheckedAt) > Date.parse(checkedAt))) throw new Error('Observation predates saved history.');

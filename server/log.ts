@@ -4,6 +4,8 @@
  */
 type Level = 'info' | 'warn' | 'error';
 type Fields = Record<string, string | number | boolean | null | undefined>;
+/** One logged line, parsed. */
+export type LogRecord = Fields & { level: Level; event: string; error?: string; stack?: string };
 
 export const log = {
   /** Where lines go; tests replace it to keep output quiet or to inspect what was logged. */

@@ -1,6 +1,7 @@
 import { test } from 'bun:test';
 import assert from 'node:assert/strict';
 import { crawlOpenigloo, loadOpenigloo, openiglooListing, OPENIGLOO_TRANSPORT } from '../server/openigloo.ts';
+import { readJson, type RpcRequest, sentJson } from './fixtures/json.ts';
 
 const BOROUGHS = ['Manhattan', 'Brooklyn', 'Queens', 'Bronx', 'Staten Island'];
 const ZIPS: Record<string, string> = { Manhattan: '10025', Brooklyn: '11215', Queens: '11101', Bronx: '10451', 'Staten Island': '10301' };
@@ -26,7 +27,7 @@ function fakeOpenigloo(units: Unit[], { rateLimitOnce = false } = {}) {
   let calls = 0;
   let limited = !rateLimitOnce;
   const fetcher = async (_url: string, options: RequestInit = {}) => {
-    const message = JSON.parse(String(options.body));
+    const message = sentJson<RpcRequest>(options.body);
     if (message.method === 'initialize') return Response.json({ jsonrpc: '2.0', id: message.id, result: { protocolVersion: '2025-11-25' } });
     if (message.method === 'notifications/initialized') return new Response(null, { status: 202 });
     if (!limited) { limited = true; return new Response('slow down', { status: 429 }); }
@@ -37,7 +38,7 @@ function fakeOpenigloo(units: Unit[], { rateLimitOnce = false } = {}) {
       return Response.json({ jsonrpc: '2.0', id: message.id, result: { isError: true, content: [{ type: 'text', text: 'Openigloo’s listings did not answer just now. Try again in a minute.' }] } });
     }
     const wanted = (unit: Unit) => (BOROUGHS.includes(args.area) ? unit.borough === args.area : unit.neighborhood === args.area) &&
-      args.bedrooms.some((b: number) => b === 4 ? unit.bedrooms >= 4 : unit.bedrooms === b) &&
+      args.bedrooms.some((b) => b === 4 ? unit.bedrooms >= 4 : unit.bedrooms === b) &&
       unit.filterPrice >= (args.min_rent ?? 0) && unit.filterPrice <= (args.max_rent ?? Infinity);
     const matches = units.filter(wanted);
     const shown = (matches.length ? matches : units.slice(0, 6)).slice(0, args.limit);
@@ -114,9 +115,9 @@ test('Openigloo sync keeps saved data when too much inventory is missing', async
     if (url.includes('addressbatch')) return new Response('');
     const response = await fake.fetcher(url, options);
     if (!response.headers.get('Content-Type')?.includes('json')) return response;
-    const body = await response.json();
+    const body = await readJson<{ result?: { structuredContent?: { apartments?: { id: string }[] } } }>(response);
     const apartments = body.result?.structuredContent?.apartments;
-    if (apartments) body.result.structuredContent.apartments = apartments.filter((row: { id: string }) => !missing.has(row.id));
+    if (apartments && body.result?.structuredContent) body.result.structuredContent.apartments = apartments.filter((row) => !missing.has(row.id));
     return Response.json(body);
   }, new Date(), noWait), /usable listings of .* reported; the saved inventory was kept/);
 });
@@ -141,7 +142,7 @@ test('Openigloo search reads event-stream replies, waits out "try again" errors,
     (id) => Response.json({ jsonrpc: '2.0', id, result: { isError: true, content: [{ text: 'max_rent must be between 0 and 100,000' }] } }),
   ];
   const fetcher = async (_url: string, options?: RequestInit) => {
-    const message = JSON.parse(String(options?.body));
+    const message = sentJson<RpcRequest>(options?.body);
     if (message.method === 'initialize') return Response.json({ jsonrpc: '2.0', id: message.id, result: { protocolVersion: '2025-11-25' } });
     if (message.method === 'notifications/initialized') return new Response(null, { status: 202 });
     return replies.shift()!(message.id);

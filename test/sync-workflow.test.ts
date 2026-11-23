@@ -1,6 +1,8 @@
 import { afterEach, mock, test } from 'bun:test';
+import { required } from './test-values.ts';
 import assert from 'node:assert/strict';
 import { fakeD1 } from './fixtures/fake-d1.ts';
+import { readJson, type RpcRequest, sentJson } from './fixtures/json.ts';
 
 mock.module('cloudflare:workers', () => ({
   WorkflowEntrypoint: class { env: unknown; constructor(_ctx: unknown, env: unknown) { this.env = env; } },
@@ -29,7 +31,7 @@ function steps() {
 const emptyOpenigloo = (async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = String(input instanceof Request ? input.url : input);
   if (!url.startsWith('https://mcp.openigloo.com/')) throw new Error('Unexpected request to ' + url);
-  const message = JSON.parse(String(init?.body));
+  const message = sentJson<RpcRequest>(init?.body);
   if (message.method === 'initialize') return Response.json({ jsonrpc: '2.0', id: message.id, result: { protocolVersion: '2025-11-25' } });
   if (message.method === 'notifications/initialized') return new Response(null, { status: 202 });
   return Response.json({ jsonrpc: '2.0', id: message.id, result: { structuredContent: { total_matches: 0, apartments: [] } } });
@@ -48,7 +50,7 @@ test('an Openigloo sync searches every part, records its progress and saves the 
   const outcome = await sync.run({ payload: { delay: false, sources: ['openigloo'] }, instanceId: 'run-1', timestamp: new Date() }, step as never);
   assert.deepEqual(outcome, { openigloo: { state: 'complete', listingCount: 0 } });
   assert.equal(names.filter((name) => name.startsWith('Search Openigloo part')).length, 25);
-  assert.equal(JSON.parse(await (await bucket.get(SYNC_PROGRESS_KEY))!.text()).source, 'openigloo');
+  assert.equal((await readJson<{ source: string }>(required(await bucket.get(SYNC_PROGRESS_KEY)))).source, 'openigloo');
   assert.equal((await refreshStatus(bucket)).sources.find(({ id }) => id === 'openigloo')?.status, 'updated');
 });
 

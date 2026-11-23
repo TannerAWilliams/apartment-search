@@ -4,7 +4,7 @@ These tests operate the real exported React Native Web UI with synthetic API res
 
 ## Run
 
-Use Bun 1.4.4 and a browser-capable machine:
+Use the Bun version in `.bun-version` and a browser-capable machine:
 
 ```
 bun install --frozen-lockfile

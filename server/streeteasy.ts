@@ -1,4 +1,5 @@
 import type { FetchTransport } from '../src/fetch-type.ts';
+import { isRecord } from '../src/domain.ts';
 import { normalizeListing } from '../src/listings.ts';
 import { NJ_ZIPS, nycBorough } from './firstmover.ts';
 import { assignedJson, deduplicatePublicRentals, fetchPublicHtml, jsonLd, publicListingUrl } from './public-rentals.ts';
@@ -78,8 +79,9 @@ function normalizeRental(row: LegacyRental, state: string, bedrooms: number, che
 }
 
 export function parseStreetEasyPage(html: string, state: string, bedrooms: number, checkedAt: string) {
-  const rentals = jsonLd(html).flatMap((schema) => Array.isArray(schema?.['@graph']) ?
-    (schema['@graph'] as LegacyRental[]).filter((row) => row?.address?.postalCode && row.url) : []);
+  // StreetEasy's older pages publish each rental in the JSON-LD graph.
+  const rentals = (jsonLd(html) as ({ '@graph'?: (LegacyRental | null)[] } | null)[]).flatMap((schema) => Array.isArray(schema?.['@graph']) ?
+    schema['@graph'].filter((row): row is LegacyRental => Boolean(row?.address?.postalCode && row.url)) : []);
   if (!rentals.length) throw new Error('StreetEasy did not return a recognized rental page.');
   return rentals.map((row) => normalizeRental(row, state, bedrooms, checkedAt)).filter((listing) => listing !== null);
 }
@@ -108,7 +110,7 @@ async function fetchPage(fetcher: FetchTransport, page: number, range?: PriceRan
     method: 'POST',
     headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
     body: JSON.stringify({ query: searchQuery(page, range) }),
-    redirect: 'error',
+    redirect: 'manual',
     signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(9000)]) : AbortSignal.timeout(9000),
   });
   if (!response.ok) throw Object.assign(new Error('StreetEasy returned HTTP ' + response.status + '.'), { httpStatus: response.status });
@@ -241,16 +243,17 @@ export async function parseStreetEasyPublicSearch(html: string, now: Date) {
   }).transform(new Response(html));
   await parsed.body?.pipeTo(new WritableStream());
 
-  const page = assignedJson(payload.join(''), /"listingData":\s*(?=\{)/);
-  if (page?.search?.criteria !== 'area:1|status:open' || !Number.isSafeInteger(page.totalCount) ||
-      !Array.isArray(page.edges) || page.edges.length > PUBLIC_PAGE_LIMIT || page.totalCount < page.edges.length ||
-      !page.edges.every((entry: unknown) => entry !== null && typeof entry === 'object')) {
+  const page = assignedJson(payload.join(''), /"listingData":\s*(?=\{)/) as { search?: { criteria?: unknown }; totalCount?: unknown; edges?: unknown } | null;
+  const total = page?.totalCount, edges = page?.edges;
+  if (page?.search?.criteria !== 'area:1|status:open' || typeof total !== 'number' || !Number.isSafeInteger(total) ||
+      !Array.isArray(edges) || edges.length > PUBLIC_PAGE_LIMIT || total < edges.length || !edges.every(isRecord)) {
     throw new Error('StreetEasy did not return its public active rental search.');
   }
   const checkedAt = now.toISOString();
-  const listings = deduplicatePublicRentals(activeRentals(page.edges, checkedAt));
-  if (!listings.length && page.totalCount !== 0) throw new Error('StreetEasy public search returned no supported rentals.');
-  return { listings, pages: 1, total: page.totalCount as number, checkedAt, sampleLimit: PUBLIC_PAGE_LIMIT,
+  // Rows have the search API's shape; normalizeListing checks every field it keeps.
+  const listings = deduplicatePublicRentals(activeRentals(edges as Parameters<typeof activeRentals>[0], checkedAt));
+  if (!listings.length && total !== 0) throw new Error('StreetEasy public search returned no supported rentals.');
+  return { listings, pages: 1, total, checkedAt, sampleLimit: PUBLIC_PAGE_LIMIT,
     limited: true, transport: STREETEASY_PUBLIC_TRANSPORT };
 }
 

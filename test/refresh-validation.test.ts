@@ -6,6 +6,9 @@ import { OPENIGLOO_TRANSPORT } from '../server/openigloo.ts';
 import { refreshSources, refreshStatus } from '../server/refresh.ts';
 import { ZUMPER_TRANSPORT } from '../server/zumper.ts';
 import { encodeSourceImport } from '../src/source-import.ts';
+import { readJson } from './fixtures/json.ts';
+import { oneOf } from '../src/domain.ts';
+import type { RefreshInfo } from '../src/api-client.ts';
 
 const now = new Date('2026-11-20T12:00:00Z');
 const at = now.toISOString();
@@ -65,6 +68,6 @@ test('an import where every source fails is reported as unavailable', async () =
   const response = await handleApi(new Request('https://app.test/api/refresh', { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } }),
     { BUCKET: bucket }, { privateAuthenticated: true });
   assert.ok([200, 502].includes(response.status));
-  const result = await response.json();
-  if (result.state === 'partial' && result.sources.every(({ status }: { status: string }) => ['failed', 'feed_required'].includes(status))) assert.equal(response.status, 502);
+  const result = await readJson<RefreshInfo>(response);
+  if (result.state === 'partial' && result.sources.every(({ status }) => oneOf(['failed', 'feed_required'], status))) assert.equal(response.status, 502);
 });

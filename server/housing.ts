@@ -1,4 +1,5 @@
 import type { SourceFetch } from './refresh.ts';
+import { isRecord } from '../src/domain.ts';
 import { buildingKey } from '../src/listings.ts';
 
 const NYC_OPEN_DATA = 'https://data.cityofnewyork.us';
@@ -12,9 +13,14 @@ const SIZE_FIELDS = ['studio', '1bed', '2bed', '3bed', '4bed'];
 
 export const housingDate = (now: Date) => DATE.format(now);
 
+/** NYC Open Data rows as this reader uses them; values are checked before they are shown. */
+type LotteryRow = { [field: string]: unknown; lottery_id?: unknown; lottery_start_date?: unknown; lottery_end_date?: unknown; borough?: string };
+type ActiveLottery = LotteryRow & { lottery_id: string; lottery_end_date: string };
+type BuildingRow = { lottery_id?: string; house_number?: string; street_name?: string; borough?: string; address_zipcode?: string };
+
 async function readJson(path: string, fetcher: SourceFetch) {
   const response = await fetcher(NYC_OPEN_DATA + path, {
-    redirect: 'error', headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(12000),
+    redirect: 'manual', headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(12000),
   });
   if (!response.ok) throw new Error('NYC Open Data returned HTTP ' + response.status + '.');
   return response.json();
@@ -36,9 +42,11 @@ export async function loadHousingConnect(fetcher: SourceFetch, now: Date) {
     }, fetcher),
   ]);
   if (!Array.isArray(rows)) throw new Error('The Housing Connect data was invalid.');
-  const active = rows.filter((row) => row && /^\d{1,12}$/.test(row.lottery_id) &&
-    row.lottery_status === 'Active' && row.development_type === 'Rental' && row.lottery_start_date?.slice(0, 10) <= today &&
-    row.lottery_end_date?.slice(0, 10) >= today);
+  const active = (rows.filter(isRecord) as LotteryRow[]).filter((row): row is ActiveLottery =>
+    typeof row.lottery_id === 'string' && /^\d{1,12}$/.test(row.lottery_id) &&
+    row.lottery_status === 'Active' && row.development_type === 'Rental' &&
+    typeof row.lottery_start_date === 'string' && row.lottery_start_date.slice(0, 10) <= today &&
+    typeof row.lottery_end_date === 'string' && row.lottery_end_date.slice(0, 10) >= today);
   const ids = [...new Set(active.map((row) => row.lottery_id))];
   const buildings = ids.length ? await query(BUILDING_DATASET, {
     $select: 'lottery_id,house_number,street_name,borough,address_zipcode',
@@ -48,25 +56,27 @@ export async function loadHousingConnect(fetcher: SourceFetch, now: Date) {
   if (!Array.isArray(buildings)) throw new Error('The Housing Connect building data was invalid.');
 
   const byId = new Map<string, { addresses: Set<string>; keys: Set<string> }>();
-  for (const row of buildings) {
-    if (!row.house_number || !row.street_name) continue;
+  for (const row of buildings.filter(isRecord) as BuildingRow[]) {
+    const id = row.lottery_id;
+    if (!id || !row.house_number || !row.street_name) continue;
     const address = `${row.house_number} ${row.street_name}`;
-    const place = [BOROUGHS[row.borough], row.address_zipcode].filter(Boolean).join(' ');
-    if (!byId.has(row.lottery_id)) byId.set(row.lottery_id, { addresses: new Set<string>(), keys: new Set<string>() });
-    const building = byId.get(row.lottery_id)!;
+    const place = [BOROUGHS[row.borough ?? ''], row.address_zipcode].filter(Boolean).join(' ');
+    const building = byId.get(id) ?? { addresses: new Set<string>(), keys: new Set<string>() };
+    byId.set(id, building);
     building.addresses.add([address, place].filter(Boolean).join(', '));
-    if (/^\d{5}$/.test(row.address_zipcode)) {
+    if (row.address_zipcode && /^\d{5}$/.test(row.address_zipcode)) {
       const key = buildingKey({ address, zip: row.address_zipcode, state: 'NY' });
       if (key) building.keys.add(key);
     }
   }
 
+  const updatedAt = isRecord(meta) ? meta.rowsUpdatedAt : undefined;
   return {
-    publishedAt: Number.isFinite(meta?.rowsUpdatedAt) ? new Date(meta.rowsUpdatedAt * 1000).toISOString() : null,
+    publishedAt: typeof updatedAt === 'number' && Number.isFinite(updatedAt) ? new Date(updatedAt * 1000).toISOString() : null,
     opportunities: active.map((row) => ({
       id: row.lottery_id,
       name: String(row.lottery_name || 'Housing Connect lottery').slice(0, 180),
-      borough: BOROUGHS[row.borough] ?? '',
+      borough: BOROUGHS[row.borough ?? ''] ?? '',
       closes: row.lottery_end_date.slice(0, 10),
       sizes: SIZE_FIELDS.map((size) => Number(row['unit_distribution_' + size]) || 0),
       addresses: [...(byId.get(row.lottery_id)?.addresses ?? [])].sort(),

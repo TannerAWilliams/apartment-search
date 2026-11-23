@@ -1,7 +1,7 @@
 import { required } from './test-values.ts';
 import { test } from 'bun:test';
 import assert from 'node:assert/strict';
-import { requestForRefresh, retrySchedule } from '../server/source-requests.ts';
+import { requestForRefresh, retrySchedule, SourceResponseError } from '../server/source-requests.ts';
 
 test('a transient response with exhausted quota is not immediately retried', async () => {
   let calls = 0;
@@ -12,7 +12,8 @@ test('a transient response with exhausted quota is not immediately retried', asy
       'X-RateLimit-Remaining': '0', 'X-RateLimit-Reset': String(reset),
     } });
   }, new AbortController().signal);
-  await assert.rejects(request('https://example.test', {}), (error: any) => {
+  await assert.rejects(request('https://example.test', {}), (error: unknown) => {
+    assert.ok(error instanceof SourceResponseError);
     assert.equal(error.httpStatus, 503);
     assert.equal(Date.parse(required(retrySchedule(error, undefined, Date.now()).retryAt)), reset * 1000);
     return true;
@@ -72,7 +73,8 @@ test('classifies a verification page without returning upstream body text or ret
     calls++;
     return new Response('<div id="px-captcha">upstream-private-text</div>', { status: 403 });
   }, new AbortController().signal);
-  const verifyDenial = (error: any) => {
+  const verifyDenial = (error: unknown) => {
+    assert.ok(error instanceof SourceResponseError);
     assert.equal(error.httpStatus, 403);
     assert.equal(error.providerDenial, 'browser verification challenge');
     assert.doesNotMatch(JSON.stringify(error), /upstream-private-text/);
@@ -91,7 +93,8 @@ test('an explicit Cloudflare challenge fails the refresh regardless of status', 
       calls++;
       return new Response('<html>upstream-private-text</html>', { status, headers: { 'cf-mitigated': 'challenge' } });
     }, new AbortController().signal);
-    await assert.rejects(request('https://streeteasy.com/for-rent/nyc'), (error: any) => {
+    await assert.rejects(request('https://streeteasy.com/for-rent/nyc'), (error: unknown) => {
+      assert.ok(error instanceof SourceResponseError);
       assert.equal(error.httpStatus, status);
       assert.equal(error.providerDenial, 'Cloudflare verification challenge');
       assert.equal(Date.parse(required(retrySchedule(error, undefined, error.receivedAt).retryAt)),

@@ -33,7 +33,7 @@ export async function syncStreetEasy({ token, manual = false, origin, fetcher = 
     const response = await fetcher(origin + path, {
       method: body ? 'POST' : 'GET',
       headers: { Authorization: 'Bearer ' + token, ...(body ? { 'Content-Type': 'application/json' } : {}) },
-      body, redirect: 'error', signal: AbortSignal.timeout(60000),
+      body, redirect: 'manual', signal: AbortSignal.timeout(60000),
     });
     if (!response.ok) throw new Error('Apartment Search returned HTTP ' + response.status + ' for ' + path + '.');
     return await response.json() as AppResponse;

@@ -5,7 +5,7 @@ import { mergeListings } from '../src/listings.ts';
 export const MAX_PUBLIC_HTML_BYTES = 5 * 1024 * 1024;
 
 /** Parse an embedded JSON assignment without depending on its script wrapper or executing it. */
-export function assignedJson(html: string, assignment: RegExp): any {
+export function assignedJson(html: string, assignment: RegExp): unknown {
   const match = assignment.exec(html);
   if (!match) return null;
   const start = match.index + match[0].length;
@@ -39,7 +39,7 @@ export function publicListingUrl(value: unknown, origin: string, pathPattern: Re
 
 export async function fetchPublicHtml(fetcher: FetchTransport, url: string, name: string, timeout = 9000) {
   const response = await fetcher(url, {
-    headers: { Accept: 'text/html' }, redirect: 'error', signal: AbortSignal.timeout(timeout),
+    headers: { Accept: 'text/html' }, redirect: 'manual', signal: AbortSignal.timeout(timeout),
   });
   if (!response.ok) throw new Error(name + ' returned HTTP ' + response.status + '.');
   if (!response.headers.get('content-type')?.includes('text/html') || !response.body ||
@@ -62,9 +62,23 @@ export async function fetchPublicHtml(fetcher: FetchTransport, url: string, name
   }
 }
 
-export function jsonLd(html: string) {
+/**
+ * The schema.org fields listing pages publish as JSON-LD, as this app reads them. Parsers still check
+ * each value, and normalizeListing validates every field it keeps.
+ */
+export type SchemaThing = {
+  '@type'?: string; '@graph'?: SchemaThing[]; url?: string; name?: string; description?: string;
+  mainEntity?: SchemaThing; itemListElement?: { item?: SchemaThing }[];
+  address?: { streetAddress?: string; addressLocality?: string; addressRegion?: string; postalCode?: string };
+  geo?: { latitude?: unknown; longitude?: unknown };
+  offers?: { '@type'?: string; price?: unknown; lowPrice?: unknown; highPrice?: unknown; priceCurrency?: string; availability?: string };
+  potentialAction?: { '@type'?: string };
+  numberOfBedrooms?: unknown;
+};
+
+export function jsonLd(html: string): (SchemaThing | null)[] {
   return [...html.matchAll(/<script\b[^>]*\btype=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script\s*>/gi)]
-    .map(([, json]) => JSON.parse(json));
+    .map(([, json]) => JSON.parse(json) as SchemaThing | null);
 }
 
 export async function loadPublicPages<P extends { url: string }>(source: { name: string }, pages: P[], parser: (html: string, page: P, checkedAt: string) => ListingData[], fetcher: FetchTransport = fetch, now = new Date()) {
