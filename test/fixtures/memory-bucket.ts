@@ -1,3 +1,6 @@
+import type { ListingSnapshot, SnapshotStore } from '../../server/contracts.ts';
+import { listingIndex, passesFilter } from '../../server/listing-rows.ts';
+
 /** An in-memory Bucket for tests, with the same conditional writes and size limit as the D1 bucket. */
 export function createMemoryBucket(maxBytes = 96 * 1024 * 1024) {
   const objects = new Map<string, { bytes: Uint8Array; etag: string; customMetadata: Record<string, string> }>();
@@ -10,7 +13,36 @@ export function createMemoryBucket(maxBytes = 96 * 1024 * 1024) {
       text: async () => new TextDecoder().decode(value.bytes),
       json: async <T>() => JSON.parse(new TextDecoder().decode(value.bytes)) as T,
     };
+  // Listing snapshots, copied in and out through JSON as D1 stores them.
+  const saved = new Map<string, { etag: string; json: string }>();
+  const snapshots: SnapshotStore = {
+    async head(key) {
+      const value = saved.get(key);
+      return value ? { etag: value.etag } : null;
+    },
+    async read(key, filter = {}) {
+      const value = saved.get(key);
+      if (!value) return null;
+      const snapshot = JSON.parse(value.json) as ListingSnapshot;
+      return {
+        etag: value.etag,
+        summary: snapshot.summary,
+        listings: snapshot.listings.filter((listing) => passesFilter(listingIndex(listing), filter)),
+        saved: snapshot.listings.length,
+        history: filter.history ? snapshot.history : [],
+      };
+    },
+    async write(key, snapshot, onlyIf = {}) {
+      const previous = saved.get(key);
+      if (onlyIf.etagMatches && previous?.etag !== onlyIf.etagMatches) return null;
+      if (onlyIf.etagDoesNotMatch === '*' && previous) return null;
+      const etag = crypto.randomUUID();
+      saved.set(key, { etag, json: JSON.stringify(snapshot) });
+      return { etag };
+    },
+  };
   return {
+    snapshots,
     async get(key: string) {
       return snapshot(objects.get(key)) ?? null;
     },
@@ -37,3 +69,14 @@ export function createMemoryBucket(maxBytes = 96 * 1024 * 1024) {
     },
   };
 }
+
+/** A snapshot store whose database is down, for tests of storage failures. */
+export const unavailableSnapshots: SnapshotStore = {
+  head: async () => {
+    throw new Error('storage down');
+  },
+  read: async () => {
+    throw new Error('storage down');
+  },
+  write: async () => null,
+};

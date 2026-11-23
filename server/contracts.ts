@@ -2,6 +2,24 @@ import type { JerseySnapshot } from './jersey-affordable.ts';
 /** Shared storage contract, including metadata-only object heads. */
 export type BucketHead = { etag: string; customMetadata: Record<string, string> };
 export type BucketObject = BucketHead & { arrayBuffer(): Promise<ArrayBuffer>; text(): Promise<string>; json<T = unknown>(): Promise<T> };
+/** A source's latest check: its summary (counts, transport, when), its listings and its units' price history. */
+export type ListingSnapshot = { summary: Record<string, unknown>; listings: unknown[]; history: unknown[] };
+/**
+ * Narrows the listings read back to those a search can match: in the region (as regionOf() gives it) and at
+ * or under the rent. Listings without a region or rent are always returned, so the search decides about them.
+ */
+export type SnapshotFilter = { region?: string; maxRent?: number; history?: boolean };
+export type SnapshotStore = {
+  head(key: string): Promise<{ etag: string } | null>;
+  /** The snapshot, with `saved`, how many listings it holds before the filter. Price history only when asked for. */
+  read(key: string, filter?: SnapshotFilter): Promise<(ListingSnapshot & { etag: string; saved: number }) | null>;
+  /** Replaces the snapshot in one transaction; null when onlyIf does not hold. */
+  write(
+    key: string,
+    snapshot: ListingSnapshot,
+    onlyIf?: { etagMatches?: string; etagDoesNotMatch?: string },
+  ): Promise<{ etag: string } | null>;
+};
 export type Bucket = {
   get(key: string): Promise<BucketObject | null>;
   head(key: string): Promise<BucketHead | null>;
@@ -10,6 +28,8 @@ export type Bucket = {
     body: string | Uint8Array,
     options?: { customMetadata?: Record<string, string>; onlyIf?: { etagMatches?: string; etagDoesNotMatch?: string } },
   ): Promise<{ etag: string } | null>;
+  /** Listing snapshots: one row per listing and per unit's price history in D1. */
+  snapshots: SnapshotStore;
 };
 export type AppEnv = {
   BUCKET?: Bucket;

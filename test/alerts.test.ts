@@ -15,7 +15,7 @@ import {
 import { handleApi } from './fixtures/api.ts';
 import { log } from '../server/log.ts';
 import { toBase64Url } from '../src/base64url.ts';
-import { createMemoryBucket } from './fixtures/memory-bucket.ts';
+import { createMemoryBucket, unavailableSnapshots } from './fixtures/memory-bucket.ts';
 import { logRecord, readJson } from './fixtures/json.ts';
 import type { AlertState } from '../src/AlertsPage.tsx';
 import { testListing } from './fixtures/listing.ts';
@@ -280,6 +280,7 @@ test('the alerts API lists, adds and removes rules and devices, and sends a test
     ).status,
   ).toBe(400);
   const broken = {
+    snapshots: unavailableSnapshots,
     get: async () => {
       throw new Error('down');
     },

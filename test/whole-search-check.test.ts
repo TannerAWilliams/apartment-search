@@ -4,7 +4,6 @@ import { handleApi } from './fixtures/api.ts';
 import { createMemoryBucket } from './fixtures/memory-bucket.ts';
 import { normalizeListing } from '../src/listings.ts';
 import { recordListingHistory } from '../server/listing-history.ts';
-import { gzipSync, strToU8 } from 'fflate';
 
 type WholeSearchCheck = Awaited<ReturnType<typeof wholeSearchCheck>>;
 import { readJson } from './fixtures/json.ts';
@@ -39,21 +38,13 @@ async function fixture(count = 101) {
     'rentals/refresh.json',
     JSON.stringify({ running: false, sources: [{ id: 'partner', status: 'updated', updatedAt: at, checkedAt: at }] }),
   );
-  await BUCKET.put(
-    'rentals/feeds/partner.json.gz',
-    gzipSync(
-      strToU8(
-        JSON.stringify(
-          recordListingHistory(
-            listings.filter((listing) => listing !== null),
-            undefined,
-            'partner',
-            at,
-          ),
-        ),
-      ),
-    ),
+  const observed = recordListingHistory(
+    listings.filter((listing) => listing !== null),
+    undefined,
+    'partner',
+    at,
   );
+  await BUCKET.snapshots.write('feeds/partner', { summary: {}, listings: observed.listings, history: observed.observationHistory.entries });
   return {
     BUCKET,
     FREE_PARTNER_FEEDS_JSON: JSON.stringify([{ id: 'partner', name: 'Partner', url: 'https://example.com/feed' }]),
@@ -124,6 +115,8 @@ test('running refresh and source snapshot changes fail closed without a partial 
 });
 test('unreadable source data rejects instead of treating it as a successful empty search', async () => {
   const env = await fixture();
-  await env.BUCKET.put('rentals/feeds/partner.json.gz', 'corrupt');
+  env.BUCKET.snapshots.read = async () => {
+    throw new Error('The saved snapshot could not be read.');
+  };
   expect((await handleApi(request(raw), env, { fetcher: never })).status).toBe(502);
 });

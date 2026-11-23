@@ -1,5 +1,6 @@
 import { fromByteArray, toByteArray } from 'base64-js';
-import type { Bucket, BucketHead } from './contracts.ts';
+import type { Bucket, BucketHead, ListingSnapshot, SnapshotStore } from './contracts.ts';
+import { listingIndex } from './listing-rows.ts';
 
 type Result<T> = { results: T[]; meta: { changes: number; last_row_id: number } };
 /** The parts of Cloudflare's D1 binding the app uses: the storage here, and Better Auth (server/auth.ts). */
@@ -37,6 +38,100 @@ function headFrom(row: StoredObject): BucketHead {
   return { etag: row.etag, customMetadata: JSON.parse(row.metadata) as Record<string, string> };
 }
 
+const SNAPSHOT_HEAD = 'SELECT etag, summary FROM listing_snapshots WHERE key = ?';
+const WRITE_SNAPSHOT = `
+  INSERT INTO listing_snapshots (key, etag, summary)
+  SELECT ?1, ?2, ?3
+  WHERE (?4 IS NULL OR EXISTS (SELECT 1 FROM listing_snapshots WHERE key = ?1 AND etag = ?4))
+    AND (?5 = 0 OR NOT EXISTS (SELECT 1 FROM listing_snapshots WHERE key = ?1))
+  ON CONFLICT(key) DO UPDATE SET etag = excluded.etag, summary = excluded.summary`;
+/** Later statements in the write run only when the snapshot row took this write's etag. */
+const OWNED = 'EXISTS (SELECT 1 FROM listing_snapshots WHERE key = ?1 AND etag = ?2)';
+const LISTING_ROWS = `SELECT data FROM listings WHERE snapshot = ?1
+  AND (?2 IS NULL OR region IS NULL OR region = ?2) AND (?3 IS NULL OR rent IS NULL OR rent <= ?3) ORDER BY position`;
+/** Rows go in as JSON arrays read with json_each, so one statement carries many rows within D1's size limits. */
+const CHUNK_BYTES = 768 * 1024;
+
+/** Splits encoded rows into JSON arrays under CHUNK_BYTES, with the position of each array's first row. */
+function chunks(rows: string[]) {
+  const out: { start: number; json: string }[] = [];
+  let start = 0;
+  let batch: string[] = [];
+  let size = 2;
+  rows.forEach((row, index) => {
+    if (batch.length && size + row.length + 1 > CHUNK_BYTES) {
+      out.push({ start, json: '[' + batch.join(',') + ']' });
+      start = index;
+      batch = [];
+      size = 2;
+    }
+    batch.push(row);
+    size += row.length + 1;
+  });
+  if (batch.length) out.push({ start, json: '[' + batch.join(',') + ']' });
+  return out;
+}
+
+/** Listing snapshots in the listing_snapshots, listings and price_history tables. */
+function d1Snapshots(database: D1Database): SnapshotStore {
+  return {
+    async head(key) {
+      const row = await database.prepare(SNAPSHOT_HEAD).bind(key).first<{ etag: string }>();
+      return row ? { etag: row.etag } : null;
+    },
+    async read(key, filter = {}) {
+      const statements = [
+        database.prepare(SNAPSHOT_HEAD).bind(key),
+        database.prepare(LISTING_ROWS).bind(key, filter.region ?? null, filter.maxRent ?? null),
+        database.prepare('SELECT count(*) AS saved FROM listings WHERE snapshot = ?').bind(key),
+        ...(filter.history ? [database.prepare('SELECT data FROM price_history WHERE snapshot = ? ORDER BY position').bind(key)] : []),
+      ];
+      // One batch is one transaction, so the rows all belong to the same snapshot.
+      const [head, listings, count, history] = await database.batch<Record<string, unknown>>(statements);
+      const row = head.results[0];
+      if (!row) return null;
+      const parse = (rows: Record<string, unknown>[]) => rows.map(({ data }): unknown => JSON.parse(String(data)));
+      return {
+        etag: String(row.etag),
+        // Written by write() below from an object.
+        summary: JSON.parse(String(row.summary)) as ListingSnapshot['summary'],
+        listings: parse(listings.results),
+        saved: Number(count.results[0]?.saved ?? 0),
+        history: history ? parse(history.results) : [],
+      };
+    },
+    async write(key, { summary, listings, history }, onlyIf) {
+      const etag = crypto.randomUUID();
+      const listingRows = listings.map((listing) => {
+        const { region, rent } = listingIndex(listing);
+        return JSON.stringify([region, rent, listing]);
+      });
+      const statements = [
+        database
+          .prepare(WRITE_SNAPSHOT)
+          .bind(key, etag, JSON.stringify(summary), onlyIf?.etagMatches ?? null, onlyIf?.etagDoesNotMatch === '*' ? 1 : 0),
+        database.prepare(`DELETE FROM listings WHERE snapshot = ?1 AND ${OWNED}`).bind(key, etag),
+        database.prepare(`DELETE FROM price_history WHERE snapshot = ?1 AND ${OWNED}`).bind(key, etag),
+        ...chunks(listingRows).map(({ start, json }) =>
+          database
+            .prepare(`INSERT INTO listings (snapshot, position, region, rent, data)
+              SELECT ?1, ?3 + row.key, row.value ->> '$[0]', row.value ->> '$[1]', row.value -> '$[2]' FROM json_each(?4) AS row WHERE ${OWNED}`)
+            .bind(key, etag, start, json),
+        ),
+        ...chunks(history.map((entry) => JSON.stringify(entry))).map(({ start, json }) =>
+          database
+            .prepare(
+              `INSERT INTO price_history (snapshot, position, data) SELECT ?1, ?3 + row.key, row.value FROM json_each(?4) AS row WHERE ${OWNED}`,
+            )
+            .bind(key, etag, start, json),
+        ),
+      ];
+      const [written] = await database.batch(statements);
+      return written.meta?.changes === 1 ? { etag } : null;
+    },
+  };
+}
+
 /** One bucket per database binding, so caches keyed by bucket survive across requests in an isolate. */
 const buckets = new WeakMap<D1Database, Bucket>();
 
@@ -44,6 +139,7 @@ export function createD1Bucket(database: D1Database): Bucket {
   const existing = buckets.get(database);
   if (existing) return existing;
   const bucket: Bucket = {
+    snapshots: d1Snapshots(database),
     async head(key) {
       const row = await database.prepare(HEAD).bind(key).first<StoredObject>();
       return row ? headFrom(row) : null;

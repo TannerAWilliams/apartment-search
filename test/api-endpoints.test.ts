@@ -1,7 +1,6 @@
 import { expect, test } from 'bun:test';
-import { gzipSync, strToU8 } from 'fflate';
 import { handleApi } from './fixtures/api.ts';
-import { createMemoryBucket } from './fixtures/memory-bucket.ts';
+import { createMemoryBucket, unavailableSnapshots } from './fixtures/memory-bucket.ts';
 import { buildingKey, normalizeListing } from '../src/listings.ts';
 import type { Bucket, HousingResponse } from '../server/contracts.ts';
 import type { RefreshInfo } from '../src/api-client.ts';
@@ -17,6 +16,7 @@ const postJson = (path: string, body: unknown, headers: Record<string, string> =
     headers: { 'Content-Type': 'application/json', ...headers },
   });
 const failingBucket: Bucket = {
+  snapshots: unavailableSnapshots,
   get: async () => {
     throw new Error('storage down');
   },
@@ -148,7 +148,7 @@ test('search results link NYC apartments to open affordable-housing lotteries in
     },
     { id: 'zumper', name: 'Zumper', kind: 'feed' },
   )!;
-  await bucket.put('rentals/zumper-live.json.gz', gzipSync(strToU8(JSON.stringify({ listings: [listing] }))));
+  await bucket.snapshots.write('zumper-live', { summary: {}, listings: [listing], history: [] });
   await bucket.put(
     'rentals/refresh.json',
     JSON.stringify({ sources: [{ id: 'zumper-live', name: 'Zumper', status: 'updated', checkedAt: now, updatedAt: now }] }),

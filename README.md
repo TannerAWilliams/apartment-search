@@ -15,7 +15,7 @@ browser ──▶ apartments.5thof6.com ── Cloudflare Access sign-in
           apartment-search Worker, a Hono app (server/cloudflare.ts), checks the token (server/access.ts)
               ├── web app files ── Workers Static Assets (web-build/)
               ├── /api/* ── server/api.ts (Hono routes, Valibot request checks)
-              ├── D1 apartment-search-observations ── one snapshot per source (server/d1-bucket.ts)
+              ├── D1 apartment-search-observations ── listings, price history and sign-in tables (server/d1-bucket.ts)
               └── Workflow apartment-cityrealty-sync ── complete syncs: CityRealty → Openigloo → Zumper
 
 your computer ── scripts/sync-streeteasy.ts ── uploads the StreetEasy inventory daily (workers.dev URL, app token)
@@ -27,7 +27,7 @@ your computer ── scripts/sync-streeteasy.ts ── uploads the StreetEasy in
   - the **app access token** (`Authorization: Bearer <APP_ACCESS_TOKEN>`), for scripts such as the StreetEasy home sync.
 
   Every response carries `Strict-Transport-Security` (HTTPS only, for a year). `/health` returns `ok` to a signed-in caller.
-- **Storage.** Each source's inventory, status and price history is one versioned snapshot in D1 (`apartment_objects` and `apartment_object_parts`, see `deploy/cloudflare/schema.sql`). Writes use etag compare-and-swap, so a failed or overlapping refresh never replaces saved data. Only current listings are kept, with no records of past listings.
+- **Storage.** Listings are rows in D1: `listing_snapshots` holds each source's latest check (its counts and version), `listings` one row per listing with its region and rent indexed, and `price_history` one row per unit's observed prices (see `deploy/cloudflare/schema.sql` and `server/d1-bucket.ts`). A search asks D1 only for listings in its region and within its rent, then applies the remaining filters. A source's new check replaces its rows in one transaction, and only if no other check replaced them first, so a failed or overlapping refresh never leaves a mix. Smaller documents (refresh status, rent charts, Housing Connect, alerts, caches) are versioned rows in `apartment_objects`. Only current listings are kept, with no records of past listings.
 - **Refreshes happen only when you ask.** Opening the app reads saved inventory and fetches nothing, and nothing runs on a schedule in Cloudflare. **More → Sources & sync** resyncs one source or all of them. Sources that take minutes (CityRealty, Openigloo, Zumper) run in the Workflow, one durable step at a time; the page polls their progress every 15 seconds. A source that failed with a retry time is skipped until that time passes. The only scheduled job is the StreetEasy sync on your own computer.
 - **StreetEasy** refuses requests from cloud hosts (HTTP 403), so a computer you own downloads it and uploads it to the Worker (see [Daily StreetEasy sync](#daily-streeteasy-sync-from-your-own-computer)).
 - **Static data.** The web app's files are served with a Content Security Policy and other security headers (`server/web-headers.ts`); fingerprinted bundles are cached for a year, everything else is revalidated. The 2.4 MB StreetEasy dashboard archive is published with the static files (`public/data/`) rather than built into the Worker, read through the assets binding when a dashboard series is first opened, checked against its SHA-256, and never served directly.

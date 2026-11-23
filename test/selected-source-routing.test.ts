@@ -85,7 +85,6 @@ test('all-websites selection still routes all matching origins', async () => {
 
 test('live search reports earliest contributing saved-source expiry without refreshing or routing', async () => {
   const { createMemoryBucket } = await import('./fixtures/memory-bucket.ts');
-  const { gzipSync, strToU8 } = await import('fflate');
   const { normalizeListing } = await import('../src/listings.ts');
   const bucket = createMemoryBucket();
   const now = new Date();
@@ -93,8 +92,8 @@ test('live search reports earliest contributing saved-source expiry without refr
   const fresh = now.toISOString();
   const listing = normalizeListing(selectedRows[0], { id: 'openigloo', name: 'Openigloo', kind: 'feed' });
   expect(listing).not.toBeNull();
-  await bucket.put('rentals/openigloo.json.gz', gzipSync(strToU8(JSON.stringify({ listings: [listing] }))));
-  await bucket.put('rentals/streeteasy-live.json.gz', gzipSync(strToU8(JSON.stringify({ listings: [] }))));
+  await bucket.snapshots.write('openigloo', { summary: {}, listings: [listing], history: [] });
+  await bucket.snapshots.write('streeteasy-live', { summary: {}, listings: [], history: [] });
   await bucket.put(
     'rentals/refresh.json',
     JSON.stringify({
@@ -135,14 +134,13 @@ test('verified unit links participate in source selection before routing', async
 
 test('inventory deadline survives expiry while awaiting routing', async () => {
   const { createMemoryBucket } = await import('./fixtures/memory-bucket.ts');
-  const { gzipSync, strToU8 } = await import('fflate');
   const { normalizeListing } = await import('../src/listings.ts');
   const bucket = createMemoryBucket();
   const started = new Date('2026-11-17T12:00:00Z');
   const deadline = new Date(started.getTime() + 1_000);
   const updatedAt = new Date(deadline.getTime() - 24 * 60 * 60_000).toISOString();
   const listing = normalizeListing(selectedRows[0], { id: 'openigloo', name: 'Openigloo', kind: 'feed' });
-  await bucket.put('rentals/openigloo.json.gz', gzipSync(strToU8(JSON.stringify({ listings: [listing] }))));
+  await bucket.snapshots.write('openigloo', { summary: {}, listings: [listing], history: [] });
   await bucket.put(
     'rentals/refresh.json',
     JSON.stringify({ sources: [{ id: 'openigloo', name: 'Openigloo', status: 'updated', checkedAt: updatedAt, updatedAt }] }),
@@ -183,13 +181,12 @@ test('inventory deadline survives expiry while awaiting routing', async () => {
 
 test('inventory refreshed during destination resolution retains its expiry', async () => {
   const { createMemoryBucket } = await import('./fixtures/memory-bucket.ts');
-  const { gzipSync, strToU8 } = await import('fflate');
   const { normalizeListing } = await import('../src/listings.ts');
   const bucket = createMemoryBucket();
   const started = new Date('2026-11-17T12:00:00Z');
   const refreshed = new Date(started.getTime() + 60_000);
   const listing = normalizeListing(selectedRows[0], { id: 'openigloo', name: 'Openigloo', kind: 'feed' });
-  await bucket.put('rentals/openigloo.json.gz', gzipSync(strToU8(JSON.stringify({ listings: [listing] }))));
+  await bucket.snapshots.write('openigloo', { summary: {}, listings: [listing], history: [] });
   setSystemTime(started);
   try {
     const result = await search(

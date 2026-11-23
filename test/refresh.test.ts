@@ -1,6 +1,6 @@
+import { createMemoryBucket } from './fixtures/memory-bucket.ts';
 import { required } from './test-values.ts';
 import { expect, spyOn, test } from 'bun:test';
-import { gzipSync, strToU8 } from 'fflate';
 import { parseFirstMoverCsv } from '../server/firstmover.ts';
 import { housingDate } from '../server/housing.ts';
 import {
@@ -37,6 +37,7 @@ const CSV = [
 ].join('\r\n');
 
 class TestBucket {
+  snapshots = createMemoryBucket().snapshots;
   records = new Map<string, { bytes: Uint8Array; meta: { etag: string; customMetadata: Record<string, string> } }>();
   version = 0;
 
@@ -947,11 +948,11 @@ test('price observations persist atomically with successful source snapshots, no
   await run(next, 2400);
   const stored = await storedDirectRentals(env.BUCKET, STREETEASY_LIVE);
   expect(required(required(stored).listings[0].priceHistory).observations.map((o) => o.rent)).toStrictEqual([2500, 2400]);
-  expect(required(required(stored).observationHistory).entries.length).toBe(1);
-  const originalPut = env.BUCKET.put.bind(env.BUCKET);
-  env.BUCKET.put = async (key, value, options) => {
-    if (key === 'rentals/streeteasy-live.json.gz') throw new Error('Synthetic storage full');
-    return originalPut(key, value, options);
+  expect(required(await env.BUCKET.snapshots.read(STREETEASY_LIVE.id, { history: true })).history.length).toBe(1);
+  const originalWrite = env.BUCKET.snapshots.write.bind(env.BUCKET.snapshots);
+  env.BUCKET.snapshots.write = async (key, value, options) => {
+    if (key === STREETEASY_LIVE.id) throw new Error('Synthetic storage full');
+    return originalWrite(key, value, options);
   };
   const later = new Date(next.getTime() + 86400000);
   const failed = await run(later, 2200);
@@ -962,24 +963,24 @@ test('price observations persist atomically with successful source snapshots, no
 test('overlapping source snapshot writes reject stale history instead of overwriting the winner', async () => {
   const bucket = new TestBucket();
   const listing = streetEasyListing(at.toISOString());
-  const key = 'rentals/streeteasy-live.json.gz';
+  const key = STREETEASY_LIVE.id;
   await saveObservedSnapshot(bucket, key, {}, [listing], STREETEASY_LIVE.id, at.toISOString());
-  const get = bucket.get.bind(bucket);
+  const read = bucket.snapshots.read.bind(bucket.snapshots);
   let release: () => void = () => {
     throw new Error('Fixture gate not initialized');
   };
   let hasRead: () => void = () => {
     throw new Error('Fixture signal not initialized');
   };
-  const read = new Promise<void>((resolve) => {
+  const hasReadOnce = new Promise<void>((resolve) => {
     hasRead = resolve;
   });
   const gate = new Promise<void>((resolve) => {
     release = resolve;
   });
   let blocked = false;
-  bucket.get = async (name) => {
-    const result = await get(name);
+  bucket.snapshots.read = async (name, filter) => {
+    const result = await read(name, filter);
     if (name === key && !blocked) {
       blocked = true;
       hasRead();
@@ -988,7 +989,7 @@ test('overlapping source snapshot writes reject stale history instead of overwri
     return result;
   };
   const old = saveObservedSnapshot(bucket, key, {}, [{ ...listing, rent: 2400 }], STREETEASY_LIVE.id, next.toISOString());
-  await read;
+  await hasReadOnce;
   await saveObservedSnapshot(
     bucket,
     key,
@@ -1002,20 +1003,4 @@ test('overlapping source snapshot writes reject stale history instead of overwri
   const winner = await storedDirectRentals(bucket, STREETEASY_LIVE);
   expect(required(winner).listings[0].rent).toBe(2300);
   expect(required(required(winner).listings[0].priceHistory).observations.some((o) => o.rent === 2400)).toBe(false);
-});
-
-test('saved snapshots are reused until a sync replaces them, and are read-only', async () => {
-  const { createMemoryBucket } = await import('./fixtures/memory-bucket.ts');
-  const bucket = createMemoryBucket();
-  const key = 'rentals/' + ZUMPER_LIVE.id + '.json.gz';
-  const save = (rent: number) => bucket.put(key, gzipSync(strToU8(JSON.stringify({ listings: [{ id: 'zumper:1', rent }] }))));
-  await save(2500);
-  const first = required(await storedDirectRentals(bucket, ZUMPER_LIVE));
-  expect(await storedDirectRentals(bucket, ZUMPER_LIVE), 'unchanged snapshots are not parsed again').toBe(first);
-  expect(() => {
-    (first.listings[0] as { rent: number }).rent = 1;
-  }).toThrow(TypeError);
-  await save(2400);
-  expect(required(await storedDirectRentals(bucket, ZUMPER_LIVE)).listings[0].rent, 'a new save is read').toBe(2400);
-  expect(await storedDirectRentals(createMemoryBucket(), ZUMPER_LIVE), 'another bucket does not share the cache').toBeNull();
 });

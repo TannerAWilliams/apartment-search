@@ -1,6 +1,6 @@
 import type { PackedRentRow, RentHistory } from '../src/rent-history.ts';
 import type { ListingData } from '../src/domain.ts';
-import type { AppEnv, Bucket, BucketObject, BucketHead, HousingSnapshot, HdcSnapshot } from './contracts.ts';
+import type { AppEnv, Bucket, BucketObject, BucketHead, HousingSnapshot, HdcSnapshot, SnapshotFilter } from './contracts.ts';
 import { withoutCommuteEstimate } from '../src/commute-estimate.ts';
 import { type ObservationHistory, type ObservedListing, type UnitHistory, recordListingHistory } from './listing-history.ts';
 import { gzipSync, gunzipSync, strFromU8, strToU8 } from 'fflate';
@@ -45,7 +45,11 @@ type RentalSnapshot = {
   failedPages?: number;
 };
 
-type StoredRentalSnapshot = Omit<RentalSnapshot, 'listings'> & { listings: (ListingData & { priceHistory?: UnitHistory })[] };
+type StoredRentalSnapshot = Omit<RentalSnapshot, 'listings'> & {
+  listings: (ListingData & { priceHistory?: UnitHistory })[];
+  /** How many listings the snapshot holds; `listings` has only those a search filter kept. */
+  saved?: number;
+};
 
 const STREETEASY_TRANSPORT = 'v6-daily';
 const STREETEASY_PARTNER_TRANSPORT = 'partner-feed';
@@ -54,11 +58,11 @@ const STATE_KEY = 'rentals/refresh.json';
 const MARKET_KEY = 'rentals/firstmover.json.gz';
 const MARKET_SCHEMA = 'companies-1';
 const HISTORY_PREFIX = 'rentals/market-history/';
-const OPENIGLOO_KEY = 'rentals/openigloo.json.gz';
+const OPENIGLOO_KEY = 'openigloo';
 const DIRECT_BY_ID = new Map(DIRECT_RENTAL_SOURCES.map((source) => [source.id, source]));
 const HOUSING_KEY = 'rentals/housing-connect.json';
 const HDC_KEY = 'rentals/hdc-rerentals.json';
-const FEED_PREFIX = 'rentals/feeds/';
+const FEED_PREFIX = 'feeds/';
 const LOCK_TIMEOUT = 5 * 60_000;
 
 const LIVE_MAX_AGE = 2 * 60 * 60_000;
@@ -123,35 +127,17 @@ const compressed = (value: unknown) => gzipSync(strToU8(JSON.stringify(value)));
 /** A gzipped JSON snapshot this Worker wrote, read back with the type it was written with. */
 const unpack = async <T>(object: BucketObject) => JSON.parse(strFromU8(gunzipSync(new Uint8Array(await object.arrayBuffer())))) as T;
 
-function deepFreeze<T>(value: T): T {
-  if (value && typeof value === 'object' && !Object.isFrozen(value)) {
-    Object.freeze(value);
-    for (const child of Object.values(value)) deepFreeze(child);
-  }
-  return value;
-}
-
-/**
- * Parsed source snapshots, reused while their version tag is unchanged. Snapshots change only
- * when a sync saves, but every search reads them; parsing was most of a search's CPU time.
- * Values are frozen because every request shares them.
- */
-const snapshotCache = new WeakMap<Bucket, Map<string, { etag: string; value: unknown }>>();
-async function readSnapshot<T>(bucket: Bucket, key: string): Promise<T | null> {
-  const head = await bucket.head(key);
-  if (!head) return null;
-  const cache = snapshotCache.get(bucket) ?? new Map<string, { etag: string; value: unknown }>();
-  snapshotCache.set(bucket, cache);
-  const hit = cache.get(key);
-  if (hit?.etag === head.etag) return hit.value as T;
-  const object = await bucket.get(key);
-  if (!object) {
-    cache.delete(key);
-    return null;
-  }
-  const value = deepFreeze(await unpack<T>(object));
-  cache.set(key, { etag: object.etag, value });
-  return value as T;
+/** A saved listing snapshot, read back as saveObservedSnapshot wrote it, with the listings the filter keeps. */
+async function readListings(bucket: Bucket, key: string, filter?: SnapshotFilter): Promise<StoredRentalSnapshot | null> {
+  const snapshot = await bucket.snapshots.read(key, filter);
+  if (!snapshot) return null;
+  // The summary and listings were written by saveObservedSnapshot from a RentalSnapshot and checked listings.
+  const { observation: _observation, ...summary } = snapshot.summary;
+  return {
+    ...(summary as Omit<StoredRentalSnapshot, 'listings'>),
+    listings: snapshot.listings as StoredRentalSnapshot['listings'],
+    saved: snapshot.saved,
+  };
 }
 
 async function readState(bucket: Bucket | undefined): Promise<{ value: RefreshState; etag: string | null }> {
@@ -211,12 +197,16 @@ export function sourceExpiresAt(status: { sources: SourceStatus[] } | null | und
   return new Date(Date.parse(source.updatedAt!) + lifetime).toISOString();
 }
 
-export async function storedOpenigloo(bucket: Bucket | undefined): Promise<StoredRentalSnapshot | null> {
-  return bucket ? readSnapshot<StoredRentalSnapshot>(bucket, OPENIGLOO_KEY) : null;
+export async function storedOpenigloo(bucket: Bucket | undefined, filter?: SnapshotFilter): Promise<StoredRentalSnapshot | null> {
+  return bucket ? readListings(bucket, OPENIGLOO_KEY, filter) : null;
 }
 
-export async function storedDirectRentals(bucket: Bucket | undefined, source: { id: string }): Promise<StoredRentalSnapshot | null> {
-  return bucket ? readSnapshot<StoredRentalSnapshot>(bucket, 'rentals/' + source.id + '.json.gz') : null;
+export async function storedDirectRentals(
+  bucket: Bucket | undefined,
+  source: { id: string },
+  filter?: SnapshotFilter,
+): Promise<StoredRentalSnapshot | null> {
+  return bucket ? readListings(bucket, source.id, filter) : null;
 }
 
 export async function refreshPlan(bucket: Bucket | undefined, now = new Date()) {
@@ -264,8 +254,8 @@ export async function storedRentHistory(
   );
 }
 
-export async function storedFeed(bucket: Bucket, feed: { id: string }): Promise<StoredRentalSnapshot> {
-  const snapshot = await readSnapshot<StoredRentalSnapshot>(bucket, FEED_PREFIX + feed.id + '.json.gz');
+export async function storedFeed(bucket: Bucket, feed: { id: string }, filter?: SnapshotFilter): Promise<StoredRentalSnapshot> {
+  const snapshot = await readListings(bucket, FEED_PREFIX + feed.id, filter);
   if (!snapshot) throw new Error('This feed has not completed its first refresh.');
   return snapshot;
 }
@@ -389,10 +379,16 @@ export async function saveObservedSnapshot(
   listings: ListingData[],
   sourceId: string,
   at: string,
-  customMetadata: Record<string, string> = {},
 ) {
-  const object = await bucket.get(key);
-  const previous = object ? await unpack<{ observationHistory?: ObservationHistory; listings?: ObservedListing[] }>(object) : null;
+  const stored = await bucket.snapshots.read(key, { history: true });
+  // Written below: listings this Worker checked, and their price history.
+  const previous = stored && {
+    listings: stored.listings as ObservedListing[],
+    observationHistory: {
+      ...(stored.summary.observation as Omit<ObservationHistory, 'entries'>),
+      entries: stored.history as UnitHistory[],
+    },
+  };
   const carriesForward =
     ('partial' in result && result.partial === true) || ('limited' in result && result.limited === true && sourceId === STREETEASY_LIVE.id);
   const observed = recordListingHistory(listings, previous?.observationHistory, sourceId, at, { keepUnseen: carriesForward });
@@ -403,10 +399,13 @@ export async function saveObservedSnapshot(
       .map((listing) => ({ ...listing, kind: 'cached', sources: listing.sources.map((source) => ({ ...source, kind: 'cached' })) }));
     observed.listings.push(...retained);
   }
-  const saved = await bucket.put(key, compressed({ ...result, ...observed }), {
-    customMetadata,
-    onlyIf: object ? { etagMatches: object.etag } : { etagDoesNotMatch: '*' },
-  });
+  const { entries, ...observation } = observed.observationHistory;
+  const { listings: _listings, observationHistory: _history, ...summary } = result as Record<string, unknown>;
+  const saved = await bucket.snapshots.write(
+    key,
+    { summary: { ...summary, observation }, listings: observed.listings, history: entries },
+    stored ? { etagMatches: stored.etag } : { etagDoesNotMatch: '*' },
+  );
   if (!saved) throw new Error('Source snapshot changed during refresh. Retry the manual refresh.');
 }
 
@@ -432,7 +431,7 @@ async function refreshOpenigloo(bucket: Bucket, result: RentalSnapshot, at: stri
     throw new Error('Openigloo did not return a verifiable complete inventory.');
   }
   const listings = result.listings.map((listing: ListingData) => ({ ...withoutCommuteEstimate(listing), checkedAt: at }));
-  await saveObservedSnapshot(bucket, OPENIGLOO_KEY, result, listings, 'openigloo', at, { updatedAt: at });
+  await saveObservedSnapshot(bucket, OPENIGLOO_KEY, result, listings, 'openigloo', at);
   return {
     status: 'updated',
     updatedAt: at,
@@ -520,7 +519,7 @@ async function refreshDirectRentals(
     throw new Error(source.name + ' did not return a valid live sample.');
   }
   const listings = result.listings.map((listing: ListingData) => ({ ...withoutCommuteEstimate(listing), checkedAt: at }));
-  await saveObservedSnapshot(bucket, 'rentals/' + source.id + '.json.gz', result, listings, source.id, at);
+  await saveObservedSnapshot(bucket, source.id, result, listings, source.id, at);
   return {
     status: 'updated',
     updatedAt: at,
@@ -802,7 +801,7 @@ const feedSource = (feed: PartnerFeed): RefreshSource => ({
   async check(run) {
     const result = await loadFeed(feed, run.fetch);
     const listings = result.listings.map((listing: ListingData) => ({ ...withoutCommuteEstimate(listing), checkedAt: run.at }));
-    await saveObservedSnapshot(run.bucket, FEED_PREFIX + feed.id + '.json.gz', result, listings, feed.id, run.at);
+    await saveObservedSnapshot(run.bucket, FEED_PREFIX + feed.id, result, listings, feed.id, run.at);
     return { status: 'updated', updatedAt: run.at, listingCount: listings.length, pages: result.pages, total: result.total };
   },
 });

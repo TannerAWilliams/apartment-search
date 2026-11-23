@@ -2,7 +2,7 @@
  * Search across saved inventory: every source's latest check, merged, matched against the filters, with
  * commute times when asked and links to affordable-housing lotteries in the same building.
  */
-import type { AppEnv, Bucket } from './contracts.ts';
+import type { AppEnv, Bucket, SnapshotFilter } from './contracts.ts';
 import type { ListingData, SearchFilters, SearchResult, SourceStatus as SearchSource } from '../src/domain.ts';
 import { localWorkplace, matchListings, needsCommute } from '../src/search.ts';
 import { formatSearch } from '../src/market.ts';
@@ -179,13 +179,26 @@ export async function search(filters: SearchFilters, env: AppEnv, fetcher: Sourc
   const observedAt = new Date();
   const sourceRegion = parentRegion(filters.region);
   // Official-only searches leave out every source read from a listing site's own pages: Openigloo and the direct rental sources.
+  // The database returns only listings this search can match: in a top-level region and within the rent.
+  // A city area or sub-region is matched by matchListings, which reads more than the region column.
+  const narrow: SnapshotFilter = {
+    ...(filters.region !== 'all' && parentRegion(filters.region) === filters.region ? { region: filters.region } : {}),
+    ...(filters.maxRent !== null ? { maxRent: filters.maxRent } : {}),
+  };
   const directSources = filters.officialOnly
     ? []
     : DIRECT_RENTAL_SOURCES.filter(({ regions }) => sourceRegion === 'all' || regions.includes(sourceRegion));
   const [openigloo, direct, results] = await Promise.all([
     filters.officialOnly
       ? { sourceStatus: undefined, recent: false, data: null, listings: [] }
-      : storedSample(status, OPENIGLOO.id, filters.liveOnly, () => storedOpenigloo(bucket), observationsOnly, filters.includeCached),
+      : storedSample(
+          status,
+          OPENIGLOO.id,
+          filters.liveOnly,
+          () => storedOpenigloo(bucket, narrow),
+          observationsOnly,
+          filters.includeCached,
+        ),
     Promise.all(
       directSources.map(async (source) => ({
         source,
@@ -193,7 +206,7 @@ export async function search(filters: SearchFilters, env: AppEnv, fetcher: Sourc
           status,
           source.id,
           filters.liveOnly,
-          () => storedDirectRentals(bucket, source),
+          () => storedDirectRentals(bucket, source, narrow),
           observationsOnly,
           filters.includeCached,
         )),
@@ -202,7 +215,14 @@ export async function search(filters: SearchFilters, env: AppEnv, fetcher: Sourc
     Promise.allSettled(
       feeds.map(async (feed) => {
         if (bucket)
-          return storedSample(status, feed.id, filters.liveOnly, () => storedFeed(bucket, feed), observationsOnly, filters.includeCached);
+          return storedSample(
+            status,
+            feed.id,
+            filters.liveOnly,
+            () => storedFeed(bucket, feed, narrow),
+            observationsOnly,
+            filters.includeCached,
+          );
         const data =
           feed.format === STREETEASY_EXPORT_FORMAT ? await loadStreetEasyExport(feed, fetcher, observedAt) : await loadFeed(feed, fetcher);
         return { data, listings: data.listings, recent: true };
@@ -218,7 +238,7 @@ export async function search(filters: SearchFilters, env: AppEnv, fetcher: Sourc
     : openigloo.data
       ? [
           'Openigloo · ' +
-            openigloo.listings.length +
+            (openigloo.data?.saved ?? openigloo.listings.length) +
             ' apartments from ' +
             (openigloo.recent ? 'its recent check.' : 'its last saved check.'),
         ]
@@ -240,7 +260,9 @@ export async function search(filters: SearchFilters, env: AppEnv, fetcher: Sourc
             : source.id === STREETEASY_LIVE.id && data.transport === 'partner-feed'
               ? 'the configured StreetEasy partner feed'
               : source.coverage;
-      notices.push(source.name + ' · ' + rows.length + (recent ? ' apartments checked in ' : ' saved apartments in ') + coverage + '.');
+      notices.push(
+        source.name + ' · ' + (data.saved ?? rows.length) + (recent ? ' apartments checked in ' : ' saved apartments in ') + coverage + '.',
+      );
     }
     if (sourceStatus?.status === 'failed') {
       if (!data) sources.push({ id: source.marketplace, name: source.name, status: 'unavailable', sample: true });

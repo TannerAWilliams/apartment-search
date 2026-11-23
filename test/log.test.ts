@@ -1,3 +1,4 @@
+import { unavailableSnapshots } from './fixtures/memory-bucket.ts';
 import { afterEach, expect, test } from 'bun:test';
 import { log } from '../server/log.ts';
 import { handleApi } from './fixtures/api.ts';
@@ -35,6 +36,7 @@ test('log lines are single JSON objects with the event, fields and a short stack
 test('a storage failure is logged with its cause while the caller gets a plain message', async () => {
   const lines = capture();
   const broken: Bucket = {
+    snapshots: unavailableSnapshots,
     get: async () => {
       throw new Error('D1 unavailable');
     },
