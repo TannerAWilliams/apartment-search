@@ -17,7 +17,10 @@
   "vars": {
     // Public identifiers of that Access application, not secrets.
     "ACCESS_TEAM_DOMAIN": "https://empty-term-4661.cloudflareaccess.com",
-    "ACCESS_AUD": "026b1766294a95474b5fbbac3408e95ac51397636366322b7b9ad582f462ade0"
+    "ACCESS_AUD": "026b1766294a95474b5fbbac3408e95ac51397636366322b7b9ad582f462ade0",
+    // StreetEasy refreshes and imports are paused, as on the live Worker since November 2026. Set to
+    // "true" when the home sync is installed (README, "Daily StreetEasy sync from your own computer").
+    "STREETEASY_SYNC_ENABLED": "false"
   },
   // Every request reaches the Worker first, so sign-in also protects the web app's files.
   "assets": { "directory": "../../web-build", "binding": "ASSETS", "run_worker_first": true },
