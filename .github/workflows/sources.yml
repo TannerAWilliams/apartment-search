@@ -1,0 +1,24 @@
+# Runs every source's reader against the live sites each Monday, so a site that changes its pages is noticed
+# before its listings go missing. A broken reader fails the run, and GitHub emails the repository owner.
+# Sites that refuse automated requests are reported as blocked without failing it. Needs no secrets.
+name: Live source check
+
+on:
+  schedule:
+    - cron: '17 13 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+      - run: bun install --frozen-lockfile
+      - run: bun scripts/check-sources.ts

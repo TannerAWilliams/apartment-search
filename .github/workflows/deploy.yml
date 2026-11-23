@@ -1,8 +1,12 @@
-# Deploys the Worker to Cloudflare. Runs only when started by hand (Actions → Deploy → Run workflow).
+# Deploys the Worker to Cloudflare: automatically after CI passes on main, or by hand (Actions → Deploy → Run workflow).
 # Needs the repository secret CLOUDFLARE_API_TOKEN: an API token from the "Edit Cloudflare Workers" template.
 name: Deploy
 
 on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -14,10 +18,14 @@ concurrency:
 
 jobs:
   deploy:
+    # After CI, only a passing run on a push to main deploys, and it deploys the commit CI checked.
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
     runs-on: ubuntu-26.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version-file: .bun-version
