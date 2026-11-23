@@ -102,7 +102,7 @@ app.use(async (c, next) => {
     return fail(c, 403, 'Cross-origin request rejected.');
   }
   c.set('signedIn', signedIn);
-  await next();
+  return next();
 });
 
 app.get('/health', (c) => c.text('ok', 200, HEADERS));

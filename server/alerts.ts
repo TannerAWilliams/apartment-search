@@ -44,13 +44,13 @@ export const readRecent = (bucket: Bucket) => read<Alert[]>(bucket, RECENT_KEY, 
 /** Checks a new rule: a name, and filters a stored search can run without routing or geocoding. */
 const NAMED = 'Give the alert a name of up to 60 characters.';
 /** A new rule as sent: a name, and filters checked by parseFilters. */
-const RuleInput = v.object({
+const NewRuleSchema = v.object({
   name: v.pipe(v.string(NAMED), v.trim(), v.minLength(1, NAMED), v.maxLength(60, NAMED)),
   filters: v.nullish(v.unknown(), {}),
 }, NAMED);
 
 export function validateRule(raw: unknown, now = new Date()): AlertRule {
-  const input = v.safeParse(RuleInput, raw);
+  const input = v.safeParse(NewRuleSchema, raw);
   if (!input.success) throw new SearchInputError(input.issues[0].message);
   const { name, filters: rawFilters } = input.output;
   const filters = parseFilters(rawFilters);

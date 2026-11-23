@@ -54,7 +54,7 @@ export const jsonBodies = (limit: (path: string) => number) => createMiddleware(
   try { body = await readRequestBody(c.req.raw, maxBytes); }
   catch (cause) { return cause instanceof RequestTooLarge ? fail(c, 413, 'The request is too large.') : fail(c, 400, 'Send a JSON request.'); }
   c.req.raw = new Request(c.req.raw, { body });
-  await next();
+  return next();
 });
 /** The API's limits: 2 MiB for a source import, 4 KB for everything else. */
 export const apiBodies = jsonBodies((path) => path === '/api/refresh' ? IMPORT_LIMIT : REQUEST_LIMIT);
@@ -64,5 +64,5 @@ export const needsStorage = (message: string) => createMiddleware<ApiEnv & { Var
   const bucket = c.var.appEnv.BUCKET;
   if (!bucket) return fail(c, 400, message);
   c.set('bucket', bucket);
-  await next();
+  return next();
 });

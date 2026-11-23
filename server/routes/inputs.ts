@@ -9,9 +9,10 @@ import { REGIONS } from '../../src/regions.ts';
 import { VITAL_NAMES } from '../../src/web-vitals-report.ts';
 
 /** GET /api/market */
+const REGION_AND_GROUPING = 'Choose a valid region and grouping.';
 export const MarketQuerySchema = v.object({
-  region: v.optional(v.picklist(Object.keys(REGIONS), 'Choose a valid region and grouping.'), 'all'),
-  grouping: v.optional(v.picklist(Object.keys(RENT_GROUPINGS), 'Choose a valid region and grouping.'), 'neighborhood'),
+  region: v.optional(v.picklist(Object.keys(REGIONS), REGION_AND_GROUPING), 'all'),
+  grouping: v.optional(v.picklist(Object.keys(RENT_GROUPINGS), REGION_AND_GROUPING), 'neighborhood'),
 });
 
 /** GET /api/dashboard: the catalog, or one file from it. */
@@ -22,6 +23,7 @@ export const VitalMetricSchema = v.object({
   name: v.picklist(VITAL_NAMES),
   value: v.pipe(v.number(), v.finite(), v.minValue(0), v.maxValue(600_000)),
   rating: v.picklist(['good', 'needs-improvement', 'poor']),
+  /** Kept when it is text, cut to 20 characters; anything else is dropped. */
   navigationType: v.fallback(v.optional(v.pipe(v.string(), v.transform((type) => type.slice(0, 20)))), undefined),
 });
 
@@ -60,10 +62,10 @@ export const AlertRequestSchema = v.variant('action', [
 ], 'Unknown alert action.');
 
 /** POST /api/geocode */
+const FULL_ADDRESS = 'Enter a full street address with city, state and ZIP.';
 export const GeocodeRequestSchema = v.object({
-  address: v.pipe(v.string('Enter a full street address with city, state and ZIP.'), v.check((address) => address.trim().length >= 4 && address.length <= 160,
-    'Enter a full street address with city, state and ZIP.')),
-}, 'Enter a full street address with city, state and ZIP.');
+  address: v.pipe(v.string(FULL_ADDRESS), v.check((address) => address.trim().length >= 4 && address.length <= 160, FULL_ADDRESS)),
+}, FULL_ADDRESS);
 
 /** POST /api/building-report: whether this is one exact NYC building is decided by server/building-records.ts. */
 export const BuildingAddressSchema = v.object({

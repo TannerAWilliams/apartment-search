@@ -6,7 +6,6 @@
 import * as v from 'valibot';
 import { fromBase64Url, toBase64Url } from '../src/base64url.ts';
 
-export type PushSubscriptionJson = { endpoint: string; keys: { p256dh: string; auth: string } };
 type Bytes = Uint8Array<ArrayBuffer>;
 export type VapidKeys = { publicKey: string; privateKey: string; subject: string };
 
@@ -33,12 +32,13 @@ const key = (bytes: number) => v.pipe(v.string(), v.check((value) => {
 }));
 
 /** A browser's push subscription (PushSubscription.toJSON()), for a known push service. */
-const PushSubscriptionInput = v.object({
+const PushSubscriptionSchema = v.object({
   endpoint: v.pipe(v.string(), v.maxLength(1024), v.url(), v.check(pushService)),
   keys: v.object({ p256dh: key(65), auth: key(16) }),
 });
 
-export const validSubscription = (value: unknown): value is PushSubscriptionJson => v.is(PushSubscriptionInput, value);
+export type PushSubscriptionJson = v.InferOutput<typeof PushSubscriptionSchema>;
+export const validSubscription = (value: unknown): value is PushSubscriptionJson => v.is(PushSubscriptionSchema, value);
 
 /** A new VAPID key pair: the public key for clients and the private scalar for the server's secret. */
 export async function generateVapidKeys() {
