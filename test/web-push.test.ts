@@ -50,6 +50,7 @@ test('only HTTPS subscriptions on known push services with well-formed keys are 
   expect(validSubscription({ ...subscription, endpoint: 'http://web.push.apple.com/x' })).toBe(false);
   expect(validSubscription({ ...subscription, endpoint: 'https://evil-web.push.apple.com.example/x' })).toBe(false);
   expect(validSubscription({ ...subscription, keys: { ...subscription.keys, auth: 'AAAA' } })).toBe(false);
+  expect(validSubscription({ ...subscription, keys: { ...subscription.keys, auth: '***not base64***' } })).toBe(false);
   expect(validSubscription(null)).toBe(false);
 });
 

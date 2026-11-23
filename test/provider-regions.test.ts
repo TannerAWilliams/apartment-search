@@ -93,6 +93,8 @@ test('HotPads preserves exact active unit offers, never building ranges or off-m
       checkedAt,
     );
   expect(parse(row)[0]?.rent).toBe(2500);
+  // A single offer gives its own price.
+  expect(parse({ ...row, offers: { ...row.offers, '@type': 'Offer', price: 2450 } })[0]?.rent).toBe(2450);
   for (const changed of [
     { '@type': 'ApartmentComplex' },
     { name: '10 Main St' },

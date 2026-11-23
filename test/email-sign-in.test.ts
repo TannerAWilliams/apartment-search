@@ -103,3 +103,45 @@ test('sign-in is off without its secret', async () => {
   expect((await post(off, '/api/auth/email-otp/send-verification-otp', { email: ALLOWED, type: 'sign-in' })).status).toBe(404);
   expect((await call(off, '/')).status).toBe(401);
 });
+
+test('without an email binding, a code request is answered but logged as unsendable', async () => {
+  const { log } = await import('../server/log.ts');
+  const { env } = await environment();
+  const lines: string[] = [];
+  const sink = log.sink;
+  log.sink = (_level, line) => lines.push(line);
+  try {
+    const response = await post({ ...env, ALERT_EMAIL: undefined }, '/api/auth/email-otp/send-verification-otp', {
+      email: ALLOWED,
+      type: 'sign-in',
+    });
+    expect(response.status).toBe(200);
+  } finally {
+    log.sink = sink;
+  }
+  expect(lines.some((line) => line.includes('sign_in_email_unavailable'))).toBe(true);
+});
+
+test('when the sign-in database fails, the request is refused and the failure logged', async () => {
+  const { log } = await import('../server/log.ts');
+  const { env } = await environment();
+  const broken = {
+    ...env,
+    APARTMENTS: {
+      ...env.APARTMENTS,
+      prepare: () => {
+        throw new Error('D1 down');
+      },
+    },
+  };
+  const lines: string[] = [];
+  const sink = log.sink;
+  log.sink = (_level, line) => lines.push(line);
+  try {
+    const response = await call(broken, '/api/config', { headers: { Authorization: 'Bearer session-token-from-the-app' } });
+    expect(response.status).toBe(401);
+  } finally {
+    log.sink = sink;
+  }
+  expect(lines.some((line) => line.includes('session_check_failed'))).toBe(true);
+});

@@ -150,6 +150,27 @@ test('Compass accepts script wrapper whitespace and parses JSON strings containi
                 subStats: [{ titleLabel: 'Bedrooms', subtitle: '1' }],
               },
             },
+            {
+              listing: {
+                pageLink: '/homedetails/example-NY-10001/2_lid/',
+                subtitles: ['12 Example Street, Unit 2', 'Chelsea'],
+                status: 0,
+                title: '$3,100',
+                location: { latitude: 40.75, longitude: -73.99 },
+                subStats: [{ titleLabel: 'Bedrooms', subtitle: '2' }],
+                badges: { cornerBadges: [{ displayText: 'Listed By Compass' }] },
+                footer: [{ data: { text: { content: 'Listing Courtesy of Elsewhere Realty' } } }],
+              },
+            },
+            {
+              listing: {
+                pageLink: '/homedetails/example-NY-10001/3_lid/',
+                subtitles: ['14 Example Street, Unit 3', 'Chelsea'],
+                status: 1,
+                title: '$2,900',
+                location: { latitude: 40.75, longitude: -73.99 },
+              },
+            },
           ],
         },
       },
@@ -158,7 +179,9 @@ test('Compass accepts script wrapper whitespace and parses JSON strings containi
   };
   const html = '<script> (function(global) {\n global.uc = ' + JSON.stringify(state) + '; })(this); </script>';
   expect(assignedJson(html, /global\.uc\s*=\s*(?=\{)/)).toStrictEqual(state);
-  expect(parseCompassPage(html, { city: 'New York', state: 'NY', region: 'nyc' }, at.toISOString()).length).toBe(1);
+  const compass = parseCompassPage(html, { city: 'New York', state: 'NY', region: 'nyc' }, at.toISOString());
+  // The off-market listing is left out; the one Compass lists itself is credited to Compass.
+  expect(compass.map(({ company }) => company)).toEqual(['', 'Compass']);
   expect(assignedJson('<script>global.uc = {', /global\.uc\s*=\s*(?=\{)/)).toBeNull();
 });
 
@@ -211,6 +234,8 @@ test('partial refresh keeps older units dated and cached, and a complete refresh
 test('Apartment List imports identified available units without collapsing units sharing a property URL', () => {
   const payload = [
     'a:' + JSON.stringify({ rental_id: 'p1', slug: '/ny/new-york/example' }),
+    // A flight line that is not JSON is skipped.
+    'z:{not json',
     'b:' +
       JSON.stringify({
         status: 'success',

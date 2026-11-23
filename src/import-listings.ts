@@ -1,3 +1,4 @@
+import * as v from 'valibot';
 import { parse } from 'csv-parse/browser/esm/sync';
 import { normalizeListing } from './listings.ts';
 import { safeListingUrl } from './marketplaces.ts';
@@ -7,28 +8,15 @@ export const MAX_IMPORT_SIZE = 256_000;
 export const IMPORT_COLUMNS = 'url,address,unit,city,state,zip,bedrooms,rent';
 const required = IMPORT_COLUMNS.split(',').filter((column) => column !== 'unit');
 
+/** Each parsed CSV row, with the line it started on. */
+const CsvRowsSchema = v.array(v.object({ record: v.array(v.string()), info: v.object({ lines: v.number() }) }));
+
 export function parseListingImport(csv: string) {
   if (csv.length > MAX_IMPORT_SIZE) throw new Error('Choose a CSV under 256 KB.');
-  let rows: { record: string[]; info: { lines: number } }[];
+  let rows: v.InferOutput<typeof CsvRowsSchema>;
   try {
-    const parsed: unknown = parse(csv, { bom: true, skip_empty_lines: true, trim: true, info: true });
-    if (!Array.isArray(parsed)) throw new Error('Invalid CSV output.');
-    rows = parsed.map((entry: unknown) => {
-      if (
-        !entry ||
-        typeof entry !== 'object' ||
-        !('record' in entry) ||
-        !('info' in entry) ||
-        !Array.isArray(entry.record) ||
-        !entry.record.every((cell: unknown) => typeof cell === 'string') ||
-        !entry.info ||
-        typeof entry.info !== 'object' ||
-        !('lines' in entry.info) ||
-        typeof entry.info.lines !== 'number'
-      )
-        throw new Error('Invalid CSV output.');
-      return { record: entry.record as string[], info: { lines: entry.info.lines } };
-    });
+    // The parser's output is checked like any other input, so the rest of the import can rely on it.
+    rows = v.parse(CsvRowsSchema, parse(csv, { bom: true, skip_empty_lines: true, trim: true, info: true }));
   } catch {
     throw new Error('The CSV has a malformed row. Check the commas and quotation marks.');
   }

@@ -2,8 +2,9 @@
 // UI components are covered by the Playwright suite; they are listed rather than silently left out.
 import { applicationModules } from './coverage-scope.ts';
 
-const MIN_LINES = 0.98;
-const MIN_FUNCTIONS = 0.96;
+// Every line is tested. Bun does not name uncalled functions or measure branches, so functions keep a floor instead.
+const MIN_LINES = 1;
+const MIN_FUNCTIONS = 0.97;
 const root = new URL('../', import.meta.url);
 const { measured, ui } = await applicationModules(root);
 const records = new Map<string, Record<string, number>>();

@@ -110,3 +110,68 @@ test('saving Openigloo waits for another refresh to finish before giving up', as
   ).rejects.toThrow(/Another source refresh is already running/);
   expect(sleeps.filter((name) => name.includes('saving Openigloo')).length).toBe(6);
 });
+
+test('a CityRealty check that is cooling down ends without an error', async () => {
+  const { bucket, sync } = await workflow();
+  const later = new Date(Date.now() + 60 * 60_000).toISOString();
+  await bucket.put(
+    'rentals/refresh.json',
+    JSON.stringify({
+      sources: [
+        {
+          id: 'cityrealty-live',
+          name: 'CityRealty',
+          status: 'failed',
+          checkedAt: new Date().toISOString(),
+          updatedAt: null,
+          retryAt: later,
+        },
+      ],
+    }),
+  );
+  const outcome = await sync.run(
+    { payload: { delay: false, sources: ['cityrealty-live'] }, instanceId: 'run-6', timestamp: new Date() },
+    steps().step as never,
+  );
+  expect(outcome).toStrictEqual({ 'cityrealty-live': { state: 'already_checked', listingCount: undefined } });
+});
+
+test('Openigloo is not saved when a search step left no results, or the results fall short of the total', async () => {
+  globalThis.fetch = emptyOpenigloo;
+  const { sync } = await workflow();
+  // Skipping the search steps leaves no saved parts, as a lost step would.
+  const skipping = {
+    async do<T>(name: string, _config: unknown, callback: () => Promise<T>) {
+      return name.startsWith('Search Openigloo part') ? (undefined as T) : callback();
+    },
+    async sleep() {},
+  };
+  await expect(
+    sync.run({ payload: { delay: false, sources: ['openigloo'] }, instanceId: 'run-7', timestamp: new Date() }, skipping as never),
+  ).rejects.toThrow(/search step from this sync is missing/);
+
+  // Openigloo reports apartments it never returns.
+  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    const message = sentJson<RpcRequest>(init?.body);
+    if (message.method === 'initialize')
+      return Response.json({ jsonrpc: '2.0', id: message.id, result: { protocolVersion: '2025-11-25' } });
+    if (message.method === 'notifications/initialized') return new Response(null, { status: 202 });
+    return Response.json({ jsonrpc: '2.0', id: message.id, result: { structuredContent: { total_matches: 4, apartments: [] } } });
+  }) as typeof fetch;
+  const short = await workflow();
+  await expect(
+    short.sync.run(
+      { payload: { delay: false, sources: ['openigloo'] }, instanceId: 'run-8', timestamp: new Date() },
+      steps().step as never,
+    ),
+  ).rejects.toThrow(/^Openigloo: /);
+});
+
+test('an Openigloo save that loses a race to another write reports that failure', async () => {
+  globalThis.fetch = emptyOpenigloo;
+  const { bucket, sync } = await workflow();
+  bucket.snapshots.write = async () => null;
+  await expect(
+    sync.run({ payload: { delay: false, sources: ['openigloo'] }, instanceId: 'run-9', timestamp: new Date() }, steps().step as never),
+  ).rejects.toThrow(/^Openigloo: The Openigloo inventory could not be refreshed/);
+});

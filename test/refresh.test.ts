@@ -203,6 +203,8 @@ test('the FirstMover import handles CSV quotes, orders prices by first posting, 
   expect(rows[0][11]).toBe(1900);
   expect(rows[1][3]).toBe('Jersey City');
   expect(() => parseFirstMoverCsv(CSV, '2026-09')).toThrow(/different month/);
+  // A row without a StreetEasy link is dropped rather than saved half-described.
+  expect(parseFirstMoverCsv(CSV.replace('https://streeteasy.com/rental/333', 'https://example.com/333'), '2026-10').length).toBe(1);
 });
 
 test('an hourly refresh persists each source, makes charts use the imported records, and skips the duplicate hour', async () => {

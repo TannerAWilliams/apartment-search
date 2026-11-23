@@ -329,3 +329,8 @@ test('changed flood layer edition is unknown instead of silently mislabeled', as
   expect(report.flood).toBeNull();
   expect(report.status).toBe('partial');
 });
+
+test('a building whose block or lot is missing is matched without a tax lot', async () => {
+  const report = await retrieveBuildingRecords(address, source({ buildings: [{ ...building, block: '' }] }), now);
+  expect(report.identity?.bbl ?? null).toBeNull();
+});

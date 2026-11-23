@@ -7,7 +7,7 @@ import { refreshSources, storedDirectRentals } from '../server/refresh.ts';
 import { readJson } from './fixtures/json.ts';
 import type { RefreshInfo } from '../src/api-client.ts';
 
-function mockCityRealty({ duplicate = false }: { duplicate?: boolean } = {}): FetchTransport {
+function mockCityRealty({ duplicate = false, rentedId = 0 }: { duplicate?: boolean; rentedId?: number } = {}): FetchTransport {
   return (input) => {
     const url = new URL(input);
     expect(url.origin).toBe('https://www.cityrealty.com');
@@ -16,7 +16,7 @@ function mockCityRealty({ duplicate = false }: { duplicate?: boolean } = {}): Fe
       const ids = page === 1 ? Array.from({ length: 52 }, (_, index) => index + 1) : [duplicate ? 1 : 53];
       const items = ids.map((id) => ({
         active: true,
-        rented: false,
+        rented: id === rentedId,
         out_of_market: false,
         isPublic: true,
         sale_or_rent: 2,
@@ -148,4 +148,11 @@ test('CityRealty search pages and listings that cannot be verified stop the sync
           }),
     ),
   ).rejects.toThrow(/could not verify active listing/);
+});
+
+test('CityRealty counts a rented listing toward its total but does not list it', async () => {
+  const { CITYREALTY_LIVE } = await import('../server/cityrealty.ts');
+  const result = await CITYREALTY_LIVE.load(mockCityRealty({ rentedId: 52 }), new Date());
+  expect(result.total).toBe(53);
+  expect(result.listings.some(({ unit }) => unit === '52')).toBe(false);
 });

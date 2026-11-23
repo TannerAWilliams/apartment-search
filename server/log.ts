@@ -7,11 +7,14 @@ type Fields = Record<string, string | number | boolean | null | undefined>;
 /** One logged line, parsed. */
 export type LogRecord = Fields & { level: Level; event: string; error?: string; stack?: string };
 
+/** Writes a line to the console stream for its level, which Workers Logs reads. */
+export const consoleSink = (level: Level, line: string) => {
+  (level === 'error' ? console.error : level === 'warn' ? console.warn : console.log)(line);
+};
+
 export const log = {
   /** Where lines go; tests replace it to keep output quiet or to inspect what was logged. */
-  sink: (level: Level, line: string) => {
-    (level === 'error' ? console.error : level === 'warn' ? console.warn : console.log)(line);
-  },
+  sink: consoleSink,
   error(event: string, cause: unknown, fields: Fields = {}) {
     log.sink('error', JSON.stringify({ level: 'error', event, ...fields, ...describe(cause) }));
   },
