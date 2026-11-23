@@ -178,9 +178,14 @@ export async function search(filters: SearchFilters, env: AppEnv, fetcher: Sourc
   const status = bucket ? await refreshStatus(bucket) : null;
   const observedAt = new Date();
   const sourceRegion = parentRegion(filters.region);
-  const directSources = DIRECT_RENTAL_SOURCES.filter(({ regions }) => sourceRegion === 'all' || regions.includes(sourceRegion));
+  // Official-only searches leave out every source read from a listing site's own pages: Openigloo and the direct rental sources.
+  const directSources = filters.officialOnly
+    ? []
+    : DIRECT_RENTAL_SOURCES.filter(({ regions }) => sourceRegion === 'all' || regions.includes(sourceRegion));
   const [openigloo, direct, results] = await Promise.all([
-    storedSample(status, OPENIGLOO.id, filters.liveOnly, () => storedOpenigloo(bucket), observationsOnly, filters.includeCached),
+    filters.officialOnly
+      ? { sourceStatus: undefined, recent: false, data: null, listings: [] }
+      : storedSample(status, OPENIGLOO.id, filters.liveOnly, () => storedOpenigloo(bucket), observationsOnly, filters.includeCached),
     Promise.all(
       directSources.map(async (source) => ({
         source,
@@ -208,14 +213,16 @@ export async function search(filters: SearchFilters, env: AppEnv, fetcher: Sourc
   const sources: { id: string; name: string; status: string; sample?: boolean }[] = openigloo.data
     ? [{ id: OPENIGLOO.id, name: OPENIGLOO.name, status: openigloo.recent ? 'searched' : 'cached' }]
     : [];
-  const notices = openigloo.data
-    ? [
-        'Openigloo · ' +
-          openigloo.listings.length +
-          ' apartments from ' +
-          (openigloo.recent ? 'its recent check.' : 'its last saved check.'),
-      ]
-    : [];
+  const notices = filters.officialOnly
+    ? ['This app shows official feeds and open data. Browse listing websites from their links.']
+    : openigloo.data
+      ? [
+          'Openigloo · ' +
+            openigloo.listings.length +
+            ' apartments from ' +
+            (openigloo.recent ? 'its recent check.' : 'its last saved check.'),
+        ]
+      : [];
   for (const { source, sourceStatus, recent, data, listings: rows } of direct) {
     if (data) {
       listings.push(...rows);

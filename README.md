@@ -58,6 +58,8 @@ your computer ── scripts/sync-streeteasy.ts ── uploads the StreetEasy in
 | Rent.com, Apartment Guide, Craigslist, Facebook Marketplace, Linecity, Settled.nyc | Browse links only; not counted as listing feeds. |
 | Authorized partner feeds | Optional, see [Partner feeds](#partner-feeds). |
 
+The App Store app (any native build) searches only official feeds and open data: Housing Connect, NYC HDC, Jersey City, FirstMover and authorized partner feeds. Sources read from listing sites' own pages (Openigloo and the direct rental sources) stay in the private web app; the native app links to those sites instead.
+
 A sample source replaces only the listings it confirmed; earlier units stay as cached with their original check dates until a complete check replaces them. Failed sources are reported, never filled in.
 
 ## Develop

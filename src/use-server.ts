@@ -56,8 +56,13 @@ export function useServer({ appliedFilters, searchVersion, submitted, setResult,
         : 'Saved results · Not yet refreshed';
 
   const updateConfig = useCallback((config: ApiConfig) => {
-    setConfiguredSources(config.sources);
-    setSourceCatalog(config.sourceCatalog ?? []);
+    const catalog = config.sourceCatalog ?? [];
+    // The App Store app leaves out sources read from listing sites' own pages (they have a marketplace, or are Openigloo).
+    const scraped = new Set(['openigloo', ...catalog.flatMap(({ id, marketplace }) => (marketplace ? [id, marketplace] : []))]);
+    const official = <T extends { id: string }>(sources: T[]) =>
+      SEARCH_DEFAULTS.officialOnly ? sources.filter(({ id }) => !scraped.has(id)) : sources;
+    setConfiguredSources(official(config.sources));
+    setSourceCatalog(official(catalog));
     setCommuteConfigured(config.commuteConfigured === true);
     setDashboardAvailable(config.dashboardAvailable === true);
     setCompanies(config.companies ?? {});

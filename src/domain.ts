@@ -81,6 +81,8 @@ export interface SearchFilters {
   offset?: number;
   includeMap?: boolean;
   includeCommute?: boolean;
+  /** Only official feeds and open data: no listings read from listing sites' own pages. The App Store app sets it. */
+  officialOnly?: boolean;
 }
 export type { SourceStatus } from './source-status.ts';
 export type SearchResult = ReturnType<typeof import('./market.ts').formatSearch> & {

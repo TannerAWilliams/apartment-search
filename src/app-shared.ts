@@ -38,6 +38,8 @@ export const SEARCH_DEFAULTS: SearchFilters = {
   includeMap: WEB_MAP,
   liveOnly: true,
   includeCached: true,
+  // The App Store app searches official feeds and open data only; the web app searches every source.
+  officialOnly: Platform.OS !== 'web',
 };
 export const BEDROOMS = [null, 0, 1, 2, 3, 4];
 export const PAGE_SIZE = 12;

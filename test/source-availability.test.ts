@@ -117,6 +117,21 @@ test('an approved RESO feed imports paginated active rentals and skips rows with
   expect(searched.total).toBe(1);
   expect(searched.matches[0]?.rent).toBe(2650);
   expect(searched.matches[0]?.sources[0]?.url).toBe(listing.ListingURL);
+  // The App Store app's official-only search keeps authorized feeds.
+  expect((await search(parseFilters({ source: 'rebny-rls', region: 'nyc', liveOnly: true, officialOnly: true }), env)).total).toBe(1);
+});
+
+test('an official-only search leaves out listings read from listing sites and says so', async () => {
+  const env = { BUCKET: createMemoryBucket() };
+  await refreshSources(env, {
+    sourceId: COMPASS_LIVE.id,
+    now: at,
+    imports: { [COMPASS_LIVE.id]: { listings: [row(1, 'A'), row(2, 'B'), row(3, 'C')], pages: 3 } },
+  });
+  expect((await search(parseFilters({ liveOnly: true, includeCached: true }), env)).total).toBe(3);
+  const official = await search(parseFilters({ liveOnly: true, includeCached: true, officialOnly: true }), env);
+  expect(official.total).toBe(0);
+  expect(official.notices).toContain('This app shows official feeds and open data. Browse listing websites from their links.');
 });
 
 test('Compass accepts script wrapper whitespace and parses JSON strings containing closing braces safely', () => {

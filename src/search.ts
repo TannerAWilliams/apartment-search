@@ -101,6 +101,7 @@ export const SearchFiltersSchema = v.pipe(
     includeCached: flag,
     includeMap: flag,
     includeCommute: flag,
+    officialOnly: flag,
     company: v.optional(
       v.pipe(
         text,
@@ -131,6 +132,7 @@ export const SearchFiltersSchema = v.pipe(
       source: input.source,
       sort: input.sort,
       includeCommute: input.includeCommute,
+      officialOnly: input.officialOnly,
       company: input.company,
       bedrooms: input.bedrooms,
       maxRent: input.maxRent,
