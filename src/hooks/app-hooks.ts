@@ -108,7 +108,7 @@ export function useRetryCooldown() {
  * collapses any expanded listing; the Saved tab scopes listing actions to saved apartments.
  */
 export function useHashNavigation() {
-  const [tab, setTab] = useState('results');
+  const [tab, setTab] = useState('chart');
   const [scope, setScope] = useState('market');
   const [expanded, setExpanded] = useState('');
   useEffect(() => {
@@ -117,7 +117,7 @@ export function useHashNavigation() {
       const next = window.location.hash.slice(1);
       setExpanded('');
       setScope(next === 'saved' ? 'saved' : 'market');
-      setTab(APP_TABS.includes(next) ? next : 'results');
+      setTab(APP_TABS.includes(next) ? next : 'chart');
     };
     restore();
     window.addEventListener('popstate', restore);

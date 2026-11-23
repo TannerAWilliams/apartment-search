@@ -30,7 +30,6 @@ A typed destination can be an address or a place name ("Empire State Building", 
 Saved apartments, notes, comparisons, tours and saved searches live in the browser or device storage. They are not synced between devices, and clearing site data removes them.
 
 - **Notes and viewing status** are kept when an apartment is removed and reappear if it is saved again. A failed read never overwrites notes.
-- **Import CSV** adds up to 500 listings per file. Header: `url,address,unit,city,state,zip,bedrooms,rent`, with optional `county,neighborhood,latitude,longitude`. Use studio = 0, five-digit ZIPs and plain numeric rents.
 - **Compare saved apartments**: up to four side by side, with price and fee basis, bedrooms, reported features, check date and conflicts. It makes no network requests.
 - **Plan apartment tours**: up to 30 tentative appointments (5–240 minutes) with notes and a checklist. Overlap warnings use durations only. A Google Maps walking-route link covers 2–5 stops in the displayed order. Web exports an RFC 5545 `.ics` file; nothing is booked or sent. Use one tab at a time, because concurrent tabs can overwrite edits.
 - **Saved searches**: up to ten named presets. **Check all matches** calls `/api/search-check`, which scans all matching saved inventory without fetching providers, geocoding or routing. It refuses commute-time requirements, searches above 2,000 matches and checks during a refresh. The first check sets a baseline; later checks separate price changes, fee-basis changes and newly seen units. Absence never means rented.
@@ -65,7 +64,7 @@ Six months of median initial asking rents for studios through four bedrooms, fro
 
 ## Market history
 
-**More → Rent chart → Market history 2010–2026** charts every monthly figure in StreetEasy's [Data Dashboard](https://streeteasy.com/blog/data-dashboard/) Master Report: 45 series (median asking rent, rental inventory and the share of rentals with price cuts by bedroom count, the StreetEasy rent and price indices, and the sales market by property type) for the city, its 5 boroughs and 176 neighborhoods, January 2010 to October 2026. That is 1,245,612 reported values; StreetEasy left 337,240 months blank, and those stay unknown, never zero.
+**Market → Market history 2010–2026** charts every monthly figure in StreetEasy's [Data Dashboard](https://streeteasy.com/blog/data-dashboard/) Master Report: 45 series (median asking rent, rental inventory and the share of rentals with price cuts by bedroom count, the StreetEasy rent and price indices, and the sales market by property type) for the city, its 5 boroughs and 176 neighborhoods, January 2010 to October 2026. That is 1,245,612 reported values; StreetEasy left 337,240 months blank, and those stay unknown, never zero.
 
 **Where the data lives.** The archive (downloaded 2026-11-17, SHA-256 `05d017d90302883339eca32fe920b6b170d85a3583d6f436bd78a720bc6adfdc`) is published with the web app's static files as `public/data/streeteasy-dashboard-2026-11-17.zip`; the Worker refuses direct requests for it. The figures are queried from four D1 tables (`deploy/cloudflare/migrations/0002_market_history.sql`): `market_areas`, `market_series`, `market_values` (one row per series, area and month) and `market_imports`. A series is loaded into them from the archive, after its checksum is verified, the first time anyone asks for it, in one transaction; when the archive is replaced, each series is reloaded the next time it is read. `server/storage/market-history.ts` does the loading and the queries; `server/routes/history.ts` serves them:
 
@@ -96,4 +95,4 @@ The Affordable tab lists [NYC Housing Connect](https://data.cityofnewyork.us/d/v
 
 ## Layout
 
-Screens are designed mobile-first for an iPhone 17 in portrait (about 402 CSS pixels wide) and stay usable on desktop. Primary actions stay in the viewport with no horizontal page scroll; Search, Saved and More stay reachable at the bottom, and filters open in a dismissible sheet. The Playwright suite runs desktop, Android-size and iPhone-size Chromium layouts, which is emulation, not Safari or device testing.
+Screens are designed mobile-first for an iPhone 17 in portrait (about 402 CSS pixels wide) and stay usable on desktop. Primary actions stay in the viewport with no horizontal page scroll; The app opens on Market; Market, Search, Saved and More stay reachable at the bottom, and filters open in a dismissible sheet. The Playwright suite runs desktop, Android-size and iPhone-size Chromium layouts, which is emulation, not Safari or device testing.

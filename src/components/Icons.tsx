@@ -35,3 +35,12 @@ export function MenuIcon({ color, size = 22 }: IconProps) {
     </Svg>
   );
 }
+
+export function ChartIcon({ color, size = 22 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" aria-hidden>
+      <Path d="M4 19.5h16" stroke={color} strokeWidth={2} strokeLinecap="round" />
+      <Path d="M5 15l4.5-4.5 3.5 3 6-6.5" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" fill="none" />
+    </Svg>
+  );
+}

@@ -26,10 +26,9 @@ type SearchLink = {
   submitted: React.RefObject<boolean>;
   setResult: (result: SearchResult) => void;
   setError: (message: string) => void;
-  setExpanded: (panel: string) => void;
 };
 
-export function useServer({ appliedFilters, searchVersion, submitted, setResult, setError, setExpanded }: SearchLink) {
+export function useServer({ appliedFilters, searchVersion, submitted, setResult, setError }: SearchLink) {
   const [serverState, setServerState] = useState('checking');
   const [connectionAttempt, setConnectionAttempt] = useState(0);
   const [configuredSources, setConfiguredSources] = useState<ConfigSource[]>([]);
@@ -193,7 +192,6 @@ export function useServer({ appliedFilters, searchVersion, submitted, setResult,
       .catch((failure) => {
         if (controller.signal.aborted) return;
         setServerState(failure.status === 401 ? 'locked' : 'offline');
-        if (failure.status === 401) setExpanded('more');
       });
     return () => controller.abort();
   }, [activeToken, checkSources, updateConfig, connectionAttempt]);

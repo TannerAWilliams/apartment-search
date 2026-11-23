@@ -6,7 +6,7 @@ import type { ListingData, SourceLink, SearchResult } from './src/domain.ts';
 
 import { Modal, Platform, Pressable, ScrollView, StatusBar, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
-import { REGIONS, regionOf } from './src/regions.ts';
+import { REGIONS } from './src/regions.ts';
 import { bedroomLabel, formatRent, localWorkplace, needsCommute, parseFilters } from './src/search.ts';
 import { mobileStyles } from './src/mobileStyles.ts';
 import { colors, styles } from './src/styles.ts';
@@ -29,7 +29,7 @@ import {
 } from './src/app-shared.ts';
 import { Filters, WebsiteFilter } from './src/components/Filters.tsx';
 import { SignIn } from './src/components/SignIn.tsx';
-import { HeartIcon, MenuIcon, SearchIcon } from './src/components/Icons.tsx';
+import { ChartIcon, HeartIcon, MenuIcon, SearchIcon } from './src/components/Icons.tsx';
 import { Marketplaces } from './src/screens/Marketplaces.tsx';
 import { Results } from './src/screens/Results.tsx';
 import { useServer } from './src/hooks/use-server.ts';
@@ -40,8 +40,6 @@ const ListingMap = lazy(() => import('./src/components/ListingMap').then((module
 const AffordableHousing = lazy(() =>
   import('./src/screens/AffordableHousing.tsx').then((module) => ({ default: module.AffordableHousing })),
 );
-const AddListing = lazy(() => import('./src/components/AddListing.tsx').then((module) => ({ default: module.AddListing })));
-const ImportListings = lazy(() => import('./src/components/ImportListings.tsx').then((module) => ({ default: module.ImportListings })));
 const SourcesPage = lazy(() => import('./src/screens/SourcesPage.tsx').then((module) => ({ default: module.SourcesPage })));
 const SavedComparison = lazy(() => import('./src/components/SavedComparison.tsx').then((module) => ({ default: module.SavedComparison })));
 const TourPlanner = lazy(() => import('./src/components/TourPlanner.tsx').then((module) => ({ default: module.TourPlanner })));
@@ -66,7 +64,6 @@ function ApartmentSearch() {
   const { tab, navigateTab, scope, setScope, expanded, setExpanded } = useHashNavigation();
   /** The open tool panel below the commute box: one at a time. */
   const [tool, setTool] = useState('');
-  const [adding, setAdding] = useState<false | 'single' | 'import'>(false);
   const [mapView, setMapView] = useState(false);
   const scrollRef = useRef<React.ElementRef<typeof ScrollView>>(null);
   const scrollPositions = useRef<Record<string, number>>({});
@@ -108,7 +105,7 @@ function ApartmentSearch() {
     alertRequest,
     loadHousing,
     checkBuilding,
-  } = useServer({ appliedFilters, searchVersion, submitted, setResult, setError, setExpanded });
+  } = useServer({ appliedFilters, searchVersion, submitted, setResult, setError });
   const savedByKey = useMemo(() => new Map(saved.map((listing) => [listingKey(listing), listing])), [saved]);
   const savedResults = useMemo(() => localSearch(saved, SAVED_FILTERS, result.workplace, 'saved'), [saved, result.workplace]);
 
@@ -145,7 +142,6 @@ function ApartmentSearch() {
       setApplied(filters);
       setResult(searchResult);
       setScope('market');
-      setAdding(false);
       navigateTab('results');
       setExpanded('');
     } catch (caught) {
@@ -368,52 +364,11 @@ function ApartmentSearch() {
                               {short}
                             </Chip>
                           ))}
-                        {tab === 'saved' && (
-                          <>
-                            <Chip selected={adding === 'single'} onPress={() => setAdding(adding === 'single' ? false : 'single')}>
-                              + Add listing
-                            </Chip>
-                            <Chip selected={adding === 'import'} onPress={() => setAdding(adding === 'import' ? false : 'import')}>
-                              Import CSV
-                            </Chip>
-                          </>
-                        )}
                       </View>
                     </View>
                   }
                   {tab === 'saved' && <SavedComparison listings={saved} open={tool === 'compare'} />}
                   {tab === 'saved' && <TourPlanner listings={saved} open={tool === 'tours'} />}
-                  {tab === 'saved' && (
-                    <>
-                      {adding === 'single' && (
-                        <AddListing
-                          initialRegion={applied.region}
-                          onSave={(listing) => {
-                            saveListing(listing);
-                            setAdding(false);
-                          }}
-                          onCancel={() => setAdding(false)}
-                          geocode={
-                            serverState === 'ready' ? (address) => api('geocode', { body: { address }, token: activeToken }) : undefined
-                          }
-                        />
-                      )}
-                      {adding === 'import' && (
-                        <ImportListings
-                          onImport={(listings) => {
-                            if (listings.some((listing) => !regionOf(listing))) {
-                              throw new Error(
-                                'Import listings in NYC, New Jersey, Long Island, the Hudson Valley, Connecticut or eastern Pennsylvania.',
-                              );
-                            }
-                            setSaved((current) => mergeListings([...listings, ...current]));
-                            setAdding(false);
-                          }}
-                          onCancel={() => setAdding(false)}
-                        />
-                      )}
-                    </>
-                  )}
                   {tab === 'results' && (
                     <SavedSearches
                       open={tool === 'searches'}
@@ -508,7 +463,6 @@ function ApartmentSearch() {
                   </Text>
                   <View style={styles.menu}>
                     {[
-                      ['chart', 'Rent chart', 'Rent trends by neighborhood and StreetEasy market history since 2010'],
                       ['alerts', 'Alerts', 'Email or notify me about new apartments and price drops'],
                       ['affordable', 'Affordable housing', 'Open lotteries and income-restricted rentals'],
                       ['marketplaces', 'Rental platforms', 'Search StreetEasy, Zillow and other sites directly'],
@@ -600,12 +554,13 @@ function ApartmentSearch() {
       <View style={mobileStyles.bottomNav} accessibilityRole="tablist">
         {(
           [
+            ['chart', 'Market', ChartIcon],
             ['results', 'Search', SearchIcon],
             ['saved', `Saved (${savedResults.total})`, HeartIcon],
             ['more', 'More', MenuIcon],
           ] as const
         ).map(([key, label, Icon]) => {
-          const selected = key === 'more' ? !['results', 'saved'].includes(tab) : tab === key;
+          const selected = key === 'more' ? !['chart', 'results', 'saved'].includes(tab) : tab === key;
           return (
             <Pressable
               key={key}

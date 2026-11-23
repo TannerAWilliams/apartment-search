@@ -22,7 +22,7 @@ test('destination editing stays local until Apply and remains accessible without
     }
     return route.abort();
   });
-  await page.goto('/');
+  await page.goto('/#results');
   await expect(page.getByRole('button', { name: 'Change destination', exact: true })).toBeVisible();
   await expect.poll(() => requests.length).toBe(1);
   await page.getByRole('button', { name: 'Change destination', exact: true }).click();

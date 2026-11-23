@@ -44,6 +44,7 @@ async function mockApp(
     housing?: HousingResponse;
     /** The server asks for sign-in until the email-code sign-in succeeds. */
     signIn?: boolean;
+    start?: string;
   } = {},
 ) {
   const requests: MockRequest[] = [];
@@ -151,7 +152,7 @@ async function mockApp(
     }
     await route.fulfill({ json: data });
   });
-  await page.goto('/');
+  await page.goto(options.start ?? '/#results');
   // Signed out, the app searches only after sign-in.
   if (!options.signIn) await expect.poll(() => requests.filter((r) => r.path === '/api/search').length).toBeGreaterThan(0);
   return { requests, unexpected, listings };
@@ -213,17 +214,6 @@ test('mouse navigation and browser back restore tabs', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Sources & sync', exact: true })).toBeVisible();
 });
 
-test('add-listing form validates empty input and can be cancelled', async ({ page }) => {
-  await mockApp(page);
-  await page.getByRole('tab', { name: /^Saved/ }).click();
-  await page.getByRole('button', { name: '+ Add listing', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Add a rental listing' })).toBeVisible();
-  await page.getByRole('button', { name: 'Save apartment', exact: true }).click();
-  await expect(page.getByRole('alert').filter({ hasText: 'Enter a listing URL' })).toBeVisible();
-  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Add a rental listing' })).toHaveCount(0);
-});
-
 test('search failures are visible, not silently treated as zero matches', async ({ page }) => {
   await mockApp(page, { searchError: true });
   await page.getByRole('button', { name: 'Filters', exact: true }).click();
@@ -259,15 +249,6 @@ test('search shows source coverage notices instead of hiding data caveats', asyn
   await expect(page.getByText('1 coverage note ▾', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Show coverage notes', exact: true }).click();
   await expect(page.getByText('• Synthetic provider returned partial inventory.', { exact: true })).toBeVisible();
-});
-
-test('CSV import can be opened and cancelled without changing saved data', async ({ page }) => {
-  await mockApp(page);
-  await page.getByRole('tab', { name: /^Saved/ }).click();
-  await page.getByRole('button', { name: 'Import CSV', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Cancel', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
-  await expect(page.getByRole('tab', { name: 'Saved (0)', exact: true })).toBeVisible();
 });
 
 test('Sources tab is keyboard operable', async ({ page }) => {
@@ -349,102 +330,6 @@ test('applied filters, expanded results and search scroll survive navigation', a
   await page.getByRole('button', { name: 'Filters', exact: true }).click();
   await expect(page.getByRole('button', { name: '1 BR', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByRole('textbox', { name: 'Max rent per month ($)', exact: true })).toHaveValue('5000');
-});
-
-async function openImport(page: Page) {
-  await page.getByRole('tab', { name: /^Saved/ }).click();
-  await page.getByRole('button', { name: 'Import CSV', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Import rental listings' })).toBeVisible();
-}
-const importHeader = 'url,address,unit,city,state,zip,bedrooms,rent';
-const importRow = 'https://example.com/apartments/1,100 Test Street,2A,Brooklyn,NY,11201,1,2400';
-
-test('manual entry corrects invalid coordinates then saves and survives reload', async ({ page }) => {
-  const { unexpected } = await mockApp(page);
-  await page.getByRole('tab', { name: /^Saved/ }).click();
-  await page.getByRole('button', { name: '+ Add listing', exact: true }).click();
-  await page.getByRole('textbox', { name: 'Listing URL', exact: true }).fill('https://example.com/apartments/manual');
-  await page.getByRole('textbox', { name: 'Street address', exact: true }).fill('101 Test Street');
-  await page.getByRole('textbox', { name: 'ZIP code', exact: true }).fill('11201');
-  await page.getByRole('button', { name: 'Brooklyn', exact: true }).click();
-  await page.getByRole('textbox', { name: 'Monthly asking rent ($)', exact: true }).fill('2300');
-  await page.getByRole('textbox', { name: 'Latitude, longitude (optional)', exact: true }).fill('91, -73.99');
-  await page.getByRole('button', { name: 'Save apartment', exact: true }).click();
-  await expect(page.getByRole('alert').filter({ hasText: 'Enter valid latitude' })).toBeVisible();
-  await expect(page.getByRole('tab', { name: 'Saved (0)', exact: true })).toBeVisible();
-  await page.getByRole('textbox', { name: 'Latitude, longitude (optional)', exact: true }).fill('40.7, -73.99');
-  await page.getByRole('button', { name: 'Save apartment', exact: true }).click();
-  await page.getByRole('tab', { name: 'Saved (1)', exact: true }).click();
-  await expect(page.getByText('101 Test Street', { exact: true })).toBeVisible();
-  await page.reload();
-  await expect(page.getByText('101 Test Street', { exact: true })).toBeVisible();
-  expect(unexpected).toEqual([]);
-});
-
-test('CSV validation is atomic and correcting the bad row recovers', async ({ page }) => {
-  await mockApp(page);
-  await openImport(page);
-  const save = page.getByRole('button', { name: 'Save listings', exact: true });
-  await expect(save).toBeDisabled();
-  await page
-    .getByRole('textbox', { name: 'Listing CSV', exact: true })
-    .fill(`${importHeader}\n${importRow}\nhttps://example.com/bad,102 Test Street,,Brooklyn,NY,11201,1,invalid`);
-  await save.click();
-  await expect(page.getByRole('alert').filter({ hasText: 'line 3' })).toBeVisible();
-  await expect(page.getByRole('tab', { name: 'Saved (0)', exact: true })).toBeVisible();
-  await page.getByRole('textbox', { name: 'Listing CSV', exact: true }).fill(`${importHeader}\n${importRow}`);
-  await save.click();
-  await page.getByRole('tab', { name: 'Saved (1)', exact: true }).click();
-  await expect(page.getByText('100 Test Street, Unit 2A', { exact: true })).toBeVisible();
-  await page.reload();
-  await expect(page.getByText('100 Test Street, Unit 2A', { exact: true })).toBeVisible();
-});
-
-test('reimporting the same apartment does not duplicate saved inventory', async ({ page }) => {
-  await mockApp(page);
-  for (let attempt = 0; attempt < 2; attempt++) {
-    await openImport(page);
-    await page.getByRole('textbox', { name: 'Listing CSV', exact: true }).fill(`${importHeader}\n${importRow}`);
-    await page.getByRole('button', { name: 'Save listings', exact: true }).click();
-    await page.getByRole('tab', { name: 'Saved (1)', exact: true }).click();
-    await expect(page.getByText('100 Test Street, Unit 2A', { exact: true })).toHaveCount(1);
-  }
-  await page.getByRole('button', { name: 'Remove saved apartment', exact: true }).click();
-  await expect(page.getByRole('tab', { name: 'Saved (0)', exact: true })).toBeVisible();
-  await page.reload();
-  await expect(page.getByText('100 Test Street, Unit 2A', { exact: true })).toHaveCount(0);
-});
-
-test('oversized CSV file rejects safely and a valid file can be selected next', async ({ page }, testInfo) => {
-  await mockApp(page);
-  await openImport(page);
-  const upload = page.getByLabel('Upload listing CSV', { exact: true });
-  const tooLarge = testInfo.outputPath('too-large.csv');
-  const valid = testInfo.outputPath('valid.csv');
-  await Bun.write(tooLarge, 'a'.repeat(256001));
-  await Bun.write(valid, `${importHeader}\n${importRow}`);
-  await upload.setInputFiles(tooLarge);
-  await expect(page.getByRole('alert').filter({ hasText: 'under 256 KB' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Save listings', exact: true })).toBeDisabled();
-  await upload.setInputFiles(valid);
-  await expect(page.getByRole('textbox', { name: 'Listing CSV', exact: true })).toHaveValue(`${importHeader}\n${importRow}`);
-  await page.getByRole('button', { name: 'Save listings', exact: true }).click();
-  await page.getByRole('tab', { name: 'Saved (1)', exact: true }).click();
-  await expect(page.getByText('100 Test Street, Unit 2A', { exact: true })).toBeVisible();
-});
-
-test('CSV outside supported regions reports the restriction without saving', async ({ page }) => {
-  await mockApp(page);
-  await openImport(page);
-  // Albany is in New York State but outside every searchable region.
-  await page
-    .getByRole('textbox', { name: 'Listing CSV', exact: true })
-    .fill(`${importHeader}\nhttps://example.com/albany,12 State Street,,Albany,NY,12207,1,1800`);
-  await page.getByRole('button', { name: 'Save listings', exact: true }).click();
-  await expect(page.getByRole('alert').filter({ hasText: 'Check the street, city, region, and monthly rent on line 2' })).toBeVisible();
-  await expect(page.getByRole('tab', { name: 'Saved (0)', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Import rental listings' })).toHaveCount(0);
 });
 
 test('housing cost inputs require known amounts, calculate, reject invalid input and reset', async ({ page }) => {
@@ -669,8 +554,7 @@ test('market history charts one area, compares another, and says when figures ca
       },
     });
   });
-  await page.getByRole('tab', { name: 'More', exact: true }).click();
-  await page.getByRole('button', { name: 'Rent chart', exact: true }).click();
+  await page.getByRole('tab', { name: 'Market', exact: true }).click();
   await page.getByRole('button', { name: 'Market history 2010–2026', exact: true }).click();
   await expect(page.getByText('These figures could not be loaded. No values have been substituted; try again shortly.')).toBeVisible();
 
@@ -707,7 +591,7 @@ test('iPhone 17 portrait keeps primary controls inside the screen', async ({ pag
     expect(dimensions.contentWidth, label + ' must not overflow horizontally').toBeLessThanOrEqual(dimensions.width + 1);
     if (checkNavigation) {
       const controls = page.getByRole('tab');
-      await expect(controls).toHaveCount(3);
+      await expect(controls).toHaveCount(4);
       for (const control of await controls.all()) {
         const box = await control.boundingBox();
         expect(box, label + ': navigation remains rendered').not.toBeNull();
@@ -733,9 +617,6 @@ test('iPhone 17 portrait keeps primary controls inside the screen', async ({ pag
   expect(box).not.toBeNull();
   expect(box!.x).toBeGreaterThanOrEqual(0);
   expect(box!.x + box!.width).toBeLessThanOrEqual(402);
-  await page.getByRole('tab', { name: /^Saved/ }).click();
-  await page.getByRole('button', { name: '+ Add listing', exact: true }).click();
-  await checkLayout('add-listing');
   await page.getByRole('tab', { name: 'More', exact: true }).click();
   await page.getByRole('button', { name: 'Rental platforms', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Browse rental platforms', exact: true })).toBeVisible();
@@ -746,8 +627,7 @@ test('iPhone 17 portrait keeps primary controls inside the screen', async ({ pag
 
 test('unavailable dashboard capability explains access without requesting source bytes', async ({ page }) => {
   const { requests } = await mockApp(page);
-  await page.getByRole('tab', { name: 'More', exact: true }).click();
-  await page.getByRole('button', { name: 'Rent chart', exact: true }).click();
+  await page.getByRole('tab', { name: 'Market', exact: true }).click();
   await page.getByRole('button', { name: 'Market history 2010–2026', exact: true }).click();
   await expect(
     page.getByText(
@@ -759,7 +639,7 @@ test('unavailable dashboard capability explains access without requesting source
 });
 
 test('signing in with an email code opens the app', async ({ page }) => {
-  const { requests, unexpected } = await mockApp(page, { signIn: true });
+  const { requests, unexpected } = await mockApp(page, { signIn: true, start: '/' });
   await page.getByLabel('Email', { exact: true }).fill('Renter@Example.test');
   await page.getByRole('button', { name: 'Email me a sign-in code', exact: true }).click();
   await expect(page.getByText('If renter@example.test can sign in, a code is on its way.', { exact: false })).toBeVisible();
@@ -768,12 +648,16 @@ test('signing in with an email code opens the app', async ({ page }) => {
   await expect(page.getByRole('alert').filter({ hasText: 'Check the code and try again.' })).toBeVisible();
   await page.getByLabel('Sign-in code', { exact: true }).fill('123456');
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  // Signing in opens the market overview, not the search filters.
+  await expect(page.getByRole('tab', { name: 'Market', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByText('Search filters', { exact: true })).toHaveCount(0);
+  await page.getByRole('tab', { name: 'Search', exact: true }).click();
   await expect(page.getByText('12 Grove Street', { exact: true })).toBeVisible();
   expect(requests.find((r) => r.path === '/api/auth/email-otp/send-verification-otp')?.body).toEqual({
     email: 'renter@example.test',
     type: 'sign-in',
   });
-  expect(unexpected).toEqual([]);
+  expect(unexpected.filter((path) => path !== '/api/market')).toEqual([]);
 });
 
 test('Jersey City affordable notices show with official links and stay out of apartment search', async ({ page }) => {
@@ -821,7 +705,7 @@ for (const width of [320, 375, 390]) {
   test(`narrow ${width}px navigation keeps Affordable housing fully reachable`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width, height: 740 });
     await mockApp(page);
-    await expect(page.getByRole('tab')).toHaveCount(3);
+    await expect(page.getByRole('tab')).toHaveCount(4);
     await page.getByRole('tab', { name: 'More', exact: true }).click();
     const affordable = page.getByRole('button', { name: 'Affordable housing', exact: true });
     await expect(affordable).toBeVisible();

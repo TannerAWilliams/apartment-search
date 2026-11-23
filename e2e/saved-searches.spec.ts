@@ -36,7 +36,7 @@ test('presets persist and whole-search checks include page101 without refresh or
       });
     return route.fulfill({ status: 500, json: { error: 'Unexpected endpoint' } });
   });
-  await page.goto('/');
+  await page.goto('/#results');
   await expect.poll(() => calls.includes('/api/search')).toBe(true);
   await page.getByRole('button', { name: 'Saved searches and whole-search checks', exact: true }).click();
   await page.getByLabel('Saved search name', { exact: true }).fill('Metro homes');

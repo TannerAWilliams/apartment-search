@@ -7,7 +7,6 @@ import { marketplaceAddressSearches, marketplaceIdForUrl, marketplaceLinks } fro
 import { listingKey, mergeListings, normalizeListing, sourceLink } from '../src/listings.ts';
 import { localSearch, median, rentAreas, SNAPSHOT_MONTH } from '../src/market.ts';
 import { marketSnapshot } from '../src/bundled-market.ts';
-import { IMPORT_COLUMNS, parseListingImport } from '../src/import-listings.ts';
 import { handleApi } from './fixtures/api.ts';
 import { search } from '../server/search.ts';
 import { appConfig } from '../server/app-config.ts';
@@ -147,22 +146,6 @@ test('a routing outage preserves ordinary results but fails an explicitly filter
   expect(result.total > 0).toBeTruthy();
   expect(required(result.commuteNotice)).toMatch(/couldn’t calculate routes/);
   await expect(search({ ...DEFAULT_FILTERS, maxTransitMinutes: 45 }, env, fetcher)).rejects.toThrow(/couldn’t calculate routes/);
-});
-
-test('a CSV keeps direct marketplace links on the same unit without marking them live', () => {
-  const csv =
-    IMPORT_COLUMNS +
-    ',latitude,longitude\n' +
-    'https://www.apartments.com/example/abc/,12 Grove Street,2,Jersey City,NJ,07302,1,2600,40.72,-74.04\n' +
-    'https://www.zillow.com/homedetails/example/,12 Grove St,Apt 2,Jersey City,NJ,07302,1,2600,,';
-  const listings = mergeListings(parseListingImport(csv));
-  expect(listings.length).toBe(1);
-  expect(listings[0].zip).toBe('07302');
-  expect(listings[0].kind).toBe('saved');
-  expect(listings[0].longitude).toBe(-74.04);
-  expect(listings[0].sources.map(({ id }) => id)).toStrictEqual(['apartments', 'zillow']);
-  expect(() => parseListingImport(csv.replace('07302', '7302'))).toThrow(/line 2/);
-  expect(() => parseListingImport(csv.replace('40.72,-74.04', '40.72,'))).toThrow(/coordinates on line 2/);
 });
 
 test('studio, geography, budget, and distance are applied together to real observations', () => {
@@ -446,13 +429,4 @@ test('every selectable region supplies a marketplace without undefined dereferen
   }
   expect(marketsForSearch({ region: 'all' })).toStrictEqual(MARKETS);
   expect(marketsForSearch({ region: 'nj' }).every((market) => market.state === 'NJ')).toBeTruthy();
-});
-
-test('CSV import accepts eastern Pennsylvania rentals and still rejects other states', async () => {
-  const { parseListingImport } = await import('../src/import-listings.ts');
-  const header = 'url,address,unit,city,state,zip,bedrooms,rent';
-  const [listing] = parseListingImport(`${header}\nhttps://example.com/pa,12 Main Street,,Easton,PA,18042,1,1500`);
-  expect(listing.state).toBe('PA');
-  expect(listing.region).toBe('pa');
-  expect(() => parseListingImport(`${header}\nhttps://example.com/ma,12 Main Street,,Boston,MA,02108,1,2500`)).toThrow(/state, ZIP/);
 });

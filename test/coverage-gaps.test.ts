@@ -146,21 +146,8 @@ test('bundled history preserves absent months and missing bedroom observations',
   ).toStrictEqual({ month: '1900-01', median: null, count: 0 });
 });
 
-import { parseListingImport } from '../src/import-listings.ts';
 import { parseRentHopPage, RENTHOP_LIVE } from '../server/sources/renthop.ts';
 import { parseAffordableRentals, AFFORDABLE_LIVE } from '../server/sources/affordable-rentals.ts';
-test('CSV rejects missing/duplicate columns, empty files and invalid optional coordinates', () => {
-  const header = 'url,address,unit,city,state,zip,bedrooms,rent';
-  for (const csv of ['', header, header + ',rent\n', header + '\nhttps://example.com,1 Main,,Brooklyn,NY,11201,1,1000,extra'])
-    expect(() => parseListingImport(csv)).toThrow();
-  for (const coords of ['40,', 'x,-73', '91,-73'])
-    expect(() =>
-      parseListingImport(`${header},latitude,longitude\nhttps://example.com,1 Main,,Brooklyn,NY,11201,1,1000,${coords}`),
-    ).toThrow(/coordinates/);
-  expect(parseListingImport(`${header},latitude,longitude\nhttps://example.com,1 Main,,Brooklyn,NY,11201,1,1000,40,-73`)[0].latitude).toBe(
-    40,
-  );
-});
 const hopCard = `<div id="listing-1"><a id="listing-1-title" href="/listings/example/1">12 Test Street</a><div id="listing-1-neighborhoods">Example, Brooklyn</div><div>11201</div><div id="listing-1-price">$2,000</div><div><img alt="bedrooms"></div><div>Studio</div><span latitude="40.7" longitude="-73.9"></span><div id="listing-1-padding">`;
 test('RentHop parses studio facts and refuses shared rooms, over-budget and incomplete cards', async () => {
   expect(() => parseRentHopPage('', { budget: 2200 }, stamp)).toThrow(/recognized/);
