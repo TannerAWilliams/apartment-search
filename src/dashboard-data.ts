@@ -28,13 +28,19 @@ export const DASHBOARD_FILES = Object.keys(METRICS).flatMap((metric) => {
       : ['All', 'Coop', 'Condo', 'Sfr'];
   return segments.map((segment) => `${metric}_${segment}.csv`);
 });
-export function formatDashboardValue(value: number | null, metric: keyof typeof METRICS) {
-  if (value === null) return 'Not reported';
-  const unit = METRICS[metric][1];
-  if (unit === 'days' && value < 0) return `${value} days (source anomaly; not a valid duration)`;
-  return unit === 'share' || unit === 'ratio'
-    ? `${(value * 100).toFixed(2)}%`
-    : unit === 'USD'
-      ? `$${value.toLocaleString('en-US', { maximumFractionDigits: 2 })}`
-      : `${value.toLocaleString('en-US')}${unit === 'days' ? ' days' : ''}`;
-}
+/** Whether a measure describes the rental or the sales market. */
+export const dashboardMarket = (metric: keyof typeof METRICS): 'Rentals' | 'Sales' =>
+  ['rentalInventory', 'medianAskingRent', 'discountShare', 'rentalIndex'].includes(metric) ? 'Rentals' : 'Sales';
+
+/** A segment as people say it: 1 bedroom, Co-op. */
+export const dashboardSegmentLabel = (segment: string) =>
+  ({
+    All: 'All',
+    Studio: 'Studio',
+    OneBd: '1 bedroom',
+    TwoBd: '2 bedrooms',
+    ThreePlusBd: '3+ bedrooms',
+    Coop: 'Co-op',
+    Condo: 'Condo',
+    Sfr: 'Single-family',
+  })[segment] ?? segment;

@@ -19,7 +19,8 @@ export function appConfig(env: AppEnv) {
     mode: feeds.length > 0 ? 'live' : 'snapshot',
     storageMode: env.BUCKET ? 'persistent' : 'none',
     browserImportAllowed: env.PUBLIC_APP !== 'true',
-    dashboardAvailable: env.PUBLIC_APP === 'true' || Boolean(env.APP_ACCESS_TOKEN),
+    // The research data is shared with signed-in people only, so it is offered wherever someone can sign in.
+    dashboardAvailable: env.PUBLIC_APP === 'true' || Boolean(env.APP_ACCESS_TOKEN) || Boolean(env.BETTER_AUTH_SECRET),
     snapshotMonth: SNAPSHOT_MONTH,
     sources: feeds.map(({ id, name }) => ({ id, name })),
     ...(routingCredentials(env) ? { commuteConfigured: true } : {}),

@@ -11,6 +11,7 @@ import { log } from './log.ts';
 import { alertRoutes } from './routes/alerts.ts';
 import { factory, fail } from './routes/context.ts';
 import { dataRoutes } from './routes/data.ts';
+import { historyRoutes } from './routes/history.ts';
 import { searchRoutes } from './routes/search.ts';
 import { sourceRoutes } from './routes/sources.ts';
 import { vitalsRoutes } from './routes/vitals.ts';
@@ -25,6 +26,7 @@ export const api = factory
   .route('/', sourceRoutes)
   .route('/', searchRoutes)
   .route('/', dataRoutes)
+  .route('/', historyRoutes)
   .route('/', alertRoutes)
   .route('/', vitalsRoutes);
 

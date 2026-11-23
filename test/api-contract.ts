@@ -9,7 +9,7 @@ import type { ApiRoutes } from '../server/api.ts';
 import type { AlertState } from '../src/screens/AlertsPage.tsx';
 import type { ApiConfig, RefreshInfo } from '../src/api-client.ts';
 import type { BuildingRecordsResult } from '../src/components/BuildingReport.tsx';
-import type { DashboardResponse } from '../src/screens/DashboardExplorer.tsx';
+import type { HistoryCatalog, HistoryMonth, HistoryValues } from '../src/market-history.ts';
 import type { Point, SearchResult } from '../src/domain.ts';
 import type { RentMarket } from '../src/rent-history.ts';
 
@@ -26,7 +26,9 @@ export type ApiContract = [
   Fits<Reply<Api['search']['$post']>, SearchResult>,
   Fits<Reply<Api['market']['$get']>, RentMarket>,
   Fits<Reply<Api['housing']['$get']>, HousingResponse>,
-  Fits<Reply<Api['dashboard']['$get']>, DashboardResponse>,
+  Fits<Reply<Api['history']['$get']>, HistoryCatalog>,
+  Fits<Reply<Api['history']['values']['$get']>, HistoryValues>,
+  Fits<Reply<Api['history']['month']['$get']>, HistoryMonth>,
   Fits<Reply<Api['alerts']['$get']>, AlertState>,
   Fits<Reply<Api['alerts']['$post']>, AlertState>,
   Fits<Reply<Api['building-report']['$post']>, BuildingRecordsResult>,

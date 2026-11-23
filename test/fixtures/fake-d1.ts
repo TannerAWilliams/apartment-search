@@ -17,7 +17,7 @@ export async function fakeD1() {
   /** Runs one statement as D1 does: rows for a query, and the change count. */
   const run = <T>(sql: string, values: Value[]) => {
     const statement = sqlite.query(sql);
-    if (/^\s*(select|with)\b|\breturning\b/i.test(sql))
+    if (/^\s*(select|with|pragma)\b|\breturning\b/i.test(sql))
       return { results: statement.all(...values) as T[], meta: { changes: 0, last_row_id: 0 } };
     const { changes, lastInsertRowid } = statement.run(...values);
     return { results: [] as T[], meta: { changes, last_row_id: Number(lastInsertRowid) } };
@@ -41,6 +41,8 @@ export async function fakeD1() {
           return run<T>(sql, (statements.get(statement) ?? { values: [] }).values);
         },
       };
+      // D1 runs a statement that was never bound, as Better Auth's schema check does with PRAGMA.
+      statements.set(statement, { sql, values: [] });
       return statement;
     },
     async batch<T>(batch: D1Statement[]) {

@@ -1,6 +1,6 @@
 import type { ListingData } from '../domain.ts';
 import type { RentArea, RentMarket, RentHistory } from '../rent-history.ts';
-import type { LoadDashboard } from '../screens/DashboardExplorer.tsx';
+import type { LoadHistory } from '../screens/MarketHistory.tsx';
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { formatSnapshotMonth, RENT_GROUPINGS, rentAreas, SNAPSHOT_MONTH, SNAPSHOT_SOURCE } from '../market.ts';
@@ -10,7 +10,7 @@ import { NYC_SEARCH_AREAS } from '../regions.ts';
 import { bedroomLabel, formatRent } from '../search.ts';
 import { styles } from '../styles.ts';
 import { Button, Chip, Field, Link, toggleProps } from './ui.tsx';
-import { DashboardExplorer } from '../screens/DashboardExplorer.tsx';
+import { MarketHistory } from '../screens/MarketHistory.tsx';
 import { RentTrend } from './RentTrend.tsx';
 
 const SIZES = ['Studio', '1 BR', '2 BR', '3 BR', '4 BR'];
@@ -97,14 +97,14 @@ export function RentChart({
   onError,
   showSaved,
   loadMarket,
-  loadDashboard,
+  loadHistory,
 }: {
   initialRegion: string;
   saved: ListingData[];
   onError: (message: string) => void;
   showSaved: () => void;
   loadMarket?: (region: string, grouping: string, signal: AbortSignal) => Promise<RentMarket>;
-  loadDashboard?: LoadDashboard;
+  loadHistory?: LoadHistory;
 }) {
   const [dataset, setDataset] = useState('market');
   const [region, setRegion] = useState(initialRegion);
@@ -178,7 +178,7 @@ export function RentChart({
         <Button secondary onPress={() => setDataset('market')}>
           Back to rent trends
         </Button>
-        <DashboardExplorer loadDashboard={loadDashboard} />
+        <MarketHistory load={loadHistory} />
       </View>
     );
 
@@ -196,7 +196,7 @@ export function RentChart({
           Market snapshot
         </Chip>
         <Chip selected={false} onPress={() => setDataset('dashboard')}>
-          StreetEasy dashboard files
+          Market history 2010–2026
         </Chip>
         <Chip selected={dataset === 'saved'} onPress={() => resetAreas(setDataset, 'saved')}>
           Saved listings

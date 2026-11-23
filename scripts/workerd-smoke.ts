@@ -26,8 +26,10 @@ const CHECKS: { path: string; init?: RequestInit; status: number; contains?: str
     init: { method: 'POST', body: JSON.stringify({ email: 'not-allowed@example.com', type: 'sign-in' }) },
   },
   { path: '/api/alerts', status: 200, contains: '"rules":[]' },
-  { path: '/api/dashboard', status: 200, contains: '"files"' },
-  { path: '/api/dashboard?file=rentalIndex_All.csv', status: 200, contains: '"months"' },
+  { path: '/api/history', status: 200, contains: '"areas"' },
+  // Loads the series into the local D1 tables from the archive, then reads it back.
+  { path: '/api/history/values?series=rentalIndex_All.csv&areas=1&from=2026-01&to=2026-10', status: 200, contains: '"months"' },
+  { path: '/api/history/month?series=medianAskingRent_All.csv&month=2026-10', status: 200, contains: '"value":4100' },
   { path: '/api/search', status: 200, contains: '"matches"', init: { method: 'POST', body: JSON.stringify({ region: 'brooklyn' }) } },
   {
     path: '/api/vitals',

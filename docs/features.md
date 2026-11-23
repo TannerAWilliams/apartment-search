@@ -63,9 +63,32 @@ Alerts go by email to the address you sign in with (once Email Routing is set up
 
 Six months of median initial asking rents for studios through four bedrooms, from the Worker (the web app bundles no rent data; native builds fall back to the bundled snapshot offline), by neighborhood, borough, city or ZIP, with up to two pinned comparison areas and a **By bedroom** view. Values show their listing counts; missing months are gaps. The chart uses the dated FirstMover snapshot (NYC and parts of North Jersey), excludes houses, townhouses and commercial records, and consolidates duplicates. **Saved listings** charts the saved list instead.
 
-## Historical dashboard
+## Market history
 
-`/api/dashboard` serves the StreetEasy Data Dashboard Master Report (downloaded 2026-11-17, SHA-256 `05d017d90302883339eca32fe920b6b170d85a3583d6f436bd78a720bc6adfdc`), published with the web app's static files as `public/data/streeteasy-dashboard-2026-11-17.zip`. The Worker reads it through its assets binding when a series is first opened, rejects it unless the SHA-256 matches, and refuses direct requests for it. It has 45 CSVs: 29 sales and 16 rental files covering 182 areas from January 2010 to October 2026, plus sales and rental indices. Blanks stay unknown, negative days-on-market values are flagged as source anomalies, and overlapping areas must not be added together. The explorer groups series as Market → Metric → Bedrooms or Property type, with 1-year, 3-year and full ranges, pinned comparisons and a selectable monthly table. It is a frozen snapshot and makes no requests to StreetEasy. Attribution: [StreetEasy Data Dashboard](https://streeteasy.com/blog/data-dashboard/).
+**More → Rent chart → Market history 2010–2026** charts every monthly figure in StreetEasy's [Data Dashboard](https://streeteasy.com/blog/data-dashboard/) Master Report: 45 series (median asking rent, rental inventory and the share of rentals with price cuts by bedroom count, the StreetEasy rent and price indices, and the sales market by property type) for the city, its 5 boroughs and 176 neighborhoods, January 2010 to October 2026. That is 1,245,612 reported values; StreetEasy left 337,240 months blank, and those stay unknown, never zero.
+
+**Where the data lives.** The archive (downloaded 2026-11-17, SHA-256 `05d017d90302883339eca32fe920b6b170d85a3583d6f436bd78a720bc6adfdc`) is published with the web app's static files as `public/data/streeteasy-dashboard-2026-11-17.zip`; the Worker refuses direct requests for it. The figures are queried from four D1 tables (`deploy/cloudflare/migrations/0002_market_history.sql`): `market_areas`, `market_series`, `market_values` (one row per series, area and month) and `market_imports`. A series is loaded into them from the archive, after its checksum is verified, the first time anyone asks for it, in one transaction; when the archive is replaced, each series is reloaded the next time it is read. `server/storage/market-history.ts` does the loading and the queries; `server/routes/history.ts` serves them:
+
+- `GET /api/history`: the catalog (series, areas with their ids, provenance).
+- `GET /api/history/values?series=…&areas=…&from=YYYY-MM&to=YYYY-MM`: up to six series for up to eight areas, month by month.
+- `GET /api/history/month?series=…&month=YYYY-MM`: every area's value in one month and a year earlier.
+
+The routes answer only someone signed in (or anyone, when the app is public).
+
+**The page** (`src/screens/MarketHistory.tsx`, charts in `src/components/LineChart.tsx` and `MarketCharts.tsx`, arithmetic in `src/market-history.ts`). One row of filters (rentals or sales, area, up to three comparison areas, bedrooms or property type, measure, time range) scopes everything below it:
+
+- a sentence with the latest figure, its change from a year earlier and where the area ranks in its borough;
+- stat tiles with two-year sparklines (rent, inventory, price-cut share, rent index where StreetEasy publishes one);
+- the trend for the area and its comparisons, as values or as percent change from the start of the range, with a crosshair that reads every line (pointer, touch, or arrow keys);
+- the measure by apartment size (or property type);
+- a heatmap of the change from a year earlier for every month since 2011;
+- seasonality: each calendar month against its year's average, over every complete year;
+- neighborhoods ranked by value, or by the biggest rise or fall, with the chosen area highlighted;
+- market temperature: each neighborhood's rent change against its share of listings with price cuts.
+
+Every chart has a table view with every value. Colors follow a validated palette (`src/chart-colors.ts`): four series colors in a fixed order, gray for context, and blue-to-red through gray for change. Negative days-on-market values in the source are kept in the database and left off the charts.
+
+**A new month of data.** StreetEasy updates the dashboard monthly. Download the Master Report from the dashboard page, save it as `public/data/streeteasy-dashboard-<date>.zip`, update `DASHBOARD_ARCHIVE_PATH` and its checksum in `server/dashboard-snapshot.ts`, run `bun scripts/dashboard-catalog.ts` to rebuild the series and area catalog, and deploy; each series reloads from the new archive the first time it is read.
 
 ## Affordable housing
 

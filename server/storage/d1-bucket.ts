@@ -53,7 +53,7 @@ const LISTING_ROWS = `SELECT data FROM listings WHERE snapshot = ?1
 const CHUNK_BYTES = 768 * 1024;
 
 /** Splits encoded rows into JSON arrays under CHUNK_BYTES, with the position of each array's first row. */
-function chunks(rows: string[]) {
+export function chunks(rows: string[]) {
   const out: { start: number; json: string }[] = [];
   let start = 0;
   let batch: string[] = [];

@@ -214,11 +214,13 @@ test('the dashboard archive is read once through the assets binding and cannot b
   const withArchive = { ...env, ASSETS };
   expect((await call(withArchive, '/data/streeteasy-dashboard-2026-11-17.zip')).status).toBe(404);
   expect(reads, 'a direct request never reaches the archive').toBe(0);
-  expect((await call(withArchive, '/api/dashboard?file=rentalIndex_All.csv')).status).toBe(200);
-  expect((await call(withArchive, '/api/dashboard?file=totalInventory_All.csv')).status).toBe(200);
+  // The market history tables are filled from the archive the first time a series is asked for.
+  const history = (series: string) => `/api/history/month?series=${series}&month=2026-10`;
+  expect((await call(withArchive, history('rentalIndex_All.csv'))).status).toBe(200);
+  expect((await call(withArchive, history('totalInventory_All.csv'))).status).toBe(200);
   expect(reads, 'the archive is read and verified once').toBe(1);
   const missing = { ...env, ASSETS: { fetch: async () => new Response('missing', { status: 404 }) } };
-  expect((await call(missing, '/api/dashboard?file=rentalIndex_All.csv')).status).toBe(503);
+  expect((await call(missing, history('medianAskingRent_All.csv'))).status).toBe(503);
 });
 
 test('every response, including a refusal, tells browsers to use HTTPS only', async () => {

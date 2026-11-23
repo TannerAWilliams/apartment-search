@@ -601,44 +601,98 @@ test('NYC building report loads automatically on Details and reuses completed se
   expect(unexpected).toEqual([]);
 });
 
-test('historical dashboard loads privately and a failed series does not trap the selector', async ({ page }) => {
+test('market history charts one area, compares another, and says when figures cannot be loaded', async ({ page }) => {
   await mockApp(page, { dashboardAvailable: true });
-  await page.route('**/api/dashboard*', async (route) => {
-    const name = new URL(route.request().url()).searchParams.get('file');
-    if (name === 'medianAskingRent_All.csv') return route.fulfill({ status: 503, json: { error: 'Synthetic unavailable series' } });
-    const file = {
-      name: 'rentalInventory_All.csv',
-      metric: 'rentalInventory',
-      segment: 'All',
-      months: ['2025-01', '2025-02'],
-      areas: [{ name: 'Test area', borough: 'Queens', type: 'neighborhood', values: [null, 0] }],
-    };
+  const months = Array.from({ length: 34 }, (_, index) => {
+    const month = index + 8; // 2024-09 .. 2027-06 clipped below
+    return `${2024 + Math.floor(month / 12)}-${String((month % 12) + 1).padStart(2, '0')}`;
+  }).filter((month) => month <= '2026-10');
+  const series = (name: string, metric: string, segment: string, label: string, unit: string) => ({
+    name,
+    metric,
+    segment,
+    label,
+    unit,
+    market: 'Rentals',
+    firstMonth: '2010-01',
+    lastMonth: '2026-10',
+  });
+  const catalog = {
+    provenance: {
+      source: 'StreetEasy Data Dashboard',
+      url: 'https://streeteasy.com/blog/data-dashboard/',
+      downloadedAt: '2026-11-17',
+      note: '',
+    },
+    latestMonth: '2026-10',
+    series: [
+      series('medianAskingRent_All.csv', 'medianAskingRent', 'All', 'Median asking rent', 'USD'),
+      series('medianAskingRent_OneBd.csv', 'medianAskingRent', 'OneBd', 'Median asking rent', 'USD'),
+      series('rentalInventory_All.csv', 'rentalInventory', 'All', 'Rental inventory', 'count'),
+      series('discountShare_All.csv', 'discountShare', 'All', 'Rental price-cut share', 'share'),
+    ],
+    areas: [
+      { id: 1, name: 'NYC', borough: '', type: 'city' },
+      { id: 2, name: 'Brooklyn', borough: 'Brooklyn', type: 'borough' },
+      { id: 3, name: 'Park Slope', borough: 'Brooklyn', type: 'neighborhood' },
+      { id: 4, name: 'DUMBO', borough: 'Brooklyn', type: 'neighborhood' },
+    ],
+  };
+  const level = (name: string, area: number) =>
+    name.startsWith('discountShare') ? 0.12 + area / 100 : name.startsWith('rentalInventory') ? 1000 * area : 3000 + 100 * area;
+  let failValues = true;
+  await page.route('**/api/history**', async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === '/api/history') return route.fulfill({ json: catalog });
+    if (url.pathname === '/api/history/values') {
+      if (failValues) return route.fulfill({ status: 503, json: { error: 'Synthetic outage' } });
+      const names = url.searchParams.get('series')!.split(',');
+      const areas = url.searchParams.get('areas')!.split(',');
+      const shown = months.filter((month) => month >= url.searchParams.get('from')! && month <= url.searchParams.get('to')!);
+      const values = Object.fromEntries(
+        names.map((name) => [
+          name,
+          Object.fromEntries(
+            areas.map((area) => [area, shown.map((month, index) => (month === '2026-03' ? null : level(name, Number(area)) + index * 10))]),
+          ),
+        ]),
+      );
+      return route.fulfill({ json: { months: shown, values } });
+    }
+    const name = url.searchParams.get('series')!;
     return route.fulfill({
-      json: name
-        ? { file }
-        : {
-            provenance: { downloadedAt: '2026-11-17' },
-            files: [{ name: 'medianAskingRent_All.csv', metric: 'medianAskingRent', segment: 'All' }, file],
-          },
+      json: {
+        series: name,
+        month: '2026-10',
+        yearAgo: '2025-10',
+        rows: [3, 4].map((area) => ({ area, value: level(name, area) + 250, yearAgo: level(name, area) })),
+      },
     });
   });
   await page.getByRole('tab', { name: 'More', exact: true }).click();
   await page.getByRole('button', { name: 'Rent chart', exact: true }).click();
-  await page.getByRole('button', { name: 'StreetEasy dashboard files', exact: true }).click();
-  await expect(page.getByText('This historical series could not be loaded. No values have been substituted.')).toBeVisible();
-  await page.getByRole('button', { name: 'Rental inventory', exact: true }).click();
-  await expect(page.getByRole('button', { name: '2025-02 · Test area: 0', exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: '2025-01 · Test area: Not reported', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'All history', exact: true }).click();
-  await page.getByRole('button', { name: '2025-01 · Test area: Not reported', exact: true }).click();
-  await expect(
-    page.getByText(
-      'Prior calendar month: Unavailable (missing, anomalous or zero baseline). Same month one year earlier: Unavailable (missing, anomalous or zero baseline).',
-      { exact: true },
-    ),
-  ).toBeVisible();
+  await page.getByRole('button', { name: 'Market history 2010–2026', exact: true }).click();
+  await expect(page.getByText('These figures could not be loaded. No values have been substituted; try again shortly.')).toBeVisible();
+
+  failValues = false;
+  await page.getByPlaceholder('Neighborhood or borough').first().fill('park');
+  await page.getByRole('button', { name: 'Park Slope · Brooklyn', exact: true }).click();
+  await expect(page.getByText('Area: Park Slope (Brooklyn)', { exact: true })).toBeVisible();
+  // The headline sentence, the tiles and the ranking agree on one month and one set of figures.
+  await expect(page.getByText(/Median asking rent in Park Slope was/)).toContainText('$3,550');
+  await expect(page.getByText('Park Slope is number 2 of 2 in Brooklyn, highlighted.', { exact: true })).toBeVisible();
+  await page.getByPlaceholder('Neighborhood or borough').nth(1).fill('dumbo');
+  await page.getByRole('button', { name: 'DUMBO · Brooklyn', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Stop comparing DUMBO', exact: true })).toBeVisible();
+  // Every chart has its table; a month StreetEasy left blank reads as such, never as zero.
+  const trend = page.getByRole('button', { name: 'Show table', exact: true }).first();
+  await trend.click();
+  await expect(page.getByText('Mar 2026', { exact: true }).first()).toBeVisible();
+  await page.getByRole('button', { name: 'Since 2010', exact: true }).click();
+  await page.getByRole('button', { name: 'Stop comparing DUMBO', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Stop comparing DUMBO', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Back to rent trends', exact: true }).click();
-  await expect(page.getByText('StreetEasy historical dashboard', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Market history', exact: true })).toHaveCount(0);
 });
 
 test('iPhone 17 portrait keeps primary controls inside the screen', async ({ page }, testInfo) => {
@@ -693,14 +747,14 @@ test('unavailable dashboard capability explains access without requesting source
   const { requests } = await mockApp(page);
   await page.getByRole('tab', { name: 'More', exact: true }).click();
   await page.getByRole('button', { name: 'Rent chart', exact: true }).click();
-  await page.getByRole('button', { name: 'StreetEasy dashboard files', exact: true }).click();
+  await page.getByRole('button', { name: 'Market history 2010–2026', exact: true }).click();
   await expect(
     page.getByText(
-      'Historical dashboard data is unavailable on this server. Connect to a server with dashboard access; a private server requires authentication.',
+      'Market history is unavailable on this server. Connect to a server with dashboard access; a private server requires authentication.',
       { exact: true },
     ),
   ).toBeVisible();
-  expect(requests.filter((request) => request.path === '/api/dashboard')).toHaveLength(0);
+  expect(requests.filter((request) => request.path.startsWith('/api/history'))).toHaveLength(0);
 });
 
 test('signing in with an email code opens the app', async ({ page }) => {

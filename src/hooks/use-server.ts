@@ -209,14 +209,8 @@ export function useServer({ appliedFilters, searchVersion, submitted, setResult,
     [activeToken, lastCheckedAt],
   );
 
-  const loadDashboard = useCallback(
-    (file: string | undefined, signal?: AbortSignal) =>
-      api<Awaited<ReturnType<NonNullable<React.ComponentProps<typeof RentChart>['loadDashboard']>>>>(
-        'dashboard' + (file ? '?file=' + encodeURIComponent(file) : ''),
-        { token: activeToken, signal },
-      ),
-    [activeToken],
-  );
+  /** Reads the market history routes (the paths come from the market history page, not from users). */
+  const loadHistory = useCallback(<T>(path: string, signal: AbortSignal) => api<T>(path, { token: activeToken, signal }), [activeToken]);
 
   const alertRequest = useCallback(
     (body?: unknown) => api<AlertState>('alerts', body ? { body, token: activeToken } : { token: activeToken }),
@@ -294,7 +288,7 @@ export function useServer({ appliedFilters, searchVersion, submitted, setResult,
     freshness,
     checkSources,
     loadMarket,
-    loadDashboard,
+    loadHistory,
     alertRequest,
     loadHousing,
     checkBuilding,

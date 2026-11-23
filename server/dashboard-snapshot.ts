@@ -4,8 +4,8 @@ import { DASHBOARD_CATALOG } from './data/dashboard-catalog.ts';
 
 /** Where the archive is published with the web app's static files; the Worker refuses direct requests for it. */
 export const DASHBOARD_ARCHIVE_PATH = '/data/streeteasy-dashboard-2026-11-17.zip';
-const ARCHIVE_SHA256 = '05d017d90302883339eca32fe920b6b170d85a3583d6f436bd78a720bc6adfdc';
-const PROVENANCE = {
+export const ARCHIVE_SHA256 = '05d017d90302883339eca32fe920b6b170d85a3583d6f436bd78a720bc6adfdc';
+export const PROVENANCE = {
   source: 'StreetEasy Data Dashboard',
   url: 'https://streeteasy.com/blog/data-dashboard/',
   downloadedAt: '2026-11-17',
@@ -37,9 +37,8 @@ function archiveFor(load: ArchiveLoader) {
   return archive;
 }
 
-/** The catalog, or one parsed series by file name (null when unknown). The archive is read only for a series. */
-export async function dashboardSnapshot(name: string | undefined, loadArchive: ArchiveLoader) {
-  if (name === undefined) return { provenance: PROVENANCE, files: DASHBOARD_CATALOG };
+/** One series from the verified archive, parsed; null when the archive has no such file. */
+export async function dashboardFile(name: string, loadArchive: ArchiveLoader) {
   if (!DASHBOARD_CATALOG.some((file) => file.name === name)) return null;
   const { files, series } = archiveFor(loadArchive);
   let file = series.get(name);
@@ -52,5 +51,5 @@ export async function dashboardSnapshot(name: string | undefined, loadArchive: A
     }
     series.set(name, file);
   }
-  return { provenance: PROVENANCE, file };
+  return file;
 }

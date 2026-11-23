@@ -189,6 +189,7 @@ app.use('/api/*', async (c, next) => {
     waitUntil: ctx ? (work) => ctx.waitUntil(work) : undefined,
     syncJob: env.SYNC_WORKFLOW ? workflowJob(env.SYNC_WORKFLOW, appEnv.BUCKET) : undefined,
     dashboardArchive: dashboardArchive(env.ASSETS),
+    database: env.APARTMENTS,
   });
   await next();
 });

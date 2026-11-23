@@ -104,7 +104,7 @@ function ApartmentSearch() {
     freshness,
     checkSources,
     loadMarket,
-    loadDashboard,
+    loadHistory,
     alertRequest,
     loadHousing,
     checkBuilding,
@@ -466,7 +466,7 @@ function ApartmentSearch() {
                   showSaved={showSaved}
                   onError={setError}
                   loadMarket={serverState === 'ready' ? loadMarket : undefined}
-                  loadDashboard={serverState === 'ready' && dashboardAvailable ? loadDashboard : undefined}
+                  loadHistory={serverState === 'ready' && dashboardAvailable ? loadHistory : undefined}
                 />
               )}
               {tab === 'sources' && (

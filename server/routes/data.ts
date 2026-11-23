@@ -1,17 +1,16 @@
-/** Reference data: rent charts, affordable housing, the StreetEasy dashboard and official building records. */
+/** Reference data: rent charts, affordable housing and official building records. */
 import { vValidator } from '@hono/valibot-validator';
 import { rentAreas } from '../../src/market.ts';
 import { parentRegion } from '../../src/regions.ts';
 import type { RentHistory } from '../../src/rent-history.ts';
 import { retrieveBuildingRecords } from '../building-records.ts';
-import { dashboardSnapshot } from '../dashboard-snapshot.ts';
 import { log } from '../log.ts';
 import { storedJerseyAffordable } from '../sources/jersey-affordable.ts';
 import { storedHomeSeeker } from '../sources/westchester-homeseeker.ts';
 import { storedHdcRerentals, storedHousing } from '../refresh/snapshots.ts';
 import { storedMarket, storedRentHistory } from '../refresh/market.ts';
 import { apiBodies, factory, fail, refuse } from './context.ts';
-import { BuildingAddressSchema, DashboardQuerySchema, MarketQuerySchema } from './inputs.ts';
+import { BuildingAddressSchema, MarketQuerySchema } from './inputs.ts';
 
 export const dataRoutes = factory
   .createApp()
@@ -50,18 +49,6 @@ export const dataRoutes = factory
     } catch (cause) {
       log.error('storage_read_failed', cause, { path: c.req.path });
       return fail(c, 503, 'The Housing Connect data could not be read.');
-    }
-  })
-  .get('/dashboard', vValidator('query', DashboardQuerySchema, refuse), async (c) => {
-    const { appEnv: env, services } = c.var;
-    if (env.PUBLIC_APP !== 'true' && !services.privateAuthenticated)
-      return fail(c, 403, 'Private authenticated access is required for this research snapshot.');
-    try {
-      const result = await dashboardSnapshot(c.req.valid('query').file, services.dashboardArchive);
-      return result ? c.json(result, 200) : fail(c, 404, 'Unknown dashboard file.');
-    } catch (cause) {
-      log.error('dashboard_read_failed', cause, { path: c.req.path });
-      return fail(c, 503, 'The historical dashboard data could not be read.');
     }
   })
   .post('/building-report', apiBodies, vValidator('json', BuildingAddressSchema, refuse), async (c) => {

@@ -1,5 +1,5 @@
 import { test, expect } from 'bun:test';
-import { DASHBOARD_FILES, formatDashboardValue } from '../src/dashboard-data.ts';
+import { DASHBOARD_FILES, dashboardMarket, dashboardSegmentLabel } from '../src/dashboard-data.ts';
 import { parseDashboardCsv } from '../server/dashboard-csv.ts';
 const csv = 'areaName,Borough,areaType,2025-01,2025-02\nExample,Queens,neighborhood,,0\n';
 test('catalog covers all45 families, full history and blanks preserve zero distinction', () => {
@@ -7,13 +7,10 @@ test('catalog covers all45 families, full history and blanks preserve zero disti
   const f = parseDashboardCsv('rentalInventory_All.csv', csv);
   expect(f.areas[0].values).toEqual([null, 0]);
   expect(f.months).toEqual(['2025-01', '2025-02']);
-  expect(formatDashboardValue(null, f.metric)).toBe('Not reported');
-  expect(formatDashboardValue(0, f.metric)).toBe('0');
-  expect(formatDashboardValue(1000, 'medianAskingRent')).toBe('$1,000');
-  expect(formatDashboardValue(5, 'daysOnMarket')).toBe('5 days');
+  expect([dashboardMarket('discountShare'), dashboardMarket('daysOnMarket')]).toEqual(['Rentals', 'Sales']);
+  expect([dashboardSegmentLabel('ThreePlusBd'), dashboardSegmentLabel('custom')]).toEqual(['3+ bedrooms', 'custom']);
 });
 test('fractions rendered correctly and sale-to-list ratios may exceed1', () => {
-  expect(formatDashboardValue(0.2, 'discountShare')).toBe('20.00%');
   expect(parseDashboardCsv('saleListRatio_All.csv', csv.replace(',0\n', ',1.2\n')).areas[0].values[1]).toBe(1.2);
   expect(() => parseDashboardCsv('discountShare_All.csv', csv.replace(',0\n', ',1.2\n'))).toThrow();
   expect(() => parseDashboardCsv('rentalInventory_All.csv', csv.replace(',0\n', ',1.2\n'))).toThrow();

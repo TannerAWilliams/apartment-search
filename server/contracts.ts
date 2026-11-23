@@ -39,6 +39,8 @@ export type AppEnv = {
   BUCKET?: Bucket;
   PUBLIC_APP?: string;
   APP_ACCESS_TOKEN?: string;
+  /** Set when email-code sign-in is on (server/auth.ts). */
+  BETTER_AUTH_SECRET?: string;
   FREE_PARTNER_FEEDS_JSON?: string;
   STREETEASY_SYNC_ENABLED?: string;
   STREETEASY_PUBLIC_SEARCH?: string;

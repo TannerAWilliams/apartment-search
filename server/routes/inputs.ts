@@ -7,6 +7,8 @@ import * as v from 'valibot';
 import { RENT_GROUPINGS } from '../../src/market.ts';
 import { REGIONS } from '../../src/regions.ts';
 import { VITAL_NAMES } from '../../src/web-vitals-report.ts';
+import { DASHBOARD_FILES } from '../../src/dashboard-data.ts';
+import { DASHBOARD_AREAS } from '../data/dashboard-catalog.ts';
 
 /** GET /api/market */
 const REGION_AND_GROUPING = 'Choose a valid region and grouping.';
@@ -15,8 +17,41 @@ export const MarketQuerySchema = v.object({
   grouping: v.optional(v.picklist(Object.keys(RENT_GROUPINGS), REGION_AND_GROUPING), 'neighborhood'),
 });
 
-/** GET /api/dashboard: the catalog, or one file from it. */
-export const DashboardQuerySchema = v.object({ file: v.optional(v.string()) });
+/** A month as YYYY-MM. */
+const MonthSchema = v.pipe(v.string(), v.regex(/^(?:19|20)\d{2}-(?:0[1-9]|1[0-2])$/, 'Use months written as YYYY-MM.'));
+/** Comma-separated values: at least one, at most `max`, no repeats. */
+const list = <T extends v.GenericSchema<string, unknown>>(item: T, max: number, message: string) =>
+  v.pipe(
+    v.string(),
+    v.transform((text) => text.split(',')),
+    v.array(item),
+    v.minLength(1, message),
+    v.maxLength(max, message),
+    v.check((items) => new Set(items).size === items.length, message),
+  );
+const SeriesNameSchema = v.picklist(DASHBOARD_FILES, 'Choose series from the market history catalog.');
+const AreaIdSchema = v.pipe(
+  v.string(),
+  v.regex(/^\d{1,4}$/, 'Choose areas from the market history catalog.'),
+  v.transform(Number),
+  v.integer(),
+  v.minValue(1, 'Choose areas from the market history catalog.'),
+  v.maxValue(DASHBOARD_AREAS.length, 'Choose areas from the market history catalog.'),
+);
+
+/** GET /api/history/values: up to six series for up to eight areas, over a range of months. */
+export const HistoryValuesQuerySchema = v.pipe(
+  v.object({
+    series: list(SeriesNameSchema, 6, 'Choose one to six series from the market history catalog.'),
+    areas: list(AreaIdSchema, 8, 'Choose one to eight areas from the market history catalog.'),
+    from: MonthSchema,
+    to: MonthSchema,
+  }),
+  v.check(({ from, to }) => from <= to, 'The first month must not be after the last.'),
+);
+
+/** GET /api/history/month: every area's value for one series in one month. */
+export const HistoryMonthQuerySchema = v.object({ series: SeriesNameSchema, month: MonthSchema });
 
 /** One Core Web Vitals measurement. A report's invalid measurements are skipped, not refused. */
 export const VitalMetricSchema = v.object({

@@ -7,6 +7,7 @@ import { createFactory, createMiddleware } from 'hono/factory';
 import type { Context } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import type { AppEnv, Bucket } from '../contracts.ts';
+import type { D1Database } from '../storage/d1-bucket.ts';
 import type { ArchiveLoader } from '../dashboard-snapshot.ts';
 import type { SourceFetch } from '../contracts.ts';
 
@@ -23,6 +24,8 @@ export type ApiServices = {
   syncJob?: SyncJob;
   /** Reads the StreetEasy dashboard archive, which is kept out of the Worker script. */
   dashboardArchive: ArchiveLoader;
+  /** The D1 database, for the market history tables. Absent where there is no database. */
+  database?: D1Database;
 };
 export type ApiVariables = { appEnv: AppEnv; services: ApiServices };
 export type ApiEnv = { Variables: ApiVariables };
