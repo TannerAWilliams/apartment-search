@@ -12,7 +12,7 @@ import { configuredFeeds, loadFeed, loadStreetEasyExport, STREETEASY_EXPORT_COVE
 import { housingDate, loadHousingConnect } from './housing.ts';
 import { HDC_RERENTALS, loadHdcRerentals } from './hdc-rerentals.ts';
 import { JERSEY_AFFORDABLE, refreshJerseyAffordable } from './jersey-affordable.ts';
-import { AUTO_RENTAL_SOURCES, DIRECT_RENTAL_SOURCES } from './direct-rentals.ts';
+import { DIRECT_RENTAL_SOURCES } from './direct-rentals.ts';
 import { loadOpenigloo, OPENIGLOO_COVERAGE, OPENIGLOO_MAX_LISTINGS, OPENIGLOO_MIN_COVERAGE, OPENIGLOO_TRANSPORT } from './openigloo.ts';
 import { requestForRefresh, retrySchedule } from './source-requests.ts';
 import { log } from './log.ts';
@@ -35,9 +35,6 @@ const MARKET_KEY = 'rentals/firstmover.json.gz';
 const MARKET_SCHEMA = 'companies-1';
 const HISTORY_PREFIX = 'rentals/market-history/';
 const OPENIGLOO_KEY = 'rentals/openigloo.json.gz';
-const PUBLIC_IDS = ['firstmover', 'housingconnect'];
-const LIVE_IDS = ['openigloo', ...DIRECT_RENTAL_SOURCES.map(({ id }) => id)];
-const AUTO_IDS = ['openigloo', ...AUTO_RENTAL_SOURCES.map(({ id }) => id)];
 const DIRECT_BY_ID = new Map(DIRECT_RENTAL_SOURCES.map((source) => [source.id, source]));
 const HOUSING_KEY = 'rentals/housing-connect.json';
 const HDC_KEY = 'rentals/hdc-rerentals.json';
@@ -99,31 +96,6 @@ type RefreshOptions = {
   /** Skip the complete syncs because the Workflow runs them. */
   excludeWorkflowSources?: boolean;
 };
-
-export function refreshCatalog(env: AppEnv): SourceDefinition[] {
-  const feeds = configuredFeeds(env);
-  const streetEasyPartner = feeds.find(({ id }) => id === STREETEASY_LIVE.marketplace);
-  const streetEasyPaused = env.STREETEASY_SYNC_ENABLED === 'false';
-  const feedIds = new Set(feeds.map(({ id }) => id));
-  return [
-    { id: 'firstmover', name: 'FirstMover rent history', coverage: 'Historical rent charts, not active inventory', resyncable: true },
-    { id: 'housingconnect', name: 'NYC Housing Connect', coverage: 'NYC affordable housing opportunities', resyncable: true },
-    { ...HDC_RERENTALS, coverage: 'NYC affordable re-rentals', resyncable: true },
-    { ...JERSEY_AFFORDABLE, coverage: 'Jersey City income-restricted application notices, not market inventory', resyncable: true },
-    { id: 'openigloo', name: 'Openigloo', coverage: OPENIGLOO_COVERAGE, resyncable: true },
-    ...DIRECT_RENTAL_SOURCES.map(({ id, name, marketplace, coverage }) => ({ id, name, marketplace,
-      coverage: id !== STREETEASY_LIVE.id ? coverage : streetEasyPartner?.format === STREETEASY_EXPORT_FORMAT ? STREETEASY_EXPORT_COVERAGE :
-        streetEasyPartner ? 'Configured StreetEasy partner feed' :
-        env.STREETEASY_PUBLIC_SEARCH === 'true' ? STREETEASY_PUBLIC_COVERAGE : coverage,
-      resyncable: AUTO_IDS.includes(id) && (id !== STREETEASY_LIVE.id || !streetEasyPaused),
-      ...(id === STREETEASY_LIVE.id && streetEasyPaused ? { paused: true } : {}) })),
-    ...feeds.filter(({ id }) => id !== STREETEASY_LIVE.marketplace).map(({ id, name }) => ({ id, name, coverage: 'Configured feed', resyncable: true })),
-    ...FEED_REQUIRED_IDS.filter(id => !feedIds.has(id)).map(id => ({
-      id, name: MARKETPLACE_NAMES[id], coverage: id === 'citysnap' ? 'REBNY listing feed access required' : 'Authorized listing feed required',
-      resyncable: false,
-    })),
-  ];
-}
 
 let cachedMarket: { bucket: Bucket; etag: string; market: { month: string; listings: ListingData[] } } | undefined;
 
@@ -219,10 +191,12 @@ export async function refreshPlan(bucket: Bucket | undefined, now = new Date()) 
   const [{ value }, object] = await Promise.all([readState(bucket), bucket?.head(MARKET_KEY)]);
   const market = marketBaseline(object, value.market);
   const hour = now.toISOString().slice(0, 13);
-  const privateFeeds = value.sources?.map(({ id }) => id).filter((id) => !PUBLIC_IDS.includes(id) && !LIVE_IDS.includes(id) && id !== HDC_RERENTALS.id && id !== JERSEY_AFFORDABLE.id) ?? [];
+  // Configured feeds are not in SOURCES, which does not depend on the settings; the saved status lists them.
+  const feeds = value.sources?.map(({ id }) => id).filter((id) => !SOURCES.some((source) => source.id === id)) ?? [];
+  const publicIds = SOURCES.filter(({ kind }) => kind === 'public').map(({ id }) => id);
   return { ready: Boolean(bucket), market,
-    alreadyChecked: Boolean(market) && !value.running && checkedDuring(value.sources, [...PUBLIC_IDS, ...AUTO_IDS, HDC_RERENTALS.id, JERSEY_AFFORDABLE.id, ...privateFeeds], hour),
-    publicAlreadyChecked: Boolean(market) && !value.running && checkedDuring(value.sources, PUBLIC_IDS, hour),
+    alreadyChecked: Boolean(market) && !value.running && checkedDuring(value.sources, [...SOURCES.map(({ id }) => id), ...feeds], hour),
+    publicAlreadyChecked: Boolean(market) && !value.running && checkedDuring(value.sources, publicIds, hour),
     ...publicStatus(value, now) };
 }
 
@@ -419,66 +393,192 @@ async function refreshStreetEasyPartner(bucket: Bucket, source: typeof DIRECT_RE
   return refreshDirectRentals(bucket, source, { ...result, listings, transport: STREETEASY_PARTNER_TRANSPORT }, at, true);
 }
 
-type StatusContext = { at: string; now: Date; onDemand: boolean; streetEasyTransport: ReturnType<typeof streetEasyTransportFor>; previousById: Map<string, SourceStatus> };
+/** What one refresh run gives each source's check. */
+type Run = {
+  bucket: Bucket;
+  at: string;
+  now: Date;
+  onDemand: boolean;
+  /** True when the home sync uploaded snapshots, which then stand in for what the loaders return. */
+  isImport: boolean;
+  previous: RefreshState;
+  fetch: SourceFetch;
+  /** The uploaded snapshot for a source. It was made by this app's own sync, so it has the loader's result type. */
+  imported: <T>(id: string) => T | undefined;
+  /** The source's own data: loaded now when checking on demand, otherwise its uploaded snapshot. */
+  liveData: <T>(id: string, load: (fetcher: SourceFetch, now: Date) => T) => T;
+  streetEasyPartner: PartnerFeed | undefined;
+  streetEasyTransport: ReturnType<typeof streetEasyTransportFor>;
+};
 
-/** The status saved for one source after its check: this run's counts or the last good ones, and a readable failure. */
-function checkStatus({ id, name }: { id: string; name: string }, result: PromiseSettledResult<CheckResult>,
-  { at, now, onDemand, streetEasyTransport, previousById }: StatusContext): SourceStatus {
-  const older = previousById.get(id);
-  const next = result.status === 'fulfilled' ? result.value : null;
-  const failure = result.status === 'rejected' ? result.reason : null;
-  const item: SourceStatus = { id, name, checkedAt: at, status: next?.status ?? 'failed',
-    updatedAt: next?.updatedAt ?? older?.updatedAt ?? null };
+type StatusContext = { at: string; now: Date; onDemand: boolean; streetEasyTransport: ReturnType<typeof streetEasyTransportFor>; previousById: Map<string, SourceStatus> };
+/** Why a check failed: whatever the source's loader threw. */
+type Failure = PromiseRejectedResult['reason'];
+
+/**
+ * One source the refresh checks. Each source is declared once, in SOURCES (or as a configured feed), with
+ * everything the refresh and the source list need to know about it.
+ * - public: FirstMover and Housing Connect, open data checked on every refresh and uploaded by the home sync.
+ * - reference: affordable housing notices, checked only on demand.
+ * - live: listing inventories (Openigloo and the direct rental sources), checked on demand or uploaded.
+ * - feed: partner feeds configured in the settings.
+ */
+type RefreshSource = {
+  id: string;
+  /** The name in check status and errors. */
+  name: string;
+  kind: 'public' | 'reference' | 'live' | 'feed';
+  /** The entry in the source list the app shows. */
+  catalog(env: AppEnv): SourceDefinition;
+  check(run: Run): Promise<CheckResult>;
+  /** Adds this source's counts and a readable error to its status. Without it, the counts are copied and the error is generic. */
+  describe?(item: SourceStatus, next: CheckResult | null, older: SourceStatus | undefined, failure: Failure, context: StatusContext): void;
+  /** What a failed HTTP request is called in the error, when not the source's name. */
+  endpoint?(context: StatusContext): string;
+};
+
+/** Counts copied from this check, or the last good one, and a generic error. */
+function describeCounts(item: SourceStatus, next: CheckResult | null, older: SourceStatus | undefined, failure: Failure) {
+  const listingCount = next?.listingCount ?? older?.listingCount;
+  if (listingCount !== undefined) item.listingCount = listingCount;
+  const pages = next?.pages ?? older?.pages;
+  if (pages !== undefined) item.pages = pages;
+  const total = next ? next.total : older?.total;
+  if (total !== undefined) item.total = total;
+  if (!next) item.error = failure?.code === 'incomplete_feed' ? item.name + ' returned an incomplete inventory.' : item.name + ' could not be refreshed.';
+}
+
+function describeDirect(item: SourceStatus, next: CheckResult | null, older: SourceStatus | undefined, failure: Failure, { onDemand, streetEasyTransport }: StatusContext) {
+  const { id, name } = item;
   if (id === STREETEASY_LIVE.id || id === 'hotpads-live') item.requestTransport = onDemand ? 'direct' : 'import';
   if (id === STREETEASY_LIVE.id && (onDemand || next?.transport === STREETEASY_TRANSPORT)) {
     item.transport = onDemand ? streetEasyTransport : STREETEASY_TRANSPORT;
     if (onDemand && streetEasyTransport !== STREETEASY_TRANSPORT) item.requestTransport = streetEasyTransport;
   }
-  if (completeSync(id) && id !== 'openigloo' && next?.transport) item.transport = next.transport;
-  if (id === HDC_RERENTALS.id || id === JERSEY_AFFORDABLE.id) item.listingCount = next?.listingCount ?? older?.listingCount;
-  if (id === 'firstmover') {
-    item.month = next?.month ?? older?.month ?? SNAPSHOT_MONTH;
-    if (!next) item.error = failure instanceof Error &&
-      /^FirstMover |^The (latest )?FirstMover /.test(failure.message) ? failure.message : 'The FirstMover import failed.';
-  } else if (id === 'openigloo') {
-    const counts = next ?? older;
-    if (counts?.updatedAt) {
-      item.listingCount = counts.listingCount;
-      item.total = counts.total;
-      if (counts.pages !== undefined) item.pages = counts.pages;
-      if (counts.transport) item.transport = counts.transport;
-    }
-    if (!next) item.error = failure instanceof Error && /^Openigloo /.test(failure.message) ? failure.message :
-      'The Openigloo inventory could not be refreshed.';
-  } else if (DIRECT_BY_ID.has(id)) {
-    const counts = next ?? older;
-    if (counts?.updatedAt) {
-      item.listingCount = counts.listingCount;
-      item.pages = counts.pages;
-      if (counts.sampleLimit !== undefined) item.sampleLimit = counts.sampleLimit;
-      if (counts.partial) { item.partial = true; item.requestedPages = counts.requestedPages; item.failedPages = counts.failedPages; }
-      if (counts.total !== undefined) item.total = counts.total;
-    }
-    if (!next) item.error = failure?.code === 'incomplete_feed' ? name + ' returned an incomplete inventory.' :
-      failure instanceof Error && failure.message.startsWith(name + ' ') ? failure.message :
-        'The ' + name + ' live sample could not be refreshed.';
-  } else {
-    const listingCount = next?.listingCount ?? older?.listingCount;
-    if (listingCount !== undefined) item.listingCount = listingCount;
-    const pages = next?.pages ?? older?.pages;
-    if (pages !== undefined) item.pages = pages;
-    const total = next ? next.total : older?.total;
-    if (total !== undefined) item.total = total;
-    if (!next) item.error = failure?.code === 'incomplete_feed' ?
-      name + ' returned an incomplete inventory.' : name + ' could not be refreshed.';
+  if (completeSync(id) && next?.transport) item.transport = next.transport;
+  const counts = next ?? older;
+  if (counts?.updatedAt) {
+    item.listingCount = counts.listingCount;
+    item.pages = counts.pages;
+    if (counts.sampleLimit !== undefined) item.sampleLimit = counts.sampleLimit;
+    if (counts.partial) { item.partial = true; item.requestedPages = counts.requestedPages; item.failedPages = counts.failedPages; }
+    if (counts.total !== undefined) item.total = counts.total;
   }
+  if (!next) item.error = failure?.code === 'incomplete_feed' ? name + ' returned an incomplete inventory.' :
+    failure instanceof Error && failure.message.startsWith(name + ' ') ? failure.message :
+      'The ' + name + ' live sample could not be refreshed.';
+}
+
+/** A direct rental source: StreetEasy can also be read from an authorized partner or its public search page. */
+function directSource(source: typeof DIRECT_RENTAL_SOURCES[number]): RefreshSource {
+  const streetEasy = source.id === STREETEASY_LIVE.id;
+  return {
+    id: source.id, name: source.name, kind: 'live',
+    catalog(env) {
+      const partner = configuredFeeds(env).find(({ id }) => id === STREETEASY_LIVE.marketplace);
+      const paused = streetEasy && env.STREETEASY_SYNC_ENABLED === 'false';
+      return { id: source.id, name: source.name, marketplace: source.marketplace,
+        coverage: !streetEasy ? source.coverage : partner?.format === STREETEASY_EXPORT_FORMAT ? STREETEASY_EXPORT_COVERAGE :
+          partner ? 'Configured StreetEasy partner feed' : env.STREETEASY_PUBLIC_SEARCH === 'true' ? STREETEASY_PUBLIC_COVERAGE : source.coverage,
+        resyncable: !paused, ...(paused ? { paused: true } : {}) };
+    },
+    async check(run) {
+      if (streetEasy && run.onDemand && run.streetEasyPartner) {
+        return refreshStreetEasyPartner(run.bucket, source, run.streetEasyPartner, run.fetch, run.now, run.at);
+      }
+      if (streetEasy && run.onDemand && run.streetEasyTransport === STREETEASY_PUBLIC_TRANSPORT) {
+        return refreshDirectRentals(run.bucket, source, await loadStreetEasyPublicSearch(run.fetch, run.now), run.at);
+      }
+      return refreshDirectRentals(run.bucket, source, await run.liveData(source.id, source.load), run.at);
+    },
+    describe: describeDirect,
+    ...(streetEasy ? { endpoint: ({ streetEasyTransport }: StatusContext) => streetEasyTransport === STREETEASY_PUBLIC_TRANSPORT ?
+      'StreetEasy public rentals page' : streetEasyTransport === STREETEASY_TRANSPORT ? 'StreetEasy API' : source.name } : {}),
+  };
+}
+
+/** Every source except configured feeds, in the order the app lists them. */
+const SOURCES: readonly RefreshSource[] = [
+  { id: 'firstmover', name: 'FirstMover (StreetEasy)', kind: 'public',
+    catalog: () => ({ id: 'firstmover', name: 'FirstMover rent history', coverage: 'Historical rent charts, not active inventory', resyncable: true }),
+    check: (run) => refreshMarket(run.bucket, run.previous.market, run.at, run.fetch, run.imported('firstmover'), run.isImport, run.onDemand),
+    describe(item, next, older, failure) {
+      item.month = next?.month ?? older?.month ?? SNAPSHOT_MONTH;
+      if (!next) item.error = failure instanceof Error &&
+        /^FirstMover |^The (latest )?FirstMover /.test(failure.message) ? failure.message : 'The FirstMover import failed.';
+    } },
+  { id: 'housingconnect', name: 'NYC Housing Connect', kind: 'public',
+    catalog: () => ({ id: 'housingconnect', name: 'NYC Housing Connect', coverage: 'NYC affordable housing opportunities', resyncable: true }),
+    check: (run) => refreshHousing(run.bucket, run.at, run.fetch, run.now, run.imported('housingconnect'), run.isImport) },
+  { ...HDC_RERENTALS, kind: 'reference',
+    catalog: () => ({ ...HDC_RERENTALS, coverage: 'NYC affordable re-rentals', resyncable: true }),
+    async check(run) {
+      const data = await loadHdcRerentals(run.fetch);
+      await run.bucket.put(HDC_KEY, JSON.stringify({ ...data, checkedAt: run.at }));
+      return { status: 'updated', updatedAt: run.at, listingCount: data.results.length };
+    } },
+  { ...JERSEY_AFFORDABLE, kind: 'reference',
+    catalog: () => ({ ...JERSEY_AFFORDABLE, coverage: 'Jersey City income-restricted application notices, not market inventory', resyncable: true }),
+    check: (run) => refreshJerseyAffordable(run.bucket, run.fetch, run.now, run.at) },
+  { id: 'openigloo', name: 'Openigloo', kind: 'live',
+    catalog: () => ({ id: 'openigloo', name: 'Openigloo', coverage: OPENIGLOO_COVERAGE, resyncable: true }),
+    check: async (run) => refreshOpenigloo(run.bucket, await run.liveData('openigloo', loadOpenigloo), run.at),
+    describe(item, next, older, failure) {
+      const counts = next ?? older;
+      if (counts?.updatedAt) {
+        item.listingCount = counts.listingCount;
+        item.total = counts.total;
+        if (counts.pages !== undefined) item.pages = counts.pages;
+        if (counts.transport) item.transport = counts.transport;
+      }
+      if (!next) item.error = failure instanceof Error && /^Openigloo /.test(failure.message) ? failure.message :
+        'The Openigloo inventory could not be refreshed.';
+    } },
+  ...DIRECT_RENTAL_SOURCES.map(directSource),
+];
+
+/** A partner feed from the settings. StreetEasy's partner feed is read by the StreetEasy source instead. */
+const feedSource = (feed: PartnerFeed): RefreshSource => ({
+  id: feed.id, name: feed.name, kind: 'feed',
+  catalog: () => ({ id: feed.id, name: feed.name, coverage: 'Configured feed', resyncable: true }),
+  async check(run) {
+    const result = await loadFeed(feed, run.fetch);
+    const listings = result.listings.map((listing: ListingData) => ({ ...withoutCommuteEstimate(listing), checkedAt: run.at }));
+    await saveObservedSnapshot(run.bucket, FEED_PREFIX + feed.id + '.json.gz', result, listings, feed.id, run.at);
+    return { status: 'updated', updatedAt: run.at, listingCount: listings.length, pages: result.pages, total: result.total };
+  },
+});
+
+/** Every source these settings check, in the order the app lists them. */
+const sourcesFor = (env: AppEnv) => [...SOURCES,
+  ...configuredFeeds(env).filter(({ id }) => id !== STREETEASY_LIVE.marketplace).map(feedSource)];
+
+export function refreshCatalog(env: AppEnv): SourceDefinition[] {
+  const feedIds = new Set(configuredFeeds(env).map(({ id }) => id));
+  return [
+    ...sourcesFor(env).map((source) => source.catalog(env)),
+    // Marketplaces that need an authorized feed, listed so the app can say so.
+    ...FEED_REQUIRED_IDS.filter(id => !feedIds.has(id)).map(id => ({
+      id, name: MARKETPLACE_NAMES[id], coverage: id === 'citysnap' ? 'REBNY listing feed access required' : 'Authorized listing feed required',
+      resyncable: false,
+    })),
+  ];
+}
+
+/** The status saved for one source after its check: this run's counts or the last good ones, and a readable failure. */
+function checkStatus(source: RefreshSource, result: PromiseSettledResult<CheckResult>, context: StatusContext): SourceStatus {
+  const { id, name } = source;
+  const { at, now, onDemand, previousById } = context;
+  const older = previousById.get(id);
+  const next = result.status === 'fulfilled' ? result.value : null;
+  const failure = result.status === 'rejected' ? result.reason : null;
+  const item: SourceStatus = { id, name, checkedAt: at, status: next?.status ?? 'failed',
+    updatedAt: next?.updatedAt ?? older?.updatedAt ?? null };
+  (source.describe ?? describeCounts)(item, next, older, failure, context);
   if (!next && onDemand) {
     const status = failure?.httpStatus;
     if (status) {
-      const endpoint = id === STREETEASY_LIVE.id && streetEasyTransport === STREETEASY_PUBLIC_TRANSPORT ?
-        'StreetEasy public rentals page' : id === STREETEASY_LIVE.id && streetEasyTransport === STREETEASY_TRANSPORT ?
-          'StreetEasy API' : name;
-      item.error = endpoint + ' returned HTTP ' + status +
+      item.error = (source.endpoint?.(context) ?? name) + ' returned HTTP ' + status +
         (failure?.providerDenial ? ' (' + failure.providerDenial + ')' : '') + '.';
     }
     else if (failure?.name === 'TimeoutError') item.error = name + ' did not respond in time.';
@@ -500,8 +600,8 @@ export async function refreshSources(env: AppEnv, { fetcher = fetch, now = new D
     return { state: 'running', ...publicStatus(previous, now) };
   }
   const previousById = new Map((previous.sources ?? []).map((source) => [source.id, source]));
-  const feeds = configuredFeeds(env);
-  const streetEasyPartner = feeds.find(({ id }) => id === STREETEASY_LIVE.marketplace);
+  const sources = sourcesFor(env);
+  const streetEasyPartner = configuredFeeds(env).find(({ id }) => id === STREETEASY_LIVE.marketplace);
   const streetEasyTransport = streetEasyTransportFor(env, streetEasyPartner);
   /** Whether a source can be checked now: not waiting out a retry, and not paused or left to the Workflow. */
   const ready = (id: string) => {
@@ -512,21 +612,28 @@ export async function refreshSources(env: AppEnv, { fetcher = fetch, now = new D
     // A different way of reading StreetEasy is tried even while the previous one waits out a retry.
     return (onDemand && Boolean(prior?.transport) && prior?.transport !== streetEasyTransport) || !coolingDown(prior, now);
   };
-  const feedChecks = onlyStreetEasy || fallback ? [] : feeds.filter(({ id }) => id !== STREETEASY_LIVE.marketplace && (!onDemand || ready(id)));
-  const publicChecks = onlyStreetEasy ? [] : fallback ? PUBLIC_IDS.filter((id) => imports?.[id] && previousById.get(id)?.status === 'failed' && ready(id)) :
-    PUBLIC_IDS.filter((id) => !onDemand || ready(id));
-  /** The uploaded snapshot for a source. It was made by this app's own sync, so it has the loader's result type. */
   const imported = <T>(id: string) => imports?.[id] as T | undefined;
   const priorStreetEasy = previousById.get(STREETEASY_LIVE.id);
+  // A StreetEasy upload from the home sync replaces a failed or day-old StreetEasy check.
   const recoveredStreetEasy = imported<{ transport?: string }>(STREETEASY_LIVE.id)?.transport === STREETEASY_TRANSPORT &&
     (!priorStreetEasy || priorStreetEasy.status === 'failed' ||
       now.getTime() - Date.parse(priorStreetEasy.updatedAt ?? '') >= STREETEASY_SYNC_INTERVAL);
-  const requestedLiveChecks = onlyStreetEasy ? (ready(STREETEASY_LIVE.id) ? [STREETEASY_LIVE.id] : []) : fallback ? (recoveredStreetEasy ? [STREETEASY_LIVE.id] : []) : onDemand ? AUTO_IDS.filter(ready) : LIVE_IDS.filter((id) => imports && Object.hasOwn(imports, id));
-  const liveChecks = env.STREETEASY_SYNC_ENABLED === 'false' || (!onDemand && streetEasyPartner) ?
-    requestedLiveChecks.filter((id) => id !== STREETEASY_LIVE.id) : requestedLiveChecks;
-  const checkHdc = onDemand && !onlyStreetEasy && !fallback && ready(HDC_RERENTALS.id);
-  const checkJersey = onDemand && !onlyStreetEasy && !fallback && ready(JERSEY_AFFORDABLE.id);
-  const ids = [...publicChecks, ...liveChecks, ...feedChecks.map(({ id }) => id), ...(checkHdc ? [HDC_RERENTALS.id] : []), ...(checkJersey ? [JERSEY_AFFORDABLE.id] : [])].filter((id) => !selected || id === selected);
+  /**
+   * Whether this run checks a source. A regular run checks everything due; an on-demand one what is ready;
+   * a StreetEasy-only run just StreetEasy; a fallback (the home sync filling in) only what failed or is stale.
+   */
+  const included = ({ id, kind }: RefreshSource) => {
+    if (kind === 'public') return !onlyStreetEasy && (fallback ? Boolean(imports?.[id]) && previousById.get(id)?.status === 'failed' && ready(id) : !onDemand || ready(id));
+    if (kind === 'reference') return onDemand && !onlyStreetEasy && !fallback && ready(id);
+    if (kind === 'feed') return !onlyStreetEasy && !fallback && (!onDemand || ready(id));
+    const streetEasy = id === STREETEASY_LIVE.id;
+    const requested = onlyStreetEasy ? streetEasy && ready(id) : fallback ? streetEasy && recoveredStreetEasy :
+      onDemand ? ready(id) : Boolean(imports) && Object.hasOwn(imports!, id);
+    // StreetEasy is skipped when paused, and in uploads when a partner feed supplies it.
+    return requested && !(streetEasy && (env.STREETEASY_SYNC_ENABLED === 'false' || (!onDemand && streetEasyPartner)));
+  };
+  const checks = sources.filter(included).filter(({ id }) => !selected || id === selected);
+  const ids = checks.map(({ id }) => id);
   if (ids.length === 0 || (!onDemand && !selected && !onlyStreetEasy && !previous.running && !imported<{ changed?: boolean }>('firstmover')?.changed && checkedDuring(previous.sources, ids, hour))) {
     return { state: 'already_checked', ...publicStatus(previous) };
   }
@@ -538,42 +645,12 @@ export async function refreshSources(env: AppEnv, { fetcher = fetch, now = new D
   if (!lease) return { state: 'running', ...publicStatus((await readState(bucket)).value, now) };
 
   const sourceFetch = onDemand ? requestForRefresh(fetcher, AbortSignal.timeout(ids.includes(STREETEASY_LIVE.id) ? 120_000 : PAGE_FETCH_TIMEOUT)) : fetcher;
-  const liveData = <T>(id: string, load: (fetcher: SourceFetch, now: Date) => T): T => onDemand ? load(completeSync(id) ?
-    requestForRefresh(fetcher, AbortSignal.timeout(completeSync(id)!.timeoutMs)) : sourceFetch, now) : imported<T>(id) as T;
-  const candidates: { id: string; name: string; work: () => Promise<CheckResult> }[] = [
-    ...(publicChecks.includes('firstmover') ? [{ id: 'firstmover', name: 'FirstMover (StreetEasy)', work: () =>
-      refreshMarket(bucket, previous.market, at, sourceFetch, imported('firstmover'), Boolean(imports), onDemand) }] : []),
-    ...(publicChecks.includes('housingconnect') ? [{ id: 'housingconnect', name: 'NYC Housing Connect', work: () =>
-      refreshHousing(bucket, at, sourceFetch, now, imported('housingconnect'), Boolean(imports)) }] : []),
-    ...(checkHdc ? [{ ...HDC_RERENTALS, work: async () => {
-      const data = await loadHdcRerentals(sourceFetch);
-      await bucket.put(HDC_KEY, JSON.stringify({ ...data, checkedAt: at }));
-      return { status: 'updated', updatedAt: at, listingCount: data.results.length };
-    } }] : []),
-    ...(checkJersey ? [{ ...JERSEY_AFFORDABLE, work: () => refreshJerseyAffordable(bucket, sourceFetch, now, at) }] : []),
-    ...(liveChecks.includes('openigloo') ? [{ id: 'openigloo', name: 'Openigloo', work: async () =>
-      refreshOpenigloo(bucket, await liveData('openigloo', loadOpenigloo), at) }] : []),
-    ...DIRECT_RENTAL_SOURCES.filter(({ id }) => liveChecks.includes(id)).map((source) => ({
-      id: source.id, name: source.name, work: async () => {
-        if (onDemand && source.id === STREETEASY_LIVE.id && streetEasyPartner) {
-          return refreshStreetEasyPartner(bucket, source, streetEasyPartner, sourceFetch, now, at);
-        }
-        if (onDemand && source.id === STREETEASY_LIVE.id && streetEasyTransport === STREETEASY_PUBLIC_TRANSPORT) {
-          return refreshDirectRentals(bucket, source, await loadStreetEasyPublicSearch(sourceFetch, now), at);
-        }
-        return refreshDirectRentals(bucket, source, await liveData(source.id, source.load), at);
-      },
-    })),
-    ...feedChecks.map((feed) => ({ id: feed.id, name: feed.name, work: async () => {
-      const result = await loadFeed(feed, sourceFetch);
-      const listings = result.listings.map((listing: ListingData) => ({ ...withoutCommuteEstimate(listing), checkedAt: at }));
-      await saveObservedSnapshot(bucket, FEED_PREFIX + feed.id + '.json.gz', result, listings, feed.id, at);
-      return { status: 'updated', updatedAt: at, listingCount: listings.length, pages: result.pages, total: result.total };
-    } })),
-  ];
-  const checks = selected ? candidates.filter(({ id }) => id === selected) : candidates;
+  const run: Run = { bucket, at, now, onDemand, isImport: Boolean(imports), previous, fetch: sourceFetch, imported,
+    liveData: <T>(id: string, load: (fetcher: SourceFetch, now: Date) => T): T => onDemand ? load(completeSync(id) ?
+      requestForRefresh(fetcher, AbortSignal.timeout(completeSync(id)!.timeoutMs)) : sourceFetch, now) : imported<T>(id) as T,
+    streetEasyPartner, streetEasyTransport };
   const statusContext: StatusContext = { at, now, onDemand, streetEasyTransport, previousById };
-  const statusFor = (check: { id: string; name: string }, result: PromiseSettledResult<CheckResult>) => checkStatus(check, result, statusContext);
+  const statusFor = (check: RefreshSource, result: PromiseSettledResult<CheckResult>) => checkStatus(check, result, statusContext);
 
   // Publish each successful provider immediately, even while another is slow.
   let currentEtag = lease.etag;
@@ -592,7 +669,7 @@ export async function refreshSources(env: AppEnv, { fetcher = fetch, now = new D
   };
   const results = await Promise.all(checks.map(async (check): Promise<PromiseSettledResult<CheckResult>> => {
     let result: PromiseSettledResult<CheckResult>;
-    try { result = { status: 'fulfilled', value: await check.work() }; }
+    try { result = { status: 'fulfilled', value: await check.check(run) }; }
     catch (reason) { result = { status: 'rejected', reason }; }
     await persist(statusFor(check, result));
     return result;
@@ -604,15 +681,16 @@ export async function refreshSources(env: AppEnv, { fetcher = fetch, now = new D
       cause: result.reason instanceof Error ? result.reason.message : String(result.reason), httpStatus: result.reason?.httpStatus });
   }
 
-  const retainedIds = new Set([...PUBLIC_IDS, ...LIVE_IDS, HDC_RERENTALS.id, JERSEY_AFFORDABLE.id, ...feeds.map(({ id }) => id)]);
-  const sources = [...attempted, ...(previous.sources ?? []).filter(({ id }) => !ids.includes(id) && retainedIds.has(id))];
+  // Sources no longer declared or configured drop out of the saved status.
+  const declared = new Set(sources.map(({ id }) => id));
+  const saved = [...attempted, ...(previous.sources ?? []).filter(({ id }) => !ids.includes(id) && declared.has(id))];
   const marketResult = results[checks.findIndex(({ id }) => id === 'firstmover')];
   const market = marketResult?.status === 'fulfilled' ? marketResult.value : previous.market;
   const state = { running: false, hour, lastCheckedAt: at, market: market ? {
     revision: market.revision, catalogEtag: market.catalogEtag, csvEtag: market.csvEtag,
-  } : null, sources };
-  const saved = await bucket.put(STATE_KEY, JSON.stringify(state), { onlyIf: { etagMatches: currentEtag } });
-  if (!saved) return { state: 'superseded', ...publicStatus((await readState(bucket)).value) };
+  } : null, sources: saved };
+  const written = await bucket.put(STATE_KEY, JSON.stringify(state), { onlyIf: { etagMatches: currentEtag } });
+  if (!written) return { state: 'superseded', ...publicStatus((await readState(bucket)).value) };
   const result = publicStatus(state);
   return { state: result.sources.some(({ status }) => status === 'failed') ? 'partial' : 'complete', ...result };
 }
