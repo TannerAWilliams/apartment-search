@@ -1,5 +1,6 @@
 import type { FetchTransport } from '../src/fetch-type.ts';
 import { createInterface } from 'node:readline';
+import type { Readable } from 'node:stream';
 import { loadStreetEasy, STREETEASY_LIVE } from '../server/streeteasy.ts';
 import { encodeSourceImport } from '../src/pull-sources.ts';
 
@@ -69,14 +70,20 @@ export async function syncStreetEasy({ token, manual = false, origin, fetcher = 
   return { state: 'updated', total: data.total, listingCount: saved.listingCount, requests: data.pages, uploadBytes: bytes, updatedAt: saved.updatedAt };
 }
 
-if (import.meta.main) {
-  const flag = process.argv.find((value) => value.startsWith('--origin='));
-  const origin = appOrigin(flag?.slice('--origin='.length) ?? process.env.APARTMENT_SEARCH_ORIGIN);
-  const input = createInterface({ input: process.stdin });
+/** The command line: reads the app access token from stdin, syncs, and prints a JSON summary. */
+export async function main({ argv = process.argv, env = process.env, input = process.stdin as Readable, sync = syncStreetEasy, log = console.log }: {
+  argv?: string[]; env?: Record<string, string | undefined>; input?: Readable;
+  sync?: typeof syncStreetEasy; log?: (line: string) => void;
+} = {}) {
+  const flag = argv.find((value) => value.startsWith('--origin='));
+  const origin = appOrigin(flag?.slice('--origin='.length) ?? env.APARTMENT_SEARCH_ORIGIN);
+  const lines = createInterface({ input });
   const token = await new Promise<string>((resolve, reject) => {
-    input.once('line', (line) => resolve(line.trim()));
-    input.once('close', () => reject(new Error('Pass the app access token on stdin.')));
+    lines.once('line', (line) => resolve(line.trim()));
+    lines.once('close', () => reject(new Error('Pass the app access token on stdin.')));
   });
-  input.close(); process.stdin.pause();
-  console.log(JSON.stringify({ at: new Date().toISOString(), ...await syncStreetEasy({ token, origin, manual: process.argv.includes('--manual') }) }));
+  lines.close(); input.pause();
+  log(JSON.stringify({ at: new Date().toISOString(), ...await sync({ token, origin, manual: argv.includes('--manual') }) }));
 }
+
+if (import.meta.main) await main();

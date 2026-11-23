@@ -1,7 +1,7 @@
 import { required } from './test-values.ts';
 import { test } from 'bun:test';
 import assert from 'node:assert/strict';
-import { createMemoryBucket } from '../server/memory-bucket.ts';
+import { createMemoryBucket } from './fixtures/memory-bucket.ts';
 import { refreshSources, storedFeed } from '../server/refresh.ts';
 
 const feed = { id: 'partner', name: 'Partner', kind: 'feed', url: 'https://feed.example.test/listings' };

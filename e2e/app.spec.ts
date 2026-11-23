@@ -1,4 +1,4 @@
-import { test, expect, type Page } from 'playwright/test';
+import { test, expect, type Page } from './fixtures.ts';
 import { localSearch } from '../src/market.ts';
 import { normalizeListing } from '../src/listings.ts';
 import { parseFilters, localWorkplace } from '../src/search.ts';
@@ -9,10 +9,10 @@ const fixtures = (count = 1) => Array.from({ length: count }, (_, index) => norm
   status: 'Active', url: `https://streeteasy.com/building/test/${index + 1}`,
 }, { id: 'streeteasy', name: 'StreetEasy', kind: 'feed' }));
 const now = '2026-11-13T12:00:00Z';
-/** Refreshes the user started. Opening the app sends one session-start check, which is expected. */
+/** Source checks sent to the server. Opening the app sends none, so each one is a resync the user started. */
 const userRefreshes = (requests: { path: string; method: string; body: any }[]) =>
-  requests.filter(r => r.path === '/api/refresh' && r.method === 'POST' && r.body?.sessionStart !== true);
-async function mockApp(page: Page, options: { initialRefresh?: boolean; failed?: boolean; searchError?: boolean; listingCount?: number; notices?: string[]; priceHistory?: boolean; discovery?: boolean; commute?: boolean; nyc?: boolean; dashboardAvailable?: boolean; temporaryStorage?: boolean; inventoryExpiresAt?: string } = {}) {
+  requests.filter(r => r.path === '/api/refresh' && r.method === 'POST');
+async function mockApp(page: Page, options: { failed?: boolean; searchError?: boolean; listingCount?: number; notices?: string[]; priceHistory?: boolean; discovery?: boolean; commute?: boolean; nyc?: boolean; dashboardAvailable?: boolean; inventoryExpiresAt?: string } = {}) {
   const requests: { path: string; method: string; body: any }[] = [];
   const unexpected: string[] = [];
   const listings = fixtures(options.listingCount);
@@ -22,7 +22,6 @@ async function mockApp(page: Page, options: { initialRefresh?: boolean; failed?:
   if (options.priceHistory) Object.assign(listings[0], { priceHistory: { sourceId: 'synthetic-fixture', firstObservedAt: '2026-11-01T12:00:00Z', lastObservedAt: now, truncated: true,
     observations: [{ checkedAt: '2026-11-01T12:00:00Z', rent: 1900, priceIncludesFees: false }, { checkedAt: now, rent: 1800, priceIncludesFees: true }] } });
   const refresh = { checking: false, lastCheckedAt: now, sources: [{ id: 'streeteasy-live', name: 'StreetEasy', status: options.failed ? 'failed' : 'updated', checkedAt: now, updatedAt: now, listingCount: listings.length, ...(options.failed ? { error: 'StreetEasy returned HTTP 403. Verification required.' } : {}) }] };
-  if (!options.initialRefresh) await page.addInitScript(() => sessionStorage.setItem('apartment-search:session-refresh', 'checked'));
   await page.route('**/*', async route => {
     const request = route.request(); const url = new URL(request.url());
     // No real provider, image, geocoder, map tile or analytics request leaves the browser.
@@ -31,7 +30,7 @@ async function mockApp(page: Page, options: { initialRefresh?: boolean; failed?:
     const body = request.postDataJSON();
     requests.push({ path: url.pathname, method: request.method(), body });
     let data: unknown;
-    if (url.pathname === '/api/config') data = { mode: 'live', storageMode: options.temporaryStorage ? 'temporary' : 'persistent', dashboardAvailable: options.dashboardAvailable === true, browserImportAllowed: false, commuteConfigured: false, sources: [{ id: 'streeteasy', name: 'StreetEasy' }], sourceCatalog: [{ id: 'streeteasy-live', marketplace: 'streeteasy', name: 'StreetEasy', coverage: 'Synthetic test feed', resyncable: true }], refresh };
+    if (url.pathname === '/api/config') data = { mode: 'live', storageMode: 'persistent', dashboardAvailable: options.dashboardAvailable === true, browserImportAllowed: false, commuteConfigured: false, sources: [{ id: 'streeteasy', name: 'StreetEasy' }], sourceCatalog: [{ id: 'streeteasy-live', marketplace: 'streeteasy', name: 'StreetEasy', coverage: 'Synthetic test feed', resyncable: true }], refresh };
     else if (url.pathname === '/api/refresh') data = refresh;
     else if (url.pathname === '/api/building-report' && options.nyc) data = {
       status: 'matched', checkedAt: now,
@@ -54,7 +53,7 @@ async function mockApp(page: Page, options: { initialRefresh?: boolean; failed?:
 }
 
 test('homepage searches saved all-region inventory without starting a refresh', async ({ page }) => {
-  const { requests, unexpected } = await mockApp(page, { initialRefresh: true });
+  const { requests, unexpected } = await mockApp(page);
   await expect(page.getByText('12 Grove Street', { exact: true })).toBeVisible();
   expect(userRefreshes(requests)).toHaveLength(0);
   expect(requests.find(r => r.path === '/api/search')!.body.region).toBe('all');
@@ -90,7 +89,7 @@ test('resync all uses the batch endpoint while browse-only sources stay disabled
   await expect(page.getByRole('button', { name: 'Resync unavailable: not connected' }).first()).toBeDisabled();
   await page.getByRole('button', { name: 'Resync all connected providers', exact: true }).click();
   await expect.poll(() => userRefreshes(requests).length).toBe(1);
-  expect(userRefreshes(requests)[0].body).toEqual({ check: 'now', sessionStart: false });
+  expect(userRefreshes(requests)[0].body).toEqual({ check: 'now' });
 });
 
 test('mouse navigation and browser back restore tabs', async ({ page }) => {
@@ -177,6 +176,17 @@ test('Sources tab is keyboard operable', async ({ page }) => {
 
 
 
+test('the map view loads its tiles under the Content Security Policy', async ({ page }) => {
+  await page.setViewportSize({ width: 393, height: 852 });
+  // A request event means the policy allowed the tile; the mock then aborts it so nothing leaves the browser.
+  const tiles: string[] = [];
+  page.on('request', (request) => { if (request.url().startsWith('https://tile.openstreetmap.org/')) tiles.push(request.url()); });
+  await mockApp(page);
+  await page.getByRole('button', { name: 'Map', exact: true }).click();
+  await expect(page.getByRole('region', { name: 'Map of matching apartments', exact: true })).toBeVisible();
+  await expect.poll(() => tiles.length).toBeGreaterThan(0);
+});
+
 test('portrait keeps first listing visible and filter cancellation does not search', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 393, height: 852 });
   const { requests } = await mockApp(page);
@@ -213,9 +223,11 @@ test('applied filters, expanded results and search scroll survive navigation', a
   await expect(page.getByRole('button', { name: /^Details for / })).toHaveCount(20);
 
   const scroller = page.getByTestId('main-scroll');
-  await scroller.evaluate((element) => element.scrollTo({ top: 500 }));
-  await expect.poll(() => scroller.evaluate((element) => element.scrollTop)).toBeGreaterThan(100);
-  const searchScroll = await scroller.evaluate((element) => element.scrollTop);
+  // React Native Web replaces this element's scrollTo with its own ({ x, y, animated }) version, so set
+  // the DOM position directly for an instant scroll.
+  await scroller.evaluate((element) => { element.scrollTop = 500; });
+  await expect.poll(() => scroller.evaluate((element) => element.scrollTop)).toBe(500);
+  const searchScroll = 500;
   const searchesBeforeNavigation = requests.filter(r => r.path === '/api/search').length;
   await page.getByRole('tab', { name: 'Saved (0)', exact: true }).click();
   await expect(page.getByText('All apartment sizes · Any price', { exact: true })).toBeVisible();
@@ -569,9 +581,8 @@ for (const width of [320, 375, 390]) {
 
 
 test('empty active inventory is not presented as no apartments matching the filters', async ({ page }) => {
-  await mockApp(page, { listingCount: 0, temporaryStorage: true });
+  await mockApp(page, { listingCount: 0 });
   await expect(page.getByRole('heading', { name: 'Active inventory unavailable', exact: true })).toBeVisible();
-  await expect(page.getByText('Temporary listing storage: source checks are lost when the server restarts or redeploys. Your device-saved apartments are separate.', { exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: '0 matching apartments', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Check source status', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Sources & sync', exact: true })).toBeVisible();

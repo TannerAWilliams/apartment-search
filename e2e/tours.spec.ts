@@ -1,4 +1,4 @@
-import { test, expect } from 'playwright/test';
+import { test, expect } from './fixtures.ts';
 // Fully local fixture. No listing providers, brokers, calendars or maps are contacted.
 test('tour planner adds, persists, edits, checks and removes a personal appointment', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('apartment-search:saved-listings:v1', JSON.stringify([{ id: 'tour-fixture', address: '123 Test Street', unit: '2', city: 'Brooklyn', state: 'NY', zip: '11201', rent: 2000, bedrooms: 1, kind: 'manual', sources: [] }])));

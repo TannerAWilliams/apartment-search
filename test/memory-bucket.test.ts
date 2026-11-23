@@ -1,10 +1,10 @@
 import { required } from './test-values.ts';
 import { test } from 'bun:test';
 import assert from 'node:assert/strict';
-import { createMemoryBucket } from '../server/memory-bucket.ts';
-import { SESSION_COOKIE, issueSession, validSession } from '../server/private-session.ts';
+import { createMemoryBucket } from './fixtures/memory-bucket.ts';
+import { secretsEqual } from '../server/secrets.ts';
 
-test('temporary bucket provides isolated objects and conditional writes', async () => {
+test('the in-memory test bucket mirrors D1 conditional writes and size limits', async () => {
  const bucket = createMemoryBucket(100);
  const first = await bucket.put('state', 'old', { onlyIf: { etagDoesNotMatch: '*' } });
  assert.equal(await bucket.put('state', 'bad', { onlyIf: { etagDoesNotMatch: '*' } }), null);
@@ -16,11 +16,8 @@ test('temporary bucket provides isolated objects and conditional writes', async 
  assert.equal(await bucket.get('large'), null);
  assert.equal(await createMemoryBucket().get('state'), null);
 });
-test('session expires, resists tampering and uses only the correct secret', () => {
- const now = 1800000000000; const secret = 'x'.repeat(40); const session = issueSession(secret, now);
- assert.equal(validSession(`${SESSION_COOKIE}=${session}`, secret, now), true);
- assert.equal(validSession(`${SESSION_COOKIE}=${session}`, 'other', now), false);
- assert.equal(validSession(`${SESSION_COOKIE}=${session}`, secret, now + 86400000), false);
- assert.equal(validSession(`${SESSION_COOKIE}=${session}x`, secret, now), false);
- assert.equal(validSession('other=' + session, secret, now), false);
+test('secrets compare equal only when identical', () => {
+ assert.equal(secretsEqual('Bearer ' + 'x'.repeat(40), 'Bearer ' + 'x'.repeat(40)), true);
+ assert.equal(secretsEqual('Bearer short', 'Bearer ' + 'x'.repeat(40)), false);
+ assert.equal(secretsEqual('Bearer ' + 'y'.repeat(40), 'Bearer ' + 'x'.repeat(40)), false);
 });

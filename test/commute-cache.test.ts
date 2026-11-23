@@ -1,7 +1,7 @@
 import { test } from 'bun:test';
 import assert from 'node:assert/strict';
 import { routeCommutes } from '../server/commute.ts';
-import { createMemoryBucket } from '../server/memory-bucket.ts';
+import { createMemoryBucket } from './fixtures/memory-bucket.ts';
 
 const workplace = { label: 'Rockefeller Center', latitude: 40.75874, longitude: -73.97867 };
 const credentials = { appId: 'synthetic-app', apiKey: 'synthetic-key' };

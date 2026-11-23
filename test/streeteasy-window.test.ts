@@ -112,3 +112,29 @@ test('does not report a complete sync when a provider record cannot be normalize
   await assert.rejects(() => loadStreetEasy(server([{ ...rental(1, 2500), urlPath: '' }]).fetcher),
     /1 rentals that could not be saved/);
 });
+
+test('a malformed reply or a rental that changes between partitions is refused', async () => {
+  for (const reply of [{ errors: [{ message: 'bad query' }] }, { data: { searchRentals: { totalCount: -1, edges: [] } } }, { data: {} }]) {
+    await assert.rejects(loadStreetEasy(async () => Response.json(reply)), /did not return rental results/);
+  }
+  // 1,200 rentals force a split. Rental 6 also matches the upper price range through its
+  // discounted rent, so it is listed twice; its second copy comes back changed.
+  const rows = Array.from({ length: 1200 }, (_, id) => ({ ...rental(id, 2000 + id), ...(id === 6 ? { discounted: 3000 } : {}) }));
+  const changing = server(rows, (result, _page, range) => range && range[0] > 2006 ?
+    { ...result, edges: result.edges.map(({ node }) => ({ node: node.id === '6' ? { ...node, street: '2 Changed Street' } : node })) } : result);
+  await assert.rejects(loadStreetEasy(changing.fetcher), /changed during the sync/);
+});
+
+test('StreetEasy public search pages without the active rental search are refused', async () => {
+  const { parseStreetEasyPublicSearch } = await import('../server/streeteasy.ts');
+  await assert.rejects(parseStreetEasyPublicSearch('<html><script>self.__next_f.push([1,"{}"])</script></html>', new Date()), /public active rental search/);
+});
+
+test('a Guttenberg listing keeps its own town name rather than its ZIP code’s', async () => {
+  const { parseStreetEasyPage } = await import('../server/streeteasy.ts');
+  const row = { '@type': 'Apartment', url: 'https://streeteasy.com/rental/4444', name: '7000 Boulevard East #5', numberOfBedrooms: 1,
+    address: { streetAddress: '7000 Boulevard East', addressLocality: 'Guttenberg', addressRegion: 'NJ', postalCode: '07093' },
+    geo: { latitude: 40.79, longitude: -74.0 }, additionalProperty: [{ name: 'Monthly Rent', value: '$2,300/mo' }] };
+  const [listing] = parseStreetEasyPage('<script type="application/ld+json">' + JSON.stringify({ '@graph': [row] }) + '</script>', 'NJ', 1, new Date().toISOString());
+  assert.equal(listing?.city, 'Guttenberg');
+});

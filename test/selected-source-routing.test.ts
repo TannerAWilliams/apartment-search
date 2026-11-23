@@ -63,7 +63,7 @@ test('all-websites selection still routes all matching origins', async () => {
 });
 
 test('live search reports earliest contributing saved-source expiry without refreshing or routing', async () => {
-  const { createMemoryBucket } = await import('../server/memory-bucket.ts');
+  const { createMemoryBucket } = await import('./fixtures/memory-bucket.ts');
   const { gzipSync, strToU8 } = await import('fflate');
   const { normalizeListing } = await import('../src/listings.ts');
   const bucket = createMemoryBucket();
@@ -101,7 +101,7 @@ test('verified unit links participate in source selection before routing', async
 
 
 test('inventory deadline survives expiry while awaiting routing', async () => {
-  const { createMemoryBucket } = await import('../server/memory-bucket.ts');
+  const { createMemoryBucket } = await import('./fixtures/memory-bucket.ts');
   const { gzipSync, strToU8 } = await import('fflate');
   const { normalizeListing } = await import('../src/listings.ts');
   const bucket = createMemoryBucket();
@@ -137,7 +137,7 @@ test('inventory deadline survives expiry while awaiting routing', async () => {
 
 
 test('inventory refreshed during destination resolution retains its expiry', async () => {
-  const { createMemoryBucket } = await import('../server/memory-bucket.ts');
+  const { createMemoryBucket } = await import('./fixtures/memory-bucket.ts');
   const { gzipSync, strToU8 } = await import('fflate');
   const { normalizeListing } = await import('../src/listings.ts');
   const bucket = createMemoryBucket();

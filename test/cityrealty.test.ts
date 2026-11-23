@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import { handleApi } from '../server/api.ts';
 import { CITYREALTY_ID } from '../server/cityrealty.ts';
 import type { FetchTransport } from '../src/fetch-type.ts';
-import { createMemoryBucket } from '../server/memory-bucket.ts';
+import { createMemoryBucket } from './fixtures/memory-bucket.ts';
 import { refreshSources, storedDirectRentals } from '../server/refresh.ts';
 
 function mockCityRealty({ duplicate = false }: { duplicate?: boolean } = {}): FetchTransport {
@@ -62,18 +62,38 @@ test('Cloudflare queues manual CityRealty refresh and reports a pending job whil
   const request = new Request(url, { method: 'POST', headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ source: CITYREALTY_ID, check: 'now' }) });
   const result = await handleApi(request, env, {
-    cityRealtyJob: job, fetcher: () => { throw Error('Cannot fetch a full inventory inside an API request.'); },
+    syncJob: job, fetcher: () => { throw Error('Cannot fetch a full inventory inside an API request.'); },
   });
   expect(result.status).toBe(202);
   expect(started).toBe(1);
-  expect(await (await handleApi(new Request(url), env, { cityRealtyJob: job })).json())
+  expect(await (await handleApi(new Request(url), env, { syncJob: job })).json())
     .toMatchObject({ checking: true, activeSource: CITYREALTY_ID });
 });
 
 test('a running sync job reports the source it is on, not always CityRealty', async () => {
   const env = { BUCKET: createMemoryBucket() };
   const status = async (job: { start: () => Promise<void>; pending: () => Promise<string | boolean | null> }) =>
-    (await handleApi(new Request('https://app.test/api/refresh'), env, { cityRealtyJob: job })).json();
+    (await handleApi(new Request('https://app.test/api/refresh'), env, { syncJob: job })).json();
   expect(await status({ start: async () => {}, pending: async () => 'openigloo' })).toMatchObject({ checking: true, activeSource: 'openigloo' });
   expect((await status({ start: async () => {}, pending: async () => null })).checking).toBeFalsy();
+});
+
+test('CityRealty search pages and listings that cannot be verified stop the sync', async () => {
+  const { CITYREALTY_LIVE } = await import('../server/cityrealty.ts');
+  const load = (fetcher: FetchTransport) => CITYREALTY_LIVE.load(fetcher, new Date('2026-11-20T00:00:00Z'));
+  const good = mockCityRealty();
+  await expect(load(async () => new Response('<html>blocked</html>', { headers: { 'content-type': 'text/html' } }))).rejects.toThrow(/recognizable rental search results/);
+  await expect(load(async () => Response.json({ items: [], tableTools: { pagination: { total: 5, rowsPerPage: 52, currentPage: 1 } } }))).rejects.toThrow(/unexpected page or result count/);
+  // A search row marked active whose link does not match its own listing ID.
+  await expect(load(async (input, init) => {
+    const response = await good(input, init);
+    if (!String(input).includes('get-rental-listings')) return response;
+    const body = await response.json();
+    body.items[0].mask_id = 'another-mask';
+    return Response.json(body);
+  })).rejects.toThrow(/without verifiable listing details/);
+  // A listing page that describes a different apartment than the search row.
+  await expect(load(async (input, init) => String(input).includes('get-rental-listings') ? good(input, init) :
+    new Response('<script>window.dataLayer.push({"utype":"anonymous","ptype":"listing","lid":"elsewhere"});</script>', { headers: { 'content-type': 'text/html' } })))
+    .rejects.toThrow(/could not verify active listing/);
 });

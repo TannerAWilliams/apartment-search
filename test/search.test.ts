@@ -270,9 +270,9 @@ test('the published snapshot provides dated StreetEasy links and measured rents'
   assert.ok(required(parkSlope).sizes.every(({ median, count }) => required(median) > 0 && count > 0));
 });
 
-test('previous paid provider credentials never trigger network calls', async () => {
-  const env = { RENTCAST_API_KEY: 'unused', GOOGLE_ROUTES_API_KEY: 'unused', PARTNER_FEEDS_JSON: 'unused' };
-  assert.deepEqual(appConfig(env), { mode: 'snapshot', storageMode: 'none', browserImportAllowed: true, dashboardAvailable: false, listingRequestTransport: 'direct', snapshotMonth: SNAPSHOT_MONTH, sources: [] });
+test('without configured feeds the app uses its snapshot and makes no network calls', async () => {
+  const env = {};
+  assert.deepEqual(appConfig(env), { mode: 'snapshot', storageMode: 'none', browserImportAllowed: true, dashboardAvailable: false, snapshotMonth: SNAPSHOT_MONTH, sources: [] });
   const result = await search({ ...DEFAULT_FILTERS }, env, () => assert.fail('No network call should occur'));
   assert.equal(result.mode, 'snapshot');
 });
@@ -292,10 +292,8 @@ test('only explicitly configured free feeds are queried and verified independent
   assert.equal(required(result.sources.find(({ id }) => id === 'renthop')).status, 'unavailable');
 });
 
-test('the API identifies snapshot mode and protects a private backend', async () => {
-  const request = new Request('https://search.example.test/api/config');
-  const locked = await handleApi(request, { APP_ACCESS_TOKEN: 'test-token' }, { requireToken: true });
-  assert.equal(locked.status, 401);
+// Access control for the private app is in the Cloudflare entry; see test/cloudflare.test.ts.
+test('the API identifies snapshot mode', async () => {
   const result = await handleApi(new Request('https://search.example.test/api/search', {
     method: 'POST', body: JSON.stringify({ maxMinutes: 45 }),
   }), {});

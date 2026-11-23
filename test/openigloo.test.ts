@@ -83,7 +83,7 @@ test('Openigloo sync waits out a rate limit and saves normalized complete invent
 });
 
 test('the stepped Workflow sync saves complete inventory only from one run\'s parts', async () => {
-  const { createMemoryBucket } = await import('../server/memory-bucket.ts');
+  const { createMemoryBucket } = await import('./fixtures/memory-bucket.ts');
   const { crawlOpeniglooCell, finishOpeniglooRun, OPENIGLOO_CELL_COUNT } = await import('../server/openigloo-sync.ts');
   const { storedOpenigloo, refreshStatus } = await import('../server/refresh.ts');
   const units = inventory();
@@ -129,4 +129,27 @@ test('Openigloo listings reject rows outside the searched borough or bedroom cou
   assert.equal(openiglooListing({ ...row, borough: 'Queens', search }, '2026-11-20T00:00:00Z'), null);
   assert.equal(openiglooListing({ ...row, bedrooms: 2, search }, '2026-11-20T00:00:00Z'), null);
   assert.equal(openiglooListing({ ...row, url: 'https://unrelated.test/x', search }, '2026-11-20T00:00:00Z'), null);
+});
+
+test('Openigloo search reads event-stream replies, waits out "try again" errors, and reports other tool errors', async () => {
+  const { openiglooSearch } = await import('../server/openigloo.ts');
+  const replies: ((id: number) => Response)[] = [
+    (id) => new Response(`event: message\ndata: ${JSON.stringify({ jsonrpc: '2.0', id, result: { isError: true, content: [{ text: 'Openigloo’s listings did not answer just now. Try again in a minute.' }] } })}\n\n`,
+      { headers: { 'Content-Type': 'text/event-stream' } }),
+    (id) => new Response(`data: ${JSON.stringify({ jsonrpc: '2.0', id, result: { structuredContent: { total_matches: 0, apartments: [] } } })}\n\n`,
+      { headers: { 'Content-Type': 'text/event-stream' } }),
+    (id) => Response.json({ jsonrpc: '2.0', id, result: { isError: true, content: [{ text: 'max_rent must be between 0 and 100,000' }] } }),
+  ];
+  const fetcher = async (_url: string, options?: RequestInit) => {
+    const message = JSON.parse(String(options?.body));
+    if (message.method === 'initialize') return Response.json({ jsonrpc: '2.0', id: message.id, result: { protocolVersion: '2025-11-25' } });
+    if (message.method === 'notifications/initialized') return new Response(null, { status: 202 });
+    return replies.shift()!(message.id);
+  };
+  const waits: number[] = [];
+  const search = await openiglooSearch(fetcher, async (ms) => { waits.push(ms); });
+  const cell = { borough: 'Queens', area: 'Queens', bedrooms: 1, min: 0, max: null };
+  assert.deepEqual(await search(cell), { total: 0, rows: [] });
+  assert.ok(waits.includes(15_000), 'a "try again" reply waits before retrying');
+  await assert.rejects(search(cell), /did not return listing results: max_rent must be between/);
 });

@@ -50,49 +50,7 @@ class TestBucket {
   }
 }
 
-let testWorker;
-function loadWorker() {
-  testWorker ??= Bun.build({
-    entrypoints: [new URL('../server/worker.ts', import.meta.url).pathname],
-    format: 'esm', target: 'browser',
-    plugins: [{
-      name: 'test-assets',
-      setup(builder) {
-        builder.onResolve({ filter: /^virtual:web-assets$/ }, () => ({ path: 'web', namespace: 'test' }));
-        builder.onLoad({ filter: /.*/, namespace: 'test' }, () => ({
-          loader: 'js', contents: `export default ${JSON.stringify({
-            '/index.html': { type: 'text/html; charset=utf-8', content: '<script src="/_expo/static/test.js"></script>' },
-            '/_expo/static/test.js': { type: 'text/javascript; charset=utf-8', content: 'void 0;' },
-          })}`,
-        }));
-      },
-    }],
-  }).then(async ({ success, outputs }) => {
-    if (!success || outputs.length !== 1) throw new Error('Fixture bundle failed.');
-    return (await import('data:text/javascript;base64,' + Buffer.from(await outputs[0].text()).toString('base64'))).default;
-  });
-  return testWorker;
-}
-
-test('worker integration serves the page and referenced asset with distinct cache policies', async () => {
-  const worker = await loadWorker();
-  const get = (path: string, method = 'GET') => worker.fetch(new Request('https://site.test' + path, { method }), {});
-  const home = await get('/');
-  assert.equal(home.status, 200);
-  assert.equal(home.headers.get('cache-control'), 'no-cache');
-  const script = (await home.text()).match(/src="([^"]+)"/)[1];
-  const asset = await get(script);
-  assert.equal(asset.status, 200);
-  assert.match(asset.headers.get('cache-control'), /immutable/);
-  assert.match(asset.headers.get('content-type'), /javascript/);
-  assert.equal(await (await get(script, 'HEAD')).text(), '');
-  assert.equal((await get('/missing')).status, 404);
-  assert.equal((await get('/', 'POST')).status, 405);
-  assert.equal((await get('/api/unknown')).status, 404);
-});
-
-test('worker integration refreshes active rentals, scopes cards and pins, and removes a rented unit', async () => {
-  const worker = await loadWorker();
+test('the API refreshes active rentals, scopes cards and pins, and removes a rented unit', async () => {
   const url = 'https://feed.example.test/fixtures';
   const env = { BUCKET: new TestBucket(), FREE_PARTNER_FEEDS_JSON: JSON.stringify([{ id: 'zillow', url }]) };
   const apartment = { id: 'brooklyn', address: '50 Example Street', unit: '2A', city: 'Brooklyn', county: 'Kings',
@@ -107,9 +65,9 @@ test('worker integration refreshes active rentals, scopes cards and pins, and re
     String(input) === url ? Response.json({ listings: rows }) : new Response(null, { status: 404 })) as typeof fetch);
   try {
   const waits: Promise<unknown>[] = [];
-  const request = (path: string, body?: object) => worker.fetch(new Request('https://site.test/api/' + path, body ? {
+  const request = (path: string, body?: object) => handleApi(new Request('https://site.test/api/' + path, body ? {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
-  } : {}), env, { waitUntil: (promise: Promise<unknown>) => waits.push(promise) });
+  } : {}), env, { waitUntil: (promise: Promise<unknown>) => { waits.push(promise); } });
   const filters = { region: 'manhattan-brooklyn', bedrooms: 1, maxRent: 5000, liveOnly: true, includeMap: true };
   const refresh = await request('refresh', { check: 'now' });
   assert.equal(refresh.status, 200);
@@ -234,7 +192,7 @@ test('the private writer imports a completed public check without publisher acce
     method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer test-owner' },
     body: JSON.stringify(encodeSourceImport(inputs)),
   });
-  const response = await handleApi(request, env, { requireToken: true });
+  const response = await handleApi(request, env);
   assert.equal(response.status, 200);
   assert.equal((await response.json()).state, 'complete');
   assert.equal((await storedHousing(env.BUCKET, at)).opportunities.length, 1);
@@ -314,7 +272,7 @@ test('a manual refresh fetches new source data even within the same hour', async
   };
   for (const minute of [26, 27]) {
     const now = new Date('2026-11-10T00:' + minute + ':00Z');
-    const check = await refreshSources(env, { fetcher, now, onDemand: true, forceRefresh: true });
+    const check = await refreshSources(env, { fetcher, now, onDemand: true });
     assert.equal(required(check.sources.find(({ id }: { id: string }) => id === ZUMPER_LIVE.id)).checkedAt, now.toISOString());
     assert.equal(required(check.sources.find(({ id }: { id: string }) => id === 'firstmover')).status, minute === 26 ? 'updated' : 'current');
     const listings = required((await storedDirectRentals(env.BUCKET, ZUMPER_LIVE))).listings;
@@ -465,7 +423,7 @@ test('a failed StreetEasy refresh retains its previous listing as cached', async
   assert.ok(!sourceRecent(failed, STREETEASY_LIVE.id, new Date(now.getTime() + 3 * 60 * 60_000)));
 });
 
-test('session refresh ingests StreetEasy v6 at most daily and checks Apartments.com in both boroughs', async () => {
+test('a resync reads StreetEasy v6 each time and checks Apartments.com in both boroughs', async () => {
   const env = { BUCKET: new TestBucket() };
   const requested: string[] = [];
   const fetcher = (url: string, options: RequestInit = {}) => {
@@ -529,7 +487,7 @@ test('session refresh ingests StreetEasy v6 at most daily and checks Apartments.
   const v6Requests = () => requested.filter((url) => url === 'https://api-v6.streeteasy.com/').length;
   assert.equal(v6Requests(), 2);
   await refreshSources(env, { onDemand: true, fetcher });
-  assert.equal(v6Requests(), 2);
+  assert.equal(v6Requests(), 4, 'a resync is never skipped because saved data is recent');
   const filters = { region: 'brooklyn', bedrooms: 2, maxRent: null, liveOnly: true, source: 'apartments' };
   assert.equal((await search(filters, env)).total, 2);
   assert.equal((await search({ ...filters, maxRent: 5000 }, env)).total, 0);
@@ -646,22 +604,6 @@ test('unknown or disconnected targeted provider is rejected before acquiring ref
   assert.equal(bucket.records.size, 0);
 });
 
-test('relay preparation is isolated to listing requests, not imports or unrelated sources', async () => {
-  const env = { BUCKET: new TestBucket() };
-  let prepared = 0;
-  const prepareListingSources = async () => { prepared++; throw new Error('relay unavailable'); };
-  const call = (body: unknown) => handleApi(new Request('https://private.test/api/refresh', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
-  }), env, { prepareListingSources, fetcher: async () => new Response('blocked', { status: 403 }) });
-  await call({ source: 'streeteasy-live', imports: {} });
-  assert.equal(prepared, 0);
-  await call({ check: 'now', source: 'apartments-live' });
-  assert.equal(prepared, 0);
-  await call({ check: 'now', source: 'streeteasy-live' });
-  assert.equal(prepared, 1);
-  await call({ check: 'now', source: 'hotpads-live' });
-  assert.equal(prepared, 2);
-});
 
 test('provider 403 without wrapper metadata saves failure, releases lock and preserves inventory', async () => {
   const env = { BUCKET: new TestBucket() };
@@ -767,7 +709,7 @@ test('overlapping source snapshot writes reject stale history instead of overwri
 });
 
 test('saved snapshots are reused until a sync replaces them, and are read-only', async () => {
-  const { createMemoryBucket } = await import('../server/memory-bucket.ts');
+  const { createMemoryBucket } = await import('./fixtures/memory-bucket.ts');
   const bucket = createMemoryBucket();
   const key = 'rentals/' + ZUMPER_LIVE.id + '.json.gz';
   const save = (rent: number) => bucket.put(key, gzipSync(strToU8(JSON.stringify({ listings: [{ id: 'zumper:1', rent }] }))));

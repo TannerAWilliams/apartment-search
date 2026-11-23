@@ -12,11 +12,3 @@ test('oversized streaming body is canceled before further consumption', async ()
   await expect(readRequestBody(new Request('http://localhost', { method: 'POST', body: stream }), 4)).rejects.toBeInstanceOf(RequestTooLarge);
   expect(canceled).toBe(true);
 });
-
-test('authorized API response deadline covers provider budget without changing global body timeout', async () => {
-  const { allowApiResponseTime } = await import('../server/http-timeout.ts');
-  const request = new Request('http://localhost/api/refresh');
-  const calls: unknown[] = [];
-  allowApiResponseTime({ timeout: (received, seconds) => calls.push([received, seconds]) }, request);
-  expect(calls).toEqual([[request, 180]]);
-});

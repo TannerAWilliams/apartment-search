@@ -1,16 +1,15 @@
 import { searchAvailabilityMessage } from './src/search-availability.ts';
 import { createApi, type ApiConfig, type ConfigSource, type RefreshInfo } from './src/api-client.ts';
 import { ErrorBoundary } from './src/ErrorBoundary.tsx';
-import { useHashNavigation, useInventoryClock, useRetryCooldown } from './src/app-hooks.ts';
+import { useHashNavigation, useInventoryClock, useRetryCooldown, useSavedListings } from './src/app-hooks.ts';
 import { inventoryExpired } from './src/inventory-freshness.ts';
 import { inventoryUnavailable } from './src/inventory-state.ts';
 import type { ListingData, SourceLink, SearchFilters, SearchResult } from './src/domain.ts';
 import type { SourceDefinition, SourceStatus } from './src/source-status.ts';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
 Modal, Platform, Pressable, ScrollView, StatusBar, Text, View, useWindowDimensions,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { NYC_COMPANIES } from './src/companies.ts';
 import { NYC_SEARCH_AREAS, NYC_SEARCH_DEFAULT, NYC_SEARCH_MARKETS, REGIONS, WORKPLACES, marketsForSearch, matchesRegion, regionOf, searchBorough } from './src/regions.ts';
@@ -65,7 +64,6 @@ const TOOLS: Record<'results' | 'saved', [string, string, string][]> = {
   saved: [['compare', 'Compare', 'Compare saved apartments'], ['tours', 'Plan tours', 'Plan apartment tours']],
 };
 const EMPTY_POINTS: NonNullable<SearchResult['mapPoints']> = [];
-const SAVED_KEY = 'apartment-search:saved-listings:v1';
 const SAVED_FILTERS = { ...SEARCH_DEFAULTS, bedrooms: null, maxRent: null, liveOnly: false };
 const CHECK_TIME = new Intl.DateTimeFormat('en-US', {
   timeZone: 'America/New_York', month: 'short', day: 'numeric',
@@ -366,10 +364,8 @@ function ApartmentSearch() {
   const [result, setResult] = useState<SearchResult>(() => localSearch([], SEARCH_DEFAULTS, localWorkplace(SEARCH_DEFAULTS), 'live'));
   const inventoryClock = useInventoryClock(result);
   const staleInventory = inventoryExpired(result, inventoryClock);
-  const [saved, setSaved] = useState<ListingData[]>([]);
   const [visible, setVisible] = useState(PAGE_SIZE);
   useEffect(() => { setVisible(PAGE_SIZE); }, [result]);
-  const [storageReady, setStorageReady] = useState(false);
   const [serverState, setServerState] = useState(API_ORIGIN === null ? 'offline' : 'checking');
   const [connectionAttempt, setConnectionAttempt] = useState(0);
   const [configuredSources, setConfiguredSources] = useState<ConfigSource[]>([]);
@@ -389,7 +385,6 @@ function ApartmentSearch() {
   const [activeToken, setActiveToken] = useState('');
   const [commuteConfigured, setCommuteConfigured] = useState(false);
   const [dashboardAvailable, setDashboardAvailable] = useState(false);
-  const [temporaryStorage, setTemporaryStorage] = useState(false);
   const { tab, setTab, navigateTab, scope, setScope, expanded, setExpanded } = useHashNavigation();
   /** The open tool panel below the commute box: one at a time. */
   const [tool, setTool] = useState('');
@@ -397,40 +392,30 @@ function ApartmentSearch() {
   const [mapView, setMapView] = useState(false);
   const scrollRef = useRef<React.ElementRef<typeof ScrollView>>(null);
   const scrollPositions = useRef<Record<string, number>>({});
-  useEffect(() => {
-    const frame = requestAnimationFrame(() => scrollRef.current?.scrollTo({ y: scrollPositions.current[tab] ?? 0, animated: false }));
+  /** The tab the scroll offset belongs to; null from a tab change until that tab's offset is restored. */
+  const scrollTab = useRef<string | null>(null);
+  // A layout effect, so scroll events from the new tab's content (or a late scroll-end event from the
+  // previous tab) cannot be recorded against the wrong tab before the restore.
+  useLayoutEffect(() => {
+    scrollTab.current = null;
+    const frame = requestAnimationFrame(() => {
+      scrollRef.current?.scrollTo({ y: scrollPositions.current[tab] ?? 0, animated: false });
+      scrollTab.current = tab;
+    });
     return () => cancelAnimationFrame(frame);
   }, [tab]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [saved, setSaved] = useSavedListings(setError);
   const failedSources = refresh?.sources.filter(({ status }) => status === 'failed') ?? [];
   const savedByKey = useMemo(() => new Map(saved.map((listing) => [listingKey(listing), listing])), [saved]);
   const savedResults = useMemo(() => localSearch(saved, SAVED_FILTERS, result.workplace, 'saved'), [saved, result.workplace]);
-
-  useEffect(() => {
-    let active = true;
-    AsyncStorage.getItem(SAVED_KEY).then((value) => {
-      if (value && active) {
-        const data = JSON.parse(value);
-        if (!Array.isArray(data)) throw new Error('Invalid saved listings');
-        setSaved((current) => mergeListings([...current, ...data]));
-      }
-      if (active) setStorageReady(true);
-    }).catch(() => { if (active) setError('Saved listings could not be loaded from this device.'); });
-    return () => { active = false; };
-  }, []);
-
-  useEffect(() => {
-    if (storageReady) AsyncStorage.setItem(SAVED_KEY, JSON.stringify(saved))
-      .catch(() => setError('This device could not store the saved listings.'));
-  }, [saved, storageReady]);
 
   const updateConfig = useCallback((config: ApiConfig) => {
     setConfiguredSources(config.sources);
     setSourceCatalog(config.sourceCatalog ?? []);
     setCommuteConfigured(config.commuteConfigured === true);
     setDashboardAvailable(config.dashboardAvailable === true);
-    setTemporaryStorage(config.storageMode === 'temporary');
     setCompanies(config.companies ?? {});
     setRefresh(config.refresh ?? null);
     setRefreshClock(Date.now());
@@ -438,7 +423,7 @@ function ApartmentSearch() {
     browserImportAllowed.current = config.browserImportAllowed === true;
   }, []);
 
-  const checkSources = useCallback(async (sessionStart = false, source: string | null = null) => {
+  const checkSources = useCallback(async (source: string | null = null) => {
     const signal = sourceSession.current;
     if (!signal || signal.aborted || checking.current === signal) return;
     if (Date.now() < refreshRetryAtRef.current) return;
@@ -446,7 +431,7 @@ function ApartmentSearch() {
     setRefreshing(true);
     setRefreshError('');
     try {
-      const request = await api('refresh', { body: { check: 'now', sessionStart, ...(source ? { source } : {}) }, token: activeToken, signal });
+      const request = await api('refresh', { body: { check: 'now', ...(source ? { source } : {}) }, token: activeToken, signal });
       setRefreshClock(Date.now());
       setRefreshRetryAt(request.refreshRetryAt ?? 0);
       let lastProgress = '';
@@ -524,9 +509,7 @@ function ApartmentSearch() {
           })
           .catch((failure) => { if (!controller.signal.aborted) setError(failure.message || 'Saved inventory could not be loaded. Please try again.'); });
       }
-      // Opening Search shows saved results immediately, then checks the sources.
-      if (config.refresh) void checkSources(true);
-
+      // Opening the app only reads saved inventory; sources are fetched when you resync them.
     }).catch((failure) => {
       if (controller.signal.aborted) return;
       setServerState(failure.status === 401 ? 'locked' : 'offline');
@@ -671,7 +654,7 @@ function ApartmentSearch() {
         </ScrollView>
       </View></View>
     </Modal>
-    <ScrollView ref={scrollRef} testID="main-scroll" onScroll={(event) => { scrollPositions.current[tab] = event.nativeEvent.contentOffset.y; }} scrollEventThrottle={100} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scroll}>
+    <ScrollView ref={scrollRef} testID="main-scroll" onScroll={(event) => { if (scrollTab.current) scrollPositions.current[scrollTab.current] = event.nativeEvent.contentOffset.y; }} scrollEventThrottle={16} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scroll}>
       <View style={styles.shell}>
         <View style={styles.results}>
             {error !== '' && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
@@ -683,7 +666,6 @@ function ApartmentSearch() {
               {tab === 'saved' && <SavedComparison listings={saved} open={tool === 'compare'} />}
               {tab === 'saved' && <TourPlanner listings={saved} open={tool === 'tours'} />}
               {tab === 'results' && <SavedSearches open={tool === 'searches'} filters={applied} disabled={busy} apply={filters => { const next = { ...filters, includeMap: WEB_MAP }; setDraft({ ...formDefaults(), ...next }); submit(next); }} check={filters => { if (serverState !== 'ready') return Promise.reject(new Error('Connect to the inventory server before checking a saved search.')); return api('search-check', { body: filters, token: activeToken }); }} />}
-              {tab === 'results' && temporaryStorage && <Text style={styles.noticeLine}>Temporary listing storage: source checks are lost when the server restarts or redeploys. Your device-saved apartments are separate.</Text>}
               {tab === 'results' && !staleInventory && <ObservedChanges listings={result.matches} open={tool === 'changes'} />}
               {tab === 'results' && <Pressable accessibilityRole="button" accessibilityLabel="View source freshness and coverage" onPress={() => navigateTab('sources')}>
                 <Text style={mobileStyles.freshness}>{refreshing ? 'Refreshing sources…' : failedSources.length ? 'Partial coverage · Some sources unavailable' : refresh?.lastCheckedAt ? 'Saved results · ' + CHECK_TIME.format(new Date(refresh.lastCheckedAt)) : 'Saved results · Not yet refreshed'} · Details</Text>
@@ -732,7 +714,7 @@ function ApartmentSearch() {
                   setAdding(false);
                 }}
                 onCancel={() => setAdding(false)} />}
-              <SourcesPage catalog={sourceCatalog} refresh={refresh} refreshing={refreshing} cooldownSeconds={cooldownSeconds} onResync={(id) => checkSources(false, id ?? null)} />
+              <SourcesPage catalog={sourceCatalog} refresh={refresh} refreshing={refreshing} cooldownSeconds={cooldownSeconds} onResync={(id) => checkSources(id ?? null)} />
             </>}
             {tab === 'marketplaces' && <Marketplaces filters={applied} sources={result.sources}
               configuredSources={configuredSources} companies={companies} onCompany={searchCompany} refresh={refresh} refreshing={refreshing} cooldownSeconds={cooldownSeconds}

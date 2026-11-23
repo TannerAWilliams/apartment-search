@@ -1,4 +1,4 @@
-import { test, expect } from 'playwright/test';
+import { test, expect } from './fixtures.ts';
 import { localSearch } from '../src/market.ts';
 import { normalizeListing } from '../src/listings.ts';
 import { parseFilters, localWorkplace } from '../src/search.ts';

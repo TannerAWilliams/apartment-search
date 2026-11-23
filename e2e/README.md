@@ -1,6 +1,6 @@
 # Browser regression tests
 
-These tests operate the real exported React Native Web UI with synthetic API responses. They are not proof that providers, Render deployment, CAPTCHA handling, or all application features work.
+These tests operate the real exported React Native Web UI with synthetic API responses. They are not proof that providers, the deployed Worker, or all application features work.
 
 ## Run
 
@@ -14,7 +14,7 @@ bun run test:e2e
 
 `bun run test:e2e:list` lists cases without launching a browser. Optional `PLAYWRIGHT_CHROMIUM_EXECUTABLE=/path/to/chromium` selects an installed Chromium. Chromium sandbox stays enabled; do not disable it to work around a constrained runner. No hosted paid testing service is used.
 
-The suite builds the actual Expo web bundle, serves it on loopback, blocks external browser requests and mocks every supported `/api` route before navigation. It cannot target production via a baseURL environment override. Unexpected API endpoints get an explicit test failure response. Refresh buttons exercise mocked request handling, not real StreetEasy traffic. Each test has an isolated browser context; saved-listing reload checks only synthetic local storage. Portrait screenshots and failure traces/screenshots are local under ignored output directories.
+The suite builds the actual Expo web bundle, serves it on loopback with the production security headers (any Content Security Policy violation fails the test, see `fixtures.ts`), blocks external browser requests and mocks every supported `/api` route before navigation. It cannot target production via a baseURL environment override. Unexpected API endpoints get an explicit test failure response. Refresh buttons exercise mocked request handling, not real StreetEasy traffic. Each test has an isolated browser context; saved-listing reload checks only synthetic local storage. Portrait screenshots and failure traces/screenshots are local under ignored output directories.
 
 ## Coverage map
 
@@ -35,42 +35,6 @@ Desktop and mobile Chromium each exercise:
 
 Still needed: complete successful manual listing/import workflows, deduplication UI, pagination/sort matrix, cooldown races/recovery, rent-chart/affordable feeds, map interactions, accessibility audit, Firefox/WebKit, and independently qualified real provider/deployed-app checks. The existing unit/server tests remain necessary. Do not interpret a green mocked UI suite as complete source coverage or a production resync success.
 
-## Initial verification
+## Running in a container as root
 
-2026-11-13: 20/20 browser cases passed on Render's isolated free test build (desktop and mobile Chromium, 12.9 seconds, commit `943069b`). Chromium sandbox remained enabled and provider calls were mocked. These tests found and fixed a Platforms crash for All regions/non-NYC selection and missing selected-tab ARIA state. The authoring environment itself could not launch Chromium (`socket() failed: Operation not permitted`), so execution was moved to the explicitly approved isolated service, not worked around by disabling the sandbox.
-
-Playwright discovery, E2E/config TypeScript checks, existing application unit tests and Expo web export also passed. This is evidence for the listed UI flows only, not complete browser coverage or live provider availability. The temporary Render service has automatic deployments off and exposes only an inert health message, never test reports, source data or credentials.
-
-
-
-## November 16 extension: unverified browser scenarios
-
-Six additional scenarios cover successful manual entry with validation recovery and reload,
-CSV atomic validation/recovery and reload, duplicate reimport/removal, oversized file
-reselection, unsupported-borough rejection, and housing-cost calculation/validation/reset.
-The housing-cost scenario requires the `HousingCost` feature to be integrated into listing details.
-
-The inventory now contains 19 named scenarios across desktop Chromium and Pixel 7 emulation
-(38 project cases). This is a scenario inventory, **not** 90% code coverage, complete product
-coverage, native-device testing, or a pass claim. Source/server code coverage needs its own
-instrumented denominator including unimported files. Native iOS/Android, WebKit/Firefox,
-real-provider integrations, accessibility audit, map gestures, source cooldown/race handling,
-and broader pagination/sort combinations remain outside this inventory.
-
-Local verification on November 16: Expo web export succeeded; TypeScript validation passed.
-The attempted 36-case run (before adding the cost scenario) could not launch Chromium:
-`process_singleton_posix.cc: socket() failed: Operation not permitted`.
-Zero browser scenarios were verified in that run. Chromium sandbox remains enabled.
-Use a runner that supports sandboxed Chromium before accepting the new tests.
-
-
-## Optional iPhone 17 portrait regression
-
-The `iphone17-portrait-chromium` project uses Playwright 1.65's iPhone 17 descriptor
-(402×681 CSS viewport, 402×874 screen, DPR 3) with Chromium explicitly selected.
-It repeats the current interaction suite and adds overflow/navigation/control checks
-for Search, the filter modal and dismissal, Sources, add-listing, and Platforms.
-Screenshots are saved locally during execution. Run `bun run test:e2e -- --project=iphone17-portrait-chromium`.
-This is optional layout emulation, not physical iPhone, Safari, native safe-area or
-keyboard qualification. Discovery/typechecking do not establish a browser pass.
-Browser execution remains blocked here by OS socket restrictions; sandboxing stays enabled.
+Chromium's sandbox cannot start as root. In a disposable container, use a local Playwright config that extends `playwright.config.ts` with `launchOptions: { chromiumSandbox: false }` and, if needed, `executablePath`. Keep the sandbox on everywhere else.

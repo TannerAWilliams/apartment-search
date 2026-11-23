@@ -1,7 +1,7 @@
 import { test, expect } from 'bun:test';
 import { wholeSearchCheck } from '../server/whole-search-check.ts';
 import { handleApi } from '../server/api.ts';
-import { createMemoryBucket } from '../server/memory-bucket.ts';
+import { createMemoryBucket } from './fixtures/memory-bucket.ts';
 import { normalizeListing } from '../src/listings.ts';
 import { recordListingHistory } from '../server/listing-history.ts';
 import { gzipSync, strToU8 } from 'fflate';
