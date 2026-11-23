@@ -55,10 +55,13 @@ your computer ── scripts/sync-streeteasy.ts ── uploads the StreetEasy in
 | Jersey City affordable housing | The city's [current affordable housing postings](https://www.jerseycitynj.gov/CityHall/HousingAndDevelopment/affordable_housing/recent_affordable_housing_postings): income-restricted buildings taking applications, with the apartments each describes by size, shown in the Affordable tab. Not market inventory; a failed or older check keeps the last good copy. |
 | NYC Housing Connect | Advertised rental lotteries from [NYC Open Data](https://data.cityofnewyork.us/d/vy5i-a666), shown in the Affordable tab. |
 | FirstMover Open Data | The monthly [FirstMover](https://www.firstmovernyc.com/open-data) snapshot behind the rent charts and dated listings. |
+| StuyTown | Every available apartment in Stuyvesant Town and Peter Cooper Village (169 in November 2026), from the landlord's own listings feed that its search page reads. Saved only when the apartments read match the feed's own count. |
+| Glenwood | Every available apartment in Glenwood's 26 Manhattan and Riverdale buildings (37 in November 2026), from its own search. Saved only when the all-apartments search equals its one- to four-bedroom searches combined. Cards name the building, not its address, so `server/glenwood.ts` keeps each building's address, ZIP code and coordinates (from the U.S. Census geocoder); a listing in a building not in that table fails the check rather than being guessed. |
+| Related, AvalonBay (Vivmark), Equity | Not read. Related's terms forbid using its content elsewhere without written approval, AvalonBay's terms are behind a bot check, and Equity's site refuses automated requests. Their sites stay as company links. |
 | Rent.com, Apartment Guide, Craigslist, Facebook Marketplace, Linecity, Settled.nyc | Browse links only; not counted as listing feeds. |
 | Authorized partner feeds | Optional, see [Partner feeds](#partner-feeds). |
 
-The App Store app (any native build) searches only official feeds and open data: Housing Connect, NYC HDC, Jersey City, FirstMover and authorized partner feeds. Sources read from listing sites' own pages (Openigloo and the direct rental sources) stay in the private web app; the native app links to those sites instead.
+The App Store app (any native build) searches only official feeds and open data: Housing Connect, NYC HDC, Jersey City, FirstMover and authorized partner feeds. Sources read from websites' own pages (Openigloo, the direct rental sources and the landlords' listings) stay in the private web app; the native app links to those sites instead.
 
 A sample source replaces only the listings it confirmed; earlier units stay as cached with their original check dates until a complete check replaces them. Failed sources are reported, never filled in.
 

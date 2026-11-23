@@ -24,7 +24,7 @@ import { loadOpenigloo, OPENIGLOO_COVERAGE, OPENIGLOO_MAX_LISTINGS, OPENIGLOO_MI
 import { requestForRefresh, retrySchedule } from './source-requests.ts';
 import { log } from './log.ts';
 import { MARKETPLACE_NAMES } from '../src/marketplaces.ts';
-import { COMPLETE_SYNC_LIFETIME, completeSync, isCompleteSnapshot, WORKFLOW_SOURCE_IDS } from './source-registry.ts';
+import { COMPLETE_SYNC_LIFETIME, completeSync, fullInventory, isCompleteSnapshot, WORKFLOW_SOURCE_IDS } from './source-registry.ts';
 import type { SourceDefinition } from '../src/source-status.ts';
 import { loadStreetEasyPublicSearch, STREETEASY_LIVE, STREETEASY_PUBLIC_COVERAGE, STREETEASY_PUBLIC_TRANSPORT } from './streeteasy.ts';
 
@@ -173,8 +173,9 @@ function checkedDuring(sources: SourceStatus[] | undefined, ids: string[], hour:
 
 const coolingDown = (source: SourceStatus | undefined, now: Date) => Date.parse(source?.retryAt ?? '') > now.getTime();
 
+/** How long a check counts as current: a day for full inventories and StreetEasy's daily sync, two hours for samples. */
 const sourceLifetime = (id: string, transport: string | undefined) =>
-  completeSync(id)
+  fullInventory(id)
     ? COMPLETE_SYNC_LIFETIME
     : id === STREETEASY_LIVE.id && transport === STREETEASY_EXPORT_FORMAT
       ? STREETEASY_EXPORT_MAX_AGE
@@ -449,7 +450,7 @@ async function refreshDirectRentals(
   at: string,
   verifiedPartner = false,
 ) {
-  const complete = completeSync(source.id);
+  const complete = fullInventory(source.id);
   const verifiedComplete = isCompleteSnapshot(source.id, result?.transport);
   if (
     complete &&
@@ -641,7 +642,7 @@ function describeDirect(
     item.transport = onDemand ? streetEasyTransport : STREETEASY_TRANSPORT;
     if (onDemand && streetEasyTransport !== STREETEASY_TRANSPORT) item.requestTransport = streetEasyTransport;
   }
-  if (completeSync(id) && next?.transport) item.transport = next.transport;
+  if (fullInventory(id) && next?.transport) item.transport = next.transport;
   const counts = next ?? older;
   if (counts?.updatedAt) {
     item.listingCount = counts.listingCount;
