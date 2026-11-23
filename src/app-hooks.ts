@@ -1,6 +1,39 @@
 import { useEffect, useRef, useState } from 'react';
 import { AppState, Platform } from 'react-native';
-import type { SearchResult } from './domain.ts';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import type { ListingData, SearchResult } from './domain.ts';
+import { mergeListings } from './listings.ts';
+
+const SAVED_KEY = 'apartment-search:saved-listings:v1';
+
+/**
+ * The listings saved on this device: read once, merged with any saved before the read finished,
+ * then written back after every change. Failures are reported, and a failed read never overwrites
+ * what is stored.
+ */
+export function useSavedListings(onError: (message: string) => void) {
+  const [saved, setSaved] = useState<ListingData[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const reportError = useRef(onError);
+  reportError.current = onError;
+  useEffect(() => {
+    let active = true;
+    AsyncStorage.getItem(SAVED_KEY).then((value) => {
+      if (value && active) {
+        const data = JSON.parse(value);
+        if (!Array.isArray(data)) throw new Error('Invalid saved listings');
+        setSaved((current) => mergeListings([...current, ...data]));
+      }
+      if (active) setLoaded(true);
+    }).catch(() => { if (active) reportError.current('Saved listings could not be loaded from this device.'); });
+    return () => { active = false; };
+  }, []);
+  useEffect(() => {
+    if (loaded) AsyncStorage.setItem(SAVED_KEY, JSON.stringify(saved))
+      .catch(() => reportError.current('This device could not store the saved listings.'));
+  }, [saved, loaded]);
+  return [saved, setSaved] as const;
+}
 
 /** The tabs the URL hash can name; anything else opens Search. */
 export const APP_TABS = ['results', 'saved', 'more', 'sources', 'chart', 'marketplaces', 'affordable'];

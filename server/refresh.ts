@@ -16,11 +16,10 @@ import { requestForRefresh, retrySchedule } from './source-requests.ts';
 import { MARKETPLACE_NAMES } from '../src/marketplaces.ts';
 import { CITYREALTY_ID } from './cityrealty.ts';
 import { COMPLETE_SYNC_LIFETIME, completeSync, isCompleteSnapshot, WORKFLOW_SOURCE_IDS } from './source-registry.ts';
+import type { SourceDefinition } from '../src/source-status.ts';
+import { loadStreetEasyPublicSearch, STREETEASY_LIVE, STREETEASY_PUBLIC_COVERAGE, STREETEASY_PUBLIC_TRANSPORT } from './streeteasy.ts';
 
 export { WORKFLOW_SOURCE_IDS };
-import type { SourceDefinition } from '../src/source-status.ts';
-
-import { loadStreetEasyPublicSearch, STREETEASY_LIVE, STREETEASY_PUBLIC_COVERAGE, STREETEASY_PUBLIC_TRANSPORT } from './streeteasy.ts';
 
 type RentalSnapshot = { listings: ListingData[]; observationHistory?: ObservationHistory; pages?: number; total?: number; rawCount?: number; transport?: string; checkedAt?: string; sampleLimit?: number; limited?: boolean; partial?: boolean; requestedPages?: number; failedPages?: number };
 
@@ -91,7 +90,6 @@ type RefreshOptions = {
   now?: Date;
   imports?: Record<string, any>;
   onDemand?: boolean;
-  skipStreetEasy?: boolean;
   onlyStreetEasy?: boolean;
   sourceId?: string;
   forceRefresh?: boolean;
@@ -387,7 +385,102 @@ async function refreshDirectRentals(bucket: Bucket, source: typeof DIRECT_RENTAL
     ...(verifiedStreetEasy || verifiedPartner || verifiedComplete ? { transport: result.transport } : {}) };
 }
 
-export async function refreshSources(env: AppEnv, { fetcher = fetch, now = new Date(), imports, onDemand = false, fallback = false, skipStreetEasy = false, onlyStreetEasy = false, sourceId, forceRefresh = false, excludeWorkflowSources = false }: RefreshOptions = {}) {
+type PartnerFeed = ReturnType<typeof configuredFeeds>[number];
+
+/** How StreetEasy is read: an authorized complete export or partner feed, its public search page, or the v6 API. */
+function streetEasyTransportFor(env: AppEnv, partner: PartnerFeed | undefined) {
+  if (partner) return partner.format === STREETEASY_EXPORT_FORMAT ? STREETEASY_EXPORT_FORMAT : STREETEASY_PARTNER_TRANSPORT;
+  return env.STREETEASY_PUBLIC_SEARCH === 'true' ? STREETEASY_PUBLIC_TRANSPORT : STREETEASY_TRANSPORT;
+}
+
+/** Reads StreetEasy from an authorized partner: a complete export, or a feed whose total must reconcile. */
+async function refreshStreetEasyPartner(bucket: Bucket, source: typeof DIRECT_RENTAL_SOURCES[number], partner: PartnerFeed,
+  fetcher: SourceFetch, now: Date, at: string) {
+  if (partner.format === STREETEASY_EXPORT_FORMAT) {
+    const result = await loadStreetEasyExport(partner, fetcher, now);
+    const stored = await storedDirectRentals(bucket, source);
+    if (stored?.transport === STREETEASY_EXPORT_FORMAT && Date.parse(stored.checkedAt ?? '') > Date.parse(result.checkedAt)) {
+      throw new Error('StreetEasy export was older than the saved export.');
+    }
+    return refreshDirectRentals(bucket, source, result, result.checkedAt, true);
+  }
+  const result = await loadFeed({ ...partner, maxBedrooms: STREETEASY_LIVE.maxBedrooms }, fetcher, { requireTotal: true });
+  if (result.total === undefined || (result.total > 0 && result.listings.length === 0)) {
+    throw new Error('StreetEasy partner feed did not return a verifiable rental inventory.');
+  }
+  const listings = result.listings.map((listing) => ({ ...listing, seenAt: listing.seenAt ?? at }));
+  return refreshDirectRentals(bucket, source, { ...result, listings, transport: STREETEASY_PARTNER_TRANSPORT }, at, true);
+}
+
+type StatusContext = { at: string; now: Date; onDemand: boolean; streetEasyTransport: ReturnType<typeof streetEasyTransportFor>; previousById: Map<string, SourceStatus> };
+
+/** The status saved for one source after its check: this run's counts or the last good ones, and a readable failure. */
+function checkStatus({ id, name }: { id: string; name: string }, result: PromiseSettledResult<CheckResult>,
+  { at, now, onDemand, streetEasyTransport, previousById }: StatusContext): SourceStatus {
+  const older = previousById.get(id);
+  const next = result.status === 'fulfilled' ? result.value : null;
+  const failure = result.status === 'rejected' ? result.reason : null;
+  const item: SourceStatus = { id, name, checkedAt: at, status: next?.status ?? 'failed',
+    updatedAt: next?.updatedAt ?? older?.updatedAt ?? null };
+  if (id === STREETEASY_LIVE.id || id === 'hotpads-live') item.requestTransport = onDemand ? 'direct' : 'import';
+  if (id === STREETEASY_LIVE.id && (onDemand || next?.transport === STREETEASY_TRANSPORT)) {
+    item.transport = onDemand ? streetEasyTransport : STREETEASY_TRANSPORT;
+    if (onDemand && streetEasyTransport !== STREETEASY_TRANSPORT) item.requestTransport = streetEasyTransport;
+  }
+  if (completeSync(id) && id !== 'openigloo' && next?.transport) item.transport = next.transport;
+  if (id === HDC_RERENTALS.id) item.listingCount = next?.listingCount ?? older?.listingCount;
+  if (id === 'firstmover') {
+    item.month = next?.month ?? older?.month ?? SNAPSHOT_MONTH;
+    if (!next) item.error = failure instanceof Error &&
+      /^FirstMover |^The (latest )?FirstMover /.test(failure.message) ? failure.message : 'The FirstMover import failed.';
+  } else if (id === 'openigloo') {
+    const counts = next ?? older;
+    if (counts?.updatedAt) {
+      item.listingCount = counts.listingCount;
+      item.total = counts.total;
+      if (counts.pages !== undefined) item.pages = counts.pages;
+      if (counts.transport) item.transport = counts.transport;
+    }
+    if (!next) item.error = failure instanceof Error && /^Openigloo /.test(failure.message) ? failure.message :
+      'The Openigloo inventory could not be refreshed.';
+  } else if (DIRECT_BY_ID.has(id)) {
+    const counts = next ?? older;
+    if (counts?.updatedAt) {
+      item.listingCount = counts.listingCount;
+      item.pages = counts.pages;
+      if (counts.sampleLimit !== undefined) item.sampleLimit = counts.sampleLimit;
+      if (counts.partial) { item.partial = true; item.requestedPages = counts.requestedPages; item.failedPages = counts.failedPages; }
+      if (counts.total !== undefined) item.total = counts.total;
+    }
+    if (!next) item.error = failure?.code === 'incomplete_feed' ? name + ' returned an incomplete inventory.' :
+      failure instanceof Error && failure.message.startsWith(name + ' ') ? failure.message :
+        'The ' + name + ' live sample could not be refreshed.';
+  } else {
+    const listingCount = next?.listingCount ?? older?.listingCount;
+    if (listingCount !== undefined) item.listingCount = listingCount;
+    const pages = next?.pages ?? older?.pages;
+    if (pages !== undefined) item.pages = pages;
+    const total = next ? next.total : older?.total;
+    if (total !== undefined) item.total = total;
+    if (!next) item.error = failure?.code === 'incomplete_feed' ?
+      name + ' returned an incomplete inventory.' : name + ' could not be refreshed.';
+  }
+  if (!next && onDemand) {
+    const status = failure?.httpStatus;
+    if (status) {
+      const endpoint = id === STREETEASY_LIVE.id && streetEasyTransport === STREETEASY_PUBLIC_TRANSPORT ?
+        'StreetEasy public rentals page' : id === STREETEASY_LIVE.id && streetEasyTransport === STREETEASY_TRANSPORT ?
+          'StreetEasy API' : name;
+      item.error = endpoint + ' returned HTTP ' + status +
+        (failure?.providerDenial ? ' (' + failure.providerDenial + ')' : '') + '.';
+    }
+    else if (failure?.name === 'TimeoutError') item.error = name + ' did not respond in time.';
+    Object.assign(item, retrySchedule(failure, older?.transport === item.transport ? older : undefined, now.getTime()));
+  }
+  return item;
+}
+
+export async function refreshSources(env: AppEnv, { fetcher = fetch, now = new Date(), imports, onDemand = false, fallback = false, onlyStreetEasy = false, sourceId, forceRefresh = false, excludeWorkflowSources = false }: RefreshOptions = {}) {
   const selected = sourceId ?? (onlyStreetEasy ? STREETEASY_LIVE.id : null);
   if (selected && !refreshCatalog(env).some((source) => source.id === selected && source.resyncable)) throw new Error('Unknown or disconnected refresh source.');
   const bucket = env.BUCKET;
@@ -402,9 +495,7 @@ export async function refreshSources(env: AppEnv, { fetcher = fetch, now = new D
   const previousById = new Map((previous.sources ?? []).map((source) => [source.id, source]));
   const feeds = configuredFeeds(env);
   const streetEasyPartner = feeds.find(({ id }) => id === STREETEASY_LIVE.marketplace);
-  const streetEasyTransport = streetEasyPartner?.format === STREETEASY_EXPORT_FORMAT ? STREETEASY_EXPORT_FORMAT :
-    streetEasyPartner ? STREETEASY_PARTNER_TRANSPORT :
-    env.STREETEASY_PUBLIC_SEARCH === 'true' ? STREETEASY_PUBLIC_TRANSPORT : STREETEASY_TRANSPORT;
+  const streetEasyTransport = streetEasyTransportFor(env, streetEasyPartner);
   const ready = (id: string) => {
     const prior = previousById.get(id);
     if (completeSync(id)) return !excludeWorkflowSources && !coolingDown(prior, now) &&
@@ -426,7 +517,7 @@ export async function refreshSources(env: AppEnv, { fetcher = fetch, now = new D
   const recoveredStreetEasy = imports?.[STREETEASY_LIVE.id]?.transport === STREETEASY_TRANSPORT &&
     (!priorStreetEasy || priorStreetEasy.status === 'failed' ||
       now.getTime() - Date.parse(priorStreetEasy.updatedAt ?? '') >= STREETEASY_SYNC_INTERVAL);
-  const requestedLiveChecks = onlyStreetEasy ? (ready(STREETEASY_LIVE.id) ? [STREETEASY_LIVE.id] : []) : fallback ? (recoveredStreetEasy ? [STREETEASY_LIVE.id] : []) : onDemand ? AUTO_IDS.filter((id) => ready(id) && (!skipStreetEasy || id !== STREETEASY_LIVE.id)) : LIVE_IDS.filter((id) => imports && Object.hasOwn(imports, id));
+  const requestedLiveChecks = onlyStreetEasy ? (ready(STREETEASY_LIVE.id) ? [STREETEASY_LIVE.id] : []) : fallback ? (recoveredStreetEasy ? [STREETEASY_LIVE.id] : []) : onDemand ? AUTO_IDS.filter(ready) : LIVE_IDS.filter((id) => imports && Object.hasOwn(imports, id));
   const liveChecks = env.STREETEASY_SYNC_ENABLED === 'false' || (!onDemand && streetEasyPartner) ?
     requestedLiveChecks.filter((id) => id !== STREETEASY_LIVE.id) : requestedLiveChecks;
   const checkHdc = onDemand && !onlyStreetEasy && !fallback && ready(HDC_RERENTALS.id);
@@ -459,21 +550,7 @@ export async function refreshSources(env: AppEnv, { fetcher = fetch, now = new D
     ...DIRECT_RENTAL_SOURCES.filter(({ id }) => liveChecks.includes(id)).map((source) => ({
       id: source.id, name: source.name, work: async () => {
         if (onDemand && source.id === STREETEASY_LIVE.id && streetEasyPartner) {
-          if (streetEasyTransport === STREETEASY_EXPORT_FORMAT) {
-            const result = await loadStreetEasyExport(streetEasyPartner, sourceFetch, now);
-            const stored = await storedDirectRentals(bucket, source);
-            if (stored?.transport === STREETEASY_EXPORT_FORMAT &&
-                Date.parse(stored.checkedAt ?? '') > Date.parse(result.checkedAt)) {
-              throw new Error('StreetEasy export was older than the saved export.');
-            }
-            return refreshDirectRentals(bucket, source, result, result.checkedAt, true);
-          }
-          const result = await loadFeed({ ...streetEasyPartner, maxBedrooms: STREETEASY_LIVE.maxBedrooms }, sourceFetch, { requireTotal: true });
-          if (result.total === undefined || (result.total > 0 && result.listings.length === 0)) {
-            throw new Error('StreetEasy partner feed did not return a verifiable rental inventory.');
-          }
-          const listings = result.listings.map((listing) => ({ ...listing, seenAt: listing.seenAt ?? at }));
-          return refreshDirectRentals(bucket, source, { ...result, listings, transport: STREETEASY_PARTNER_TRANSPORT }, at, true);
+          return refreshStreetEasyPartner(bucket, source, streetEasyPartner, sourceFetch, now, at);
         }
         if (onDemand && source.id === STREETEASY_LIVE.id && streetEasyTransport === STREETEASY_PUBLIC_TRANSPORT) {
           return refreshDirectRentals(bucket, source, await loadStreetEasyPublicSearch(sourceFetch, now), at);
@@ -489,69 +566,8 @@ export async function refreshSources(env: AppEnv, { fetcher = fetch, now = new D
     } })),
   ];
   const checks = selected ? candidates.filter(({ id }) => id === selected) : candidates;
-  const statusFor = ({ id, name }: { id: string; name: string }, result: PromiseSettledResult<CheckResult>): SourceStatus => {
-    const older = previousById.get(id);
-    const next = result.status === 'fulfilled' ? result.value : null;
-    const failure = result.status === 'rejected' ? result.reason : null;
-    const item: SourceStatus = { id, name, checkedAt: at, status: next?.status ?? 'failed',
-      updatedAt: next?.updatedAt ?? older?.updatedAt ?? null };
-    if (id === STREETEASY_LIVE.id || id === 'hotpads-live') item.requestTransport = onDemand ? 'direct' : 'import';
-    if (id === STREETEASY_LIVE.id && (onDemand || next?.transport === STREETEASY_TRANSPORT)) {
-      item.transport = onDemand ? streetEasyTransport : STREETEASY_TRANSPORT;
-      if (onDemand && streetEasyTransport !== STREETEASY_TRANSPORT) item.requestTransport = streetEasyTransport;
-    }
-    if (completeSync(id) && id !== 'openigloo' && next?.transport) item.transport = next.transport;
-    if (id === HDC_RERENTALS.id) item.listingCount = next?.listingCount ?? older?.listingCount;
-    if (id === 'firstmover') {
-      item.month = next?.month ?? older?.month ?? SNAPSHOT_MONTH;
-      if (!next) item.error = failure instanceof Error &&
-        /^FirstMover |^The (latest )?FirstMover /.test(failure.message) ? failure.message : 'The FirstMover import failed.';
-    } else if (id === 'openigloo') {
-      const counts = next ?? older;
-      if (counts?.updatedAt) {
-        item.listingCount = counts.listingCount;
-        item.total = counts.total;
-        if (counts.pages !== undefined) item.pages = counts.pages;
-        if (counts.transport) item.transport = counts.transport;
-      }
-      if (!next) item.error = failure instanceof Error && /^Openigloo /.test(failure.message) ? failure.message :
-        'The Openigloo inventory could not be refreshed.';
-    } else if (DIRECT_BY_ID.has(id)) {
-      const counts = next ?? older;
-      if (counts?.updatedAt) {
-        item.listingCount = counts.listingCount;
-        item.pages = counts.pages;
-        if (counts.sampleLimit !== undefined) item.sampleLimit = counts.sampleLimit;
-        if (counts.partial) { item.partial = true; item.requestedPages = counts.requestedPages; item.failedPages = counts.failedPages; }
-        if (counts.total !== undefined) item.total = counts.total;
-      }
-      if (!next) item.error = failure?.code === 'incomplete_feed' ? name + ' returned an incomplete inventory.' :
-        failure instanceof Error && failure.message.startsWith(name + ' ') ? failure.message :
-          'The ' + name + ' live sample could not be refreshed.';
-    } else {
-      const listingCount = next?.listingCount ?? older?.listingCount;
-      if (listingCount !== undefined) item.listingCount = listingCount;
-      const pages = next?.pages ?? older?.pages;
-      if (pages !== undefined) item.pages = pages;
-      const total = next ? next.total : older?.total;
-      if (total !== undefined) item.total = total;
-      if (!next) item.error = failure?.code === 'incomplete_feed' ?
-        name + ' returned an incomplete inventory.' : name + ' could not be refreshed.';
-    }
-    if (!next && onDemand) {
-      const status = failure?.httpStatus;
-      if (status) {
-        const endpoint = id === STREETEASY_LIVE.id && streetEasyTransport === STREETEASY_PUBLIC_TRANSPORT ?
-          'StreetEasy public rentals page' : id === STREETEASY_LIVE.id && streetEasyTransport === STREETEASY_TRANSPORT ?
-            'StreetEasy API' : name;
-        item.error = endpoint + ' returned HTTP ' + status +
-          (failure?.providerDenial ? ' (' + failure.providerDenial + ')' : '') + '.';
-      }
-      else if (failure?.name === 'TimeoutError') item.error = name + ' did not respond in time.';
-      Object.assign(item, retrySchedule(failure, older?.transport === item.transport ? older : undefined, now.getTime()));
-    }
-    return item;
-  };
+  const statusContext: StatusContext = { at, now, onDemand, streetEasyTransport, previousById };
+  const statusFor = (check: { id: string; name: string }, result: PromiseSettledResult<CheckResult>) => checkStatus(check, result, statusContext);
 
   // Publish each successful provider immediately, even while another is slow.
   let currentEtag = lease.etag;

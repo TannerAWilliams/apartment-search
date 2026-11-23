@@ -54,7 +54,7 @@ test('a StreetEasy partner feed must report its total, and a recent export is no
   await exported.put('rentals/refresh.json', JSON.stringify({ sources: [{ id: 'streeteasy-live', name: 'StreetEasy', status: 'updated', checkedAt: at, updatedAt: at, transport: 'streeteasy-complete-export-v1' }] }));
   let requests = 0;
   const exportEnv = { BUCKET: exported, FREE_PARTNER_FEEDS_JSON: JSON.stringify([{ ...feed, format: 'streeteasy-complete-export-v1' }]) };
-  await refreshSources(exportEnv, { now: new Date(now.getTime() + 60_000), onDemand: true, skipStreetEasy: false,
+  await refreshSources(exportEnv, { now: new Date(now.getTime() + 60_000), onDemand: true,
     fetcher: async (url: string) => { if (url.startsWith('https://partner.example.test')) requests++; return new Response(null, { status: 404 }); } });
   assert.equal(requests, 0, 'a recent complete export is reused');
 });

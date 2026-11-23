@@ -1,7 +1,7 @@
 import { searchAvailabilityMessage } from './src/search-availability.ts';
 import { createApi, type ApiConfig, type ConfigSource, type RefreshInfo } from './src/api-client.ts';
 import { ErrorBoundary } from './src/ErrorBoundary.tsx';
-import { useHashNavigation, useInventoryClock, useRetryCooldown } from './src/app-hooks.ts';
+import { useHashNavigation, useInventoryClock, useRetryCooldown, useSavedListings } from './src/app-hooks.ts';
 import { inventoryExpired } from './src/inventory-freshness.ts';
 import { inventoryUnavailable } from './src/inventory-state.ts';
 import type { ListingData, SourceLink, SearchFilters, SearchResult } from './src/domain.ts';
@@ -10,7 +10,6 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import {
 Modal, Platform, Pressable, ScrollView, StatusBar, Text, View, useWindowDimensions,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { NYC_COMPANIES } from './src/companies.ts';
 import { NYC_SEARCH_AREAS, NYC_SEARCH_DEFAULT, NYC_SEARCH_MARKETS, REGIONS, WORKPLACES, marketsForSearch, matchesRegion, regionOf, searchBorough } from './src/regions.ts';
@@ -65,7 +64,6 @@ const TOOLS: Record<'results' | 'saved', [string, string, string][]> = {
   saved: [['compare', 'Compare', 'Compare saved apartments'], ['tours', 'Plan tours', 'Plan apartment tours']],
 };
 const EMPTY_POINTS: NonNullable<SearchResult['mapPoints']> = [];
-const SAVED_KEY = 'apartment-search:saved-listings:v1';
 const SAVED_FILTERS = { ...SEARCH_DEFAULTS, bedrooms: null, maxRent: null, liveOnly: false };
 const CHECK_TIME = new Intl.DateTimeFormat('en-US', {
   timeZone: 'America/New_York', month: 'short', day: 'numeric',
@@ -366,10 +364,8 @@ function ApartmentSearch() {
   const [result, setResult] = useState<SearchResult>(() => localSearch([], SEARCH_DEFAULTS, localWorkplace(SEARCH_DEFAULTS), 'live'));
   const inventoryClock = useInventoryClock(result);
   const staleInventory = inventoryExpired(result, inventoryClock);
-  const [saved, setSaved] = useState<ListingData[]>([]);
   const [visible, setVisible] = useState(PAGE_SIZE);
   useEffect(() => { setVisible(PAGE_SIZE); }, [result]);
-  const [storageReady, setStorageReady] = useState(false);
   const [serverState, setServerState] = useState(API_ORIGIN === null ? 'offline' : 'checking');
   const [connectionAttempt, setConnectionAttempt] = useState(0);
   const [configuredSources, setConfiguredSources] = useState<ConfigSource[]>([]);
@@ -410,27 +406,10 @@ function ApartmentSearch() {
   }, [tab]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [saved, setSaved] = useSavedListings(setError);
   const failedSources = refresh?.sources.filter(({ status }) => status === 'failed') ?? [];
   const savedByKey = useMemo(() => new Map(saved.map((listing) => [listingKey(listing), listing])), [saved]);
   const savedResults = useMemo(() => localSearch(saved, SAVED_FILTERS, result.workplace, 'saved'), [saved, result.workplace]);
-
-  useEffect(() => {
-    let active = true;
-    AsyncStorage.getItem(SAVED_KEY).then((value) => {
-      if (value && active) {
-        const data = JSON.parse(value);
-        if (!Array.isArray(data)) throw new Error('Invalid saved listings');
-        setSaved((current) => mergeListings([...current, ...data]));
-      }
-      if (active) setStorageReady(true);
-    }).catch(() => { if (active) setError('Saved listings could not be loaded from this device.'); });
-    return () => { active = false; };
-  }, []);
-
-  useEffect(() => {
-    if (storageReady) AsyncStorage.setItem(SAVED_KEY, JSON.stringify(saved))
-      .catch(() => setError('This device could not store the saved listings.'));
-  }, [saved, storageReady]);
 
   const updateConfig = useCallback((config: ApiConfig) => {
     setConfiguredSources(config.sources);
