@@ -10,21 +10,22 @@ Areas: all of New York City (Manhattan, Brooklyn, Queens, the Bronx, Staten Isla
 
 ```
 browser ──▶ apartments.5thof6.com ── Cloudflare Access sign-in
-              │
+              │  Cf-Access-Jwt-Assertion (signed token)
               ▼
-          apartment-search-access (gate Worker, configured in Cloudflare) adds the app token
-              │
-              ▼
-          apartment-search Worker (server/cloudflare.ts)
+          apartment-search Worker (server/cloudflare.ts) checks the token (server/access.ts)
               ├── web app files ── Workers Static Assets (web-build/)
               ├── /api/* ── server/api.ts
               ├── D1 apartment-search-observations ── one snapshot per source (server/d1-bucket.ts)
               └── Workflow apartment-cityrealty-sync ── complete syncs: CityRealty → Openigloo → Zumper
 
-your computer ── scripts/sync-streeteasy.ts ── uploads the StreetEasy inventory daily
+your computer ── scripts/sync-streeteasy.ts ── uploads the StreetEasy inventory daily (workers.dev URL, app token)
 ```
 
-- **One Worker.** `server/cloudflare.ts` serves the web app and the API. Every request, including the web app's files, needs `Authorization: Bearer <APP_ACCESS_TOKEN>`, which the gate Worker adds after Cloudflare Access sign-in. `/health` returns `ok`.
+- **One Worker, two ways in.** `server/cloudflare.ts` serves the web app and the API at `apartments.5thof6.com` and its workers.dev URL. Every request, including the web app's files, needs one of:
+  - a **Cloudflare Access sign-in.** Access signs a token for each request it lets through. The Worker verifies it against the team's published keys (issuer, audience, expiry, signature) and allows only the emails in `ACCESS_ALLOWED_EMAILS`. Workers with Static Assets don't receive `ctx.access`, so the Worker checks the token itself. Changes from a signed-in browser must come from the app's own pages (same `Origin`).
+  - the **app access token** (`Authorization: Bearer <APP_ACCESS_TOKEN>`), for scripts such as the StreetEasy home sync.
+
+  Every response carries `Strict-Transport-Security` (HTTPS only, for a year). `/health` returns `ok` to a signed-in caller.
 - **Storage.** Each source's inventory, status and price history is one versioned snapshot in D1 (`apartment_objects` and `apartment_object_parts`, see `deploy/cloudflare/schema.sql`). Writes use etag compare-and-swap, so a failed or overlapping refresh never replaces saved data. Only current listings are kept, with no records of past listings.
 - **Refreshes happen only when you ask.** Opening the app reads saved inventory and fetches nothing, and nothing runs on a schedule in Cloudflare. **More → Sources & sync** resyncs one source or all of them. Sources that take minutes (CityRealty, Openigloo, Zumper) run in the Workflow, one durable step at a time; the page polls their progress every 15 seconds. A source that failed with a retry time is skipped until that time passes. The only scheduled job is the StreetEasy sync on your own computer.
 - **StreetEasy** refuses requests from cloud hosts (HTTP 403), so a computer you own downloads it and uploads it to the Worker (see [Daily StreetEasy sync](#daily-streeteasy-sync-from-your-own-computer)).
@@ -71,7 +72,9 @@ bun run dev          # build the web app and serve it at http://localhost:8787
 
 | Variable | Where | Purpose |
 | --- | --- | --- |
-| `APP_ACCESS_TOKEN` | Worker secret | Required. Must equal `APARTMENT_BACKEND_KEY` on `apartment-search-access`. |
+| `ACCESS_ALLOWED_EMAILS` | Worker secret | Required for browser sign-in: comma-separated emails Access may let in. Kept out of the repository. |
+| `ACCESS_TEAM_DOMAIN`, `ACCESS_AUD` | `wrangler.jsonc` vars | The Access team domain and the application's audience tag. Sign-in is off unless these and the emails are set. |
+| `APP_ACCESS_TOKEN` | Worker secret | The token scripts send, such as the StreetEasy home sync. |
 | `TRAVELTIME_APP_ID`, `TRAVELTIME_API_KEY` | Worker secrets | Optional commute estimates. |
 | `FREE_PARTNER_FEEDS_JSON` | Worker secret | Optional authorized feeds. |
 | `STREETEASY_SYNC_ENABLED` | Worker variable | `false` pauses StreetEasy refreshes; saved data stays. |
@@ -103,7 +106,17 @@ bun run deploy                                          # build the web app and 
 
 `deploy/cloudflare/wrangler.jsonc` defines the Worker, its static assets, the D1 binding, the Workflow (limited to one run at a time) and a 30-second CPU limit. Before the first deploy from this file, compare it with the live Worker's settings (routes, workers.dev) so the deploy changes only code. Set secrets with `wrangler secret put NAME -c deploy/cloudflare/wrangler.jsonc`. Apply schema changes to the production database with `wrangler d1 execute apartment-search-observations --remote --file deploy/cloudflare/schema.sql -c deploy/cloudflare/wrangler.jsonc`; the schema only creates missing tables.
 
-The gate Worker and the Cloudflare Access application for `apartments.5thof6.com` are configured in the Cloudflare dashboard.
+The Cloudflare Access application for `apartments.5thof6.com` (who may sign in, and how) is configured in Zero Trust; the Worker's custom domain and its check of the Access token are in this repository. Before the first deploy from this file, set the `ACCESS_ALLOWED_EMAILS` secret, or nobody can sign in.
+
+### One-time move off the gate Worker
+
+`apartments.5thof6.com` used to be served by a separate gate Worker, `apartment-search-access`, which checked the Access sign-in and forwarded requests with the app token. This Worker now does that itself. To switch:
+
+1. `wrangler secret put ACCESS_ALLOWED_EMAILS -c deploy/cloudflare/wrangler.jsonc` with the email you sign in with.
+2. Detach `apartments.5thof6.com` from `apartment-search-access` (Workers & Pages → apartment-search-access → Settings → Domains & Routes).
+3. `bun run deploy`, which attaches the domain to `apartment-search`. The Access application on the hostname keeps protecting it.
+4. Open `apartments.5thof6.com`, sign in, and check that search works.
+5. Delete `apartment-search-access` and its `APARTMENT_BACKEND_KEY` secret.
 
 ## Daily StreetEasy sync from your own computer
 

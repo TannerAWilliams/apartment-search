@@ -17,6 +17,9 @@ export const CONTENT_SECURITY_POLICY = [
   "frame-ancestors 'none'",
 ].join('; ');
 
+/** HTTPS only, for a year. Sent on every Worker response; browsers ignore it over plain HTTP, such as local development. */
+export const STRICT_TRANSPORT_SECURITY = 'max-age=31536000; includeSubDomains';
+
 export const WEB_HEADERS: Readonly<Record<string, string>> = {
   'Content-Security-Policy': CONTENT_SECURITY_POLICY,
   'X-Content-Type-Options': 'nosniff',

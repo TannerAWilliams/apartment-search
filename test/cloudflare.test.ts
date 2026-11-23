@@ -1,6 +1,7 @@
 import { afterEach, mock, test } from 'bun:test';
 import assert from 'node:assert/strict';
 import { fakeD1 } from './fixtures/fake-d1.ts';
+import { team } from './fixtures/access-team.ts';
 
 // The Workers runtime module does not exist under Bun; the Workflow class only needs a base class.
 mock.module('cloudflare:workers', () => ({
@@ -157,4 +158,40 @@ test('the dashboard archive is read once through the assets binding and cannot b
   assert.equal(reads, 1, 'the archive is read and verified once');
   const missing = { ...env, ASSETS: { fetch: async () => new Response('missing', { status: 404 }) } };
   assert.equal((await call(missing, '/api/dashboard?file=rentalIndex_All.csv')).status, 503);
+});
+
+test('a Cloudflare Access sign-in opens the app; its writes must come from the app itself', async () => {
+  const { env } = await environment();
+  const access = await team('team-worker');
+  globalThis.fetch = access.fetcher as unknown as typeof fetch;
+  const configured = { ...env, ACCESS_TEAM_DOMAIN: access.issuer, ACCESS_AUD: 'app-audience', ACCESS_ALLOWED_EMAILS: 'owner@example.com' };
+  const seconds = Date.now() / 1000;
+  const token = await access.sign({ ...access.claims, exp: seconds + 600, nbf: seconds - 10 });
+  const signedIn = (path: string, init: RequestInit = {}) =>
+    call(configured, path, { ...init, headers: { 'Cf-Access-Jwt-Assertion': token, ...init.headers as Record<string, string> } }, null);
+  assert.equal(await (await signedIn('/index.html')).text(), 'asset /index.html');
+  assert.equal((await signedIn('/api/config')).status, 200);
+  assert.equal((await signedIn('/api/refresh', post({ check: 'now', source: 'openigloo' }, { Origin: 'https://app.test' }))).status, 202);
+  assert.equal((await signedIn('/api/refresh', post({ check: 'now' }, { Origin: 'https://elsewhere.test' }))).status, 403);
+  assert.equal((await signedIn('/api/refresh', post({ check: 'now' }))).status, 403, 'a write with no Origin is refused');
+  assert.equal((await call(configured, '/api/config', { headers: { 'Cf-Access-Jwt-Assertion': token.slice(0, -4) + 'AAAA' } }, null)).status, 401);
+  assert.equal((await call({ ...configured, ACCESS_ALLOWED_EMAILS: 'someone-else@example.com' }, '/api/config', { headers: { 'Cf-Access-Jwt-Assertion': token } }, null)).status, 401);
+  assert.equal((await call(configured, '/api/config')).status, 200, 'the app access token still works for scripts');
+});
+
+test('when Access keys cannot be read, nobody signs in through Access', async () => {
+  const { env } = await environment();
+  const access = await team('team-worker-outage');
+  globalThis.fetch = (async () => new Response('busy', { status: 503 })) as unknown as typeof fetch;
+  const configured = { ...env, ACCESS_TEAM_DOMAIN: access.issuer, ACCESS_AUD: 'app-audience', ACCESS_ALLOWED_EMAILS: 'owner@example.com' };
+  const seconds = Date.now() / 1000;
+  const token = await access.sign({ ...access.claims, exp: seconds + 600, nbf: seconds - 10 });
+  assert.equal((await call(configured, '/api/config', { headers: { 'Cf-Access-Jwt-Assertion': token } }, null)).status, 401);
+});
+
+test('every response, including a refusal, tells browsers to use HTTPS only', async () => {
+  const { env } = await environment();
+  for (const [path, token] of [['/index.html', TOKEN], ['/api/config', TOKEN], ['/health', TOKEN], ['/api/config', null]] as const) {
+    assert.equal((await call(env, path, {}, token)).headers.get('Strict-Transport-Security'), 'max-age=31536000; includeSubDomains', path);
+  }
 });

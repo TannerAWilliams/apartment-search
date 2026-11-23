@@ -1,9 +1,13 @@
 # Local values for `bun run dev`. Copy to deploy/cloudflare/.dev.vars, which Git ignores.
 # The deployed Worker reads the same names as secrets (`wrangler secret put NAME`); never commit values.
 
-# `bun run dev` sets PUBLIC_APP=true, so the local app opens without a token. To try the private
+# `bun run dev` sets PUBLIC_APP=true, so the local app opens without signing in. To try the private
 # app locally instead, remove that flag from the dev script and set a long random token here.
 APP_ACCESS_TOKEN=
+
+# Emails Cloudflare Access may let in (comma-separated). Only used with real Access tokens, so leave it
+# empty locally unless you are testing sign-in.
+ACCESS_ALLOWED_EMAILS=
 
 # Optional TravelTime credentials for weekday-morning transit and driving estimates.
 TRAVELTIME_APP_ID=
