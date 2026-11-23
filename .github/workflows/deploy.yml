@@ -38,6 +38,11 @@ jobs:
       - run: bun run test
       # Builds the web app and deploys. Unattended, Wrangler moves apartments.5thof6.com to this Worker
       # if another Worker holds it.
+      # New schema migrations go in before the code that needs them.
+      - name: Apply database migrations
+        run: node ./node_modules/wrangler/bin/wrangler.js d1 migrations apply apartment-search-observations --remote -c deploy/cloudflare/wrangler.jsonc
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       - name: Deploy to Cloudflare
         run: bun run deploy
         env:

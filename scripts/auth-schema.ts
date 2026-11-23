@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /**
  * Prints the SQL for Better Auth's tables (users, sessions, accounts, sign-in codes and rate limits), from
- * the app's own auth settings, so deploy/cloudflare/schema.sql matches them. Run after changing server/auth.ts:
+ * the app's own auth settings, so the migrations in deploy/cloudflare/migrations/ can create them. Run after changing server/auth.ts:
  *   bun scripts/auth-schema.ts
  */
 import { Database } from 'bun:sqlite';

@@ -2,7 +2,7 @@
  * Sign-in with Better Auth: you type your email, get a one-time code by email, and type it in. Only the
  * emails in ACCESS_ALLOWED_EMAILS can sign in; others get no code and no account. The web app keeps the
  * session in a cookie; the native app keeps the session token and sends it as a bearer token.
- * Better Auth stores users, sessions, codes and rate limits in the app's D1 database (deploy/cloudflare/schema.sql).
+ * Better Auth stores users, sessions, codes and rate limits in the app's D1 database (deploy/cloudflare/migrations/).
  */
 import { type BetterAuthOptions, betterAuth } from 'better-auth';
 import { APIError } from 'better-auth/api';

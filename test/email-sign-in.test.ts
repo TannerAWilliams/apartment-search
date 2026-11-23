@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { fakeD1 } from './fixtures/fake-d1.ts';
+import { fakeD1, migrations } from './fixtures/fake-d1.ts';
 import { authSchema } from '../scripts/auth-schema.ts';
 
 const { default: worker } = await import('../server/cloudflare.ts');
@@ -48,8 +48,8 @@ async function signIn(env: object, sent: { text: string }[]) {
   return { cookie, token: response.headers.get('set-auth-token') ?? '' };
 }
 
-test('the D1 schema has the tables the auth settings need', async () => {
-  const schema = await Bun.file(new URL('../deploy/cloudflare/schema.sql', import.meta.url)).text();
+test('the D1 migrations create the tables the auth settings need', async () => {
+  const schema = (await migrations()).map(({ sql }) => sql).join('\n');
   expect(schema).toContain(await authSchema());
 });
 

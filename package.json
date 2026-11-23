@@ -16,7 +16,7 @@
     "build:web": "bun ./node_modules/expo/bin/cli export --platform web --output-dir web-build && bun scripts/build-service-worker.ts",
     "build": "bun run build:web && node ./node_modules/wrangler/bin/wrangler.js deploy -c deploy/cloudflare/wrangler.jsonc --dry-run",
     "dev": "bun run build:web && node ./node_modules/wrangler/bin/wrangler.js dev -c deploy/cloudflare/wrangler.jsonc --var PUBLIC_APP:true",
-    "db:local": "node ./node_modules/wrangler/bin/wrangler.js d1 execute apartment-search-observations --local -c deploy/cloudflare/wrangler.jsonc --file deploy/cloudflare/schema.sql",
+    "db:local": "node ./node_modules/wrangler/bin/wrangler.js d1 migrations apply apartment-search-observations --local -c deploy/cloudflare/wrangler.jsonc",
     "deploy": "bun run build:web && node ./node_modules/wrangler/bin/wrangler.js deploy -c deploy/cloudflare/wrangler.jsonc",
     "test": "bun test",
     "test:coverage": "bun test --coverage && bun scripts/report-coverage.ts",

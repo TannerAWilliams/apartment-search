@@ -33,7 +33,13 @@
   // Every request reaches the Worker first, so sign-in also protects the web app's files.
   "assets": { "directory": "../../web-build", "binding": "ASSETS", "run_worker_first": true },
   "d1_databases": [
-    { "binding": "APARTMENTS", "database_name": "apartment-search-observations", "database_id": "c1e92bda-ec98-44c0-a15f-750b20b24455" }
+    {
+      "binding": "APARTMENTS",
+      "database_name": "apartment-search-observations",
+      "database_id": "c1e92bda-ec98-44c0-a15f-750b20b24455",
+      // Schema changes, applied in order by the deploy workflow (migrations/README.md).
+      "migrations_dir": "migrations"
+    }
   ],
   "workflows": [
     // The complete syncs: CityRealty, Openigloo and Zumper. The Workflow and class keep their original

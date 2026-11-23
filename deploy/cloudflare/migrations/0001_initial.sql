@@ -1,3 +1,6 @@
+-- The schema as of November 2026: listing snapshots, refresh documents and sign-in (Better Auth).
+-- Every statement creates only what is missing, so this applied cleanly to the database that already had them.
+
 CREATE TABLE IF NOT EXISTS apartment_objects (
   key TEXT PRIMARY KEY,
   etag TEXT NOT NULL,

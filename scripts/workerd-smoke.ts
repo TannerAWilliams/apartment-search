@@ -69,17 +69,8 @@ async function waitForWorker(deadline: number) {
 }
 
 if (import.meta.main) {
-  // A fresh local D1 database with the production schema.
-  const schema = Bun.spawnSync([
-    'node',
-    ...wrangler,
-    'd1',
-    'execute',
-    'apartment-search-observations',
-    '--local',
-    '--file',
-    'deploy/cloudflare/schema.sql',
-  ]);
+  // The local D1 database with the production schema, from the same migrations the deploy applies.
+  const schema = Bun.spawnSync(['node', ...wrangler, 'd1', 'migrations', 'apply', 'apartment-search-observations', '--local']);
   if (schema.exitCode !== 0) throw new Error('Could not create the local database:\n' + schema.stderr.toString());
   // Sign-in rate limits and codes from an earlier run would refuse this run's requests.
   const reset = Bun.spawnSync([

@@ -1,10 +1,17 @@
 import { Database } from 'bun:sqlite';
 import type { D1Database, D1Statement } from '../../server/d1-bucket.ts';
 
+/** The schema migrations in order, as the deploy applies them. */
+export async function migrations() {
+  const directory = new URL('../../deploy/cloudflare/migrations/', import.meta.url);
+  const names = [...new Bun.Glob('*.sql').scanSync(directory.pathname)].sort();
+  return Promise.all(names.map(async (name) => ({ name, sql: await Bun.file(new URL(name, directory)).text() })));
+}
+
 /** A D1 binding backed by in-memory SQLite with the production schema. */
 export async function fakeD1() {
   const sqlite = new Database(':memory:');
-  sqlite.exec(await Bun.file(new URL('../../deploy/cloudflare/schema.sql', import.meta.url)).text());
+  for (const migration of await migrations()) sqlite.exec(migration.sql);
   type Value = string | number | bigint | boolean | null | Uint8Array;
   const statements = new WeakMap<object, { sql: string; values: Value[] }>();
   /** Runs one statement as D1 does: rows for a query, and the change count. */
