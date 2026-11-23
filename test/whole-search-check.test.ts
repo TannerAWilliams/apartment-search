@@ -3,7 +3,7 @@ import { wholeSearchCheck } from '../server/whole-search-check.ts';
 import { handleApi } from './fixtures/api.ts';
 import { createMemoryBucket } from './fixtures/memory-bucket.ts';
 import { normalizeListing } from '../src/listings.ts';
-import { recordListingHistory } from '../server/listing-history.ts';
+import { recordListingHistory } from '../server/storage/listing-history.ts';
 
 type WholeSearchCheck = Awaited<ReturnType<typeof wholeSearchCheck>>;
 import { readJson } from './fixtures/json.ts';

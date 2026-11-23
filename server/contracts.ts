@@ -1,6 +1,6 @@
-import type { HdcSnapshot, StoredHousing } from './stored-documents.ts';
-import type { JerseySnapshot } from './jersey-affordable.ts';
-import type { HomeSeekerSnapshot } from './westchester-homeseeker.ts';
+import type { HdcSnapshot, StoredHousing } from './storage/stored-documents.ts';
+import type { JerseySnapshot } from './sources/jersey-affordable.ts';
+import type { HomeSeekerSnapshot } from './sources/westchester-homeseeker.ts';
 /** Shared storage contract, including metadata-only object heads. */
 export type BucketHead = { etag: string; customMetadata: Record<string, string> };
 export type BucketObject = BucketHead & { arrayBuffer(): Promise<ArrayBuffer>; text(): Promise<string>; json<T = unknown>(): Promise<T> };

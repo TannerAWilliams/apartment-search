@@ -8,12 +8,18 @@ import { localWorkplace, matchListings, needsCommute } from '../src/search.ts';
 import { formatSearch } from '../src/market.ts';
 import { parentRegion } from '../src/regions.ts';
 import { buildingKey, listingWithVerifiedLinks, mergeListings } from '../src/listings.ts';
-import { isCompleteSnapshot } from './source-registry.ts';
-import { configuredFeeds, loadFeed, loadStreetEasyExport, STREETEASY_EXPORT_COVERAGE, STREETEASY_EXPORT_FORMAT } from './listings.ts';
+import { isCompleteSnapshot } from './sources/source-registry.ts';
+import {
+  configuredFeeds,
+  loadFeed,
+  loadStreetEasyExport,
+  STREETEASY_EXPORT_COVERAGE,
+  STREETEASY_EXPORT_FORMAT,
+} from './sources/listings.ts';
 import { CommuteError, resolveWorkplace, routeCommutes, routingCredentials } from './commute.ts';
-import { OPENIGLOO } from './openigloo.ts';
-import { DIRECT_RENTAL_SOURCES } from './direct-rentals.ts';
-import { STREETEASY_LIVE, STREETEASY_PUBLIC_COVERAGE, STREETEASY_PUBLIC_TRANSPORT } from './streeteasy.ts';
+import { OPENIGLOO } from './sources/openigloo.ts';
+import { DIRECT_RENTAL_SOURCES } from './sources/direct-rentals.ts';
+import { STREETEASY_LIVE, STREETEASY_PUBLIC_COVERAGE, STREETEASY_PUBLIC_TRANSPORT } from './sources/streeteasy.ts';
 import {
   type SourceFetch,
   type SourceStatus,

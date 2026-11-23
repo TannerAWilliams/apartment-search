@@ -4,10 +4,10 @@ import { fakeD1 } from './fixtures/fake-d1.ts';
 import { readJson, type RpcRequest, sentJson } from './fixtures/json.ts';
 
 const { CityRealtySync } = await import('../server/sync-workflow.ts');
-const { createD1Bucket } = await import('../server/d1-bucket.ts');
+const { createD1Bucket } = await import('../server/storage/d1-bucket.ts');
 const { refreshStatus } = await import('../server/refresh.ts');
-const { openiglooPacing } = await import('../server/openigloo.ts');
-const { SYNC_PROGRESS_KEY } = await import('../server/source-registry.ts');
+const { openiglooPacing } = await import('../server/sources/openigloo.ts');
+const { SYNC_PROGRESS_KEY } = await import('../server/sources/source-registry.ts');
 
 openiglooPacing.intervalMs = 0;
 const realFetch = globalThis.fetch;

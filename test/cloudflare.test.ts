@@ -5,8 +5,8 @@ import type { RefreshInfo } from '../src/api-client.ts';
 
 // The Workers runtime module does not exist under Bun; the Workflow class only needs a base class.
 const { default: worker } = await import('../server/cloudflare.ts');
-const { createD1Bucket } = await import('../server/d1-bucket.ts');
-const { SYNC_PROGRESS_KEY } = await import('../server/source-registry.ts');
+const { createD1Bucket } = await import('../server/storage/d1-bucket.ts');
+const { SYNC_PROGRESS_KEY } = await import('../server/sources/source-registry.ts');
 
 const TOKEN = 'synthetic-access-token-0123456789';
 const realFetch = globalThis.fetch;

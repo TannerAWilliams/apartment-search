@@ -1,5 +1,5 @@
 import type { ListingSnapshot, SnapshotStore } from '../../server/contracts.ts';
-import { listingIndex, passesFilter } from '../../server/listing-rows.ts';
+import { listingIndex, passesFilter } from '../../server/storage/listing-rows.ts';
 
 /** An in-memory Bucket for tests, with the same conditional writes and size limit as the D1 bucket. */
 export function createMemoryBucket(maxBytes = 96 * 1024 * 1024) {

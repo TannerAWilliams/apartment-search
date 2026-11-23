@@ -1,5 +1,5 @@
 import type { FetchTransport } from '../src/fetch-type.ts';
-import { loadStreetEasy, STREETEASY_LIVE } from '../server/streeteasy.ts';
+import { loadStreetEasy, STREETEASY_LIVE } from '../server/sources/streeteasy.ts';
 import { encodeSourceImport } from '../src/source-import.ts';
 
 /** The deployed Worker rejects authenticated /api/refresh bodies larger than this. */

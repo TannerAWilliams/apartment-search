@@ -6,10 +6,10 @@
 import type { hc, InferResponseType } from 'hono/client';
 import type { HousingResponse } from '../server/contracts.ts';
 import type { ApiRoutes } from '../server/api.ts';
-import type { AlertState } from '../src/AlertsPage.tsx';
+import type { AlertState } from '../src/screens/AlertsPage.tsx';
 import type { ApiConfig, RefreshInfo } from '../src/api-client.ts';
-import type { BuildingRecordsResult } from '../src/BuildingReport.tsx';
-import type { DashboardResponse } from '../src/DashboardExplorer.tsx';
+import type { BuildingRecordsResult } from '../src/components/BuildingReport.tsx';
+import type { DashboardResponse } from '../src/screens/DashboardExplorer.tsx';
 import type { Point, SearchResult } from '../src/domain.ts';
 import type { RentMarket } from '../src/rent-history.ts';
 

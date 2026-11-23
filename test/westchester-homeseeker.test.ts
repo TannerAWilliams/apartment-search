@@ -6,7 +6,7 @@ import {
   loadHomeSeeker,
   parseHomeSeeker,
   storedHomeSeeker,
-} from '../server/westchester-homeseeker.ts';
+} from '../server/sources/westchester-homeseeker.ts';
 import type { HousingResponse } from '../server/contracts.ts';
 import { handleApi } from './fixtures/api.ts';
 import { readJson } from './fixtures/json.ts';

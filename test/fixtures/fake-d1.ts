@@ -1,5 +1,5 @@
 import { Database } from 'bun:sqlite';
-import type { D1Database, D1Statement } from '../../server/d1-bucket.ts';
+import type { D1Database, D1Statement } from '../../server/storage/d1-bucket.ts';
 
 /** The schema migrations in order, as the deploy applies them. */
 export async function migrations() {

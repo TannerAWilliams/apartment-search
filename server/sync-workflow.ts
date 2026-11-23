@@ -1,11 +1,11 @@
 import { WorkflowEntrypoint, type WorkflowEvent, type WorkflowStep } from 'cloudflare:workers';
 import type { AppEnv } from './contracts.ts';
-import { createD1Bucket, type D1Database } from './d1-bucket.ts';
-import { crawlOpeniglooCell, finishOpeniglooRun, OPENIGLOO_CELL_COUNT } from './openigloo-sync.ts';
+import { createD1Bucket, type D1Database } from './storage/d1-bucket.ts';
+import { crawlOpeniglooCell, finishOpeniglooRun, OPENIGLOO_CELL_COUNT } from './sources/openigloo-sync.ts';
 import { refreshSources } from './refresh.ts';
 import { log } from './log.ts';
 import { runAlerts } from './alerts.ts';
-import { completeSync, SYNC_PROGRESS_KEY, WORKFLOW_SOURCE_IDS } from './source-registry.ts';
+import { completeSync, SYNC_PROGRESS_KEY, WORKFLOW_SOURCE_IDS } from './sources/source-registry.ts';
 
 type Environment = AppEnv & { APARTMENTS: D1Database };
 /** sources: which complete syncs to run, in order; all of them when omitted. */

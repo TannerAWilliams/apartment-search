@@ -5,8 +5,8 @@ import {
   loadJerseyAffordable,
   parseJerseyAffordable,
   storedJerseyAffordable,
-} from '../server/jersey-affordable.ts';
-import { configuredFeeds } from '../server/listings.ts';
+} from '../server/sources/jersey-affordable.ts';
+import { configuredFeeds } from '../server/sources/listings.ts';
 import { refreshSources } from '../server/refresh.ts';
 import type { HousingResponse } from '../server/contracts.ts';
 import { handleApi } from './fixtures/api.ts';

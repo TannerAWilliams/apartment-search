@@ -3,12 +3,12 @@ import { expect, test } from 'bun:test';
 import { alertChannels } from '../server/alerts.ts';
 import { exactBuildingAddress } from '../server/building-records.ts';
 import { routeCommutes } from '../server/commute.ts';
-import { configuredFeeds } from '../server/listings.ts';
+import { configuredFeeds } from '../server/sources/listings.ts';
 import { consoleSink } from '../server/log.ts';
 import { offline } from '../server/search.ts';
-import { brodskyListingUrl, parseBrodskyRentals } from '../server/brodsky.ts';
-import { glenwoodListingUrl } from '../server/glenwood.ts';
-import { stuyTownListingUrl } from '../server/stuytown.ts';
+import { brodskyListingUrl, parseBrodskyRentals } from '../server/sources/brodsky.ts';
+import { glenwoodListingUrl } from '../server/sources/glenwood.ts';
+import { stuyTownListingUrl } from '../server/sources/stuytown.ts';
 import { createBuildingReportCache } from '../src/building-report-cache.ts';
 import { marketplaceLinks } from '../src/marketplaces.ts';
 import { decodeSourceImport } from '../src/source-import.ts';
@@ -145,7 +145,7 @@ test('the source list says when a source is paused, has saved data or was only p
 });
 
 test('an Openigloo search below borough level that cannot be split further is counted as unresolved', async () => {
-  const { crawlOpenigloo } = await import('../server/openigloo.ts');
+  const { crawlOpenigloo } = await import('../server/sources/openigloo.ts');
   const rows = Array.from({ length: 10 }, (_, index) => ({ id: 'u' + index, rent_per_month: 2000 }));
   const crawl = await crawlOpenigloo(
     async () => ({ total: 15, rows }),
@@ -155,7 +155,7 @@ test('an Openigloo search below borough level that cannot be split further is co
 });
 
 test('Housing Connect with no open lotteries needs no building lookup', async () => {
-  const { loadHousingConnect } = await import('../server/housing.ts');
+  const { loadHousingConnect } = await import('../server/sources/housing.ts');
   const requests: string[] = [];
   const result = await loadHousingConnect(async (url) => {
     requests.push(url);

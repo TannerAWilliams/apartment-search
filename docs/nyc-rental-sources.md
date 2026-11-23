@@ -14,7 +14,7 @@ source is stored in D1 yet.
 
 | Source | Owner / shared feed | In app | Inventory | Data access |
 | --- | --- | --- | --- | --- |
-| StreetEasy | Zillow Group | Full partitioned sync (`server/streeteasy.ts`) | 15,635 saved (Nov 18) | Site search API. Hosted (Worker/Render) requests get HTTP 403; the full fetch has only worked from a non-hosted network. No public export. |
+| StreetEasy | Zillow Group | Full partitioned sync (`server/sources/streeteasy.ts`) | 15,635 saved (Nov 18) | Site search API. Hosted (Worker/Render) requests get HTTP 403; the full fetch has only worked from a non-hosted network. No public export. |
 | Zillow Rentals | Zillow Group | Sample adapter | — | Site search API; no public read API. |
 | Trulia | Zillow Group (same feed as Zillow) | Sample adapter | — | Mostly duplicates Zillow. |
 | HotPads | Zillow Group (same feed as Zillow) | Sample adapter | — | Mostly duplicates Zillow. |
@@ -57,7 +57,7 @@ platforms they share rather than one adapter per landlord.
 | Source | In app | Notes |
 | --- | --- | --- |
 | Openigloo | Sample adapter | Reviews and no-fee listings. |
-| FirstMover Open Data | Monthly snapshot (`server/firstmover.ts`) | Published open data; dated, not live. |
+| FirstMover Open Data | Monthly snapshot (`server/sources/firstmover.ts`) | Published open data; dated, not live. |
 | Linecity, Settled.nyc | Browse links only | Data access unverified. |
 | Leasebreak | No | Lease takeovers and sublets. |
 | Listings Project | No | Weekly email list. |
@@ -69,7 +69,7 @@ platforms they share rather than one adapter per landlord.
 | Source | In app | Data access |
 | --- | --- | --- |
 | NYC Housing Connect | Yes (NYC Open Data `vy5i-a666`) | Free open data; lotteries, not individual units. |
-| NYC HDC re-rentals | Yes (`server/hdc-rerentals.ts`) | Public JSON API. |
+| NYC HDC re-rentals | Yes (`server/sources/hdc-rerentals.ts`) | Public JSON API. |
 | AffordableHousing.com | Sample adapter | Site search. |
 | HPD Mitchell-Lama, NYCHA | Links only | Waitlists, not listings. |
 

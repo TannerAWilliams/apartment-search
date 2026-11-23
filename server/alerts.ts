@@ -3,7 +3,7 @@ import { checkObservedChanges, MAX_BASELINE_UNITS, parseChangeBaseline, type Obs
 import { localWorkplace, needsCommute, parseFilters, SearchInputError } from '../src/search.ts';
 import type { AppEnv, Bucket } from './contracts.ts';
 import { log } from './log.ts';
-import { AlertDevicesSchema, AlertRulesSchema, checkedDocument, RecentAlertsSchema } from './stored-documents.ts';
+import { AlertDevicesSchema, AlertRulesSchema, checkedDocument, RecentAlertsSchema } from './storage/stored-documents.ts';
 import { offline, search } from './search.ts';
 import { sendPush, validSubscription, type PushSubscriptionJson, type VapidKeys } from './web-push.ts';
 import * as v from 'valibot';

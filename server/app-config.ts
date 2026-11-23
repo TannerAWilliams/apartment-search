@@ -3,12 +3,12 @@ import type { AppEnv, Bucket } from './contracts.ts';
 import { companyCounts } from '../src/companies.ts';
 import { SNAPSHOT_MONTH } from '../src/market.ts';
 import { routingCredentials } from './commute.ts';
-import { DIRECT_RENTAL_SOURCES } from './direct-rentals.ts';
-import { configuredFeeds, STREETEASY_EXPORT_COVERAGE } from './listings.ts';
-import { OPENIGLOO } from './openigloo.ts';
+import { DIRECT_RENTAL_SOURCES } from './sources/direct-rentals.ts';
+import { configuredFeeds, STREETEASY_EXPORT_COVERAGE } from './sources/listings.ts';
+import { OPENIGLOO } from './sources/openigloo.ts';
 import { refreshCatalog, refreshStatus, sourceRecent, storedMarket } from './refresh.ts';
-import { isCompleteCoverage } from './source-registry.ts';
-import { STREETEASY_LIVE } from './streeteasy.ts';
+import { isCompleteCoverage } from './sources/source-registry.ts';
+import { STREETEASY_LIVE } from './sources/streeteasy.ts';
 
 /** The server's settings alone. Throws when the partner feed settings are invalid. */
 export function appConfig(env: AppEnv) {

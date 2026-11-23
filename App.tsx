@@ -1,6 +1,6 @@
 import { searchAvailabilityMessage } from './src/search-availability.ts';
-import { ErrorBoundary } from './src/ErrorBoundary.tsx';
-import { useHashNavigation, useInventoryClock, useSavedListings } from './src/app-hooks.ts';
+import { ErrorBoundary } from './src/components/ErrorBoundary.tsx';
+import { useHashNavigation, useInventoryClock, useSavedListings } from './src/hooks/app-hooks.ts';
 import { inventoryExpired } from './src/inventory-freshness.ts';
 import type { ListingData, SourceLink, SearchResult } from './src/domain.ts';
 
@@ -12,10 +12,10 @@ import { mobileStyles } from './src/mobileStyles.ts';
 import { colors, styles } from './src/styles.ts';
 import { localSearch } from './src/market.ts';
 import { listingKey, mergeListings, mergeSourceLinks } from './src/listings.ts';
-import { Button, Chip } from './src/ui.tsx';
+import { Button, Chip } from './src/components/ui.tsx';
 import { startVitals } from './src/web-vitals-report.ts';
-import { SavedSearches } from './src/SavedSearches.tsx';
-import { ObservedChanges } from './src/ObservedChanges.tsx';
+import { SavedSearches } from './src/components/SavedSearches.tsx';
+import { ObservedChanges } from './src/components/ObservedChanges.tsx';
 import {
   failureInfo,
   WEB_MAP,
@@ -27,22 +27,24 @@ import {
   formDefaults,
   api,
 } from './src/app-shared.ts';
-import { Filters, WebsiteFilter } from './src/Filters.tsx';
-import { Marketplaces } from './src/Marketplaces.tsx';
-import { Results } from './src/Results.tsx';
-import { useServer } from './src/use-server.ts';
+import { Filters, WebsiteFilter } from './src/components/Filters.tsx';
+import { Marketplaces } from './src/screens/Marketplaces.tsx';
+import { Results } from './src/screens/Results.tsx';
+import { useServer } from './src/hooks/use-server.ts';
 import React, { Suspense, lazy, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 // Screens off the first page load on first use, so opening the app downloads only what search needs.
-const ListingMap = lazy(() => import('./src/ListingMap').then((module) => ({ default: module.ListingMap })));
-const AffordableHousing = lazy(() => import('./src/AffordableHousing.tsx').then((module) => ({ default: module.AffordableHousing })));
-const AddListing = lazy(() => import('./src/AddListing.tsx').then((module) => ({ default: module.AddListing })));
-const ImportListings = lazy(() => import('./src/ImportListings.tsx').then((module) => ({ default: module.ImportListings })));
-const SourcesPage = lazy(() => import('./src/SourcesPage.tsx').then((module) => ({ default: module.SourcesPage })));
-const SavedComparison = lazy(() => import('./src/SavedComparison.tsx').then((module) => ({ default: module.SavedComparison })));
-const TourPlanner = lazy(() => import('./src/TourPlanner.tsx').then((module) => ({ default: module.TourPlanner })));
-const RentChart = lazy(() => import('./src/RentChart.tsx').then((module) => ({ default: module.RentChart })));
-const AlertsPage = lazy(() => import('./src/AlertsPage.tsx').then((module) => ({ default: module.AlertsPage })));
+const ListingMap = lazy(() => import('./src/components/ListingMap').then((module) => ({ default: module.ListingMap })));
+const AffordableHousing = lazy(() =>
+  import('./src/screens/AffordableHousing.tsx').then((module) => ({ default: module.AffordableHousing })),
+);
+const AddListing = lazy(() => import('./src/components/AddListing.tsx').then((module) => ({ default: module.AddListing })));
+const ImportListings = lazy(() => import('./src/components/ImportListings.tsx').then((module) => ({ default: module.ImportListings })));
+const SourcesPage = lazy(() => import('./src/screens/SourcesPage.tsx').then((module) => ({ default: module.SourcesPage })));
+const SavedComparison = lazy(() => import('./src/components/SavedComparison.tsx').then((module) => ({ default: module.SavedComparison })));
+const TourPlanner = lazy(() => import('./src/components/TourPlanner.tsx').then((module) => ({ default: module.TourPlanner })));
+const RentChart = lazy(() => import('./src/components/RentChart.tsx').then((module) => ({ default: module.RentChart })));
+const AlertsPage = lazy(() => import('./src/screens/AlertsPage.tsx').then((module) => ({ default: module.AlertsPage })));
 
 function ApartmentSearch() {
   const { width } = useWindowDimensions();

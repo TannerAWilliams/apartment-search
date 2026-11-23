@@ -17,7 +17,7 @@ import { log } from '../server/log.ts';
 import { toBase64Url } from '../src/base64url.ts';
 import { createMemoryBucket, unavailableSnapshots } from './fixtures/memory-bucket.ts';
 import { logRecord, readJson } from './fixtures/json.ts';
-import type { AlertState } from '../src/AlertsPage.tsx';
+import type { AlertState } from '../src/screens/AlertsPage.tsx';
 import { testListing } from './fixtures/listing.ts';
 import { parseFilters } from '../src/search.ts';
 

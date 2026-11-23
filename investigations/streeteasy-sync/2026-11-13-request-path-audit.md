@@ -6,7 +6,7 @@
 
 ## Results
 
-Inspected `server/streeteasy.ts`, `relay-client.ts`, `relay-policy.ts`, and `relay-service.ts`. An offline Node 24.22.1 experiment injected a fake fetch into the actual loader and compared its request with the relay reconstruction:
+Inspected `server/sources/streeteasy.ts`, `relay-client.ts`, `relay-policy.ts`, and `relay-service.ts`. An offline Node 24.22.1 experiment injected a fake fetch into the actual loader and compared its request with the relay reconstruction:
 
 - Same upstream endpoint and POST method.
 - Same GraphQL query after removing whitespace, including fields and search filters.

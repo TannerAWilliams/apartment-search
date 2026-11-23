@@ -1,8 +1,8 @@
 import { instanceOf, required } from './test-values.ts';
 import { expect, test } from 'bun:test';
-import { loadHdcRerentals } from '../server/hdc-rerentals.ts';
-import { parseZillowPage, ZILLOW_LIVE } from '../server/zillow.ts';
-import { parseRealtorPage, REALTOR_LIVE } from '../server/realtor.ts';
+import { loadHdcRerentals } from '../server/sources/hdc-rerentals.ts';
+import { parseZillowPage, ZILLOW_LIVE } from '../server/sources/zillow.ts';
+import { parseRealtorPage, REALTOR_LIVE } from '../server/sources/realtor.ts';
 import { retryablePublicSources, decodeSourceImport, encodeSourceImport } from '../src/source-import.ts';
 import { rentSeries } from '../src/rent-history.ts';
 import { bundledRentHistory } from '../src/bundled-market.ts';
@@ -147,8 +147,8 @@ test('bundled history preserves absent months and missing bedroom observations',
 });
 
 import { parseListingImport } from '../src/import-listings.ts';
-import { parseRentHopPage, RENTHOP_LIVE } from '../server/renthop.ts';
-import { parseAffordableRentals, AFFORDABLE_LIVE } from '../server/affordable-rentals.ts';
+import { parseRentHopPage, RENTHOP_LIVE } from '../server/sources/renthop.ts';
+import { parseAffordableRentals, AFFORDABLE_LIVE } from '../server/sources/affordable-rentals.ts';
 test('CSV rejects missing/duplicate columns, empty files and invalid optional coordinates', () => {
   const header = 'url,address,unit,city,state,zip,bedrooms,rent';
   for (const csv of ['', header, header + ',rent\n', header + '\nhttps://example.com,1 Main,,Brooklyn,NY,11201,1,1000,extra'])
@@ -208,8 +208,8 @@ test('AffordableHousing recognizes availability, borough restrictions and disclo
   await expect(AFFORDABLE_LIVE.load(async () => new Response('', { status: 403 }), new Date(stamp))).rejects.toThrow(/403/);
 });
 
-import { geocodeRentalAddresses } from '../server/geocode-rentals.ts';
-import { fetchPublicHtml, publicListingUrl } from '../server/public-rentals.ts';
+import { geocodeRentalAddresses } from '../server/sources/geocode-rentals.ts';
+import { fetchPublicHtml, publicListingUrl } from '../server/sources/public-rentals.ts';
 test('geocoding retains source facts on failure and accepts only exact in-region coordinates', async () => {
   let calls = 0;
   expect(
@@ -266,7 +266,7 @@ test('the browser can read every public export the retry check names', async () 
 });
 
 test('a bot-protection challenge is reported as one, and paced pages are read one at a time', async () => {
-  const { fetchPublicHtml, loadPublicPages } = await import('../server/public-rentals.ts');
+  const { fetchPublicHtml, loadPublicPages } = await import('../server/sources/public-rentals.ts');
   const challenge = () => new Response('', { status: 202, headers: { 'x-amzn-waf-action': 'challenge' } });
   await expect(fetchPublicHtml(challenge, 'https://example.com/', 'Compass')).rejects.toThrow(
     'Compass answered with a browser verification challenge',

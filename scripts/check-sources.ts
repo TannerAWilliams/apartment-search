@@ -9,12 +9,12 @@
  *   broken   anything else, such as a page the reader no longer recognizes: the run fails
  * The complete syncs that take many minutes (CityRealty, Openigloo, Zumper) are left out; they run in the Workflow.
  */
-import { DIRECT_RENTAL_SOURCES } from '../server/direct-rentals.ts';
-import { loadHdcRerentals } from '../server/hdc-rerentals.ts';
-import { loadHousingConnect } from '../server/housing.ts';
-import { loadJerseyAffordable } from '../server/jersey-affordable.ts';
-import { completeSync } from '../server/source-registry.ts';
-import { loadHomeSeeker } from '../server/westchester-homeseeker.ts';
+import { DIRECT_RENTAL_SOURCES } from '../server/sources/direct-rentals.ts';
+import { loadHdcRerentals } from '../server/sources/hdc-rerentals.ts';
+import { loadHousingConnect } from '../server/sources/housing.ts';
+import { loadJerseyAffordable } from '../server/sources/jersey-affordable.ts';
+import { completeSync } from '../server/sources/source-registry.ts';
+import { loadHomeSeeker } from '../server/sources/westchester-homeseeker.ts';
 import type { FetchTransport } from '../src/fetch-type.ts';
 
 type Check = { id: string; run: (fetcher: FetchTransport, now: Date) => Promise<number> };

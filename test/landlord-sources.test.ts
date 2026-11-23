@@ -1,9 +1,9 @@
 import { expect, test } from 'bun:test';
-import { brodskyListingUrl, loadBrodsky, parseBrodskyBuilding, parseBrodskyRentals } from '../server/brodsky.ts';
-import { GLENWOOD_BUILDINGS, glenwoodListingUrl, loadGlenwood, parseGlenwoodSearch } from '../server/glenwood.ts';
+import { brodskyListingUrl, loadBrodsky, parseBrodskyBuilding, parseBrodskyRentals } from '../server/sources/brodsky.ts';
+import { GLENWOOD_BUILDINGS, glenwoodListingUrl, loadGlenwood, parseGlenwoodSearch } from '../server/sources/glenwood.ts';
 import { refreshSources } from '../server/refresh.ts';
 import { search } from '../server/search.ts';
-import { loadStuyTown, stuyTownListing, stuyTownListingUrl } from '../server/stuytown.ts';
+import { loadStuyTown, stuyTownListing, stuyTownListingUrl } from '../server/sources/stuytown.ts';
 import { parseFilters } from '../src/search.ts';
 import { createMemoryBucket } from './fixtures/memory-bucket.ts';
 import { required } from './test-values.ts';

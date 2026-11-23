@@ -3,7 +3,7 @@ const isUiModule = (source: string) => /from ['"](react|react-native|@react-nati
 
 /** Application modules measured by unit-test coverage, relative to the repository root. */
 export async function applicationModules(root: URL) {
-  const all = ['server/*.ts', 'server/routes/*.ts', 'src/*.{ts,tsx}']
+  const all = ['server/*.ts', 'server/{routes,sources,storage}/*.ts', 'src/*.{ts,tsx}', 'src/{components,hooks,screens}/*.{ts,tsx}']
     .flatMap((pattern) => [...new Bun.Glob(pattern).scanSync(root.pathname)])
     .filter((path) => !path.endsWith('.d.ts'))
     .sort();

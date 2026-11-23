@@ -1,5 +1,5 @@
 import base64 from 'base64-js';
-import { parseFirstMoverCsv } from '../server/firstmover.ts';
+import { parseFirstMoverCsv } from '../server/sources/firstmover.ts';
 
 const [csvPath, month] = Bun.argv.slice(2);
 if (!csvPath || !/^20\d{2}-(0[1-9]|1[0-2])$/.test(month ?? '')) {

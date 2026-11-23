@@ -1,12 +1,12 @@
 import { expect, test } from 'bun:test';
 import { fakeD1 } from './fixtures/fake-d1.ts';
-import { createD1Bucket } from '../server/d1-bucket.ts';
-import { checkFirstMover } from '../server/firstmover.ts';
+import { createD1Bucket } from '../server/storage/d1-bucket.ts';
+import { checkFirstMover } from '../server/sources/firstmover.ts';
 import { createMemoryBucket } from './fixtures/memory-bucket.ts';
 import { refreshSources, refreshStatus } from '../server/refresh.ts';
-import { requestForRefresh } from '../server/source-requests.ts';
-import { AFFORDABLE_LIVE } from '../server/affordable-rentals.ts';
-import { parseApartmentsPage } from '../server/apartments-com.ts';
+import { requestForRefresh } from '../server/sources/source-requests.ts';
+import { AFFORDABLE_LIVE } from '../server/sources/affordable-rentals.ts';
+import { parseApartmentsPage } from '../server/sources/apartments-com.ts';
 import { safeListingUrl } from '../src/marketplaces.ts';
 import { regionOf } from '../src/regions.ts';
 

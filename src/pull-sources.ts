@@ -1,6 +1,6 @@
 import type { FetchTransport } from './fetch-type.ts';
-import { checkFirstMover } from '../server/firstmover.ts';
-import { loadHousingConnect } from '../server/housing.ts';
+import { checkFirstMover } from '../server/sources/firstmover.ts';
+import { loadHousingConnect } from '../server/sources/housing.ts';
 import { PUBLIC_SOURCE_IDS } from './source-import.ts';
 
 /** Browser-side readers for the public exports. The app loads this module only after a source fails. */

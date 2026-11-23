@@ -1,6 +1,6 @@
 import { fakeD1 } from './fixtures/fake-d1.ts';
 import { test, expect } from 'bun:test';
-import { createD1Bucket } from '../server/d1-bucket.ts';
+import { createD1Bucket } from '../server/storage/d1-bucket.ts';
 
 test('D1 bucket preserves multiple parts and keeps the winning conditional write', async () => {
   const { d1, sqlite } = await fakeD1();

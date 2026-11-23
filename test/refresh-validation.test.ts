@@ -1,9 +1,9 @@
 import { expect, test } from 'bun:test';
 import { handleApi } from './fixtures/api.ts';
 import { createMemoryBucket } from './fixtures/memory-bucket.ts';
-import { OPENIGLOO_TRANSPORT } from '../server/openigloo.ts';
+import { OPENIGLOO_TRANSPORT } from '../server/sources/openigloo.ts';
 import { refreshSources, refreshStatus } from '../server/refresh.ts';
-import { ZUMPER_TRANSPORT } from '../server/zumper.ts';
+import { ZUMPER_TRANSPORT } from '../server/sources/zumper.ts';
 import { encodeSourceImport } from '../src/source-import.ts';
 import { readJson } from './fixtures/json.ts';
 import { oneOf } from '../src/domain.ts';

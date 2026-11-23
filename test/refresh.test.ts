@@ -1,8 +1,8 @@
 import { createMemoryBucket } from './fixtures/memory-bucket.ts';
 import { required } from './test-values.ts';
 import { expect, spyOn, test } from 'bun:test';
-import { parseFirstMoverCsv } from '../server/firstmover.ts';
-import { housingDate } from '../server/housing.ts';
+import { parseFirstMoverCsv } from '../server/sources/firstmover.ts';
+import { housingDate } from '../server/sources/housing.ts';
 import {
   refreshSources,
   saveObservedSnapshot,
@@ -15,10 +15,10 @@ import {
 } from '../server/refresh.ts';
 import { handleApi } from './fixtures/api.ts';
 import { search } from '../server/search.ts';
-import { APARTMENTS_LIVE } from '../server/apartments-com.ts';
-import { STREETEASY_LIVE } from '../server/streeteasy.ts';
+import { APARTMENTS_LIVE } from '../server/sources/apartments-com.ts';
+import { STREETEASY_LIVE } from '../server/sources/streeteasy.ts';
 import { normalizeListing } from '../src/listings.ts';
-import { ZUMPER_LIVE, ZUMPER_MARKETS, zumperPacing } from '../server/zumper.ts';
+import { ZUMPER_LIVE, ZUMPER_MARKETS, zumperPacing } from '../server/sources/zumper.ts';
 
 // Real Zumper syncs space pages a second apart; these tests use local fakes.
 zumperPacing.intervalMs = 0;
@@ -281,7 +281,7 @@ test('the private writer imports a completed public check without publisher acce
 });
 
 test('Trulia collects bounded one- and two-bedroom searches across NYC, NJ, Long Island, Westchester and CT', async () => {
-  const { TRULIA_LIVE, TRULIA_MARKETS } = await import('../server/trulia.ts');
+  const { TRULIA_LIVE, TRULIA_MARKETS } = await import('../server/sources/trulia.ts');
   const zips: Record<string, string> = { Manhattan: '10019', Brooklyn: '11215', Queens: '11101', Bronx: '10451', 'Staten Island': '10301' };
   const urls: string[] = [];
   const result = await TRULIA_LIVE.load(async (url: string) => {

@@ -1,6 +1,6 @@
 import { required } from './test-values.ts';
 import { expect, test } from 'bun:test';
-import { loadStreetEasy } from '../server/streeteasy.ts';
+import { loadStreetEasy } from '../server/sources/streeteasy.ts';
 import { type GraphQlRequest, sentJson } from './fixtures/json.ts';
 
 const rental = (id: number, price: number) => ({
@@ -185,7 +185,7 @@ test('a malformed reply or a rental that changes between partitions is refused',
 });
 
 test('StreetEasy public search pages without the active rental search are refused', async () => {
-  const { parseStreetEasyPublicSearch } = await import('../server/streeteasy.ts');
+  const { parseStreetEasyPublicSearch } = await import('../server/sources/streeteasy.ts');
   await expect(parseStreetEasyPublicSearch('<html><script>self.__next_f.push([1,"{}"])</script></html>', new Date())).rejects.toThrow(
     /public active rental search/,
   );

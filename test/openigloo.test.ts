@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { crawlOpenigloo, loadOpenigloo, openiglooListing, OPENIGLOO_TRANSPORT } from '../server/openigloo.ts';
+import { crawlOpenigloo, loadOpenigloo, openiglooListing, OPENIGLOO_TRANSPORT } from '../server/sources/openigloo.ts';
 import { readJson, type RpcRequest, sentJson } from './fixtures/json.ts';
 
 const BOROUGHS = ['Manhattan', 'Brooklyn', 'Queens', 'Bronx', 'Staten Island'];
@@ -90,7 +90,7 @@ function fakeOpenigloo(units: Unit[], { rateLimitOnce = false } = {}) {
 const noWait = async () => {};
 
 test('Openigloo crawl recovers every listing despite the ten-result cap, exact-price ties and fuzzy prices', async () => {
-  const { openiglooSearch } = await import('../server/openigloo.ts');
+  const { openiglooSearch } = await import('../server/sources/openigloo.ts');
   const units = inventory();
   const fake = fakeOpenigloo(units);
   const crawl = await crawlOpenigloo(await openiglooSearch(fake.fetcher, noWait));
@@ -129,7 +129,7 @@ test('Openigloo sync waits out a rate limit and saves normalized complete invent
 
 test("the stepped Workflow sync saves complete inventory only from one run's parts", async () => {
   const { createMemoryBucket } = await import('./fixtures/memory-bucket.ts');
-  const { crawlOpeniglooCell, finishOpeniglooRun, OPENIGLOO_CELL_COUNT } = await import('../server/openigloo-sync.ts');
+  const { crawlOpeniglooCell, finishOpeniglooRun, OPENIGLOO_CELL_COUNT } = await import('../server/sources/openigloo-sync.ts');
   const { storedOpenigloo, refreshStatus } = await import('../server/refresh.ts');
   const units = inventory();
   const fake = fakeOpenigloo(units);
@@ -192,7 +192,7 @@ test('Openigloo listings reject rows outside the searched borough or bedroom cou
 });
 
 test('Openigloo search reads event-stream replies, waits out "try again" errors, and reports other tool errors', async () => {
-  const { openiglooSearch } = await import('../server/openigloo.ts');
+  const { openiglooSearch } = await import('../server/sources/openigloo.ts');
   const replies: ((id: number) => Response)[] = [
     (id) =>
       new Response(

@@ -5,13 +5,13 @@ import { api } from './api.ts';
 import { jsonBodies, type ApiVariables, type SyncJob } from './routes/context.ts';
 import { RefreshCheckSchema } from './routes/inputs.ts';
 import type { AppEnv, Bucket } from './contracts.ts';
-import { createD1Bucket, type D1Database } from './d1-bucket.ts';
+import { createD1Bucket, type D1Database } from './storage/d1-bucket.ts';
 import { timingSafeEqual } from 'hono/utils/buffer';
 import { type Auth, createAuth, sessionEmail } from './auth.ts';
 import { log } from './log.ts';
 import { securityHeaders, withCacheControl } from './web-headers.ts';
 import { type ArchiveLoader, DASHBOARD_ARCHIVE_PATH } from './dashboard-snapshot.ts';
-import { SYNC_PROGRESS_KEY, WORKFLOW_SOURCE_IDS } from './source-registry.ts';
+import { SYNC_PROGRESS_KEY, WORKFLOW_SOURCE_IDS } from './sources/source-registry.ts';
 export { CityRealtySync } from './sync-workflow.ts';
 
 type Workflow = {

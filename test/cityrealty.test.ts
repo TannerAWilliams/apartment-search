@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import { handleApi } from './fixtures/api.ts';
-import { CITYREALTY_ID } from '../server/cityrealty.ts';
+import { CITYREALTY_ID } from '../server/sources/cityrealty.ts';
 import type { FetchTransport } from '../src/fetch-type.ts';
 import { createMemoryBucket } from './fixtures/memory-bucket.ts';
 import { refreshSources, storedDirectRentals } from '../server/refresh.ts';
@@ -119,7 +119,7 @@ test('a running sync job reports the source it is on, not always CityRealty', as
 });
 
 test('CityRealty search pages and listings that cannot be verified stop the sync', async () => {
-  const { CITYREALTY_LIVE } = await import('../server/cityrealty.ts');
+  const { CITYREALTY_LIVE } = await import('../server/sources/cityrealty.ts');
   const load = (fetcher: FetchTransport) => CITYREALTY_LIVE.load(fetcher, new Date('2026-11-20T00:00:00Z'));
   const good = mockCityRealty();
   await expect(load(async () => new Response('<html>blocked</html>', { headers: { 'content-type': 'text/html' } }))).rejects.toThrow(
@@ -151,7 +151,7 @@ test('CityRealty search pages and listings that cannot be verified stop the sync
 });
 
 test('CityRealty counts a rented listing toward its total but does not list it', async () => {
-  const { CITYREALTY_LIVE } = await import('../server/cityrealty.ts');
+  const { CITYREALTY_LIVE } = await import('../server/sources/cityrealty.ts');
   const result = await CITYREALTY_LIVE.load(mockCityRealty({ rentedId: 52 }), new Date());
   expect(result.total).toBe(53);
   expect(result.listings.some(({ unit }) => unit === '52')).toBe(false);

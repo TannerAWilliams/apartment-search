@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
-import { parseTruliaPage, TRULIA_LIVE } from '../server/trulia.ts';
-import { parseZumperPage, ZUMPER_LIVE } from '../server/zumper.ts';
+import { parseTruliaPage, TRULIA_LIVE } from '../server/sources/trulia.ts';
+import { parseZumperPage, ZUMPER_LIVE } from '../server/sources/zumper.ts';
 const checkedAt = '2026-11-12T23:00:00Z';
 const markets = [
   { city: 'Jersey City', state: 'NJ', region: 'nj', zip: '07302' },
@@ -69,7 +69,7 @@ test('provider coverage advertises bounded pages rather than exhaustive inventor
 });
 
 test('HotPads preserves exact active unit offers, never building ranges or off-market units', async () => {
-  const { parseHotpadsPage } = await import('../server/hotpads.ts');
+  const { parseHotpadsPage } = await import('../server/sources/hotpads.ts');
   const row = {
     '@type': 'Apartment',
     url: 'https://hotpads.com/example-stamford-ct-06901-abc/4/pad',
@@ -107,7 +107,7 @@ test('HotPads preserves exact active unit offers, never building ranges or off-m
 });
 
 test('Zumper sync pages through every market until no more results and counts skipped buildings', async () => {
-  const { loadZumper, ZUMPER_MARKETS, ZUMPER_TRANSPORT } = await import('../server/zumper.ts');
+  const { loadZumper, ZUMPER_MARKETS, ZUMPER_TRANSPORT } = await import('../server/sources/zumper.ts');
   const requested: string[] = [];
   const unit = (id: number, zip: string, extra = {}) => ({
     url: `/listings/${id}p/unit-${id}`,

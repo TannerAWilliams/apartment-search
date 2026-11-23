@@ -18,7 +18,7 @@ export type SourceStatus = {
 export type SourceDefinition = { id: string; name: string; marketplace?: string; coverage?: string; resyncable: boolean; paused?: boolean };
 /**
  * Complete syncs that run in the background Workflow, with how long the app keeps checking on
- * them. Mirrors server/source-registry.ts (a test keeps them in step) without bundling server code.
+ * them. Mirrors server/sources/source-registry.ts (a test keeps them in step) without bundling server code.
  */
 export const LONG_SYNC_LIMITS: Record<string, number> = {
   'cityrealty-live': 13 * 60_000,

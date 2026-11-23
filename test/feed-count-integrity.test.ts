@@ -1,6 +1,6 @@
 import { required } from './test-values.ts';
 import { expect, test } from 'bun:test';
-import { loadFeed } from '../server/listings.ts';
+import { loadFeed } from '../server/sources/listings.ts';
 
 const feed = { id: 'partner', name: 'Partner', kind: 'feed', url: 'https://feed.example.test/listings' };
 const row = {

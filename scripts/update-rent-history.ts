@@ -1,5 +1,5 @@
 import base64 from 'base64-js';
-import { parseFirstMoverCsv } from '../server/firstmover.ts';
+import { parseFirstMoverCsv } from '../server/sources/firstmover.ts';
 import { decodeMarketRows, packRentMonth } from '../src/market.ts';
 
 const files = Bun.argv.slice(2);

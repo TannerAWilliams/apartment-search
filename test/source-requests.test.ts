@@ -1,6 +1,6 @@
 import { instanceOf, rejection, required } from './test-values.ts';
 import { expect, test } from 'bun:test';
-import { requestForRefresh, retrySchedule, SourceResponseError } from '../server/source-requests.ts';
+import { requestForRefresh, retrySchedule, SourceResponseError } from '../server/sources/source-requests.ts';
 
 test('a transient response with exhausted quota is not immediately retried', async () => {
   let calls = 0;

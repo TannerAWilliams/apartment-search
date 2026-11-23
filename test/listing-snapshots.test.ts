@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import type { SnapshotStore } from '../server/contracts.ts';
-import { createD1Bucket } from '../server/d1-bucket.ts';
+import { createD1Bucket } from '../server/storage/d1-bucket.ts';
 import { fakeD1 } from './fixtures/fake-d1.ts';
 import { createMemoryBucket } from './fixtures/memory-bucket.ts';
 import { required } from './test-values.ts';

@@ -1,6 +1,6 @@
 import { required } from './test-values.ts';
 import { expect, test } from 'bun:test';
-import { loadFeed } from '../server/listings.ts';
+import { loadFeed } from '../server/sources/listings.ts';
 
 const feed = { id: 'partner', name: 'Partner', kind: 'feed', url: 'https://feed.example.test/listings' };
 const limit = 16 * 1024 * 1024;
@@ -112,7 +112,7 @@ test('oversized later page rejects the entire feed instead of returning a partia
 });
 
 test('feed configuration rejects too many feeds, missing details and unsupported export formats', async () => {
-  const { configuredFeeds } = await import('../server/listings.ts');
+  const { configuredFeeds } = await import('../server/sources/listings.ts');
   const feed = (id: string, extra = {}) => ({ id, name: 'Feed ' + id, url: 'https://feeds.example.test/' + id, ...extra });
   const config = (feeds: unknown) => configuredFeeds({ FREE_PARTNER_FEEDS_JSON: JSON.stringify(feeds) });
   expect(() => config(Array.from({ length: 16 }, (_, index) => feed('feed' + index)))).toThrow(/up to 15/);

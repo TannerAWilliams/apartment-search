@@ -1,6 +1,6 @@
 import { malformed, required } from './test-values.ts';
 import { expect, test } from 'bun:test';
-import { recordListingHistory, MAX_HISTORY_UNITS, type ObservationHistory } from '../server/listing-history.ts';
+import { recordListingHistory, MAX_HISTORY_UNITS, type ObservationHistory } from '../server/storage/listing-history.ts';
 import { testListing } from './fixtures/listing.ts';
 const unit = (rent = 2000, id = 'feed:1') =>
   testListing({ id, address: '12 Grove Street', unit: '2', city: 'Jersey City', state: 'NJ', zip: '07302', rent });

@@ -2,12 +2,12 @@ import type { PackedRentRow, RentHistory } from '../src/rent-history.ts';
 import type { ListingData } from '../src/domain.ts';
 import type { AppEnv, Bucket, BucketObject, BucketHead, HousingSnapshot, HdcSnapshot, SnapshotFilter } from './contracts.ts';
 import { withoutCommuteEstimate } from '../src/commute-estimate.ts';
-import { type ObservationHistory, type ObservedListing, type UnitHistory, recordListingHistory } from './listing-history.ts';
+import { type ObservationHistory, type ObservedListing, type UnitHistory, recordListingHistory } from './storage/listing-history.ts';
 import { gzipSync, gunzipSync, strFromU8, strToU8 } from 'fflate';
 import { decodeMarketRows, packRentMonth, SNAPSHOT_MONTH, type MarketRow } from '../src/market.ts';
 import { priorRentMonths } from '../src/rent-history.ts';
 import { bundledRentAreas, marketSnapshot } from '../src/bundled-market.ts';
-import { checkFirstMover, checkPublishedFirstMover } from './firstmover.ts';
+import { checkFirstMover, checkPublishedFirstMover } from './sources/firstmover.ts';
 import {
   configuredFeeds,
   loadFeed,
@@ -15,20 +15,31 @@ import {
   STREETEASY_EXPORT_COVERAGE,
   STREETEASY_EXPORT_FORMAT,
   STREETEASY_EXPORT_MAX_AGE,
-} from './listings.ts';
-import { housingDate, loadHousingConnect } from './housing.ts';
-import { HDC_RERENTALS, loadHdcRerentals } from './hdc-rerentals.ts';
-import { JERSEY_AFFORDABLE, refreshJerseyAffordable } from './jersey-affordable.ts';
-import { refreshHomeSeeker, WESTCHESTER_HOMESEEKER } from './westchester-homeseeker.ts';
-import { DIRECT_RENTAL_SOURCES } from './direct-rentals.ts';
-import { loadOpenigloo, OPENIGLOO_COVERAGE, OPENIGLOO_MAX_LISTINGS, OPENIGLOO_MIN_COVERAGE, OPENIGLOO_TRANSPORT } from './openigloo.ts';
-import { requestForRefresh, retrySchedule } from './source-requests.ts';
-import { checkedDocument, HdcSnapshotSchema, RefreshStateSchema, StoredHousingSchema } from './stored-documents.ts';
+} from './sources/listings.ts';
+import { housingDate, loadHousingConnect } from './sources/housing.ts';
+import { HDC_RERENTALS, loadHdcRerentals } from './sources/hdc-rerentals.ts';
+import { JERSEY_AFFORDABLE, refreshJerseyAffordable } from './sources/jersey-affordable.ts';
+import { refreshHomeSeeker, WESTCHESTER_HOMESEEKER } from './sources/westchester-homeseeker.ts';
+import { DIRECT_RENTAL_SOURCES } from './sources/direct-rentals.ts';
+import {
+  loadOpenigloo,
+  OPENIGLOO_COVERAGE,
+  OPENIGLOO_MAX_LISTINGS,
+  OPENIGLOO_MIN_COVERAGE,
+  OPENIGLOO_TRANSPORT,
+} from './sources/openigloo.ts';
+import { requestForRefresh, retrySchedule } from './sources/source-requests.ts';
+import { checkedDocument, HdcSnapshotSchema, RefreshStateSchema, StoredHousingSchema } from './storage/stored-documents.ts';
 import { log } from './log.ts';
 import { MARKETPLACE_NAMES } from '../src/marketplaces.ts';
-import { COMPLETE_SYNC_LIFETIME, completeSync, fullInventory, isCompleteSnapshot, WORKFLOW_SOURCE_IDS } from './source-registry.ts';
+import { COMPLETE_SYNC_LIFETIME, completeSync, fullInventory, isCompleteSnapshot, WORKFLOW_SOURCE_IDS } from './sources/source-registry.ts';
 import type { SourceDefinition } from '../src/source-status.ts';
-import { loadStreetEasyPublicSearch, STREETEASY_LIVE, STREETEASY_PUBLIC_COVERAGE, STREETEASY_PUBLIC_TRANSPORT } from './streeteasy.ts';
+import {
+  loadStreetEasyPublicSearch,
+  STREETEASY_LIVE,
+  STREETEASY_PUBLIC_COVERAGE,
+  STREETEASY_PUBLIC_TRANSPORT,
+} from './sources/streeteasy.ts';
 
 export { WORKFLOW_SOURCE_IDS };
 
