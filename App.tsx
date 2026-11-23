@@ -293,15 +293,17 @@ function ApartmentSearch() {
               Change destination
             </Button>
           </View>
-          <Text style={styles.smallMuted}>
-            {tab === 'saved'
-              ? 'Directions use this destination. Automatic travel times are not recalculated on your saved list.'
-              : busy
-                ? 'Updating search. Previous destination and results remain until it succeeds.'
-                : result.commute
-                  ? 'Weekday-morning provider estimates; missing routes stay unavailable.'
-                  : result.commuteNotice || 'Automatic travel times unavailable. Open a listing’s directions link to check a route.'}
-          </Text>
+          {(tab === 'saved' || busy || result.commute || result.commuteNotice) && (
+            <Text style={styles.smallMuted}>
+              {tab === 'saved'
+                ? 'Directions use this destination. Automatic travel times are not recalculated on your saved list.'
+                : busy
+                  ? 'Updating search. Previous destination and results remain until it succeeds.'
+                  : result.commute
+                    ? 'Weekday-morning provider estimates; missing routes stay unavailable.'
+                    : result.commuteNotice}
+            </Text>
+          )}
         </View>
       )}
       <Modal visible={Boolean(expanded)} transparent animationType="slide" onRequestClose={() => setExpanded('')}>

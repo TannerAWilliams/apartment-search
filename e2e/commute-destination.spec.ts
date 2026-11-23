@@ -28,7 +28,7 @@ test('destination editing stays local until Apply and remains accessible without
   await page.getByRole('button', { name: 'Change destination', exact: true }).click();
   await page.getByRole('button', { name: 'Custom', exact: true }).click();
   await page.getByLabel('Destination address or place').fill('40.75, -73.98');
-  await expect(page.getByText('Automatic transit and driving estimates are unavailable.', { exact: false })).toBeVisible();
+  await expect(page.getByText('Automatic transit and driving estimates are unavailable.', { exact: false })).toHaveCount(0);
   expect(requests).toHaveLength(1);
   await page.getByRole('button', { name: 'Cancel', exact: true }).click();
   expect(requests).toHaveLength(1);

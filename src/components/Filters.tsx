@@ -216,10 +216,6 @@ export function Filters({
             </>
           ) : (
             <>
-              <Text style={styles.smallMuted}>
-                Automatic transit and driving estimates are unavailable. You can still change your destination and use directions links; no
-                travel times will be invented.
-              </Text>
               {((draft.maxTransitMinutes != null && draft.maxTransitMinutes !== '') ||
                 (draft.maxDrivingMinutes != null && draft.maxDrivingMinutes !== '') ||
                 draft.sort === 'transit' ||
