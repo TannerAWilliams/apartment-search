@@ -119,7 +119,7 @@ export function Results({
                   ? 'Active inventory unavailable'
                   : `${result.total.toLocaleString('en-US')} ${savedView ? 'saved' : 'matching'} ${result.total === 1 ? 'apartment' : 'apartments'}`}
             </Text>
-            {(savedView || applied.zip || applied.source || applied.maxTransitMinutes != null || applied.maxDrivingMinutes != null) && (
+            {!savedView && (applied.zip || applied.source || applied.maxTransitMinutes != null || applied.maxDrivingMinutes != null) && (
               <Text style={styles.smallMuted}>{summary}</Text>
             )}
           </View>

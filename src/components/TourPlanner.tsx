@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Platform, Pressable, ScrollView, Share, Text, View } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Button, Chip, Field, Link } from './ui.tsx';
-import { styles } from '../styles.ts';
+import { colors, styles } from '../styles.ts';
 import { listingKey } from '../listings.ts';
 import {
   TOUR_KEY,
@@ -156,12 +156,10 @@ export function TourPlanner({ listings, open: shown }: { listings: ListingData[]
         </Button>
       )}
       {open && (
-        <>
+        <View style={styles.toolPanel}>
           <Text style={styles.panelTitle}>Apartment tours</Text>
           <Text style={styles.smallMuted}>
-            Personal plans, not confirmed bookings. Stored only on this device. Use one tab: concurrent tabs can overwrite tour edits. No
-            broker messages are sent. Times use your device timezone: {Intl.DateTimeFormat().resolvedOptions().timeZone}. Calendar export
-            includes your notes. Hiding this panel keeps unsaved form edits until you leave Saved; leaving Saved discards unsaved edits.
+            Plan viewings and add them to your calendar. Saved on this device only; nothing is sent to brokers.
           </Text>
           {!!error && (
             <Text accessibilityRole="alert" style={styles.error}>
@@ -188,10 +186,29 @@ export function TourPlanner({ listings, open: shown }: { listings: ListingData[]
                         accessibilityState={{ checked: selected === key }}
                         aria-checked={selected === key}
                         onPress={() => setSelected(key)}
-                        style={{ padding: 12, minHeight: 44 }}
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          gap: 10,
+                          paddingHorizontal: 12,
+                          minHeight: 44,
+                          marginBottom: 6,
+                          borderWidth: 1,
+                          borderRadius: 10,
+                          borderColor: selected === key ? colors.green : colors.border,
+                          backgroundColor: selected === key ? colors.light : 'transparent',
+                        }}
                       >
-                        <Text>
-                          {selected === key ? '● ' : '○ '}
+                        <View
+                          style={{
+                            width: 18,
+                            height: 18,
+                            borderRadius: 9,
+                            borderWidth: selected === key ? 6 : 2,
+                            borderColor: selected === key ? colors.green : '#a3afbf',
+                          }}
+                        />
+                        <Text style={{ color: colors.ink, flexShrink: 1 }}>
                           {l.address}
                           {l.unit ? ', ' + l.unit : ''}
                         </Text>
@@ -202,7 +219,7 @@ export function TourPlanner({ listings, open: shown }: { listings: ListingData[]
               )}
               {!listings.length && !editing && <Text style={styles.smallMuted}>Save an apartment from Search to plan a tour.</Text>}
               <Field
-                label="Tour date (YYYY-MM-DD)"
+                label="Date"
                 value={date}
                 onChangeText={(value) => {
                   if (!saving.current) setDate(value);
@@ -211,7 +228,7 @@ export function TourPlanner({ listings, open: shown }: { listings: ListingData[]
                 maxLength={10}
               />
               <Field
-                label="Start time (HH:mm, 24-hour device time)"
+                label="Start time (24-hour)"
                 value={time}
                 onChangeText={(value) => {
                   if (!saving.current) setTime(value);
@@ -229,7 +246,7 @@ export function TourPlanner({ listings, open: shown }: { listings: ListingData[]
                 maxLength={3}
               />
               <Field
-                label="Appointment notes (included in calendar export)"
+                label="Notes (added to the calendar entry)"
                 value={notes}
                 onChangeText={(value) => {
                   if (!saving.current) setNotes(value);
@@ -245,8 +262,7 @@ export function TourPlanner({ listings, open: shown }: { listings: ListingData[]
                 </Button>
               )}
               <Text style={styles.smallMuted}>
-                {tours.length} / {MAX_TOURS} tours. Route uses the selected day and follows the order below without optimization. Travel
-                time is not included; leave time between appointments.
+                {tours.length} / {MAX_TOURS} tours. Travel time between tours isn’t included, so leave a gap.
               </Text>
               {!!tours.length && (
                 <>
@@ -343,7 +359,7 @@ export function TourPlanner({ listings, open: shown }: { listings: ListingData[]
               ))}
             </>
           )}
-        </>
+        </View>
       )}
     </View>
   );

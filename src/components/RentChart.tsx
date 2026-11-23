@@ -14,7 +14,8 @@ import { MarketHistory } from '../screens/MarketHistory.tsx';
 import { RentTrend } from './RentTrend.tsx';
 
 const SIZES = ['Studio', '1 BR', '2 BR', '3 BR', '4 BR'];
-const BAR_COLORS = ['#6a9e85', '#4f846a', '#45789b', '#745c9a', '#936425'];
+// One series (median rent by size), so one color for every bar.
+const BAR_COLORS = ['#2a78d6', '#2a78d6', '#2a78d6', '#2a78d6', '#2a78d6'];
 const GROUPINGS = Object.entries(RENT_GROUPINGS);
 const PAGE_SIZE = 15;
 

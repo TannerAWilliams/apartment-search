@@ -338,36 +338,82 @@ function ApartmentSearch() {
               )}
               {(tab === 'results' || tab === 'saved') && (
                 <>
-                  {!(tab === 'saved' && saved.length === 0) && (
+                  {
                     <View style={styles.toolbar}>
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityLabel="Change destination"
-                        disabled={busy}
-                        onPress={() => {
-                          setError('');
-                          toggleFilter('commute');
-                        }}
-                        style={{ flexShrink: 1, paddingVertical: 6 }}
-                      >
-                        <Text numberOfLines={1} style={mobileStyles.destinationText}>
-                          To <Text style={{ color: colors.ink, fontWeight: '600' }}>{result.workplace.label}</Text> ·{' '}
-                          <Text style={styles.linkText}>Change</Text>
-                        </Text>
-                      </Pressable>
-                      <View style={styles.chipRow}>
+                      {!(tab === 'saved' && saved.length === 0) ? (
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel="Change destination"
+                          disabled={busy}
+                          onPress={() => {
+                            setError('');
+                            toggleFilter('commute');
+                          }}
+                          style={{ flexShrink: 1, paddingVertical: 6 }}
+                        >
+                          <Text numberOfLines={1} style={mobileStyles.destinationText}>
+                            To <Text style={{ color: colors.ink, fontWeight: '600' }}>{result.workplace.label}</Text> ·{' '}
+                            <Text style={styles.linkText}>Change</Text>
+                          </Text>
+                        </Pressable>
+                      ) : (
+                        <View />
+                      )}
+                      <View style={[styles.chipRow, { flexShrink: 1 }]}>
                         {TOOLS[tab]
                           .filter(([id]) => id !== 'changes' || !staleInventory)
+                          .filter(() => tab !== 'saved' || saved.length > 0)
                           .map(([id, short, full]) => (
                             <Chip key={id} label={full} selected={tool === id} onPress={() => setTool(tool === id ? '' : id)}>
                               {short}
                             </Chip>
                           ))}
+                        {tab === 'saved' && (
+                          <>
+                            <Chip selected={adding === 'single'} onPress={() => setAdding(adding === 'single' ? false : 'single')}>
+                              + Add listing
+                            </Chip>
+                            <Chip selected={adding === 'import'} onPress={() => setAdding(adding === 'import' ? false : 'import')}>
+                              Import CSV
+                            </Chip>
+                          </>
+                        )}
                       </View>
                     </View>
-                  )}
+                  }
                   {tab === 'saved' && <SavedComparison listings={saved} open={tool === 'compare'} />}
                   {tab === 'saved' && <TourPlanner listings={saved} open={tool === 'tours'} />}
+                  {tab === 'saved' && (
+                    <>
+                      {adding === 'single' && (
+                        <AddListing
+                          initialRegion={applied.region}
+                          onSave={(listing) => {
+                            saveListing(listing);
+                            setAdding(false);
+                          }}
+                          onCancel={() => setAdding(false)}
+                          geocode={
+                            serverState === 'ready' ? (address) => api('geocode', { body: { address }, token: activeToken }) : undefined
+                          }
+                        />
+                      )}
+                      {adding === 'import' && (
+                        <ImportListings
+                          onImport={(listings) => {
+                            if (listings.some((listing) => !regionOf(listing))) {
+                              throw new Error(
+                                'Import listings in NYC, New Jersey, Long Island, the Hudson Valley, Connecticut or eastern Pennsylvania.',
+                              );
+                            }
+                            setSaved((current) => mergeListings([...listings, ...current]));
+                            setAdding(false);
+                          }}
+                          onCancel={() => setAdding(false)}
+                        />
+                      )}
+                    </>
+                  )}
                   {tab === 'results' && (
                     <SavedSearches
                       open={tool === 'searches'}
@@ -523,43 +569,6 @@ function ApartmentSearch() {
                     cooldownSeconds={cooldownSeconds}
                     onResync={(id) => checkSources(id ?? null)}
                   />
-                  <Text style={[styles.fieldLabel, { marginTop: 8 }]}>Your own listings</Text>
-                  <Text style={styles.smallMuted}>
-                    Add an apartment you found elsewhere, or import a spreadsheet of them, to your saved list.
-                  </Text>
-                  <View style={styles.chipRow}>
-                    <Button secondary onPress={() => setAdding('single')}>
-                      + Add listing
-                    </Button>
-                    <Button secondary onPress={() => setAdding('import')}>
-                      Import CSV
-                    </Button>
-                  </View>
-                  {adding === 'single' && (
-                    <AddListing
-                      initialRegion={applied.region}
-                      onSave={(listing) => {
-                        saveListing(listing);
-                        setAdding(false);
-                      }}
-                      onCancel={() => setAdding(false)}
-                      geocode={serverState === 'ready' ? (address) => api('geocode', { body: { address }, token: activeToken }) : undefined}
-                    />
-                  )}
-                  {adding === 'import' && (
-                    <ImportListings
-                      onImport={(listings) => {
-                        if (listings.some((listing) => !regionOf(listing))) {
-                          throw new Error(
-                            'Import listings in NYC, New Jersey, Long Island, the Hudson Valley, Connecticut or eastern Pennsylvania.',
-                          );
-                        }
-                        setSaved((current) => mergeListings([...listings, ...current]));
-                        setAdding(false);
-                      }}
-                      onCancel={() => setAdding(false)}
-                    />
-                  )}
                 </>
               )}
               {tab === 'marketplaces' && (

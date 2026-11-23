@@ -71,7 +71,7 @@ export function AlertsPage({
   }
 
   const pushText = !state?.channels.push
-    ? 'Phone and browser notifications are not set up on the server.'
+    ? 'Phone and browser notifications aren’t set up yet.'
     : support === 'install-first'
       ? 'On iPhone and iPad, add this app to your Home Screen first (Share → Add to Home Screen), then open it from there and turn on notifications.'
       : support === 'blocked'
@@ -87,8 +87,8 @@ export function AlertsPage({
           Alerts
         </Text>
         <Text style={styles.bodyText}>
-          Get an email or a notification when new apartments or price drops match a saved alert. Alerts are checked after you resync sources
-          and after the daily StreetEasy upload, never on a schedule.
+          Get an email or a notification when new apartments or price drops match an alert. Alerts are checked each time sources are
+          resynced.
         </Text>
       </View>
       {!state ? (
@@ -97,7 +97,7 @@ export function AlertsPage({
         <>
           <View style={styles.chartCard}>
             <Text accessibilityRole="header" style={styles.fieldLabel}>
-              Alert for the current search
+              New alert for your current search
             </Text>
             <Text style={styles.smallMuted}>{summary}</Text>
             <Field label="Alert name" value={name} onChangeText={setName} maxLength={60} placeholder="For example, Brooklyn 1 bedroom" />
@@ -110,32 +110,35 @@ export function AlertsPage({
               Save alert
             </Button>
           </View>
-          <View style={styles.chartCard}>
-            <Text accessibilityRole="header" style={styles.fieldLabel}>
-              Saved alerts ({state.rules.length})
-            </Text>
-            {state.rules.length === 0 && <Text style={styles.smallMuted}>No alerts yet.</Text>}
-            {state.rules.map((rule) => (
-              <View key={rule.id} style={styles.chipRow}>
-                <Text style={styles.bodyText}>{rule.name}</Text>
-                <Button secondary disabled={busy !== ''} onPress={() => act('rule', { action: 'delete-rule', id: rule.id })}>
-                  {'Remove ' + rule.name}
-                </Button>
-              </View>
-            ))}
-          </View>
+          {state.rules.length > 0 && (
+            <View style={styles.chartCard}>
+              <Text accessibilityRole="header" style={styles.fieldLabel}>
+                Your alerts ({state.rules.length})
+              </Text>
+              {state.rules.map((rule) => (
+                <View key={rule.id} style={styles.chipRow}>
+                  <Text style={styles.bodyText}>{rule.name}</Text>
+                  <Button secondary disabled={busy !== ''} onPress={() => act('rule', { action: 'delete-rule', id: rule.id })}>
+                    {'Remove ' + rule.name}
+                  </Button>
+                </View>
+              ))}
+            </View>
+          )}
           <View style={styles.chartCard}>
             <Text accessibilityRole="header" style={styles.fieldLabel}>
               Where alerts go
             </Text>
             <Text style={styles.bodyText}>
-              {state.channels.email ? 'Email: to the address you sign in with.' : 'Email: not set up on the server.'}
+              {state.channels.email ? 'Email: to the address you sign in with.' : 'Email isn’t set up yet.'}
             </Text>
-            <Text style={styles.bodyText}>
-              {state.devices.length
-                ? `Notifications: ${state.devices.map(({ label }) => label).join(', ')}.`
-                : 'Notifications: no devices yet.'}
-            </Text>
+            {(state.channels.push || state.devices.length > 0) && (
+              <Text style={styles.bodyText}>
+                {state.devices.length
+                  ? `Notifications: ${state.devices.map(({ label }) => label).join(', ')}.`
+                  : 'Notifications: no devices yet.'}
+              </Text>
+            )}
             {pushText ? (
               <Text style={styles.smallMuted}>{pushText}</Text>
             ) : (
@@ -143,39 +146,42 @@ export function AlertsPage({
                 Turn on notifications on this device
               </Button>
             )}
-            <Button
-              secondary
-              disabled={busy !== '' || (!state.channels.email && !state.devices.length)}
-              onPress={() =>
-                act('test', { action: 'test' }, (next) =>
-                  next.delivered?.email || next.delivered?.devices
-                    ? 'Test alert sent.'
-                    : 'The test alert could not be delivered. Check the server logs.',
-                )
-              }
-            >
-              Send a test alert
-            </Button>
+            {(state.channels.email || state.devices.length > 0) && (
+              <Button
+                secondary
+                disabled={busy !== ''}
+                onPress={() =>
+                  act('test', { action: 'test' }, (next) =>
+                    next.delivered?.email || next.delivered?.devices
+                      ? 'Test alert sent.'
+                      : 'The test alert could not be delivered. Check the server logs.',
+                  )
+                }
+              >
+                Send a test alert
+              </Button>
+            )}
           </View>
           {notice !== '' && (
             <Text accessibilityRole="alert" style={styles.bodyText}>
               {notice}
             </Text>
           )}
-          <View style={styles.chartCard}>
-            <Text accessibilityRole="header" style={styles.fieldLabel}>
-              Recent alerts
-            </Text>
-            {state.recent.length === 0 && <Text style={styles.smallMuted}>None yet.</Text>}
-            {state.recent.map((alert) => (
-              <View key={alert.id}>
-                <Text style={styles.bodyText}>{alert.title}</Text>
-                <Text style={styles.smallMuted}>
-                  {WHEN.format(new Date(alert.at))} · {alert.lines.join(' · ')}
-                </Text>
-              </View>
-            ))}
-          </View>
+          {state.recent.length > 0 && (
+            <View style={styles.chartCard}>
+              <Text accessibilityRole="header" style={styles.fieldLabel}>
+                Recent alerts
+              </Text>
+              {state.recent.map((alert) => (
+                <View key={alert.id}>
+                  <Text style={styles.bodyText}>{alert.title}</Text>
+                  <Text style={styles.smallMuted}>
+                    {WHEN.format(new Date(alert.at))} · {alert.lines.join(' · ')}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          )}
         </>
       )}
     </View>

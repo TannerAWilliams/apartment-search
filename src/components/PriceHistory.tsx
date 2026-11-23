@@ -25,9 +25,11 @@ export function PriceHistory({ value }: { value: unknown }) {
       ) : (
         <>
           <Text style={styles.smallMuted}>
-            Seen on {MARKETPLACE_NAMES[history.sourceId.replace(/-live$/, '')] ?? history.sourceId.replace(/-live$/, '')} from{' '}
-            {date.format(new Date(history.firstObservedAt))} to {date.format(new Date(history.lastObservedAt))} ET. A listing seen is not
-            proof it is still available.
+            Seen on {MARKETPLACE_NAMES[history.sourceId.replace(/-live$/, '')] ?? history.sourceId.replace(/-live$/, '')}{' '}
+            {history.firstObservedAt === history.lastObservedAt
+              ? date.format(new Date(history.firstObservedAt))
+              : `from ${date.format(new Date(history.firstObservedAt))} to ${date.format(new Date(history.lastObservedAt))}`}{' '}
+            ET. A listing seen is not proof it is still available.
           </Text>
           {history.observations.map((point, index) => (
             <Text key={index} style={styles.bodyText}>

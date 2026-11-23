@@ -215,8 +215,7 @@ test('mouse navigation and browser back restore tabs', async ({ page }) => {
 
 test('add-listing form validates empty input and can be cancelled', async ({ page }) => {
   await mockApp(page);
-  await page.getByRole('tab', { name: 'More', exact: true }).click();
-  await page.getByRole('button', { name: 'Sources & sync', exact: true }).click();
+  await page.getByRole('tab', { name: /^Saved/ }).click();
   await page.getByRole('button', { name: '+ Add listing', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Add a rental listing' })).toBeVisible();
   await page.getByRole('button', { name: 'Save apartment', exact: true }).click();
@@ -264,8 +263,7 @@ test('search shows source coverage notices instead of hiding data caveats', asyn
 
 test('CSV import can be opened and cancelled without changing saved data', async ({ page }) => {
   await mockApp(page);
-  await page.getByRole('tab', { name: 'More', exact: true }).click();
-  await page.getByRole('button', { name: 'Sources & sync', exact: true }).click();
+  await page.getByRole('tab', { name: /^Saved/ }).click();
   await page.getByRole('button', { name: 'Import CSV', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Cancel', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Cancel', exact: true }).click();
@@ -354,8 +352,7 @@ test('applied filters, expanded results and search scroll survive navigation', a
 });
 
 async function openImport(page: Page) {
-  await page.getByRole('tab', { name: 'More', exact: true }).click();
-  await page.getByRole('button', { name: 'Sources & sync', exact: true }).click();
+  await page.getByRole('tab', { name: /^Saved/ }).click();
   await page.getByRole('button', { name: 'Import CSV', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Import rental listings' })).toBeVisible();
 }
@@ -364,8 +361,7 @@ const importRow = 'https://example.com/apartments/1,100 Test Street,2A,Brooklyn,
 
 test('manual entry corrects invalid coordinates then saves and survives reload', async ({ page }) => {
   const { unexpected } = await mockApp(page);
-  await page.getByRole('tab', { name: 'More', exact: true }).click();
-  await page.getByRole('button', { name: 'Sources & sync', exact: true }).click();
+  await page.getByRole('tab', { name: /^Saved/ }).click();
   await page.getByRole('button', { name: '+ Add listing', exact: true }).click();
   await page.getByRole('textbox', { name: 'Listing URL', exact: true }).fill('https://example.com/apartments/manual');
   await page.getByRole('textbox', { name: 'Street address', exact: true }).fill('101 Test Street');
@@ -563,7 +559,7 @@ test('local change checks opt in, seed baseline and show newer observed price ch
   Object.assign(listings[0], { priceIncludesFees: true });
   await page.reload();
   await page.getByRole('button', { name: 'Price changes found by a local check', exact: true }).click();
-  await page.getByRole('button', { name: 'Check this page and save local baseline', exact: true }).click();
+  await page.getByRole('button', { name: 'Check for changes', exact: true }).click();
   await expect(page.getByText(/Baseline saved. Check again after a later source observation/)).toBeVisible();
   Object.assign(listings[0], {
     rent: 1700,
@@ -578,7 +574,7 @@ test('local change checks opt in, seed baseline and show newer observed price ch
   });
   await page.reload();
   await page.getByRole('button', { name: 'Price changes found by a local check', exact: true }).click();
-  await page.getByRole('button', { name: 'Check this page and save local baseline', exact: true }).click();
+  await page.getByRole('button', { name: 'Check for changes', exact: true }).click();
   await expect(page.getByText('Observed price decrease: $1,800 → $1,700/mo', { exact: true })).toBeVisible();
   expect(userRefreshes(requests)).toHaveLength(0);
 });
@@ -737,6 +733,7 @@ test('iPhone 17 portrait keeps primary controls inside the screen', async ({ pag
   expect(box).not.toBeNull();
   expect(box!.x).toBeGreaterThanOrEqual(0);
   expect(box!.x + box!.width).toBeLessThanOrEqual(402);
+  await page.getByRole('tab', { name: /^Saved/ }).click();
   await page.getByRole('button', { name: '+ Add listing', exact: true }).click();
   await checkLayout('add-listing');
   await page.getByRole('tab', { name: 'More', exact: true }).click();
@@ -901,7 +898,7 @@ test('alerts: save one for the current search, send a test, and remove it', asyn
   await page.getByRole('button', { name: 'Alerts', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Alerts', exact: true })).toBeVisible();
   await expect(page.getByText('Email: to the address you sign in with.', { exact: true })).toBeVisible();
-  await expect(page.getByText('Phone and browser notifications are not set up on the server.', { exact: true })).toBeVisible();
+  await expect(page.getByText('Phone and browser notifications aren’t set up yet.', { exact: true })).toBeVisible();
   const name = page.getByRole('textbox', { name: 'Alert name', exact: true });
   await expect(name).toHaveValue('All regions · Any beds · Any price');
   await name.fill('Everything');
@@ -911,6 +908,6 @@ test('alerts: save one for the current search, send a test, and remove it', asyn
   await page.getByRole('button', { name: 'Send a test alert', exact: true }).click();
   await expect(page.getByText('Test alert sent.', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Remove Everything', exact: true }).click();
-  await expect(page.getByText('No alerts yet.', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Remove Everything', exact: true })).toHaveCount(0);
   expect(posts.map(({ action }) => action)).toEqual(['add-rule', 'test', 'delete-rule']);
 });

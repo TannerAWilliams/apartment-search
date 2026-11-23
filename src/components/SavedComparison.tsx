@@ -4,7 +4,7 @@ import { Pressable, ScrollView, Text, View } from 'react-native';
 import { listingKey } from '../listings.ts';
 import { comparisonOptions, comparisonRows, comparisonTitle, MAX_COMPARISON, toggleComparison } from '../comparison.ts';
 import { Button, Field } from './ui.tsx';
-import { styles } from '../styles.ts';
+import { colors, styles } from '../styles.ts';
 /** When `open` is given, the parent shows the toggle (a tool chip) and this renders only the panel. */
 export function SavedComparison({ listings, open: shown }: { listings: ListingData[]; open?: boolean }) {
   const [ownOpen, setOpen] = useState(false);
@@ -29,15 +29,19 @@ export function SavedComparison({ listings, open: shown }: { listings: ListingDa
         </Button>
       )}
       {open && (
-        <>
+        <View style={styles.toolPanel}>
           <Text accessibilityRole="header" style={styles.panelTitle}>
             Compare saved apartments
           </Text>
-          <Text style={styles.smallMuted}>
-            Choose up to four. Selection is temporary on this device. These are saved observations, not fresh availability checks.
-            Advertised prices with different fee bases are not comparable total costs.
-          </Text>
-          <Field label="Find a saved apartment to compare" value={query} onChangeText={setQuery} placeholder="Address, unit, city or ZIP" />
+          <Text style={styles.smallMuted}>Pick up to four to see them side by side.</Text>
+          {available.length > 6 && (
+            <Field
+              label="Find a saved apartment to compare"
+              value={query}
+              onChangeText={setQuery}
+              placeholder="Address, unit, city or ZIP"
+            />
+          )}
           <ScrollView style={{ maxHeight: 200 }} nestedScrollEnabled accessibilityLabel="Saved apartment comparison choices">
             {choices.slice(0, 50).map((listing) => {
               const key = listingKey(listing),
@@ -53,12 +57,35 @@ export function SavedComparison({ listings, open: shown }: { listings: ListingDa
                   aria-disabled={disabled}
                   disabled={disabled}
                   onPress={() => setKeys((current) => toggleComparison(current, key, available))}
-                  style={{ padding: 12, minHeight: 44, opacity: disabled ? 0.5 : 1 }}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 10,
+                    paddingHorizontal: 12,
+                    minHeight: 44,
+                    marginBottom: 6,
+                    borderWidth: 1,
+                    borderRadius: 10,
+                    borderColor: checked ? colors.green : colors.border,
+                    backgroundColor: checked ? colors.light : 'transparent',
+                    opacity: disabled ? 0.5 : 1,
+                  }}
                 >
-                  <Text>
-                    {checked ? '☑ ' : '☐ '}
-                    {comparisonTitle(listing)}
-                  </Text>
+                  <View
+                    style={{
+                      width: 18,
+                      height: 18,
+                      borderRadius: 4,
+                      borderWidth: 2,
+                      borderColor: checked ? colors.green : '#a3afbf',
+                      backgroundColor: checked ? colors.green : 'transparent',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    {checked && <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700', lineHeight: 14 }}>✓</Text>}
+                  </View>
+                  <Text style={{ color: colors.ink, flexShrink: 1 }}>{comparisonTitle(listing)}</Text>
                 </Pressable>
               );
             })}
@@ -100,7 +127,7 @@ export function SavedComparison({ listings, open: shown }: { listings: ListingDa
               ))}
             </ScrollView>
           )}
-        </>
+        </View>
       )}
     </View>
   );

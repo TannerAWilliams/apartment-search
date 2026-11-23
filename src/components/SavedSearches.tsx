@@ -78,15 +78,11 @@ export function SavedSearches({
         </Button>
       )}
       {open && (
-        <>
+        <View style={styles.toolPanel}>
           <Text accessibilityRole="header" style={styles.fieldLabel}>
             Saved searches
           </Text>
-          <Text style={styles.smallMuted}>
-            Save the applied filters on this device (up to 10). Checks scan every matching apartment in cached inventory, not just this
-            page. They do not refresh providers, use routing, monitor in the background or send notifications. Cached sources may be partial
-            or stale; this is not all apartments on the market. Use one tab: concurrent tabs can overwrite local presets.
-          </Text>
+          <Text style={styles.smallMuted}>Save up to 10 searches on this device. Check one to see what’s new since you last looked.</Text>
           <Field label="Saved search name" value={name} onChangeText={setName} maxLength={60} placeholder="e.g. Brooklyn under $3,000" />
           <Button
             disabled={!ready || busy || disabled}
@@ -180,7 +176,7 @@ export function SavedSearches({
             </Text>
           ))}
           {changes.length > 20 && <Text style={styles.smallMuted}>Showing the first 20 observed changes.</Text>}
-        </>
+        </View>
       )}
     </View>
   );

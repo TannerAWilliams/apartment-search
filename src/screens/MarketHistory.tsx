@@ -225,17 +225,9 @@ export function MarketHistory({ load }: { load?: LoadHistory }) {
           Market history
         </Text>
         <Text style={styles.bodyText}>
-          Every monthly figure in StreetEasy’s Data Dashboard export: rents, inventory and price cuts for the city, its boroughs and{' '}
-          {areas.filter(({ type }) => type === 'neighborhood').length || 176} neighborhoods, plus the sales market. Market-wide figures, not
-          individual listings.
+          Citywide, borough and neighborhood rents, inventory and price cuts. Market-wide figures, not individual listings.
         </Text>
-        <Text style={styles.smallMuted}>
-          Through {monthLabel(latestMonth)}.{' '}
-          {data?.refreshedAt
-            ? `Downloaded from StreetEasy ${new Date(data.refreshedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}.`
-            : `From the copy downloaded ${data?.provenance.downloadedAt ?? '2026-11-17'}.`}{' '}
-          StreetEasy publishes a new month early each month; Sources & sync → Resync all downloads it. Blank months are unknown, never zero.
-        </Text>
+        <Text style={styles.smallMuted}>Through {monthLabel(latestMonth)}. Blank months are unknown, never zero.</Text>
         <Link label="StreetEasy Data Dashboard (source and methodology)" url={DASHBOARD_URL} />
       </View>
       {catalog.error && (

@@ -6,7 +6,8 @@ import { bedroomLabel, formatRent } from '../search.ts';
 import { styles } from '../styles.ts';
 import { toggleProps } from './ui.tsx';
 
-const SERIES_COLORS = ['#206248', '#34638c', '#94512d'];
+// The validated chart palette (src/chart-colors.ts): blue, orange, aqua.
+const SERIES_COLORS = ['#2a78d6', '#eb6834', '#1baf7a'];
 const CHART_HEIGHT = 178;
 const AXIS_WIDTH = 65;
 const PADDING = 10;

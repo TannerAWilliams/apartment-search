@@ -34,13 +34,13 @@ test('tour planner adds, persists, edits, checks and removes a personal appointm
   await page.getByRole('tab', { name: /Saved/ }).click();
   await page.getByRole('button', { name: 'Plan tours of saved apartments', exact: true }).click();
   await page.getByRole('radio').filter({ hasText: '123 Test Street' }).click();
-  await page.getByLabel('Tour date (YYYY-MM-DD)', { exact: true }).fill('2027-01-10');
-  await page.getByLabel('Start time (HH:mm, 24-hour device time)', { exact: true }).fill('14:30');
+  await page.getByLabel('Date', { exact: true }).fill('2027-01-10');
+  await page.getByLabel('Start time (24-hour)', { exact: true }).fill('14:30');
   await page.getByRole('button', { name: 'Add planned tour', exact: true }).click();
   await expect(page.getByText('1 / 30 tours.', { exact: false })).toBeVisible();
   await page.getByRole('checkbox', { name: /Water pressure/ }).check();
   await page.getByRole('button', { name: 'Edit tour', exact: true }).click();
-  await page.getByLabel('Appointment notes (included in calendar export)', { exact: true }).fill('Ask about laundry');
+  await page.getByLabel('Notes (added to the calendar entry)', { exact: true }).fill('Ask about laundry');
   await page.getByRole('button', { name: 'Save appointment changes', exact: true }).click();
   await page.reload();
   await page.getByRole('tab', { name: /Saved/ }).click();

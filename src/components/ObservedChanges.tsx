@@ -46,17 +46,16 @@ export function ObservedChanges({ listings, open: shown }: { listings: ListingDa
         </Button>
       )}
       {open && (
-        <>
+        <View style={styles.toolPanel}>
           <Text accessibilityRole="header" style={styles.fieldLabel}>
-            Local observed changes
+            What changed since your last check
           </Text>
           <Text style={styles.smallMuted}>
-            Opt in by checking this result page. This stores a comparison baseline only on this device. It does not refresh sources, monitor
-            in the background, or send notifications. Newly encountered means new to your checks, not newly listed or available. Missing
-            results never mean delisted.
+            Check now to remember these results; next time you check, you’ll see apartments you hadn’t seen and price changes since. Kept on
+            this device only.
           </Text>
           <Button disabled={busy} onPress={check}>
-            {busy ? 'Checking local observations…' : 'Check this page and save local baseline'}
+            {busy ? 'Checking…' : 'Check for changes'}
           </Button>
           {!!message && (
             <Text accessibilityLiveRegion="polite" style={styles.smallMuted}>
@@ -80,7 +79,7 @@ export function ObservedChanges({ listings, open: shown }: { listings: ListingDa
             </View>
           ))}
           {changes.length > 20 && <Text style={styles.smallMuted}>Showing the first 20 changes from this check.</Text>}
-        </>
+        </View>
       )}
     </View>
   );
