@@ -5,6 +5,7 @@ import { normalizeListing } from '../src/listings.ts';
 import { DIRECT_RENTAL_SOURCES } from './direct-rentals.ts';
 import { HDC_RERENTALS } from './hdc-rerentals.ts';
 import { JERSEY_AFFORDABLE } from './jersey-affordable.ts';
+import { WESTCHESTER_HOMESEEKER } from './westchester-homeseeker.ts';
 import { STREETEASY_LIVE, streetEasyListingUrl } from './streeteasy.ts';
 import { RESO_FEED_FORMAT, resoRentalRow } from './reso-rentals.ts';
 
@@ -18,6 +19,7 @@ const RESERVED_FEEDS = new Set([
   'openigloo',
   HDC_RERENTALS.id,
   JERSEY_AFFORDABLE.id,
+  WESTCHESTER_HOMESEEKER.id,
   ...DIRECT_RENTAL_SOURCES.map(({ id }) => id),
 ]);
 const MAX_PAGES = 40;

@@ -1,4 +1,5 @@
 import type { JerseySnapshot } from './jersey-affordable.ts';
+import type { HomeSeekerSnapshot } from './westchester-homeseeker.ts';
 /** Shared storage contract, including metadata-only object heads. */
 export type BucketHead = { etag: string; customMetadata: Record<string, string> };
 export type BucketObject = BucketHead & { arrayBuffer(): Promise<ArrayBuffer>; text(): Promise<string>; json<T = unknown>(): Promise<T> };
@@ -75,4 +76,8 @@ type HdcOpportunity = {
   accessibility: string;
 };
 export type HdcSnapshot = { results: HdcOpportunity[]; total: number; limited: boolean; checkedAt?: string };
-export type HousingResponse = HousingSnapshot & { rerentals: HdcSnapshot | null; jersey: JerseySnapshot | null };
+export type HousingResponse = HousingSnapshot & {
+  rerentals: HdcSnapshot | null;
+  jersey: JerseySnapshot | null;
+  westchester?: HomeSeekerSnapshot | null;
+};

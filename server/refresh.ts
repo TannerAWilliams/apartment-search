@@ -19,6 +19,7 @@ import {
 import { housingDate, loadHousingConnect } from './housing.ts';
 import { HDC_RERENTALS, loadHdcRerentals } from './hdc-rerentals.ts';
 import { JERSEY_AFFORDABLE, refreshJerseyAffordable } from './jersey-affordable.ts';
+import { refreshHomeSeeker, WESTCHESTER_HOMESEEKER } from './westchester-homeseeker.ts';
 import { DIRECT_RENTAL_SOURCES } from './direct-rentals.ts';
 import { loadOpenigloo, OPENIGLOO_COVERAGE, OPENIGLOO_MAX_LISTINGS, OPENIGLOO_MIN_COVERAGE, OPENIGLOO_TRANSPORT } from './openigloo.ts';
 import { requestForRefresh, retrySchedule } from './source-requests.ts';
@@ -768,6 +769,16 @@ const SOURCES: readonly RefreshSource[] = [
       resyncable: true,
     }),
     check: (run) => refreshJerseyAffordable(run.bucket, run.fetch, run.now, run.at),
+  },
+  {
+    ...WESTCHESTER_HOMESEEKER,
+    kind: 'reference',
+    catalog: () => ({
+      ...WESTCHESTER_HOMESEEKER,
+      coverage: 'Westchester County affordable rental lotteries, waitlists and first-come rentals, not market inventory',
+      resyncable: true,
+    }),
+    check: (run) => refreshHomeSeeker(run.bucket, run.fetch, run.now, run.at),
   },
   {
     id: 'openigloo',

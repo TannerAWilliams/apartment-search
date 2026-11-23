@@ -11,6 +11,7 @@ const HOUSING_DATA = 'https://data.cityofnewyork.us/d/vy5i-a666';
 const HDC_PAGE = 'https://www.nychdc.com/find-re-rentals';
 const JERSEY_PAGE = 'https://www.jerseycitynj.gov/CityHall/HousingAndDevelopment/affordable_housing/recent_affordable_housing_postings';
 const JERSEY_APPLICATION = 'https://affordablehousingjc.com/';
+const HOMESEEKER = 'https://homeseeker.westchestergov.com/Listings';
 const DATE = new Intl.DateTimeFormat('en-US', {
   timeZone: 'UTC',
   month: 'short',
@@ -50,6 +51,8 @@ export function AffordableHousing({
   const rerentals = data?.rerentals?.results.filter(inArea) ?? [];
   const opportunities = data?.opportunities.filter(inArea) ?? [];
   const showJersey = region === 'nj' || region === 'all';
+  const showWestchester = region === 'westchester' || region === 'metroNorth' || region === 'all';
+  const now = Date.now();
 
   return (
     <View style={styles.marketplacePanel}>
@@ -57,6 +60,46 @@ export function AffordableHousing({
         Affordable housing
       </Text>
       <Text style={styles.bodyText}>Check lotteries, waitlists, and voucher listings separately from market-rate apartments.</Text>
+      {showWestchester && (
+        <View style={styles.chartCard}>
+          <Text accessibilityRole="header" style={styles.listingTitle}>
+            Westchester County affordable housing
+          </Text>
+          <Text style={styles.smallMuted}>
+            Lotteries, waitlists and first-come rentals from the county's HomeSeeker. Check eligibility, rents and units on each listing.
+          </Text>
+          {data?.westchester ? (
+            <>
+              <Text style={styles.smallMuted}>
+                {data.westchester.opportunities.length} opportunities · Checked {showDate(data.westchester.checkedAt)}
+              </Text>
+              {data.westchester.opportunities.map((opportunity) => {
+                const closed = opportunity.applicationEnd !== null && Date.parse(opportunity.applicationEnd) < now;
+                return (
+                  <View key={opportunity.id} style={styles.listing}>
+                    <Text accessibilityRole="header" style={styles.listingTitle}>
+                      {opportunity.name}
+                    </Text>
+                    <Text style={styles.smallMuted}>{opportunity.location}</Text>
+                    <Text style={styles.bodyText}>
+                      {closed
+                        ? 'Applications closed ' + showDate(opportunity.applicationEnd ?? undefined)
+                        : opportunity.applicationEnd
+                          ? 'Apply by ' + showDate(opportunity.applicationEnd)
+                          : 'No application deadline listed'}
+                      {opportunity.lottery ? ' · Lottery ' + showDate(opportunity.lottery) : ''}
+                    </Text>
+                    <Link label="View listing and apply" url={opportunity.url} onError={onError} />
+                  </View>
+                );
+              })}
+            </>
+          ) : (
+            <Text style={styles.smallMuted}>No Westchester listings are saved yet, which does not mean there are none.</Text>
+          )}
+          <Link label="Westchester HomeSeeker" url={HOMESEEKER} onError={onError} />
+        </View>
+      )}
       {showJersey && (
         <View style={styles.chartCard}>
           <Text accessibilityRole="header" style={styles.listingTitle}>

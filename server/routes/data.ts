@@ -7,6 +7,7 @@ import { retrieveBuildingRecords } from '../building-records.ts';
 import { dashboardSnapshot } from '../dashboard-snapshot.ts';
 import { log } from '../log.ts';
 import { storedJerseyAffordable } from '../jersey-affordable.ts';
+import { storedHomeSeeker } from '../westchester-homeseeker.ts';
 import { storedHdcRerentals, storedHousing, storedMarket, storedRentHistory } from '../refresh.ts';
 import { apiBodies, factory, fail, refuse } from './context.ts';
 import { BuildingAddressSchema, DashboardQuerySchema, MarketQuerySchema } from './inputs.ts';
@@ -38,12 +39,13 @@ export const dataRoutes = factory
   .get('/housing', async (c) => {
     const env = c.var.appEnv;
     try {
-      const [housing, rerentals, jersey] = await Promise.all([
+      const [housing, rerentals, jersey, westchester] = await Promise.all([
         storedHousing(env.BUCKET),
         storedHdcRerentals(env.BUCKET).catch(() => null),
         storedJerseyAffordable(env.BUCKET).catch(() => null),
+        storedHomeSeeker(env.BUCKET).catch(() => null),
       ]);
-      return c.json({ ...housing, rerentals, jersey }, 200);
+      return c.json({ ...housing, rerentals, jersey, westchester }, 200);
     } catch (cause) {
       log.error('storage_read_failed', cause, { path: c.req.path });
       return fail(c, 503, 'The Housing Connect data could not be read.');
