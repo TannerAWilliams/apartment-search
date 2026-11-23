@@ -8,8 +8,8 @@
       "enabled": false
     },
     {
-      "description": "Bun is pinned in .bun-version, which CI and the test setup read, and Wrangler runs on Node 26; change major versions of these deliberately.",
-      "matchPackageNames": ["@types/bun", "@types/node", "node"],
+      "description": "Bun is pinned in .bun-version, which CI and the test setup read, and Node 26 runs only Wrangler's local server; change major versions of these deliberately.",
+      "matchPackageNames": ["@types/bun", "node"],
       "matchUpdateTypes": ["major"],
       "enabled": false
     }

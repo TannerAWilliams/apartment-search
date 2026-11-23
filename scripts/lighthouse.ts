@@ -3,8 +3,7 @@
 //   bun run perf [url]   # defaults to http://127.0.0.1:8787/
 // Lighthouse emulates a mid-range phone on a slow 4G connection. Real visits are measured separately
 // (src/web-vitals-report.ts → Workers Logs, event "web_vital"). Fails below the budgets below.
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { $ } from 'bun';
 
 const LIGHTHOUSE = 'lighthouse@12.8.2';
 const BUDGETS = { performance: 85, accessibility: 100, 'best-practices': 90 };
@@ -24,14 +23,15 @@ export function summarize(report: Report) {
 }
 
 if (import.meta.main) {
-  const url = process.argv[2] ?? 'http://127.0.0.1:8787/';
-  const chrome = process.env.CHROME_PATH ?? process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ?? (await import('playwright')).chromium.executablePath();
-  const output = join(tmpdir(), `lighthouse-${process.pid}.json`);
+  const url = Bun.argv[2] ?? 'http://127.0.0.1:8787/';
+  const chrome = Bun.env.CHROME_PATH ?? Bun.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ?? (await import('playwright')).chromium.executablePath();
+  const output = `${Bun.env.TMPDIR ?? '/tmp'}/lighthouse-${crypto.randomUUID()}.json`;
   // Chromium's sandbox cannot start as root (for example in a container).
-  const flags = ['--headless=new', ...(process.getuid?.() === 0 ? ['--no-sandbox'] : [])].join(' ');
+  const root = (await $`id -u`.text()).trim() === '0';
+  const flags = ['--headless=new', ...(root ? ['--no-sandbox'] : [])].join(' ');
   const run = Bun.spawnSync(['bunx', '--bun', LIGHTHOUSE, url, '--quiet', `--chrome-flags=${flags}`,
     '--only-categories=performance,accessibility,best-practices', '--output=json', `--output-path=${output}`],
-  { stdio: ['inherit', 'inherit', 'inherit'], env: { ...process.env, CHROME_PATH: chrome } });
+  { stdio: ['inherit', 'inherit', 'inherit'], env: { ...Bun.env, CHROME_PATH: chrome } });
   if (run.exitCode !== 0) throw new Error('Lighthouse did not finish. Is the app running at ' + url + '?');
   const report = Bun.file(output);
   const { scores, metrics, failing, overBudget } = summarize(await report.json() as Report);

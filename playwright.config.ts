@@ -2,10 +2,10 @@ import { defineConfig, devices } from 'playwright/test';
 
 // Deliberately no production baseURL override: this suite must never resync providers.
 export default defineConfig({
-  testDir: './e2e', fullyParallel: true, forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 1 : 0, workers: 2,
+  testDir: './e2e', fullyParallel: true, forbidOnly: !!Bun.env.CI,
+  retries: Bun.env.CI ? 1 : 0, workers: 2,
   reporter: [['list'], ['html', { open: 'never' }]],
-  use: { baseURL: 'http://127.0.0.1:4173', launchOptions: { chromiumSandbox: true, ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE } : {}) }, trace: 'retain-on-failure', screenshot: 'only-on-failure', serviceWorkers: 'block' },
+  use: { baseURL: 'http://127.0.0.1:4173', launchOptions: { chromiumSandbox: true, ...(Bun.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? { executablePath: Bun.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE } : {}) }, trace: 'retain-on-failure', screenshot: 'only-on-failure', serviceWorkers: 'block' },
   projects: [
     { name: 'desktop-chromium', use: { ...devices['Desktop Chrome'] } },
     { name: 'mobile-chromium', use: { ...devices['Pixel 7'] } },

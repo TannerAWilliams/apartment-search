@@ -5,8 +5,7 @@
   "type": "module",
   "main": "index.ts",
   "engines": {
-    "bun": "1.4.5",
-    "node": ">=22.12.0"
+    "bun": "1.4.5"
   },
   "scripts": {
     "start": "bun ./node_modules/expo/bin/cli start",
@@ -14,10 +13,10 @@
     "android": "bun ./node_modules/expo/bin/cli start --android",
     "web": "bun ./node_modules/expo/bin/cli start --web",
     "build:web": "bun ./node_modules/expo/bin/cli export --platform web --output-dir web-build && bun scripts/build-service-worker.ts",
-    "build": "bun run build:web && node ./node_modules/wrangler/bin/wrangler.js deploy -c deploy/cloudflare/wrangler.jsonc --dry-run",
+    "build": "bun run build:web && bun ./node_modules/wrangler/bin/wrangler.js deploy -c deploy/cloudflare/wrangler.jsonc --dry-run",
     "dev": "bun run build:web && node ./node_modules/wrangler/bin/wrangler.js dev -c deploy/cloudflare/wrangler.jsonc --var PUBLIC_APP:true",
-    "db:local": "node ./node_modules/wrangler/bin/wrangler.js d1 execute apartment-search-observations --local -c deploy/cloudflare/wrangler.jsonc --file deploy/cloudflare/schema.sql",
-    "deploy": "bun run build:web && node ./node_modules/wrangler/bin/wrangler.js deploy -c deploy/cloudflare/wrangler.jsonc",
+    "db:local": "bun ./node_modules/wrangler/bin/wrangler.js d1 execute apartment-search-observations --local -c deploy/cloudflare/wrangler.jsonc --file deploy/cloudflare/schema.sql",
+    "deploy": "bun run build:web && bun ./node_modules/wrangler/bin/wrangler.js deploy -c deploy/cloudflare/wrangler.jsonc",
     "test": "bun test",
     "test:coverage": "bun test --coverage && bun scripts/report-coverage.ts",
     "test:workerd": "bun scripts/workerd-smoke.ts",
@@ -48,7 +47,6 @@
     "@types/bun": "1.4.5",
     "@types/leaflet": "^1.9.22",
     "@types/leaflet.markercluster": "^1.5.6",
-    "@types/node": "^22.20.5",
     "@types/react": "^19.3.0",
     "playwright": "1.65.1",
     "typescript": "7.0.2",

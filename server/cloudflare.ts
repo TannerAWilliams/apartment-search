@@ -91,7 +91,7 @@ app.use(async (c, next) => { await next(); c.header('Strict-Transport-Security',
 // assets included, needs one of them. PUBLIC_APP opens the app for local development.
 app.use(async (c, next) => {
   const env = c.env;
-  const bearer = Boolean(env.APP_ACCESS_TOKEN && secretsEqual(c.req.header('Authorization') ?? '', 'Bearer ' + env.APP_ACCESS_TOKEN));
+  const bearer = Boolean(env.APP_ACCESS_TOKEN && await secretsEqual(c.req.header('Authorization') ?? '', 'Bearer ' + env.APP_ACCESS_TOKEN));
   const access = bearer ? null : accessSettings(env);
   const accessEmail = access ? await verifyAccessToken(c.req.header('Cf-Access-Jwt-Assertion') ?? null, access)
     .catch((cause) => { log.error('access_check_failed', cause); return null; }) : null;

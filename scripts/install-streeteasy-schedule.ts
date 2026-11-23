@@ -7,14 +7,15 @@
  * change the time from 6:17.
  */
 import { $ } from 'bun';
-import { chmod, mkdir, rm, writeFile } from 'node:fs/promises';
-import { homedir, userInfo } from 'node:os';
-import { dirname, join } from 'node:path';
 import { configDir, KEYCHAIN_SERVICE } from './streeteasy-daily.ts';
 
 const LABEL = 'com.apartment-search.streeteasy';
-const REPO = join(import.meta.dir, '..');
-const PLIST = join(homedir(), 'Library/LaunchAgents', LABEL + '.plist');
+const REPO = new URL('../', import.meta.url).pathname.replace(/\/$/, '');
+const HOME = Bun.env.HOME ?? '';
+const LAUNCH_AGENTS = `${HOME}/Library/LaunchAgents`;
+const PLIST = `${LAUNCH_AGENTS}/${LABEL}.plist`;
+/** This user's numeric ID, for launchd's per-user domain. */
+const uid = async () => (await $`id -u`.text()).trim();
 /** Matches this job's cron line, including one from the older shell-script runner. */
 const SYNC_JOB = /streeteasy-daily\.(?:ts|sh)/;
 
@@ -51,7 +52,7 @@ export function launchdPlist({ repo, bun, hour, minute, log }: Job) {
 <dict>
   <key>Label</key><string>${LABEL}</string>
   <key>ProgramArguments</key>
-  <array><string>${xml(bun)}</string><string>${xml(join(repo, 'scripts/streeteasy-daily.ts'))}</string></array>
+  <array><string>${xml(bun)}</string><string>${xml(`${repo}/scripts/streeteasy-daily.ts`)}</string></array>
   <key>WorkingDirectory</key><string>${xml(repo)}</string>
   <key>StartCalendarInterval</key>
   <dict><key>Hour</key><integer>${hour}</integer><key>Minute</key><integer>${minute}</integer></dict>
@@ -70,7 +71,7 @@ export const withoutSyncJob = (crontab: string) => crontab.split('\n').filter((l
 
 /** Reads a line without echoing it, so the token never shows on screen. */
 async function readSecret(prompt: string) {
-  process.stdout.write(prompt);
+  await Bun.write(Bun.stdout, prompt);
   const stdin = process.stdin;
   if (!stdin.isTTY) {
     for await (const line of console) return line.trim();
@@ -90,19 +91,19 @@ async function readSecret(prompt: string) {
   } finally {
     stdin.setRawMode(false);
     stdin.pause();
-    process.stdout.write('\n');
+    await Bun.write(Bun.stdout, '\n');
   }
 }
 
 async function uninstall(dir: string) {
   if (process.platform === 'darwin') {
-    await $`launchctl bootout gui/${process.getuid?.()} ${PLIST}`.quiet().nothrow();
-    await rm(PLIST, { force: true });
+    await $`launchctl bootout gui/${await uid()} ${PLIST}`.quiet().nothrow();
+    await $`rm -f ${PLIST}`;
     await $`security delete-generic-password -s ${KEYCHAIN_SERVICE}`.quiet().nothrow();
   } else {
     const current = await $`crontab -l`.quiet().nothrow().text();
     await $`crontab - < ${new Response(withoutSyncJob(current).map((line) => line + '\n').join(''))}`;
-    await rm(join(dir, 'token'), { force: true });
+    await $`rm -f ${dir}/token`;
   }
   console.log('Removed the daily StreetEasy sync.');
 }
@@ -110,22 +111,22 @@ async function uninstall(dir: string) {
 async function install(origin: string, dir: string) {
   if (!origin) throw new Error('Pass --origin=https://<your apartment-search Worker URL>');
   if (!origin.startsWith('https://')) throw new Error('The origin must start with https://');
-  const bun = process.execPath;
-  const { hour, minute, label } = syncTime(process.env);
+  const bun = Bun.argv[0];
+  const { hour, minute, label } = syncTime(Bun.env);
   await $`${bun} install --frozen-lockfile`.cwd(REPO).quiet();
-  await mkdir(dir, { recursive: true, mode: 0o700 });
-  await chmod(dir, 0o700);
-  await Bun.write(join(dir, 'origin'), origin);
+  await $`mkdir -p ${dir}`;
+  await $`chmod 700 ${dir}`;
+  await Bun.write(`${dir}/origin`, origin);
 
   console.log('Paste the app access token (APP_ACCESS_TOKEN on the Worker) when asked.');
   if (process.platform === 'darwin') {
     // -w last makes security prompt, so the token never appears in a process list.
-    const prompt = Bun.spawn(['security', 'add-generic-password', '-U', '-a', userInfo().username, '-s', KEYCHAIN_SERVICE, '-w'], { stdio: ['inherit', 'inherit', 'inherit'] });
+    const prompt = Bun.spawn(['security', 'add-generic-password', '-U', '-a', (await $`id -un`.text()).trim(), '-s', KEYCHAIN_SERVICE, '-w'], { stdio: ['inherit', 'inherit', 'inherit'] });
     if (await prompt.exited !== 0) throw new Error('The token was not saved to the Keychain.');
-    const log = join(homedir(), 'Library/Logs/apartment-search-streeteasy.log');
-    await mkdir(dirname(PLIST), { recursive: true });
+    const log = `${HOME}/Library/Logs/apartment-search-streeteasy.log`;
+    await $`mkdir -p ${LAUNCH_AGENTS}`;
     await Bun.write(PLIST, launchdPlist({ repo: REPO, bun, hour, minute, log }));
-    const domain = `gui/${process.getuid?.()}`;
+    const domain = `gui/${await uid()}`;
     await $`launchctl bootout ${domain} ${PLIST}`.quiet().nothrow();
     await $`launchctl bootstrap ${domain} ${PLIST}`;
     console.log(`Installed. StreetEasy syncs daily at ${label}. Log: ${log}`);
@@ -133,10 +134,12 @@ async function install(origin: string, dir: string) {
   } else {
     const token = await readSecret('Token: ');
     if (!token) throw new Error('No token entered.');
-    const file = join(dir, 'token');
-    await writeFile(file, token, { mode: 0o600 });
-    await chmod(file, 0o600);
-    const log = join(dir, 'streeteasy.log');
+    const file = `${dir}/token`;
+    // The file is private before the token is written to it.
+    await $`touch ${file}`;
+    await $`chmod 600 ${file}`;
+    await Bun.write(file, token);
+    const log = `${dir}/streeteasy.log`;
     const current = await $`crontab -l`.quiet().nothrow().text();
     const lines = [...withoutSyncJob(current), cronLine({ repo: REPO, bun, hour, minute, log })];
     await $`crontab - < ${new Response(lines.map((line) => line + '\n').join(''))}`;
@@ -147,7 +150,7 @@ async function install(origin: string, dir: string) {
 
 if (import.meta.main) {
   try {
-    const { origin, uninstall: remove } = parseArgs(process.argv.slice(2));
+    const { origin, uninstall: remove } = parseArgs(Bun.argv.slice(2));
     if (remove) await uninstall(configDir());
     else await install(origin, configDir());
   } catch (error) {

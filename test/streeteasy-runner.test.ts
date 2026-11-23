@@ -66,14 +66,13 @@ test('runner origin must be an HTTPS Worker URL', async () => {
 
 test('the command line reads the token from stdin, honors --origin and --manual, and prints a summary', async () => {
   const { main } = await import('../scripts/sync-streeteasy.ts');
-  const { Readable } = await import('node:stream');
   const calls: { token: string; origin: string; manual?: boolean }[] = [];
   const printed: string[] = [];
-  await main({ argv: ['bun', 'sync', '--origin=https://worker.example.test/', '--manual'], env: {}, input: Readable.from(['secret-token\n']),
+  await main({ argv: ['bun', 'sync', '--origin=https://worker.example.test/', '--manual'], env: {}, input: new Blob(['secret-token\n']).stream(),
     sync: (async (options: { token: string; origin: string; manual?: boolean }) => { calls.push(options); return { state: 'updated' }; }) as never, log: (line) => printed.push(line) });
   expect(calls).toStrictEqual([{ token: 'secret-token', origin: 'https://worker.example.test', manual: true }]);
   expect(sentJson<{ state: string }>(printed[0]).state).toBe('updated');
-  await expect(main({ argv: ['bun', 'sync'], env: { APARTMENT_SEARCH_ORIGIN: 'https://worker.example.test' }, input: Readable.from([]), sync: (async () => ({})) as never, log: () => {} })).rejects.toThrow(/token on stdin/);
+  await expect(main({ argv: ['bun', 'sync'], env: { APARTMENT_SEARCH_ORIGIN: 'https://worker.example.test' }, input: new Blob([]).stream(), sync: (async () => ({})) as never, log: () => {} })).rejects.toThrow(/token on stdin/);
 });
 
 test('a sync retries once when StreetEasy inventory moves mid-download', async () => {

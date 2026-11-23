@@ -1,7 +1,7 @@
 {
   // The apartment-search Worker: the Expo web app as static assets, the API, the D1 database and the
-  // sync Workflow. Wrangler bundles the TypeScript entry. The first deploy from this file moves
-  // apartments.5thof6.com off the old gate Worker; see "One-time move off the gate Worker" in the README.
+  // sync Workflow. Wrangler bundles the TypeScript entry; the Worker uses only web-standard APIs, so it
+  // needs no Node.js compatibility.
   //   bun run deploy    builds the web app and deploys
   //   bun run dev       runs it locally with local D1 and Workflows (`bun run db:local` creates the tables)
   "$schema": "../../node_modules/wrangler/config-schema.json",
@@ -9,7 +9,6 @@
   "account_id": "c021a5b3eac3e4ea7b4afba9fd926223",
   "main": "../../server/cloudflare.ts",
   "compatibility_date": "2026-11-18",
-  "compatibility_flags": ["nodejs_compat"],
   // The app's address. Cloudflare Access (application "apartments.5thof6.com" in Zero Trust) signs people
   // in there, and the Worker checks the token Access adds (server/access.ts). workers.dev stays on for
   // scripts that send the app access token, such as the StreetEasy home sync.

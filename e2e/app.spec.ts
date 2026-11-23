@@ -310,14 +310,18 @@ test('reimporting the same apartment does not duplicate saved inventory', async 
   await expect(page.getByText('100 Test Street, Unit 2A', { exact: true })).toHaveCount(0);
 });
 
-test('oversized CSV file rejects safely and a valid file can be selected next', async ({ page }) => {
+test('oversized CSV file rejects safely and a valid file can be selected next', async ({ page }, testInfo) => {
   await mockApp(page);
   await openImport(page);
   const upload = page.getByLabel('Upload listing CSV', { exact: true });
-  await upload.setInputFiles({ name: 'too-large.csv', mimeType: 'text/csv', buffer: Buffer.alloc(256001, 'a') });
+  const tooLarge = testInfo.outputPath('too-large.csv');
+  const valid = testInfo.outputPath('valid.csv');
+  await Bun.write(tooLarge, 'a'.repeat(256001));
+  await Bun.write(valid, `${importHeader}\n${importRow}`);
+  await upload.setInputFiles(tooLarge);
   await expect(page.getByRole('alert').filter({ hasText: 'under 256 KB' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Save listings', exact: true })).toBeDisabled();
-  await upload.setInputFiles({ name: 'valid.csv', mimeType: 'text/csv', buffer: Buffer.from(`${importHeader}\n${importRow}`) });
+  await upload.setInputFiles(valid);
   await expect(page.getByRole('textbox', { name: 'Listing CSV', exact: true })).toHaveValue(`${importHeader}\n${importRow}`);
   await page.getByRole('button', { name: 'Save listings', exact: true }).click();
   await page.getByRole('tab', { name: 'Saved (1)', exact: true }).click();
