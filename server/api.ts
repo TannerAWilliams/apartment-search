@@ -3,7 +3,7 @@ import type { ListingData, SourceStatus as SearchSource, SearchResult } from '..
 import type { SourceStatus } from './refresh.ts';
 import { CITYREALTY_ID } from './cityrealty.ts';
 import { isCompleteCoverage, isCompleteSnapshot, WORKFLOW_SOURCE_IDS } from './source-registry.ts';
-import { dashboardSnapshot } from './dashboard-snapshot.ts';
+import { type ArchiveLoader, dashboardSnapshot } from './dashboard-snapshot.ts';
 import { retrieveBuildingRecords } from './building-records.ts';
 import { wholeSearchCheck } from './whole-search-check.ts';
 import { companyCounts } from '../src/companies.ts';
@@ -17,6 +17,7 @@ import { OPENIGLOO } from './openigloo.ts';
 import { DIRECT_RENTAL_SOURCES } from './direct-rentals.ts';
 import { STREETEASY_LIVE, STREETEASY_PUBLIC_COVERAGE, STREETEASY_PUBLIC_TRANSPORT } from './streeteasy.ts';
 import { decodeSourceImport } from '../src/pull-sources.ts';
+import { log } from './log.ts';
 import { type SourceFetch, refreshCatalog, refreshPlan, refreshSources, refreshStatus, sourceExpiresAt, sourceRecent, storedDirectRentals, storedFeed, storedHdcRerentals, storedHousing, storedMarket,
   storedOpenigloo, storedRentHistory } from './refresh.ts';
 
@@ -201,20 +202,35 @@ function json(value: unknown, status = 200) {
   return Response.json(value, { status, headers: { 'Cache-Control': 'no-store' } });
 }
 
-export async function handleApi(request: Request, env: AppEnv, { privateAuthenticated = false, fetcher = (url, options) => globalThis.fetch(url, options), waitUntil, cityRealtyJob }: { privateAuthenticated?: boolean; fetcher?: SourceFetch; waitUntil?: (work: Promise<unknown>) => void; cityRealtyJob?: { start(delay: boolean, sources?: string[]): Promise<void>; pending(): Promise<string | boolean | null> } } = {}) {
+const noDashboardArchive: ArchiveLoader = async () => { throw new Error('No dashboard archive is configured.'); };
+
+export async function handleApi(request: Request, env: AppEnv, { privateAuthenticated = false, fetcher = (url, options) => globalThis.fetch(url, options), waitUntil, syncJob, dashboardArchive = noDashboardArchive }: {
+  privateAuthenticated?: boolean; fetcher?: SourceFetch; waitUntil?: (work: Promise<unknown>) => void;
+  syncJob?: { start(delay: boolean, sources?: string[]): Promise<void>; pending(): Promise<string | boolean | null> };
+  /** Reads the StreetEasy dashboard archive, which is kept out of the Worker script. */
+  dashboardArchive?: ArchiveLoader;
+} = {}) {
   const { pathname: path, searchParams } = new URL(request.url);
   if (!API_PATHS.has(path)) return json({ error: 'Endpoint not found.' }, 404);
   if (path === '/api/dashboard') {
-    if (env.PUBLIC_APP !== 'true' && (!env.APP_ACCESS_TOKEN || (!privateAuthenticated && request.headers.get('Authorization') !== `Bearer ${env.APP_ACCESS_TOKEN}`))) return json({ error: 'Private authenticated access is required for this research snapshot.' }, 403);
+    if (env.PUBLIC_APP !== 'true' && !privateAuthenticated) return json({ error: 'Private authenticated access is required for this research snapshot.' }, 403);
     if (request.method !== 'GET') return json({ error: 'Use GET for dashboard data.' }, 405);
-    const result = dashboardSnapshot(searchParams.get('file') ?? undefined);
-    return result ? json(result) : json({ error: 'Unknown dashboard file.' }, 404);
+    try {
+      const result = await dashboardSnapshot(searchParams.get('file') ?? undefined, dashboardArchive);
+      return result ? json(result) : json({ error: 'Unknown dashboard file.' }, 404);
+    } catch (cause) {
+      log.error('dashboard_read_failed', cause, { path });
+      return json({ error: 'The historical dashboard data could not be read.' }, 503);
+    }
   }
   if (path === '/api/config') {
     if (request.method !== 'GET') return json({ error: 'Use GET for app configuration.' }, 405);
     let config;
     try { config = appConfig(env); }
-    catch { return json({ error: 'The free feed settings need to be corrected on the server.' }, 503); }
+    catch (cause) {
+      log.error('feed_settings_invalid', cause);
+      return json({ error: 'The free feed settings need to be corrected on the server.' }, 503);
+    }
     try {
       if (!env.BUCKET) return json(config);
       const refresh = await refreshStatus(env.BUCKET);
@@ -233,7 +249,8 @@ export async function handleApi(request: Request, env: AppEnv, { privateAuthenti
         sources: [...liveSources, ...config.sources.filter(({ id }) => !liveSources.some((item) => item.id === id))],
         snapshotMonth: refresh.sources.find(({ id }) => id === 'firstmover')?.month ?? SNAPSHOT_MONTH,
       });
-    } catch {
+    } catch (cause) {
+      log.error('storage_read_failed', cause, { path });
       return json({ error: 'Saved source data could not be read. Try again shortly.' }, 503);
     }
   }
@@ -242,7 +259,8 @@ export async function handleApi(request: Request, env: AppEnv, { privateAuthenti
     try {
       const [housing, rerentals] = await Promise.all([storedHousing(env.BUCKET), storedHdcRerentals(env.BUCKET).catch(() => null)]);
       return json({ ...housing, rerentals });
-    } catch {
+    } catch (cause) {
+      log.error('storage_read_failed', cause, { path });
       return json({ error: 'The Housing Connect data could not be read.' }, 503);
     }
   }
@@ -261,13 +279,14 @@ export async function handleApi(request: Request, env: AppEnv, { privateAuthenti
       const areaIds = new Set(areas.filter(({ id }) => id !== 'overall').map(({ id }) => id));
       return json({ month: market.month, areas, history: scoped ?
         history.map(([month, rows]) => [month, rows.filter(([id]) => areaIds.has(id))]) : history });
-    } catch {
+    } catch (cause) {
+      log.error('storage_read_failed', cause, { path });
       return json({ error: 'The refreshed rent data could not be read.' }, 503);
     }
   }
   if (path === '/api/refresh' && request.method === 'GET') {
     const plan = await refreshPlan(env.BUCKET);
-    const running = plan.checking || !cityRealtyJob ? null : await cityRealtyJob.pending();
+    const running = plan.checking || !syncJob ? null : await syncJob.pending();
     // The Workflow names the source it is on; a job that only reports "running" is CityRealty's.
     return json(running ? { ...plan, checking: true, activeSource: typeof running === 'string' ? running : CITYREALTY_ID } : plan);
   }
@@ -294,17 +313,17 @@ export async function handleApi(request: Request, env: AppEnv, { privateAuthenti
         // with sessionStart; it gets the saved status and nothing is fetched.
         if (body.sessionStart === true) return json({ ...await refreshPlan(env.BUCKET), state: 'already_checked' });
         if (body.source !== undefined && !refreshCatalog(env).some((source) => source.id === body.source && source.resyncable)) return json({ error: 'Unknown or disconnected refresh source.' }, 422);
-        if (cityRealtyJob && WORKFLOW_SOURCE_IDS.includes(body.source)) {
+        if (syncJob && WORKFLOW_SOURCE_IDS.includes(body.source)) {
           const current = await refreshPlan(env.BUCKET);
           const previous = current.sources.find(item => item.id === body.source);
           if (previous?.retryAt && Date.parse(previous.retryAt) > Date.now()) return json({ ...current, state: 'already_checked' });
-          if (!current.checking || current.activeSource !== body.source) await cityRealtyJob.start(Boolean(current.checking), [body.source]);
+          if (!current.checking || current.activeSource !== body.source) await syncJob.start(Boolean(current.checking), [body.source]);
           return json({ ...current, state: 'running', checking: true, activeSource: body.source }, 202);
         }
         const work = refreshSources(env, { fetcher, onDemand: true,
-          sourceId: body.source, excludeWorkflowSources: Boolean(cityRealtyJob) });
-        if (cityRealtyJob && body.source === undefined) {
-          try { await cityRealtyJob.start(true); }
+          sourceId: body.source, excludeWorkflowSources: Boolean(syncJob) });
+        if (syncJob && body.source === undefined) {
+          try { await syncJob.start(true); }
           catch (cause) { await work.catch(() => {}); throw cause; }
         }
         waitUntil?.(work.catch(() => {}));
@@ -329,6 +348,7 @@ export async function handleApi(request: Request, env: AppEnv, { privateAuthenti
   } catch (error) {
     if (error instanceof CommuteError) return json({ error: error.message, commuteError: true }, error.status);
     if (error instanceof SearchInputError) return json({ error: error.message }, 422);
+    log.error('request_failed', error, { path });
     if (path === '/api/refresh') return json({ error: 'The listing sources could not be checked. Try reloading the page.' }, 502);
     return json({ error: 'The address or listing feed could not be reached. Try again or use a workplace preset.' }, 502);
   }

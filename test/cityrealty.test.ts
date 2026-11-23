@@ -62,18 +62,18 @@ test('Cloudflare queues manual CityRealty refresh and reports a pending job whil
   const request = new Request(url, { method: 'POST', headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ source: CITYREALTY_ID, check: 'now' }) });
   const result = await handleApi(request, env, {
-    cityRealtyJob: job, fetcher: () => { throw Error('Cannot fetch a full inventory inside an API request.'); },
+    syncJob: job, fetcher: () => { throw Error('Cannot fetch a full inventory inside an API request.'); },
   });
   expect(result.status).toBe(202);
   expect(started).toBe(1);
-  expect(await (await handleApi(new Request(url), env, { cityRealtyJob: job })).json())
+  expect(await (await handleApi(new Request(url), env, { syncJob: job })).json())
     .toMatchObject({ checking: true, activeSource: CITYREALTY_ID });
 });
 
 test('a running sync job reports the source it is on, not always CityRealty', async () => {
   const env = { BUCKET: createMemoryBucket() };
   const status = async (job: { start: () => Promise<void>; pending: () => Promise<string | boolean | null> }) =>
-    (await handleApi(new Request('https://app.test/api/refresh'), env, { cityRealtyJob: job })).json();
+    (await handleApi(new Request('https://app.test/api/refresh'), env, { syncJob: job })).json();
   expect(await status({ start: async () => {}, pending: async () => 'openigloo' })).toMatchObject({ checking: true, activeSource: 'openigloo' });
   expect((await status({ start: async () => {}, pending: async () => null })).checking).toBeFalsy();
 });

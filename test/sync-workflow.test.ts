@@ -5,7 +5,7 @@ import { fakeD1 } from './fixtures/fake-d1.ts';
 mock.module('cloudflare:workers', () => ({
   WorkflowEntrypoint: class { env: unknown; constructor(_ctx: unknown, env: unknown) { this.env = env; } },
 }));
-const { CityRealtySync } = await import('../server/cityrealty-workflow.ts');
+const { CityRealtySync } = await import('../server/sync-workflow.ts');
 const { createD1Bucket } = await import('../server/d1-bucket.ts');
 const { refreshStatus } = await import('../server/refresh.ts');
 const { openiglooPacing } = await import('../server/openigloo.ts');

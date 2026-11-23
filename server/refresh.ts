@@ -13,6 +13,7 @@ import { HDC_RERENTALS, loadHdcRerentals } from './hdc-rerentals.ts';
 import { AUTO_RENTAL_SOURCES, DIRECT_RENTAL_SOURCES } from './direct-rentals.ts';
 import { loadOpenigloo, OPENIGLOO_COVERAGE, OPENIGLOO_MAX_LISTINGS, OPENIGLOO_MIN_COVERAGE, OPENIGLOO_TRANSPORT } from './openigloo.ts';
 import { requestForRefresh, retrySchedule } from './source-requests.ts';
+import { log } from './log.ts';
 import { MARKETPLACE_NAMES } from '../src/marketplaces.ts';
 import { CITYREALTY_ID } from './cityrealty.ts';
 import { COMPLETE_SYNC_LIFETIME, completeSync, isCompleteSnapshot, WORKFLOW_SOURCE_IDS } from './source-registry.ts';
@@ -586,6 +587,11 @@ export async function refreshSources(env: AppEnv, { fetcher = fetch, now = new D
     return result;
   }));
   const attempted = checks.map((check, index) => statusFor(check, results[index]));
+  for (const [index, item] of attempted.entries()) {
+    const result = results[index];
+    if (result.status === 'rejected') log.warn('source_check_failed', { source: item.id, error: item.error,
+      cause: result.reason instanceof Error ? result.reason.message : String(result.reason), httpStatus: result.reason?.httpStatus });
+  }
 
   const retainedIds = new Set([...PUBLIC_IDS, ...LIVE_IDS, HDC_RERENTALS.id, ...feeds.map(({ id }) => id)]);
   const sources = [...attempted, ...(previous.sources ?? []).filter(({ id }) => !ids.includes(id) && retainedIds.has(id))];

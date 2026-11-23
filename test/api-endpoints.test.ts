@@ -48,11 +48,11 @@ test('malformed requests are refused before any work', async () => {
 test('a full refresh also starts the sync Workflow, and a failed start is reported after the refresh settles', async () => {
   let started = 0;
   const ok = await handleApi(postJson('/api/refresh', { check: 'now' }), { BUCKET: createMemoryBucket() },
-    { fetcher: noNetwork, cityRealtyJob: { start: async () => { started++; }, pending: async () => null } });
+    { fetcher: noNetwork, syncJob: { start: async () => { started++; }, pending: async () => null } });
   assert.ok(ok.status < 500 || ok.status === 502);
   assert.equal(started, 1);
   const failed = await handleApi(postJson('/api/refresh', { check: 'now' }), { BUCKET: createMemoryBucket() },
-    { fetcher: noNetwork, cityRealtyJob: { start: async () => { throw new Error('Workflows unavailable'); }, pending: async () => null } });
+    { fetcher: noNetwork, syncJob: { start: async () => { throw new Error('Workflows unavailable'); }, pending: async () => null } });
   assert.equal(failed.status, 502);
 });
 
@@ -86,7 +86,7 @@ test('opening the app fetches nothing, even from a page that still asks for a ch
   const bucket = createMemoryBucket();
   let started = 0;
   const response = await handleApi(postJson('/api/refresh', { check: 'now', sessionStart: true }), { BUCKET: bucket },
-    { fetcher: noNetwork, cityRealtyJob: { start: async () => { started++; }, pending: async () => null } });
+    { fetcher: noNetwork, syncJob: { start: async () => { started++; }, pending: async () => null } });
   assert.equal(response.status, 200);
   assert.equal((await response.json()).state, 'already_checked');
   assert.equal(started, 0, 'no sync Workflow starts');

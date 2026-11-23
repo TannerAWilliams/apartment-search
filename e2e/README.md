@@ -14,7 +14,7 @@ bun run test:e2e
 
 `bun run test:e2e:list` lists cases without launching a browser. Optional `PLAYWRIGHT_CHROMIUM_EXECUTABLE=/path/to/chromium` selects an installed Chromium. Chromium sandbox stays enabled; do not disable it to work around a constrained runner. No hosted paid testing service is used.
 
-The suite builds the actual Expo web bundle, serves it on loopback, blocks external browser requests and mocks every supported `/api` route before navigation. It cannot target production via a baseURL environment override. Unexpected API endpoints get an explicit test failure response. Refresh buttons exercise mocked request handling, not real StreetEasy traffic. Each test has an isolated browser context; saved-listing reload checks only synthetic local storage. Portrait screenshots and failure traces/screenshots are local under ignored output directories.
+The suite builds the actual Expo web bundle, serves it on loopback with the production security headers (any Content Security Policy violation fails the test, see `fixtures.ts`), blocks external browser requests and mocks every supported `/api` route before navigation. It cannot target production via a baseURL environment override. Unexpected API endpoints get an explicit test failure response. Refresh buttons exercise mocked request handling, not real StreetEasy traffic. Each test has an isolated browser context; saved-listing reload checks only synthetic local storage. Portrait screenshots and failure traces/screenshots are local under ignored output directories.
 
 ## Coverage map
 

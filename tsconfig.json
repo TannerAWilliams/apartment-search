@@ -19,6 +19,7 @@
     "server/**/*.ts",
     "scripts/**/*.ts",
     "test/**/*.ts",
-    "e2e/serve.ts"
+    "e2e/serve.ts",
+    "e2e/fixtures.ts"
   ]
 }

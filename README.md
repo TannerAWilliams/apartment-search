@@ -28,6 +28,8 @@ your computer ── scripts/sync-streeteasy.ts ── uploads the StreetEasy in
 - **Storage.** Each source's inventory, status and price history is one versioned snapshot in D1 (`apartment_objects` and `apartment_object_parts`, see `deploy/cloudflare/schema.sql`). Writes use etag compare-and-swap, so a failed or overlapping refresh never replaces saved data. Only current listings are kept, with no records of past listings.
 - **Refreshes happen only when you ask.** Opening the app reads saved inventory and fetches nothing, and nothing runs on a schedule in Cloudflare. **More → Sources & sync** resyncs one source or all of them. Sources that take minutes (CityRealty, Openigloo, Zumper) run in the Workflow, one durable step at a time; the page polls their progress every 15 seconds. A source that failed with a retry time is skipped until that time passes. The only scheduled job is the StreetEasy sync on your own computer.
 - **StreetEasy** refuses requests from cloud hosts (HTTP 403), so a computer you own downloads it and uploads it to the Worker (see [Daily StreetEasy sync](#daily-streeteasy-sync-from-your-own-computer)).
+- **Static data.** The web app's files are served with a Content Security Policy and other security headers (`server/web-headers.ts`); fingerprinted bundles are cached for a year, everything else is revalidated. The 2.4 MB StreetEasy dashboard archive is published with the static files (`public/data/`) rather than built into the Worker, read through the assets binding when a dashboard series is first opened, checked against its SHA-256, and never served directly.
+- **Logs.** Unexpected failures and failed source checks are written as one JSON object per line (`server/log.ts`) to [Workers Logs](https://developers.cloudflare.com/workers/observability/logs/workers-logs/), with source maps so stack traces point at the TypeScript. Look for the `event` field: `request_failed`, `storage_read_failed`, `dashboard_read_failed`, `source_check_failed` or `complete_sync_failed`.
 
 API routes: `config`, `search`, `search-check`, `refresh`, `market`, `housing`, `dashboard`, `building-report` and `geocode`, all under `/api/`.
 
@@ -86,9 +88,11 @@ bun run test:e2e         # typecheck, web build, unit tests, then Playwright
 bun run build            # web build plus a Wrangler dry-run bundle of the Worker
 ```
 
-The test preload (`test/fixtures/offline-network.ts`) blocks external requests, so provider tests use synthetic responses and never refresh a real source. D1 is tested against SQLite with the production schema (`test/fixtures/fake-d1.ts`), and the Workflow and Worker entry are tested with a stub of `cloudflare:workers`.
+The test preload (`test/fixtures/offline-network.ts`) blocks external requests, so provider tests use synthetic responses and never refresh a real source; `test/fixtures/quiet-logs.ts` keeps the expected failure logs out of the report. D1 is tested against SQLite with the production schema (`test/fixtures/fake-d1.ts`), and the Workflow and Worker entry are tested with a stub of `cloudflare:workers`.
 
-Coverage measures the application modules: every `.ts` file in `server/` and the non-UI files in `src/`. `test/module-coverage.test.ts` loads them all, so an untested module counts against the total. React UI modules are covered by the Playwright suite instead, which runs the exported web app with mocked API responses on desktop, Android-size and iPhone-size Chromium layouts. `scripts/coverage-scope.ts` holds the rules. Bun does not report branch coverage.
+Coverage measures the application modules: every `.ts` file in `server/` and the non-UI files in `src/`. `test/module-coverage.test.ts` loads them all, so an untested module counts against the total. React UI modules are covered by the Playwright suite instead, which runs the exported web app with mocked API responses on desktop, Android-size and iPhone-size Chromium layouts. Its server sends the production security headers, and `e2e/fixtures.ts` fails any test whose page breaks the Content Security Policy. `scripts/coverage-scope.ts` holds the rules. Bun does not report branch coverage.
+
+GitHub Actions (`.github/workflows/ci.yml`) runs the typecheck, unit tests with coverage, the build and the browser tests on every pull request and every push to main. It uses no secrets and deploys nothing.
 
 ## Deploy
 
@@ -97,7 +101,7 @@ node ./node_modules/wrangler/bin/wrangler.js login     # or set CLOUDFLARE_API_T
 bun run deploy                                          # build the web app and deploy the Worker
 ```
 
-`deploy/cloudflare/wrangler.jsonc` defines the Worker, its static assets, the D1 binding, the Workflow and a 30-second CPU limit. Before the first deploy from this file, compare it with the live Worker's settings (routes, workers.dev) so the deploy changes only code. Set secrets with `wrangler secret put NAME -c deploy/cloudflare/wrangler.jsonc`. Apply schema changes to the production database with `wrangler d1 execute apartment-search-observations --remote --file deploy/cloudflare/schema.sql -c deploy/cloudflare/wrangler.jsonc`; the schema only creates missing tables.
+`deploy/cloudflare/wrangler.jsonc` defines the Worker, its static assets, the D1 binding, the Workflow (limited to one run at a time) and a 30-second CPU limit. Before the first deploy from this file, compare it with the live Worker's settings (routes, workers.dev) so the deploy changes only code. Set secrets with `wrangler secret put NAME -c deploy/cloudflare/wrangler.jsonc`. Apply schema changes to the production database with `wrangler d1 execute apartment-search-observations --remote --file deploy/cloudflare/schema.sql -c deploy/cloudflare/wrangler.jsonc`; the schema only creates missing tables.
 
 The gate Worker and the Cloudflare Access application for `apartments.5thof6.com` are configured in the Cloudflare dashboard.
 
@@ -149,7 +153,8 @@ bun run test && bun run build
 | Path | Contents |
 | --- | --- |
 | `App.tsx`, `index.ts`, `src/` | The Expo app. Non-UI modules in `src/` (search, regions, listings, market data) are shared with the server. |
-| `server/` | The Worker: `cloudflare.ts` entry, `api.ts` routes, `refresh.ts` source orchestration, one module per source, `d1-bucket.ts` storage, `cityrealty-workflow.ts` and `source-registry.ts` for the complete syncs. |
+| `server/` | The Worker: `cloudflare.ts` entry, `api.ts` routes, `refresh.ts` source orchestration, one module per source, `d1-bucket.ts` storage, `sync-workflow.ts` and `source-registry.ts` for the complete syncs. |
+| `public/` | Files copied into the web build unchanged: the StreetEasy dashboard archive, which only the Worker reads. |
 | `deploy/cloudflare/` | `wrangler.jsonc`, `schema.sql` and `.dev.vars.example`. |
 | `scripts/` | The StreetEasy home sync, offline data rebuilds and the coverage report. |
 | `test/`, `e2e/` | Bun unit and integration tests, and the Playwright suite ([e2e/README.md](e2e/README.md)). |

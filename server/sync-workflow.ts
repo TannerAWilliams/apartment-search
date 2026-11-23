@@ -3,6 +3,7 @@ import type { AppEnv } from './contracts.ts';
 import { createD1Bucket, type D1Database } from './d1-bucket.ts';
 import { crawlOpeniglooCell, finishOpeniglooRun, OPENIGLOO_CELL_COUNT } from './openigloo-sync.ts';
 import { refreshSources } from './refresh.ts';
+import { log } from './log.ts';
 import { completeSync, SYNC_PROGRESS_KEY, WORKFLOW_SOURCE_IDS } from './source-registry.ts';
 
 type Environment = AppEnv & { APARTMENTS: D1Database };
@@ -11,7 +12,7 @@ type RefreshParameters = { delay: boolean; sources?: string[] };
 
 const NAMES: Record<string, string> = Object.fromEntries(WORKFLOW_SOURCE_IDS.map((id) => [id, completeSync(id)!.name]));
 
-/** Runs the complete-inventory syncs that are too long for an API request. Named for its first source. */
+/** Runs the complete-inventory syncs that are too long for an API request. The class keeps its original name, which the deployed Workflow uses. */
 export class CityRealtySync extends WorkflowEntrypoint<Environment, RefreshParameters> {
   async run(event: WorkflowEvent<RefreshParameters>, step: WorkflowStep) {
     if (event.payload.delay) await step.sleep('Give other sources time to start', '3 seconds');
@@ -26,6 +27,7 @@ export class CityRealtySync extends WorkflowEntrypoint<Environment, RefreshParam
       outcomes[sourceId] = sourceId === 'openigloo' ? await this.syncOpenigloo(event.instanceId, step) : await this.sync(sourceId, step);
     }
     const failed = Object.entries(outcomes).filter(([, outcome]) => outcome.error);
+    for (const [id, outcome] of failed) log.warn('complete_sync_failed', { source: id, error: outcome.error, instance: event.instanceId });
     if (failed.length) throw new Error(failed.map(([id, outcome]) => NAMES[id] + ': ' + outcome.error).join(' '));
     return outcomes;
   }

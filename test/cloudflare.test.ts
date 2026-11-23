@@ -22,7 +22,7 @@ async function environment({ publicApp = false, instances = new Map<string, Inst
     env: {
       APARTMENTS: d1, APP_ACCESS_TOKEN: TOKEN, ...(publicApp ? { PUBLIC_APP: 'true' } : {}),
       ASSETS: { fetch: async (request: Request) => new Response('asset ' + new URL(request.url).pathname) },
-      CITYREALTY_SYNC: {
+      SYNC_WORKFLOW: {
         async create(options: { id: string; params: { delay: boolean; sources?: string[] } }) {
           if (createError) throw createError;
           created.push(options); instances.set(options.id, { status: 'queued' });
@@ -46,6 +46,18 @@ test('health and static assets are served without the API', async () => {
   const { env } = await environment();
   assert.equal(await (await call(env, '/health')).text(), 'ok');
   assert.equal(await (await call(env, '/index.html')).text(), 'asset /index.html');
+});
+
+test('the web app is served with its security policy, and only fingerprinted files are cached long-term', async () => {
+  const { env } = await environment();
+  const page = await call(env, '/');
+  assert.match(page.headers.get('Content-Security-Policy') ?? '', /frame-ancestors 'none'/);
+  assert.equal(page.headers.get('Referrer-Policy'), 'no-referrer');
+  assert.equal(page.headers.get('Cache-Control'), 'private, no-cache');
+  const bundle = await call(env, '/_expo/static/js/web/index-0123abcd.js');
+  assert.equal(bundle.headers.get('Cache-Control'), 'private, max-age=31536000, immutable');
+  const missing = await call({ ...env, ASSETS: { fetch: async () => new Response('not found', { status: 404, headers: { 'Cache-Control': 'no-store' } }) } }, '/_expo/static/gone.js');
+  assert.equal(missing.headers.get('Cache-Control'), 'no-store', 'a missing file is never cached long-term');
 });
 
 test('the private app requires the access token for every request, assets included', async () => {
@@ -126,4 +138,23 @@ test('provider requests keep redirects unfollowed, in the form Workers accept', 
   await call(env, '/api/refresh', post({ check: 'now', source: 'housingconnect' }));
   assert.ok(redirects.length > 0, 'the refresh reached the provider');
   assert.ok(redirects.every((redirect) => redirect === 'manual'), String(redirects));
+});
+
+test('the dashboard archive is read once through the assets binding and cannot be downloaded directly', async () => {
+  const { env } = await environment();
+  const bytes = await Bun.file(new URL('../public/data/streeteasy-dashboard-2026-11-17.zip', import.meta.url)).bytes();
+  let reads = 0;
+  const ASSETS = { fetch: async (request: Request) => {
+    if (!new URL(request.url).pathname.startsWith('/data/')) return new Response('asset');
+    reads++;
+    return new Response(bytes);
+  } };
+  const withArchive = { ...env, ASSETS };
+  assert.equal((await call(withArchive, '/data/streeteasy-dashboard-2026-11-17.zip')).status, 404);
+  assert.equal(reads, 0, 'a direct request never reaches the archive');
+  assert.equal((await call(withArchive, '/api/dashboard?file=rentalIndex_All.csv')).status, 200);
+  assert.equal((await call(withArchive, '/api/dashboard?file=totalInventory_All.csv')).status, 200);
+  assert.equal(reads, 1, 'the archive is read and verified once');
+  const missing = { ...env, ASSETS: { fetch: async () => new Response('missing', { status: 404 }) } };
+  assert.equal((await call(missing, '/api/dashboard?file=rentalIndex_All.csv')).status, 503);
 });

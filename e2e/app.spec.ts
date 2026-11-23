@@ -1,4 +1,4 @@
-import { test, expect, type Page } from 'playwright/test';
+import { test, expect, type Page } from './fixtures.ts';
 import { localSearch } from '../src/market.ts';
 import { normalizeListing } from '../src/listings.ts';
 import { parseFilters, localWorkplace } from '../src/search.ts';
@@ -12,7 +12,7 @@ const now = '2026-11-13T12:00:00Z';
 /** Source checks sent to the server. Opening the app sends none, so each one is a resync the user started. */
 const userRefreshes = (requests: { path: string; method: string; body: any }[]) =>
   requests.filter(r => r.path === '/api/refresh' && r.method === 'POST');
-async function mockApp(page: Page, options: { initialRefresh?: boolean; failed?: boolean; searchError?: boolean; listingCount?: number; notices?: string[]; priceHistory?: boolean; discovery?: boolean; commute?: boolean; nyc?: boolean; dashboardAvailable?: boolean; inventoryExpiresAt?: string } = {}) {
+async function mockApp(page: Page, options: { failed?: boolean; searchError?: boolean; listingCount?: number; notices?: string[]; priceHistory?: boolean; discovery?: boolean; commute?: boolean; nyc?: boolean; dashboardAvailable?: boolean; inventoryExpiresAt?: string } = {}) {
   const requests: { path: string; method: string; body: any }[] = [];
   const unexpected: string[] = [];
   const listings = fixtures(options.listingCount);
@@ -22,7 +22,6 @@ async function mockApp(page: Page, options: { initialRefresh?: boolean; failed?:
   if (options.priceHistory) Object.assign(listings[0], { priceHistory: { sourceId: 'synthetic-fixture', firstObservedAt: '2026-11-01T12:00:00Z', lastObservedAt: now, truncated: true,
     observations: [{ checkedAt: '2026-11-01T12:00:00Z', rent: 1900, priceIncludesFees: false }, { checkedAt: now, rent: 1800, priceIncludesFees: true }] } });
   const refresh = { checking: false, lastCheckedAt: now, sources: [{ id: 'streeteasy-live', name: 'StreetEasy', status: options.failed ? 'failed' : 'updated', checkedAt: now, updatedAt: now, listingCount: listings.length, ...(options.failed ? { error: 'StreetEasy returned HTTP 403. Verification required.' } : {}) }] };
-  if (!options.initialRefresh) await page.addInitScript(() => sessionStorage.setItem('apartment-search:session-refresh', 'checked'));
   await page.route('**/*', async route => {
     const request = route.request(); const url = new URL(request.url());
     // No real provider, image, geocoder, map tile or analytics request leaves the browser.
@@ -54,7 +53,7 @@ async function mockApp(page: Page, options: { initialRefresh?: boolean; failed?:
 }
 
 test('homepage searches saved all-region inventory without starting a refresh', async ({ page }) => {
-  const { requests, unexpected } = await mockApp(page, { initialRefresh: true });
+  const { requests, unexpected } = await mockApp(page);
   await expect(page.getByText('12 Grove Street', { exact: true })).toBeVisible();
   expect(userRefreshes(requests)).toHaveLength(0);
   expect(requests.find(r => r.path === '/api/search')!.body.region).toBe('all');
@@ -176,6 +175,17 @@ test('Sources tab is keyboard operable', async ({ page }) => {
 });
 
 
+
+test('the map view loads its tiles under the Content Security Policy', async ({ page }) => {
+  await page.setViewportSize({ width: 393, height: 852 });
+  // A request event means the policy allowed the tile; the mock then aborts it so nothing leaves the browser.
+  const tiles: string[] = [];
+  page.on('request', (request) => { if (request.url().startsWith('https://tile.openstreetmap.org/')) tiles.push(request.url()); });
+  await mockApp(page);
+  await page.getByRole('button', { name: 'Map', exact: true }).click();
+  await expect(page.getByRole('region', { name: 'Map of matching apartments', exact: true })).toBeVisible();
+  await expect.poll(() => tiles.length).toBeGreaterThan(0);
+});
 
 test('portrait keeps first listing visible and filter cancellation does not search', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 393, height: 852 });

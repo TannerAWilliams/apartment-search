@@ -1,5 +1,5 @@
 [test]
-preload = ["./test/fixtures/offline-network.ts"]
+preload = ["./test/fixtures/offline-network.ts", "./test/fixtures/quiet-logs.ts"]
 timeout = 30000
 coverageSkipTestFiles = true
 coverageReporter = ["lcov"]
