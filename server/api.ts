@@ -1,8 +1,8 @@
 import type { AppEnv, Bucket } from './contracts.ts';
 import type { ListingData, SourceStatus as SearchSource, SearchResult } from '../src/domain.ts';
 import type { SourceStatus } from './refresh.ts';
-import { CITYREALTY_COVERAGE, CITYREALTY_ID, CITYREALTY_TRANSPORT } from './cityrealty.ts';
-import { ZUMPER_COVERAGE, ZUMPER_TRANSPORT } from './zumper.ts';
+import { CITYREALTY_ID } from './cityrealty.ts';
+import { isCompleteCoverage, isCompleteSnapshot, WORKFLOW_SOURCE_IDS } from './source-registry.ts';
 import { dashboardSnapshot } from './dashboard-snapshot.ts';
 import { retrieveBuildingRecords } from './building-records.ts';
 import { wholeSearchCheck } from './whole-search-check.ts';
@@ -19,7 +19,7 @@ import { DIRECT_RENTAL_SOURCES } from './direct-rentals.ts';
 import { STREETEASY_LIVE, STREETEASY_PUBLIC_COVERAGE, STREETEASY_PUBLIC_TRANSPORT } from './streeteasy.ts';
 import { decodeSourceImport } from '../src/pull-sources.ts';
 import { type SourceFetch, refreshCatalog, refreshPlan, refreshSources, refreshStatus, sourceExpiresAt, sourceRecent, storedDirectRentals, storedFeed, storedHdcRerentals, storedHousing, storedMarket,
-  storedOpenigloo, storedRentHistory, WORKFLOW_SOURCE_IDS } from './refresh.ts';
+  storedOpenigloo, storedRentHistory } from './refresh.ts';
 
 const REQUEST_LIMIT = 4096;
 const IMPORT_LIMIT = 2 * 1024 * 1024;
@@ -95,7 +95,7 @@ export async function search(rawFilters: Record<string, unknown>, env: AppEnv, f
         // apartments the user excluded. Preserve the full inventory for counts.
         const selectedIndexes = matched.flatMap((listing, index) => !filters.source ||
           listing.sources.some(source => source.id === filters.source && source.url) ? [index] : []);
-        const selected = await routeCommutes(selectedIndexes.map(index => matched[index]), workplace, credentials, fetcher);
+        const selected = await routeCommutes(selectedIndexes.map(index => matched[index]), workplace, credentials, fetcher, new Date(), bucket);
         const byIndex = new Map(selectedIndexes.map((index, position) => [index, selected[position]]));
         routed = matched.map((listing, index) => byIndex.get(index) ?? {
           ...listing, transitSeconds: null, drivingSeconds: null, commuteEstimate: undefined,
@@ -149,7 +149,7 @@ export async function search(rawFilters: Record<string, unknown>, env: AppEnv, f
     if (data) {
       listings.push(...rows);
       sources.push({ id: source.marketplace, name: source.name, status: recent ? 'searched' : 'cached',
-        sample: data.transport !== STREETEASY_EXPORT_FORMAT && data.transport !== CITYREALTY_TRANSPORT && data.transport !== ZUMPER_TRANSPORT });
+        sample: data.transport !== STREETEASY_EXPORT_FORMAT && !isCompleteSnapshot(source.id, data.transport) });
       const coverage = data.transport === STREETEASY_EXPORT_FORMAT ? STREETEASY_EXPORT_COVERAGE :
         data.transport === STREETEASY_PUBLIC_TRANSPORT ? STREETEASY_PUBLIC_COVERAGE :
         source.id === STREETEASY_LIVE.id && data.transport === 'partner-feed' ? 'the configured StreetEasy partner feed' : source.coverage;
@@ -203,7 +203,7 @@ function json(value: unknown, status = 200) {
   return Response.json(value, { status, headers: { 'Cache-Control': 'no-store' } });
 }
 
-export async function handleApi(request: Request, env: AppEnv, { privateAuthenticated = false, requireToken = false, fetcher = (url, options) => globalThis.fetch(url, options), waitUntil, prepareListingSources, listingTransports, backgroundRefresh = false, cityRealtyJob }: { privateAuthenticated?: boolean; requireToken?: boolean; fetcher?: SourceFetch; waitUntil?: (work: Promise<unknown>) => void; prepareListingSources?: () => Promise<void>; listingTransports?: ListingTransports; backgroundRefresh?: boolean; cityRealtyJob?: { start(delay: boolean, sources?: string[]): Promise<void>; pending(): Promise<boolean> } } = {}) {
+export async function handleApi(request: Request, env: AppEnv, { privateAuthenticated = false, requireToken = false, fetcher = (url, options) => globalThis.fetch(url, options), waitUntil, prepareListingSources, listingTransports, backgroundRefresh = false, cityRealtyJob }: { privateAuthenticated?: boolean; requireToken?: boolean; fetcher?: SourceFetch; waitUntil?: (work: Promise<unknown>) => void; prepareListingSources?: () => Promise<void>; listingTransports?: ListingTransports; backgroundRefresh?: boolean; cityRealtyJob?: { start(delay: boolean, sources?: string[]): Promise<void>; pending(): Promise<string | boolean | null> } } = {}) {
   const { pathname: path, searchParams } = new URL(request.url);
   if (!API_PATHS.has(path)) return json({ error: 'Endpoint not found.' }, 404);
   if (requireToken && request.headers.get('Authorization') !== `Bearer ${env.APP_ACCESS_TOKEN}`) {
@@ -226,7 +226,7 @@ export async function handleApi(request: Request, env: AppEnv, { privateAuthenti
       const liveSources = [
         ...DIRECT_RENTAL_SOURCES.map(({ marketplace, id, name }) => {
           const coverage = coverageById.get(id);
-          return { id: marketplace, name, coverage, sample: coverage !== STREETEASY_EXPORT_COVERAGE && coverage !== CITYREALTY_COVERAGE && coverage !== ZUMPER_COVERAGE };
+          return { id: marketplace, name, coverage, sample: coverage !== STREETEASY_EXPORT_COVERAGE && !isCompleteCoverage(coverage) };
         }),
         { id: OPENIGLOO.id, name: OPENIGLOO.name, sample: false, coverage: coverageById.get(OPENIGLOO.id) ?? 'NYC' },
       ];
@@ -270,7 +270,9 @@ export async function handleApi(request: Request, env: AppEnv, { privateAuthenti
   }
   if (path === '/api/refresh' && request.method === 'GET') {
     const plan = await refreshPlan(env.BUCKET);
-    return json(plan.checking || !cityRealtyJob || !(await cityRealtyJob.pending()) ? plan : { ...plan, checking: true, activeSource: CITYREALTY_ID });
+    const running = plan.checking || !cityRealtyJob ? null : await cityRealtyJob.pending();
+    // The Workflow names the source it is on; a job that only reports "running" is CityRealty's.
+    return json(running ? { ...plan, checking: true, activeSource: typeof running === 'string' ? running : CITYREALTY_ID } : plan);
   }
   if (request.method !== 'POST') return json({ error: 'Use POST for this endpoint.' }, 405);
   if (path === '/api/refresh' && (!env.BUCKET || !request.headers.get('Content-Type')?.startsWith('application/json'))) {
@@ -302,7 +304,7 @@ export async function handleApi(request: Request, env: AppEnv, { privateAuthenti
         let started!: () => void;
         const starting = new Promise<void>(resolve => { started = resolve; });
         const work = refreshSources(env, { fetcher, listingTransports, onDemand: true, prepareListingSources,
-          sourceId: body.source, forceRefresh: body.sessionStart !== true, onStarted: started, excludeCityRealty: Boolean(cityRealtyJob) });
+          sourceId: body.source, forceRefresh: body.sessionStart !== true, onStarted: started, excludeWorkflowSources: Boolean(cityRealtyJob) });
         if (cityRealtyJob && body.source === undefined && body.sessionStart !== true) {
           try { await cityRealtyJob.start(true); }
           catch (cause) { await work.catch(() => {}); throw cause; }

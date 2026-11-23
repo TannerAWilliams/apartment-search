@@ -3,15 +3,17 @@ import type { TextInputProps, ViewProps } from 'react-native';
 import { Linking, Platform, Pressable, Text, TextInput, View } from 'react-native';
 import { colors, styles } from './styles.ts';
 
-export function Chip({ children, selected = false, onPress }: { children: ReactNode; selected?: boolean; onPress: () => void }) {
-  return <Pressable accessibilityRole="button" accessibilityState={{ selected }}
+export function Chip({ children, selected = false, onPress, label }: { children: ReactNode; selected?: boolean; onPress: () => void; label?: string }) {
+  // aria-selected is what react-native-web exposes on the web; accessibilityState covers native.
+  return <Pressable accessibilityRole="button" accessibilityState={{ selected }} aria-selected={selected}
+    accessibilityLabel={label} aria-label={label}
     onPress={onPress} style={({ pressed }) => [styles.chip, selected && styles.chipActive, pressed && styles.pressed]}>
     <Text style={[styles.chipText, selected && styles.chipTextActive]}>{children}</Text>
   </Pressable>;
 }
 
 export function Button({ children, onPress, secondary = false, disabled = false }: { children: ReactNode; onPress: () => void; secondary?: boolean; disabled?: boolean }) {
-  return <Pressable accessibilityRole="button" accessibilityState={{ disabled }}
+  return <Pressable accessibilityRole="button" accessibilityState={{ disabled }} aria-disabled={disabled}
     onPress={onPress} disabled={disabled}
     style={({ pressed }) => [styles.button, secondary && styles.buttonSecondary,
       (pressed || disabled) && styles.pressed]}>

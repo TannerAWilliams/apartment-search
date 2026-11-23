@@ -6,8 +6,10 @@ import { Button } from './ui.tsx';
 import { formatRent } from './search.ts';
 import { styles } from './styles.ts';
 const KEY = 'apartment-search:observed-changes:v1';
-export function ObservedChanges({ listings }: { listings: any[] }) {
-  const [open, setOpen] = useState(false), [busy, setBusy] = useState(false);
+/** When `open` is given, the parent shows the toggle (a tool chip) and this renders only the panel. */
+export function ObservedChanges({ listings, open: shown }: { listings: any[]; open?: boolean }) {
+  const [ownOpen, setOpen] = useState(false), [busy, setBusy] = useState(false);
+  const open = shown ?? ownOpen;
   const [message, setMessage] = useState('');
   const [changes, setChanges] = useState<ObservedChange[]>([]);
   async function check() {
@@ -23,8 +25,10 @@ export function ObservedChanges({ listings }: { listings: any[] }) {
     } catch { setMessage('Local change check could not be saved or read. No changes are confirmed. Try again without clearing device data.'); }
     finally { setBusy(false); }
   }
+  // Controlled and closed: render nothing, so the parent's spacing does not leave a gap.
+  if (shown === false) return null;
   return <View style={{ gap: 8 }}>
-    <Button secondary onPress={() => setOpen(!open)}>{open ? 'Hide local change check' : 'Local price and discovery changes'}</Button>
+    {shown === undefined && <Button secondary onPress={() => setOpen(!open)}>{open ? 'Hide local change check' : 'Local price and discovery changes'}</Button>}
     {open && <>
       <Text accessibilityRole="header" style={styles.fieldLabel}>Local observed changes</Text>
       <Text style={styles.smallMuted}>Opt in by checking this result page. This stores a comparison baseline only on this device. It does not refresh sources, monitor in the background, or send notifications. Newly encountered means new to your checks, not newly listed or available. Missing results never mean delisted.</Text>

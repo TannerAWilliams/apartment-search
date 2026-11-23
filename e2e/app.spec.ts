@@ -9,6 +9,9 @@ const fixtures = (count = 1) => Array.from({ length: count }, (_, index) => norm
   status: 'Active', url: `https://streeteasy.com/building/test/${index + 1}`,
 }, { id: 'streeteasy', name: 'StreetEasy', kind: 'feed' }));
 const now = '2026-11-13T12:00:00Z';
+/** Refreshes the user started. Opening the app sends one session-start check, which is expected. */
+const userRefreshes = (requests: { path: string; method: string; body: any }[]) =>
+  requests.filter(r => r.path === '/api/refresh' && r.method === 'POST' && r.body?.sessionStart !== true);
 async function mockApp(page: Page, options: { initialRefresh?: boolean; failed?: boolean; searchError?: boolean; listingCount?: number; notices?: string[]; priceHistory?: boolean; discovery?: boolean; commute?: boolean; nyc?: boolean; dashboardAvailable?: boolean; temporaryStorage?: boolean; inventoryExpiresAt?: string } = {}) {
   const requests: { path: string; method: string; body: any }[] = [];
   const unexpected: string[] = [];
@@ -53,13 +56,13 @@ async function mockApp(page: Page, options: { initialRefresh?: boolean; failed?:
 test('homepage searches saved all-region inventory without starting a refresh', async ({ page }) => {
   const { requests, unexpected } = await mockApp(page, { initialRefresh: true });
   await expect(page.getByText('12 Grove Street', { exact: true })).toBeVisible();
-  expect(requests.filter(r => r.path === '/api/refresh')).toHaveLength(0);
+  expect(userRefreshes(requests)).toHaveLength(0);
   expect(requests.find(r => r.path === '/api/search')!.body.region).toBe('all');
   const searchesBeforeReload = requests.filter(r => r.path === '/api/search').length;
   await page.reload();
   await expect.poll(() => requests.filter(r => r.path === '/api/search').length).toBeGreaterThan(searchesBeforeReload);
   await expect(page.getByText('12 Grove Street', { exact: true })).toBeVisible();
-  expect(requests.filter(r => r.path === '/api/refresh')).toHaveLength(0);
+  expect(userRefreshes(requests)).toHaveLength(0);
   expect(unexpected).toEqual([]);
 });
 
@@ -73,7 +76,7 @@ test('sources exposes blocked refresh honestly and retains cached rentals', asyn
   await expect(page.getByText('StreetEasy returned HTTP 403. Verification required.', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Resync StreetEasy', exact: true }).click();
   await expect(page.getByRole('alert').filter({ hasText: 'not a fresh fetch' })).toBeVisible();
-  expect(requests.find(r => r.path === '/api/refresh')!.body.source).toBe('streeteasy-live');
+  expect(userRefreshes(requests)[0].body.source).toBe('streeteasy-live');
   await page.getByRole('tab', { name: 'Search', exact: true }).click();
   const listOnly = page.getByRole('button', { name: 'List', exact: true });
   if (await listOnly.isVisible()) await listOnly.click();
@@ -86,8 +89,8 @@ test('resync all uses the batch endpoint while browse-only sources stay disabled
   await page.getByRole('button', { name: 'Sources & sync', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Resync unavailable: not connected' }).first()).toBeDisabled();
   await page.getByRole('button', { name: 'Resync all connected providers', exact: true }).click();
-  await expect.poll(() => requests.filter(r => r.path === '/api/refresh').length).toBe(1);
-  expect(requests.find(r => r.path === '/api/refresh')!.body).toEqual({ check: 'now', sessionStart: false });
+  await expect.poll(() => userRefreshes(requests).length).toBe(1);
+  expect(userRefreshes(requests)[0].body).toEqual({ check: 'now', sessionStart: false });
 });
 
 test('mouse navigation and browser back restore tabs', async ({ page }) => {
@@ -111,7 +114,7 @@ test('add-listing form validates empty input and can be cancelled', async ({ pag
   await page.getByRole('button', { name: '+ Add listing', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Add a rental listing' })).toBeVisible();
   await page.getByRole('button', { name: 'Save apartment', exact: true }).click();
-  await expect(page.getByRole('alert')).toBeVisible();
+  await expect(page.getByRole('alert').filter({ hasText: 'Enter a listing URL' })).toBeVisible();
   await page.getByRole('button', { name: 'Cancel', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Add a rental listing' })).toHaveCount(0);
 });
@@ -307,12 +310,13 @@ test('oversized CSV file rejects safely and a valid file can be selected next', 
   await expect(page.getByText('100 Test Street, Unit 2A', { exact: true })).toBeVisible();
 });
 
-test('CSV outside supported boroughs reports the restriction without saving', async ({ page }) => {
+test('CSV outside supported regions reports the restriction without saving', async ({ page }) => {
   await mockApp(page);
   await openImport(page);
-  await page.getByRole('textbox', { name: 'Listing CSV', exact: true }).fill(`${importHeader}\nhttps://example.com/nj,12 Grove Street,,Jersey City,NJ,07302,1,1800`);
+  // Albany is in New York State but outside every searchable region.
+  await page.getByRole('textbox', { name: 'Listing CSV', exact: true }).fill(`${importHeader}\nhttps://example.com/albany,12 State Street,,Albany,NY,12207,1,1800`);
   await page.getByRole('button', { name: 'Save listings', exact: true }).click();
-  await expect(page.getByRole('alert').filter({ hasText: 'Manhattan or Brooklyn ZIP codes' })).toBeVisible();
+  await expect(page.getByRole('alert').filter({ hasText: 'Check the street, city, region, and monthly rent on line 2' })).toBeVisible();
   await expect(page.getByRole('tab', { name: 'Saved (0)', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Cancel', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Import rental listings' })).toHaveCount(0);
@@ -367,7 +371,7 @@ test('observed timeline distinguishes historical checks from live availability a
   await expect(page.getByText(/\$1,900\/mo · asking rent; fees not confirmed/)).toBeVisible();
   await expect(page.getByText(/\$1,800\/mo · includes reported fees/)).toBeVisible();
   await expect(page.getByText('Older changes were trimmed; showing the most recent 24 observations.', { exact: true })).toBeVisible();
-  expect(requests.filter(request => request.path === '/api/refresh')).toHaveLength(0);
+  expect(userRefreshes(requests)).toHaveLength(0);
 });
 
 
@@ -405,7 +409,7 @@ test('saved comparison caps four, enables replacements and clears without removi
   await page.getByRole('button', { name: 'Clear comparison', exact: true }).click();
   await expect(page.getByText('0 of 4 selected', { exact: true })).toBeVisible();
   await expect(page.getByRole('tab', { name: 'Saved (5)', exact: true })).toBeVisible();
-  expect(requests.filter(request => request.path === '/api/refresh')).toHaveLength(0);
+  expect(userRefreshes(requests)).toHaveLength(0);
 });
 
 
@@ -416,7 +420,7 @@ test('saved route context identifies destination, period and estimate rather tha
   await expect(page.getByText('To Synthetic test workplace · weekday-morning arrival', { exact: true })).toBeVisible();
   await expect(page.getByText('Transit: 31 min · Driving: 15 min', { exact: true })).toBeVisible();
   await expect(page.getByText(/This is a saved estimate, not current traffic or a guarantee/)).toBeVisible();
-  expect(requests.filter(request => request.path === '/api/refresh')).toHaveLength(0);
+  expect(userRefreshes(requests)).toHaveLength(0);
 });
 
 
@@ -433,7 +437,7 @@ test('local change checks opt in, seed baseline and show newer observed price ch
   await page.getByRole('button', { name: 'Local price and discovery changes', exact: true }).click();
   await page.getByRole('button', { name: 'Check this page and save local baseline', exact: true }).click();
   await expect(page.getByText('Observed price decrease: $1,800 → $1,700/mo', { exact: true })).toBeVisible();
-  expect(requests.filter(request => request.path === '/api/refresh')).toHaveLength(0);
+  expect(userRefreshes(requests)).toHaveLength(0);
 });
 
 
@@ -452,7 +456,7 @@ test('NYC building report loads automatically on Details and reuses completed se
   await details.click(); await details.click();
   await expect(page.getByText('Official building report: matched', { exact: true })).toBeVisible();
   expect(requests.filter(item => item.path === '/api/building-report')).toHaveLength(1);
-  expect(requests.filter(item => item.path === '/api/refresh')).toHaveLength(0);
+  expect(userRefreshes(requests)).toHaveLength(0);
   expect(unexpected).toEqual([]);
 });
 
@@ -586,5 +590,5 @@ test('an open result expires without a provider request and saved apartments rem
   expect(requests).toHaveLength(count);
   await page.getByRole('tab', { name: 'Saved (1)', exact: true }).click();
   await expect(page.getByText('12 Grove Street', { exact: true }).first()).toBeVisible();
-  expect(requests.filter(request => request.path === '/api/refresh')).toHaveLength(0);
+  expect(userRefreshes(requests)).toHaveLength(0);
 });

@@ -348,3 +348,12 @@ test('every selectable region supplies a marketplace without undefined dereferen
   assert.deepEqual(marketsForSearch({ region: 'all' }), MARKETS);
   assert.ok(marketsForSearch({ region: 'nj' }).every(market => market.state === 'NJ'));
 });
+
+test('CSV import accepts eastern Pennsylvania rentals and still rejects other states', async () => {
+  const { parseListingImport } = await import('../src/import-listings.ts');
+  const header = 'url,address,unit,city,state,zip,bedrooms,rent';
+  const [listing] = parseListingImport(`${header}\nhttps://example.com/pa,12 Main Street,,Easton,PA,18042,1,1500`);
+  assert.equal(listing.state, 'PA');
+  assert.equal(listing.region, 'pa');
+  assert.throws(() => parseListingImport(`${header}\nhttps://example.com/ma,12 Main Street,,Boston,MA,02108,1,2500`), /state, ZIP/);
+});

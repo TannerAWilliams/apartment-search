@@ -6,8 +6,10 @@ import { styles } from './styles.ts';
 import { listingKey } from './listings.ts';
 import { TOUR_KEY, MAX_TOURS, TOUR_CHECKLIST, parseTours, validateTours, localTourStart, moveTour, chronologicalTours, overlappingTourIds, tourRoute, tourDay, toursOnDay, exportTours, type Tour } from './tour-planner.ts';
 
-export function TourPlanner({ listings }: { listings: any[] }) {
-  const [open, setOpen] = useState(false), [tours, setTours] = useState<Tour[]>([]), [ready, setReady] = useState(false);
+/** When `open` is given, the parent shows the toggle (a tool chip) and this renders only the panel. */
+export function TourPlanner({ listings, open: shown }: { listings: any[]; open?: boolean }) {
+  const [ownOpen, setOpen] = useState(false), [tours, setTours] = useState<Tour[]>([]), [ready, setReady] = useState(false);
+  const open = shown ?? ownOpen;
   const [error, setError] = useState(''), [message, setMessage] = useState(''), [busy, setBusy] = useState(false);
   const [selected, setSelected] = useState(''), [date, setDate] = useState(''), [time, setTime] = useState(''), [duration, setDuration] = useState('30'), [notes, setNotes] = useState('');
   const [routeDay, setRouteDay] = useState('');
@@ -47,8 +49,10 @@ export function TourPlanner({ listings }: { listings: any[] }) {
   const selectedDay = days.includes(routeDay) ? routeDay : days[0] ?? '';
   const routeTours = toursOnDay(tours, selectedDay);
   const overlaps = overlappingTourIds(tours), route = tourRoute(routeTours);
+  // Controlled and closed: render nothing, so the parent's spacing does not leave a gap.
+  if (shown === false) return null;
   return <View style={{ gap: 10 }}>
-    <Button secondary onPress={() => setOpen(!open)}>{open ? 'Hide tour planner' : 'Plan apartment tours'}</Button>
+    {shown === undefined && <Button secondary onPress={() => setOpen(!open)}>{open ? 'Hide tour planner' : 'Plan apartment tours'}</Button>}
     {open && <>
       <Text style={styles.panelTitle}>Apartment tours</Text>
       <Text style={styles.smallMuted}>Personal plans, not confirmed bookings. Stored only on this device. Use one tab: concurrent tabs can overwrite tour edits. No broker messages are sent. Times use your device timezone: {Intl.DateTimeFormat().resolvedOptions().timeZone}. Calendar export includes your notes. Hiding this panel keeps unsaved form edits until you leave Saved; leaving Saved discards unsaved edits.</Text>
@@ -56,7 +60,7 @@ export function TourPlanner({ listings }: { listings: any[] }) {
       {!!message && <Text accessibilityLiveRegion="polite" style={styles.smallMuted}>{message}</Text>}
       {ready && <>
         <Text style={styles.fieldLabel}>{editing ? 'Edit appointment' : 'Choose a saved apartment'}</Text>
-        {!editing && <ScrollView style={{ maxHeight: 180 }} nestedScrollEnabled>{listings.map(l => { const key = listingKey(l); return <Pressable key={key} disabled={busy} accessibilityRole="radio" accessibilityState={{ selected: selected === key }} onPress={() => setSelected(key)} style={{ padding: 12, minHeight: 44 }}><Text>{selected === key ? '● ' : '○ '}{l.address}{l.unit ? ', ' + l.unit : ''}</Text></Pressable>; })}</ScrollView>}
+        {!editing && <ScrollView style={{ maxHeight: 180 }} nestedScrollEnabled>{listings.map(l => { const key = listingKey(l); return <Pressable key={key} disabled={busy} accessibilityRole="radio" accessibilityState={{ checked: selected === key }} aria-checked={selected === key} onPress={() => setSelected(key)} style={{ padding: 12, minHeight: 44 }}><Text>{selected === key ? '● ' : '○ '}{l.address}{l.unit ? ', ' + l.unit : ''}</Text></Pressable>; })}</ScrollView>}
         {!listings.length && !editing && <Text style={styles.smallMuted}>Save an apartment from Search to plan a tour.</Text>}
         <Field label="Tour date (YYYY-MM-DD)" value={date} onChangeText={value => { if (!saving.current) setDate(value); }} placeholder="2026-12-05" maxLength={10} />
         <Field label="Start time (HH:mm, 24-hour device time)" value={time} onChangeText={value => { if (!saving.current) setTime(value); }} placeholder="14:30" maxLength={5} />
@@ -83,7 +87,7 @@ export function TourPlanner({ listings }: { listings: any[] }) {
             <Button secondary disabled={busy} onPress={() => edit(t)}>Edit tour</Button>
             <Button secondary disabled={busy} onPress={async () => { if (await save(tours.filter(item => item.id !== t.id))) { if (editing === t.id) clearForm(); } }}>Remove tour</Button>
           </View>
-          {TOUR_CHECKLIST.map((item,index) => <Pressable key={item} disabled={busy} accessibilityRole="checkbox" accessibilityState={{ checked: t.checked.includes(index), disabled: busy }} onPress={() => save(tours.map(other => other.id === t.id ? { ...t, checked: t.checked.includes(index) ? t.checked.filter(n => n !== index) : [...t.checked,index] } : other))} style={{ padding: 8, minHeight: 44 }}><Text>{t.checked.includes(index) ? '☑ ' : '☐ '}{item}</Text></Pressable>)}
+          {TOUR_CHECKLIST.map((item,index) => <Pressable key={item} disabled={busy} accessibilityRole="checkbox" accessibilityState={{ checked: t.checked.includes(index), disabled: busy }} aria-checked={t.checked.includes(index)} aria-disabled={busy} onPress={() => save(tours.map(other => other.id === t.id ? { ...t, checked: t.checked.includes(index) ? t.checked.filter(n => n !== index) : [...t.checked,index] } : other))} style={{ padding: 8, minHeight: 44 }}><Text>{t.checked.includes(index) ? '☑ ' : '☐ '}{item}</Text></Pressable>)}
         </View>)}
       </>}
     </>}

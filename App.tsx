@@ -1,11 +1,14 @@
 import { searchAvailabilityMessage } from './src/search-availability.ts';
+import { createApi, type ApiConfig, type ConfigSource, type RefreshInfo } from './src/api-client.ts';
+import { ErrorBoundary } from './src/ErrorBoundary.tsx';
+import { useHashNavigation, useInventoryClock, useRetryCooldown } from './src/app-hooks.ts';
 import { inventoryExpired } from './src/inventory-freshness.ts';
 import { inventoryUnavailable } from './src/inventory-state.ts';
 import type { ListingData, SourceLink, SearchFilters, SearchResult } from './src/domain.ts';
 import type { SourceDefinition, SourceStatus } from './src/source-status.ts';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  AppState, Modal, Platform, Pressable, ScrollView, StatusBar, Text, View, useWindowDimensions,
+Modal, Platform, Pressable, ScrollView, StatusBar, Text, View, useWindowDimensions,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
@@ -26,7 +29,7 @@ import { AddListing } from './src/AddListing.tsx';
 import { ImportListings } from './src/ImportListings.tsx';
 import { ListingMap } from './src/ListingMap';
 import { SourcesPage } from './src/SourcesPage.tsx';
-import { refreshSummary } from './src/source-status.ts';
+import { LONG_SYNC_LIMITS, LONG_SYNC_POLL_MS, refreshSummary } from './src/source-status.ts';
 import { LAUNDRY_LABELS } from './src/discovery.ts';
 import { SavedSearches } from './src/SavedSearches.tsx';
 import { ObservedChanges } from './src/ObservedChanges.tsx';
@@ -39,10 +42,6 @@ type DraftFilters = Omit<SearchFilters, 'maxRent' | 'maxTransitMinutes' | 'maxDr
   maxRent: string | number | null; maxTransitMinutes: string | number | null; maxDrivingMinutes: string | number | null;
   minBathrooms: string | number | null; minSquareFeet: string | number | null; bestFitRentWeight: string | number;
 };
-type RefreshInfo = { sources: (SourceStatus & { month?: string; transport?: string })[]; checking?: boolean; activeSource?: string | null; state?: string; lastCheckedAt?: string; refreshRetryAt?: number; market?: { revision?: string; catalogEtag?: string; csvEtag?: string } | null };
-type ConfigSource = { id: string; name: string; sample?: boolean };
-type ApiConfig = { sources: ConfigSource[]; sourceCatalog?: SourceDefinition[]; commuteConfigured?: boolean; companies?: Record<string, number>; refresh?: RefreshInfo; refreshRetryAt?: number; browserImportAllowed?: boolean; dashboardAvailable?: boolean; storageMode?: string };
-type ApiOptions = { body?: object; token?: string; signal?: AbortSignal };
 const failureInfo = (value: unknown) => ({
   message: value instanceof Error ? value.message : '',
   commuteError: typeof value === 'object' && value !== null && 'commuteError' in value && value.commuteError === true,
@@ -55,6 +54,16 @@ const WEB_MAP = Platform.OS === 'web';
 const SEARCH_DEFAULTS: SearchFilters = { ...DEFAULT_FILTERS, region: 'all', bedrooms: null, maxRent: null, source: '', includeMap: WEB_MAP, liveOnly: true, includeCached: true };
 const BEDROOMS = [null, 0, 1, 2, 3, 4];
 const PAGE_SIZE = 12;
+/** Area chips under headings: the city and its boroughs, then the surrounding regions. */
+const AREA_GROUPS: [string, (keyof typeof REGIONS)[]][] = [
+  ['New York City', ['nyc', 'manhattan-brooklyn', 'manhattan', 'brooklyn', 'queens', 'bronx', 'staten-island']],
+  ['Around NYC', ['nj', 'li', 'westchester', 'metroNorth', 'ct']],
+];
+/** Secondary tools per tab, as [id, chip label, accessible name]. */
+const TOOLS: Record<'results' | 'saved', [string, string, string][]> = {
+  results: [['searches', 'Saved searches', 'Saved searches and whole-search checks'], ['changes', 'Price changes', 'Local price and discovery changes']],
+  saved: [['compare', 'Compare', 'Compare saved apartments'], ['tours', 'Plan tours', 'Plan apartment tours']],
+};
 const EMPTY_POINTS: NonNullable<SearchResult['mapPoints']> = [];
 const SAVED_KEY = 'apartment-search:saved-listings:v1';
 const SAVED_FILTERS = { ...SEARCH_DEFAULTS, bedrooms: null, maxRent: null, liveOnly: false };
@@ -70,38 +79,16 @@ const formDefaults = (): DraftFilters => ({
   maxDrivingMinutes: '',
 });
 
-function api(path: 'config', options?: ApiOptions): Promise<ApiConfig>;
-function api(path: 'refresh', options?: ApiOptions): Promise<RefreshInfo>;
-function api(path: 'search', options?: ApiOptions): Promise<SearchResult>;
-function api<T = unknown>(path: string, options?: ApiOptions): Promise<T>;
-async function api<T>(path: string, { body, token, signal }: ApiOptions = {}): Promise<T> {
-  const headers: Record<string, string> = {};
-  if (token) headers.Authorization = `Bearer ${token}`;
-  if (body) headers['Content-Type'] = 'application/json';
-  const response = await fetch(`${API_ORIGIN}/api/${path}`, {
-    method: body ? 'POST' : 'GET', headers, signal,
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  const data = await response.json();
-  const wait = Number(response.headers.get('X-Refresh-Retry-After') ?? (response.status === 429 ? response.headers.get('Retry-After') : 0));
-  const refreshRetryAt = Number.isFinite(wait) && wait > 0 ? Date.now() + wait * 1000 : 0;
-  data.refreshRetryAt = refreshRetryAt;
-  if (!response.ok) {
-    const error = Object.assign(new Error(data.error || 'Could not reach the apartment search server.'), {
-      refreshRetryAt, status: response.status, commuteError: data.commuteError === true,
-    });
-    throw error;
-  }
-  return data as T;
-}
+const api = createApi(API_ORIGIN);
 
 async function finishSourceCheck(check: RefreshInfo, token: string, signal?: AbortSignal, onProgress?: (check: RefreshInfo) => void) {
   const started = Date.now();
-  let cityRealtyRunning = false;
+  // A background complete sync (CityRealty, Openigloo, Zumper) can take many minutes; check on it less often.
+  let longSyncLimit = 0;
   while (check.checking) {
-    cityRealtyRunning ||= check.activeSource === 'cityrealty-live';
-    if (Date.now() - started >= (cityRealtyRunning ? 13 * 60_000 : 150_000)) break;
-    await new Promise((resolve) => setTimeout(resolve, cityRealtyRunning ? 4000 : 1200));
+    longSyncLimit = Math.max(longSyncLimit, LONG_SYNC_LIMITS[check.activeSource ?? ''] ?? 0);
+    if (Date.now() - started >= (longSyncLimit || 150_000)) break;
+    await new Promise((resolve) => setTimeout(resolve, longSyncLimit ? LONG_SYNC_POLL_MS : 1200));
     if (signal?.aborted) return check;
     check = await api('refresh', { token, signal });
     onProgress?.(check);
@@ -124,9 +111,15 @@ function Filters({ draft, setDraft, submit, busy, serverState, token, setToken, 
     {(panel === 'more' || panel === 'area') && <>
     <Text style={styles.fieldLabel}>Area</Text>
     <View style={styles.chipRow}>
-      {Object.entries({ all: REGIONS.all, nyc: REGIONS.nyc, nj: REGIONS.nj, ct: REGIONS.ct, li: REGIONS.li, metroNorth: REGIONS.metroNorth, westchester: REGIONS.westchester, ...NYC_SEARCH_AREAS }).map(([key, region]) => <Chip key={key} selected={draft.region === key}
-        onPress={() => set('region')(key)}>{region.label}</Chip>)}
+      <Chip selected={draft.region === 'all'} onPress={() => set('region')('all')}>{REGIONS.all.label}</Chip>
     </View>
+    {AREA_GROUPS.map(([heading, keys]) => <React.Fragment key={heading}>
+      <Text style={styles.smallMuted}>{heading}</Text>
+      <View style={styles.chipRow}>
+        {keys.map((key) => <Chip key={key} selected={draft.region === key}
+          onPress={() => set('region')(key)}>{key === 'nyc' ? 'All five boroughs' : REGIONS[key].label}</Chip>)}
+      </View>
+    </React.Fragment>)}
     <Field label="ZIP code (optional)" placeholder="Any ZIP in this area" value={draft.zip}
       onChangeText={set('zip')} keyboardType="number-pad" maxLength={5} />
     </>}
@@ -284,6 +277,9 @@ function Results({ visible, setVisible, result, applied, sort, onSort, onPage, p
 }) {
   const { matches } = result;
   const savedView = result.mode === 'saved';
+  // A sort with only one option (saved apartments without routing) is not a choice, so it is not shown.
+  const sortOptions = Object.entries(RESULT_SORTS).filter(([id]) => id === 'rent' || (!savedView && id === 'best') ||
+    (!savedView && commuteConfigured && id !== 'recent'));
   const unavailable = inventoryUnavailable(result);
   const summary = savedView ? 'Saved on this device · All apartment sizes' : [
     (Object.entries(REGIONS).find(([key]) => key === applied.region)?.[1].label ?? applied.region), bedroomLabel(applied.bedrooms), applied.zip, applied.company, MARKETPLACE_NAMES[applied.source],
@@ -300,11 +296,9 @@ function Results({ visible, setVisible, result, applied, sort, onSort, onPage, p
         <Text style={styles.smallMuted}>{summary}</Text>
         <Text style={styles.smallMuted}>To {result.workplace.label}</Text>
       </View>
-      <View style={styles.chipRow}>
-        {Object.entries(RESULT_SORTS).filter(([id]) => id === 'rent' || (!savedView && id === 'best') ||
-          (!savedView && commuteConfigured && id !== 'recent')).map(([id, label]) =>
-          <Chip key={id} selected={sort === id} onPress={() => onSort(id)}>{label}</Chip>)}
-      </View>
+      {sortOptions.length > 1 && <View style={styles.chipRow}>
+        {sortOptions.map(([id, label]) => <Chip key={id} selected={sort === id} onPress={() => onSort(id)}>{label}</Chip>)}
+      </View>}
     </View>
     {result.commute && <Text style={styles.smallMuted}>Weekday-morning estimates from TravelTime.</Text>}
     {result.commuteNotice && <Text style={styles.smallMuted}>{result.commuteNotice}</Text>}
@@ -370,22 +364,7 @@ function ApartmentSearch() {
   const [draft, setDraft] = useState(formDefaults);
   const [applied, setApplied] = useState(SEARCH_DEFAULTS);
   const [result, setResult] = useState<SearchResult>(() => localSearch([], SEARCH_DEFAULTS, localWorkplace(SEARCH_DEFAULTS), 'live'));
-  const [inventoryClock, setInventoryClock] = useState(Date.now);
-  useEffect(() => {
-    if (result.mode !== 'live' || result.inventoryExpiresAt === undefined) return;
-    const check = () => setInventoryClock(Date.now());
-    check();
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const schedule = () => {
-      const remaining = Date.parse(result.inventoryExpiresAt!) - Date.now();
-      if (!Number.isFinite(remaining) || remaining < 0) { check(); return; }
-      timer = setTimeout(() => { check(); schedule(); }, Math.min(2_147_483_647, remaining + 1));
-    };
-    schedule();
-    const subscription = AppState.addEventListener('change', state => { if (state === 'active') check(); });
-    if (Platform.OS === 'web') window.addEventListener('focus', check);
-    return () => { if (timer !== undefined) clearTimeout(timer); subscription.remove(); if (Platform.OS === 'web') window.removeEventListener('focus', check); };
-  }, [result]);
+  const inventoryClock = useInventoryClock(result);
   const staleInventory = inventoryExpired(result, inventoryClock);
   const [saved, setSaved] = useState<ListingData[]>([]);
   const [visible, setVisible] = useState(PAGE_SIZE);
@@ -398,16 +377,7 @@ function ApartmentSearch() {
   const [sourceCatalog, setSourceCatalog] = useState<SourceDefinition[]>([]);
   const [refresh, setRefresh] = useState<RefreshInfo | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [refreshRetryAt, setRefreshRetryAt] = useState(0);
-  const refreshRetryAtRef = useRef(0);
-  refreshRetryAtRef.current = refreshRetryAt;
-  const [refreshClock, setRefreshClock] = useState(Date.now);
-  const cooldownSeconds = Math.max(0, Math.ceil((refreshRetryAt - refreshClock) / 1000));
-  useEffect(() => {
-    if (!refreshRetryAt) return;
-    const timer = setInterval(() => setRefreshClock(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, [refreshRetryAt]);
+  const { refreshRetryAt, setRefreshRetryAt, refreshRetryAtRef, cooldownSeconds, setRefreshClock } = useRetryCooldown();
   const [refreshError, setRefreshError] = useState('');
   const browserImportAllowed = useRef(false);
   const checking = useRef<AbortSignal | null>(null);
@@ -420,29 +390,10 @@ function ApartmentSearch() {
   const [commuteConfigured, setCommuteConfigured] = useState(false);
   const [dashboardAvailable, setDashboardAvailable] = useState(false);
   const [temporaryStorage, setTemporaryStorage] = useState(false);
-  const [tab, setTab] = useState('results');
-  useEffect(() => {
-    if (Platform.OS !== 'web') return;
-    const restore = () => {
-      const next = window.location.hash.slice(1);
-      setExpanded('');
-      setScope(next === 'saved' ? 'saved' : 'market');
-      setTab(['results', 'saved', 'more', 'sources', 'chart', 'marketplaces', 'affordable'].includes(next) ? next : 'results');
-    };
-    restore();
-    window.addEventListener('popstate', restore);
-    window.addEventListener('hashchange', restore);
-    return () => { window.removeEventListener('popstate', restore); window.removeEventListener('hashchange', restore); };
-  }, []);
-  const navigateTab = (next: string) => {
-    if (Platform.OS === 'web' && window.location.hash !== '#' + next) window.history.pushState(null, '', '#' + next);
-    setScope(next === 'saved' ? 'saved' : 'market');
-    setExpanded('');
-    setTab(next);
-  };
-  const [scope, setScope] = useState('market');
+  const { tab, setTab, navigateTab, scope, setScope, expanded, setExpanded } = useHashNavigation();
+  /** The open tool panel below the commute box: one at a time. */
+  const [tool, setTool] = useState('');
   const [adding, setAdding] = useState<false | 'single' | 'import'>(false);
-  const [expanded, setExpanded] = useState('');
   const [mapView, setMapView] = useState(false);
   const scrollRef = useRef<React.ElementRef<typeof ScrollView>>(null);
   const scrollPositions = useRef<Record<string, number>>({});
@@ -704,9 +655,11 @@ function ApartmentSearch() {
       {WEB_MAP && <Button secondary onPress={() => setMapView(!mapView)}>{mapView ? 'List' : 'Map'}</Button>}
     </View>}
     {(tab === 'results' || tab === 'saved') && <View style={{ paddingHorizontal: 12, paddingVertical: 8, gap: 6, borderBottomWidth: 1, borderColor: colors.border }}>
-      <Text style={styles.fieldLabel}>Commute to: {result.workplace.label}</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <Text style={[styles.fieldLabel, { flex: 1, minWidth: 0 }]} numberOfLines={2}>Commute to: {result.workplace.label}</Text>
+        <Button secondary disabled={busy} onPress={() => { setError(''); toggleFilter('commute'); }}>Change destination</Button>
+      </View>
       <Text style={styles.smallMuted}>{tab === 'saved' ? 'Directions use this destination. Automatic travel times are not recalculated on your saved list.' : busy ? 'Updating search. Previous destination and results remain until it succeeds.' : result.commute ? 'Weekday-morning provider estimates; missing routes stay unavailable.' : result.commuteNotice || 'Automatic travel times unavailable. Open a listing’s directions link to check a route.'}</Text>
-      <Button secondary disabled={busy} onPress={() => { setError(''); toggleFilter('commute'); }}>Change destination</Button>
     </View>}
     <Modal visible={Boolean(expanded)} transparent animationType="slide" onRequestClose={() => setExpanded('')}>
       <View style={mobileStyles.overlay}><View style={[mobileStyles.sheet, wide && mobileStyles.wideSheet]} accessibilityViewIsModal>
@@ -723,11 +676,15 @@ function ApartmentSearch() {
         <View style={styles.results}>
             {error !== '' && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
             {(tab === 'results' || tab === 'saved') && <>
-              {tab === 'saved' && <SavedComparison listings={saved} />}
-              {tab === 'saved' && <TourPlanner listings={saved} />}
-              {tab === 'results' && <SavedSearches filters={applied} disabled={busy} apply={filters => { const next = { ...filters, includeMap: WEB_MAP }; setDraft({ ...formDefaults(), ...next }); submit(next); }} check={filters => { if (serverState !== 'ready') return Promise.reject(new Error('Connect to the inventory server before checking a saved search.')); return api('search-check', { body: filters, token: activeToken }); }} />}
+              <View style={styles.chipRow}>
+                {TOOLS[tab].filter(([id]) => id !== 'changes' || !staleInventory).map(([id, short, full]) =>
+                  <Chip key={id} label={full} selected={tool === id} onPress={() => setTool(tool === id ? '' : id)}>{short}</Chip>)}
+              </View>
+              {tab === 'saved' && <SavedComparison listings={saved} open={tool === 'compare'} />}
+              {tab === 'saved' && <TourPlanner listings={saved} open={tool === 'tours'} />}
+              {tab === 'results' && <SavedSearches open={tool === 'searches'} filters={applied} disabled={busy} apply={filters => { const next = { ...filters, includeMap: WEB_MAP }; setDraft({ ...formDefaults(), ...next }); submit(next); }} check={filters => { if (serverState !== 'ready') return Promise.reject(new Error('Connect to the inventory server before checking a saved search.')); return api('search-check', { body: filters, token: activeToken }); }} />}
               {tab === 'results' && temporaryStorage && <Text style={styles.noticeLine}>Temporary listing storage: source checks are lost when the server restarts or redeploys. Your device-saved apartments are separate.</Text>}
-              {tab === 'results' && !staleInventory && <ObservedChanges listings={result.matches} />}
+              {tab === 'results' && !staleInventory && <ObservedChanges listings={result.matches} open={tool === 'changes'} />}
               {tab === 'results' && <Pressable accessibilityRole="button" accessibilityLabel="View source freshness and coverage" onPress={() => navigateTab('sources')}>
                 <Text style={mobileStyles.freshness}>{refreshing ? 'Refreshing sources…' : failedSources.length ? 'Partial coverage · Some sources unavailable' : refresh?.lastCheckedAt ? 'Saved results · ' + CHECK_TIME.format(new Date(refresh.lastCheckedAt)) : 'Saved results · Not yet refreshed'} · Details</Text>
               </Pressable>}
@@ -798,7 +755,7 @@ function ApartmentSearch() {
 }
 
 export default function App() {
-  return <SafeAreaProvider><ApartmentSearch /></SafeAreaProvider>;
+  return <SafeAreaProvider><ErrorBoundary><ApartmentSearch /></ErrorBoundary></SafeAreaProvider>;
 }
 
 

@@ -7,8 +7,10 @@ import { addSavedSearch, compareWholeSnapshot, readSavedSearches, serializeSaved
 import { type ObservedChange } from './observed-changes.ts';
 import { formatRent } from './search.ts';
 const KEY = 'apartment-search:saved-searches:v1';
-export function SavedSearches({ filters, apply, check, disabled = false }: { filters: unknown; apply: (filters: any) => void; check: (filters: any) => Promise<unknown>; disabled?: boolean }) {
-  const [open, setOpen] = useState(false), [name, setName] = useState('');
+/** When `open` is given, the parent shows the toggle (a tool chip) and this renders only the panel. */
+export function SavedSearches({ filters, apply, check, disabled = false, open: shown }: { filters: unknown; apply: (filters: any) => void; check: (filters: any) => Promise<unknown>; disabled?: boolean; open?: boolean }) {
+  const [ownOpen, setOpen] = useState(false), [name, setName] = useState('');
+  const open = shown ?? ownOpen;
   const [searches, setSearches] = useState<SavedSearch[]>([]), [ready, setReady] = useState(false), [busy, setBusy] = useState(false);
   const [message, setMessage] = useState(''), [changes, setChanges] = useState<ObservedChange[]>([]);
   const locked = useRef(false), mounted = useRef(true);
@@ -26,8 +28,10 @@ export function SavedSearches({ filters, apply, check, disabled = false }: { fil
     await AsyncStorage.setItem(KEY, serializeSavedSearches(next));
     if (mounted.current) setSearches(next);
   }
+  // Controlled and closed: render nothing, so the parent's spacing does not leave a gap.
+  if (shown === false) return null;
   return <View style={{ gap: 8 }}>
-    <Button secondary onPress={() => setOpen(!open)}>{open ? 'Hide saved searches' : 'Saved searches and whole-search checks'}</Button>
+    {shown === undefined && <Button secondary onPress={() => setOpen(!open)}>{open ? 'Hide saved searches' : 'Saved searches and whole-search checks'}</Button>}
     {open && <>
       <Text accessibilityRole="header" style={styles.fieldLabel}>Saved searches</Text>
       <Text style={styles.smallMuted}>Save the applied filters on this device (up to 10). Checks scan every matching apartment in cached inventory, not just this page. They do not refresh providers, use routing, monitor in the background or send notifications. Cached sources may be partial or stale; this is not all apartments on the market. Use one tab: concurrent tabs can overwrite local presets.</Text>

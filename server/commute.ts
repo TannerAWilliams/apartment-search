@@ -1,6 +1,8 @@
 import type { AppEnv } from './contracts.ts';
 import type { ListingData, Point, Workplace, SearchFilters } from '../src/domain.ts';
 import type { SourceFetch } from "./refresh.ts";
+import type { Bucket } from './contracts.ts';
+import { gunzipSync, gzipSync, strFromU8, strToU8 } from 'fflate';
 import { SearchInputError, isPoint, localWorkplace } from '../src/search.ts';
 
 const TRAVELTIME_URL = 'https://api.traveltimeapp.com/v4/time-filter/fast';
@@ -22,7 +24,42 @@ export function routingCredentials(env: AppEnv) {
 const coords = ({ latitude: lat, longitude: lng }: Point) => ({ lat, lng });
 const pointKey = ({ latitude, longitude }: Point) => `${latitude},${longitude}`;
 
-export async function routeCommutes<T extends { latitude?: unknown; longitude?: unknown }>(listings: T[], workplace: unknown, credentials: ReturnType<typeof routingCredentials>, fetcher: SourceFetch, now = new Date()) {
+/** Typical weekday-morning estimates change slowly, so routed times are reused for a week. */
+export const COMMUTE_CACHE_DAYS = 7;
+const COMMUTE_CACHE_LIMIT = 60_000;
+type CachedTimes = { transit: number | null; driving: number | null; checkedAt: string };
+type CommuteCache = { version: 1; workplace?: string; entries: Record<string, CachedTimes> };
+/**
+ * Workplaces can be any coordinates a user enters, and storage has no delete, so caches live in
+ * a fixed number of slots chosen by a hash of the workplace. A new workplace may evict another's
+ * cache; storage stays bounded either way.
+ */
+const COMMUTE_CACHE_SLOTS = 16;
+const workplaceId = (workplace: Point) => `${workplace.latitude.toFixed(5)},${workplace.longitude.toFixed(5)}`;
+function cacheKey(workplace: Point) {
+  let hash = 0;
+  for (const character of workplaceId(workplace)) hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
+  return `commutes/slot-${hash % COMMUTE_CACHE_SLOTS}.json.gz`;
+}
+
+async function readCommuteCache(bucket: Bucket, workplace: Point): Promise<CommuteCache> {
+  try {
+    const object = await bucket.get(cacheKey(workplace));
+    const value = object ? JSON.parse(strFromU8(gunzipSync(new Uint8Array(await object.arrayBuffer())))) : null;
+    return value?.version === 1 && value.workplace === workplaceId(workplace) && value.entries && typeof value.entries === 'object' ?
+      value : { version: 1, workplace: workplaceId(workplace), entries: {} };
+  } catch {
+    return { version: 1, workplace: workplaceId(workplace), entries: {} };
+  }
+}
+
+async function writeCommuteCache(bucket: Bucket, workplace: Point, cache: CommuteCache) {
+  const newest = Object.entries(cache.entries).sort(([, a], [, b]) => Date.parse(b.checkedAt) - Date.parse(a.checkedAt)).slice(0, COMMUTE_CACHE_LIMIT);
+  // Best effort: a failed or concurrent write only means those origins are routed again.
+  await bucket.put(cacheKey(workplace), gzipSync(strToU8(JSON.stringify({ version: 1, workplace: workplaceId(workplace), entries: Object.fromEntries(newest) })))).catch(() => null);
+}
+
+export async function routeCommutes<T extends { latitude?: unknown; longitude?: unknown }>(listings: T[], workplace: unknown, credentials: ReturnType<typeof routingCredentials>, fetcher: SourceFetch, now = new Date(), cache?: Bucket) {
   if (!credentials) throw new CommuteError('Automatic commute estimates are unavailable because the routing service is disconnected.');
   if (!isPoint(workplace) || !('label' in workplace) || typeof workplace.label !== 'string' || !workplace.label || workplace.label.length > 200 || !Number.isFinite(now.getTime())) throw new CommuteError('Choose a valid workplace before calculating commute times.', 422);
   const origins = new Map();
@@ -33,7 +70,11 @@ export async function routeCommutes<T extends { latitude?: unknown; longitude?: 
   }
   if (!origins.size) return listings.map(listing => ({ ...listing, transitSeconds: null, drivingSeconds: null, commuteEstimate: null }));
   if (origins.size > 100_000) throw new CommuteError('Choose a smaller area or a lower rent limit to calculate commute times.', 422);
-  const locations = [...origins.values()];
+  const saved = cache ? await readCommuteCache(cache, workplace as Point) : null;
+  const fresh = (entry: CachedTimes | undefined) => entry && now.getTime() - Date.parse(entry.checkedAt) < COMMUTE_CACHE_DAYS * 86_400_000;
+  const known = new Map<string, CachedTimes>();
+  for (const key of origins.keys()) { const entry = saved?.entries[key]; if (fresh(entry)) known.set(key, entry!); }
+  const locations = [...origins.entries()].filter(([key]) => !known.has(key)).map(([, origin]) => origin);
   const departure_location_ids = locations.map(({ id }) => id);
   const searches = Object.entries(MODES).map(([id, type]) => ({
     id, arrival_location_id: 'workplace', departure_location_ids,
@@ -42,8 +83,8 @@ export async function routeCommutes<T extends { latitude?: unknown; longitude?: 
   const body = { locations: [...locations, { id: 'workplace', coords: coords(workplace) }],
     arrival_searches: { many_to_one: searches } };
 
-  let results: { search_id?: string; locations?: { id: string; properties?: { travel_time?: number } }[] }[];
-  try {
+  let results: { search_id?: string; locations?: { id: string; properties?: { travel_time?: number } }[] }[] = [];
+  if (locations.length) try {
     const response = await fetcher(TRAVELTIME_URL, {
       method: 'POST', redirect: 'error', signal: AbortSignal.timeout(20000),
       headers: { 'Content-Type': 'application/json', 'X-Application-Id': credentials.appId, 'X-Api-Key': credentials.apiKey },
@@ -59,6 +100,7 @@ export async function routeCommutes<T extends { latitude?: unknown; longitude?: 
     throw new CommuteError('TravelTime couldn’t calculate routes. Try again, or search without commute times.');
   }
   const timesByMode = Object.fromEntries(searches.map(({ id }) => {
+    if (!locations.length) return [id, new Map()];
     const result = results.find((entry) => entry?.search_id === id);
     if (!Array.isArray(result?.locations)) throw new CommuteError('TravelTime returned incomplete commute estimates. Try again.');
     return [id, new Map(result.locations.flatMap((location) => {
@@ -66,9 +108,17 @@ export async function routeCommutes<T extends { latitude?: unknown; longitude?: 
       return typeof seconds === 'number' && Number.isFinite(seconds) && seconds >= 0 && seconds <= 10800 ? [[location.id, seconds]] : [];
     }))];
   }));
+  const checkedAt = now.toISOString();
+  const keyById = new Map([...origins.entries()].map(([key, origin]) => [origin.id, key]));
+  for (const { id } of locations) {
+    known.set(keyById.get(id)!, { transit: timesByMode.transit.get(id) ?? null, driving: timesByMode.driving.get(id) ?? null, checkedAt });
+  }
+  if (cache && saved && locations.length) {
+    await writeCommuteCache(cache, workplace as Point, { version: 1, entries: { ...saved.entries, ...Object.fromEntries(known) } });
+  }
   return listings.map((listing) => {
-    const id = isPoint(listing) ? origins.get(pointKey(listing))?.id : undefined;
-    return { ...listing, commuteEstimate: id === undefined ? null : { provider: 'TravelTime', arrivalPeriod: 'weekday_morning', checkedAt: now.toISOString(), destination: { label: workplace.label, latitude: workplace.latitude, longitude: workplace.longitude } }, transitSeconds: id === undefined ? null : timesByMode.transit.get(id) ?? null, drivingSeconds: id === undefined ? null : timesByMode.driving.get(id) ?? null };
+    const times = isPoint(listing) ? known.get(pointKey(listing)) : undefined;
+    return { ...listing, commuteEstimate: times === undefined ? null : { provider: 'TravelTime', arrivalPeriod: 'weekday_morning', checkedAt: times.checkedAt, destination: { label: workplace.label, latitude: workplace.latitude, longitude: workplace.longitude } }, transitSeconds: times?.transit ?? null, drivingSeconds: times?.driving ?? null };
   });
 }
 

@@ -4,7 +4,7 @@ import { BuildingReport } from './BuildingReport.tsx';
 import { discoveryFacts, LAUNDRY_LABELS } from './discovery.ts';
 import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { REGIONS, searchBorough } from './regions.ts';
+import { matchesRegion, REGIONS, searchBorough } from './regions.ts';
 import { directionsLink, formatRent } from './search.ts';
 import { listingLinkLabel, listingPresentation, orderedListingLinks } from './listings.ts';
 import { colors, styles } from './styles.ts';
@@ -33,7 +33,7 @@ export function Listing({ listing, selectedSource, workplace, commute, onSave, o
  onRemove?: (listing: ListingData) => void; onError: (message: string) => void; saved: boolean; onCheckBuilding?: CheckBuilding }) {
   const [expanded, setExpanded] = useState(false);
   const { region, address, unit, city, state, zip, rent, transitSeconds, drivingSeconds, neighborhood } = listing;
-  const regionKey = searchBorough(listing) ?? region ?? 'all';
+  const regionKey = searchBorough(listing) ?? (region === 'metroNorth' && matchesRegion(listing, 'westchester') ? 'westchester' : region) ?? 'all';
   const regionInfo = Object.hasOwn(REGIONS, regionKey) ? REGIONS[regionKey as keyof typeof REGIONS] : undefined;
   const title = unit ? `${address}, ${unit.startsWith('#') ? unit : 'Unit ' + unit}` : address;
   const subtitle = [neighborhood === city ? '' : neighborhood, `${city}, ${state} ${zip}`].filter(Boolean).join(' · ');

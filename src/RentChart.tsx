@@ -46,7 +46,7 @@ function RentTable({ areas, selection, choose }: { areas: RentArea[]; selection:
         {SIZES.map((label) => <Text key={label} style={[styles.chartCell, styles.fieldLabel]}>{label}</Text>)}
       </View>
       {areas.map((area) => <Pressable key={area.id} accessibilityRole="button"
-        accessibilityState={{ selected: selection === area.id }} accessibilityLabel={`Show chart for ${area.label} ${area.detail}`}
+        accessibilityState={{ selected: selection === area.id }} aria-selected={selection === area.id} accessibilityLabel={`Show chart for ${area.label} ${area.detail}`}
         onPress={() => choose(area.id)} style={[styles.chartTableRow, selection === area.id && styles.chartTableSelected]}>
         <View style={styles.chartTablePlace}>
           <Text style={styles.fieldLabel}>{area.label}</Text>

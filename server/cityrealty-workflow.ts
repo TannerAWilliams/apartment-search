@@ -1,16 +1,15 @@
 import { WorkflowEntrypoint, type WorkflowEvent, type WorkflowStep } from 'cloudflare:workers';
 import type { AppEnv } from './contracts.ts';
-import { CITYREALTY_ID } from './cityrealty.ts';
 import { createD1Bucket, type D1Database } from './d1-bucket.ts';
 import { crawlOpeniglooCell, finishOpeniglooRun, OPENIGLOO_CELL_COUNT } from './openigloo-sync.ts';
-import { refreshSources, WORKFLOW_SOURCE_IDS } from './refresh.ts';
+import { refreshSources } from './refresh.ts';
+import { completeSync, SYNC_PROGRESS_KEY, WORKFLOW_SOURCE_IDS } from './source-registry.ts';
 
 type Environment = AppEnv & { APARTMENTS: D1Database };
 /** sources: which complete syncs to run, in order; all of them when omitted. */
 type RefreshParameters = { delay: boolean; sources?: string[] };
 
-const NAMES: Record<string, string> = { [CITYREALTY_ID]: 'CityRealty', openigloo: 'Openigloo', 'zumper-live': 'Zumper' };
-const STEP_TIMEOUTS: Record<string, '13 minutes' | '25 minutes'> = { [CITYREALTY_ID]: '13 minutes', 'zumper-live': '25 minutes' };
+const NAMES: Record<string, string> = Object.fromEntries(WORKFLOW_SOURCE_IDS.map((id) => [id, completeSync(id)!.name]));
 
 /** Runs the complete-inventory syncs that are too long for an API request. Named for its first source. */
 export class CityRealtySync extends WorkflowEntrypoint<Environment, RefreshParameters> {
@@ -18,7 +17,12 @@ export class CityRealtySync extends WorkflowEntrypoint<Environment, RefreshParam
     if (event.payload.delay) await step.sleep('Give other sources time to start', '3 seconds');
     const sources = (event.payload.sources ?? WORKFLOW_SOURCE_IDS).filter((id) => WORKFLOW_SOURCE_IDS.includes(id));
     const outcomes: Record<string, { state: string; listingCount?: number; error?: string }> = {};
+    const bucket = createD1Bucket(this.env.APARTMENTS);
     for (const sourceId of sources) {
+      await step.do(`Record ${NAMES[sourceId]} as syncing`, { retries: { limit: 2, delay: '5 seconds' } }, async () => {
+        await bucket.put(SYNC_PROGRESS_KEY, JSON.stringify({ source: sourceId, startedAt: new Date().toISOString() }));
+        return sourceId;
+      });
       outcomes[sourceId] = sourceId === 'openigloo' ? await this.syncOpenigloo(event.instanceId, step) : await this.sync(sourceId, step);
     }
     const failed = Object.entries(outcomes).filter(([, outcome]) => outcome.error);
@@ -30,7 +34,7 @@ export class CityRealtySync extends WorkflowEntrypoint<Environment, RefreshParam
     const bucket = createD1Bucket(this.env.APARTMENTS);
     for (let attempt = 0; attempt < 6; attempt++) {
       const result = await step.do(`Verify and save ${NAMES[sourceId]} inventory (attempt ${attempt + 1})`,
-        { timeout: STEP_TIMEOUTS[sourceId] ?? '13 minutes', retries: { limit: 0, delay: '1 second' } },
+        { timeout: completeSync(sourceId)?.stepTimeout ?? '13 minutes', retries: { limit: 0, delay: '1 second' } },
         () => refreshSources({ ...this.env, BUCKET: bucket }, {
           sourceId, onDemand: true, forceRefresh: true,
           fetcher: (url, options) => fetch(url, { ...options, redirect: 'manual' }),
