@@ -264,3 +264,27 @@ test('the browser can read every public export the retry check names', async () 
   });
   expect(Object.keys(results)).toStrictEqual(PUBLIC_SOURCE_IDS);
 });
+
+test('a bot-protection challenge is reported as one, and paced pages are read one at a time', async () => {
+  const { fetchPublicHtml, loadPublicPages } = await import('../server/public-rentals.ts');
+  const challenge = () => new Response('', { status: 202, headers: { 'x-amzn-waf-action': 'challenge' } });
+  await expect(fetchPublicHtml(challenge, 'https://example.com/', 'Compass')).rejects.toThrow(
+    'Compass answered with a browser verification challenge',
+  );
+  const cloudflare = () => new Response('', { status: 403, headers: { 'cf-mitigated': 'challenge' } });
+  await expect(fetchPublicHtml(cloudflare, 'https://example.com/', 'Site')).rejects.toThrow('browser verification challenge');
+  let active = 0;
+  let most = 0;
+  const fetcher = async () => {
+    most = Math.max(most, ++active);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    active--;
+    return new Response('<html></html>', { headers: { 'Content-Type': 'text/html' } });
+  };
+  const pages = [{ url: 'https://example.com/1' }, { url: 'https://example.com/2' }, { url: 'https://example.com/3' }];
+  const result = await loadPublicPages({ name: 'Paced' }, pages, () => [], fetcher, new Date(), { concurrency: 1, intervalMs: 1 }).catch(
+    (error: Error) => error,
+  );
+  expect(most).toBe(1);
+  expect(result).toBeInstanceOf(Error);
+});

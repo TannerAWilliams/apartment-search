@@ -42,6 +42,11 @@ export async function fetchPublicHtml(fetcher: FetchTransport, url: string, name
     redirect: 'manual',
     signal: AbortSignal.timeout(timeout),
   });
+  // Bot protection answers with a challenge only a browser can pass (AWS WAF can even send 202). Say so, and
+  // never try to get past it.
+  if (response.headers.get('x-amzn-waf-action') === 'challenge' || response.headers.get('cf-mitigated') === 'challenge') {
+    throw Object.assign(new Error(name + ' answered with a browser verification challenge (bot protection).'), { code: 'bot_challenge' });
+  }
   if (!response.ok) throw new Error(name + ' returned HTTP ' + response.status + '.');
   if (
     !response.headers.get('content-type')?.includes('text/html') ||
@@ -97,14 +102,17 @@ export async function loadPublicPages<P extends { url: string }>(
   parser: (html: string, page: P, checkedAt: string) => ListingData[],
   fetcher: FetchTransport = fetch,
   now = new Date(),
+  /** How many pages to read at once, and the pause between groups, for sites that limit how fast they are read. */
+  { concurrency = 3, intervalMs = 0 }: { concurrency?: number; intervalMs?: number } = {},
 ) {
   const listings: ListingData[] = [];
   const failures: unknown[] = [];
   let completedPages = 0;
   const checkedAt = now.toISOString();
-  for (let index = 0; index < pages.length; index += 3) {
+  for (let index = 0; index < pages.length; index += concurrency) {
+    if (index > 0 && intervalMs > 0) await new Promise((resolve) => setTimeout(resolve, intervalMs));
     const batch = await Promise.allSettled(
-      pages.slice(index, index + 3).map(async (page) => {
+      pages.slice(index, index + concurrency).map(async (page) => {
         const html = await fetchPublicHtml(fetcher, page.url, source.name);
         return parser(html, page, checkedAt);
       }),
@@ -115,13 +123,23 @@ export async function loadPublicPages<P extends { url: string }>(
         listings.push(...result.value);
       } else failures.push(result.reason);
     }
+    // A site that blocks, rate-limits or challenges us is not asked for more pages.
+    if (
+      failures.some(
+        (failure) =>
+          failure instanceof Error && (/HTTP (403|429)\b/.test(failure.message) || ('code' in failure && failure.code === 'bot_challenge')),
+      )
+    )
+      break;
   }
   const unique = deduplicatePublicRentals(listings);
   if (!unique.length) throw failures[0] ?? new Error(source.name + ' returned no supported apartment listings.');
   return {
     listings: unique,
     pages: completedPages,
-    ...(failures.length ? { partial: true, requestedPages: pages.length, failedPages: failures.length } : {}),
+    ...(failures.length || completedPages + failures.length < pages.length
+      ? { partial: true, requestedPages: pages.length, failedPages: pages.length - completedPages }
+      : {}),
   };
 }
 
