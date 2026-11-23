@@ -1,7 +1,8 @@
 import { required } from './test-values.ts';
 import { expect, test } from 'bun:test';
 import { createMemoryBucket } from './fixtures/memory-bucket.ts';
-import { refreshSources, storedFeed } from '../server/refresh.ts';
+import { refreshSources } from '../server/refresh.ts';
+import { storedFeed } from '../server/refresh/snapshots.ts';
 
 const feed = { id: 'partner', name: 'Partner', kind: 'feed', url: 'https://feed.example.test/listings' };
 const row = {

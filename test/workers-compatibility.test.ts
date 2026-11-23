@@ -3,7 +3,7 @@ import { checkWorkersFetchInit } from './fixtures/workers-fetch.ts';
 
 /** Every module that can run in the Worker: server code and the shared non-UI modules in src/. */
 const root = new URL('../', import.meta.url);
-const workerModules = ['server/*.ts', 'server/{routes,sources,storage}/*.ts', 'src/*.ts']
+const workerModules = ['server/*.ts', 'server/{refresh,routes,sources,storage}/*.ts', 'src/*.ts']
   .flatMap((pattern) => [...new Bun.Glob(pattern).scanSync(root.pathname)])
   .filter((path) => !path.endsWith('.d.ts'));
 

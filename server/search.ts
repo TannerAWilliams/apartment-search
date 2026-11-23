@@ -20,19 +20,11 @@ import { CommuteError, resolveWorkplace, routeCommutes, routingCredentials } fro
 import { OPENIGLOO } from './sources/openigloo.ts';
 import { DIRECT_RENTAL_SOURCES } from './sources/direct-rentals.ts';
 import { STREETEASY_LIVE, STREETEASY_PUBLIC_COVERAGE, STREETEASY_PUBLIC_TRANSPORT } from './sources/streeteasy.ts';
-import {
-  type SourceFetch,
-  type SourceStatus,
-  refreshCatalog,
-  refreshStatus,
-  sourceExpiresAt,
-  sourceRecent,
-  storedDirectRentals,
-  storedFeed,
-  storedHousing,
-  storedMarket,
-  storedOpenigloo,
-} from './refresh.ts';
+import type { SourceFetch } from './contracts.ts';
+import { type SourceStatus, refreshStatus, sourceExpiresAt, sourceRecent } from './refresh/status.ts';
+import { refreshCatalog } from './refresh/sources.ts';
+import { storedDirectRentals, storedFeed, storedHousing, storedOpenigloo } from './refresh/snapshots.ts';
+import { storedMarket } from './refresh/market.ts';
 
 /** For checks that must read saved inventory only, such as alerts and whole-search checks. */
 export const offline: SourceFetch = () => {

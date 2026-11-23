@@ -1,7 +1,8 @@
 import { expect, test } from 'bun:test';
 import { readDevices, readRecent, readRules, checkAlerts } from '../server/alerts.ts';
 import { log } from '../server/log.ts';
-import { refreshStatus, storedHdcRerentals, storedHousing } from '../server/refresh.ts';
+import { refreshStatus } from '../server/refresh/status.ts';
+import { storedHdcRerentals, storedHousing } from '../server/refresh/snapshots.ts';
 import { createMemoryBucket } from './fixtures/memory-bucket.ts';
 
 /** Runs `body` and returns the log lines it wrote. */

@@ -6,7 +6,7 @@
 import * as v from 'valibot';
 import type { Bucket } from '../contracts.ts';
 import { fetchPublicHtml } from './public-rentals.ts';
-import type { SourceFetch } from '../refresh.ts';
+import type { SourceFetch } from '../contracts.ts';
 
 export const JERSEY_AFFORDABLE = { id: 'jersey-affordable', name: 'Jersey City affordable housing' };
 export const JERSEY_PAGE =

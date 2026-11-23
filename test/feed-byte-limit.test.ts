@@ -43,7 +43,8 @@ test('missing or understated content length cannot bypass the decoded-byte cap',
 });
 
 test('an oversized refresh preserves the prior saved partner inventory', async () => {
-  const { refreshSources, storedFeed } = await import('../server/refresh.ts');
+  const { refreshSources } = await import('../server/refresh.ts');
+  const { storedFeed } = await import('../server/refresh/snapshots.ts');
   const { createMemoryBucket } = await import('./fixtures/memory-bucket.ts');
   const env = { BUCKET: createMemoryBucket(), FREE_PARTNER_FEEDS_JSON: JSON.stringify([feed]) };
   const row = {

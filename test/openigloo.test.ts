@@ -130,7 +130,8 @@ test('Openigloo sync waits out a rate limit and saves normalized complete invent
 test("the stepped Workflow sync saves complete inventory only from one run's parts", async () => {
   const { createMemoryBucket } = await import('./fixtures/memory-bucket.ts');
   const { crawlOpeniglooCell, finishOpeniglooRun, OPENIGLOO_CELL_COUNT } = await import('../server/sources/openigloo-sync.ts');
-  const { storedOpenigloo, refreshStatus } = await import('../server/refresh.ts');
+  const { storedOpenigloo } = await import('../server/refresh/snapshots.ts');
+  const { refreshStatus } = await import('../server/refresh/status.ts');
   const units = inventory();
   const fake = fakeOpenigloo(units);
   const fetcher = async (url: string, options?: RequestInit) =>

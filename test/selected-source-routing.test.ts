@@ -1,6 +1,6 @@
 import { test, expect, setSystemTime } from 'bun:test';
 import { search } from '../server/search.ts';
-import type { SourceFetch } from '../server/refresh.ts';
+import type { SourceFetch } from '../server/contracts.ts';
 import { parseFilters } from '../src/search.ts';
 
 const base = { city: 'Jersey City', state: 'NJ', zipCode: '07302', bedrooms: 1, price: 2000, status: 'Active', longitude: -74.04 };

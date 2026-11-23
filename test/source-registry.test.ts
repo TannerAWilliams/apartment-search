@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 import { required } from './test-values.ts';
 import { COMPLETE_SYNCS, isCompleteCoverage, isCompleteSnapshot } from '../server/sources/source-registry.ts';
-import { refreshCatalog } from '../server/refresh.ts';
+import { refreshCatalog } from '../server/refresh/sources.ts';
 
 test('every complete sync is a resyncable catalog source with its own transport', () => {
   const catalog = refreshCatalog({});

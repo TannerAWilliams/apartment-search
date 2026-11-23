@@ -1,5 +1,5 @@
 import type { ListingData } from '../../src/domain.ts';
-import type { SourceFetch } from '../refresh.ts';
+import type { SourceFetch } from '../contracts.ts';
 import { parse } from 'csv-parse/browser/esm/sync';
 
 const csvField = (value: unknown) => '"' + String(value).replaceAll('"', '""') + '"';

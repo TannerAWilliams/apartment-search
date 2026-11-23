@@ -6,7 +6,9 @@ import { routingCredentials } from './commute.ts';
 import { DIRECT_RENTAL_SOURCES } from './sources/direct-rentals.ts';
 import { configuredFeeds, STREETEASY_EXPORT_COVERAGE } from './sources/listings.ts';
 import { OPENIGLOO } from './sources/openigloo.ts';
-import { refreshCatalog, refreshStatus, sourceRecent, storedMarket } from './refresh.ts';
+import { refreshCatalog } from './refresh/sources.ts';
+import { refreshStatus, sourceRecent } from './refresh/status.ts';
+import { storedMarket } from './refresh/market.ts';
 import { isCompleteCoverage } from './sources/source-registry.ts';
 import { STREETEASY_LIVE } from './sources/streeteasy.ts';
 

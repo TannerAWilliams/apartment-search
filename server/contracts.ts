@@ -1,6 +1,8 @@
 import type { HdcSnapshot, StoredHousing } from './storage/stored-documents.ts';
 import type { JerseySnapshot } from './sources/jersey-affordable.ts';
 import type { HomeSeekerSnapshot } from './sources/westchester-homeseeker.ts';
+/** How the server fetches a source: the global fetch, or a stand-in in tests and the home sync. */
+export type SourceFetch = (url: string, options?: RequestInit) => Response | Promise<Response>;
 /** Shared storage contract, including metadata-only object heads. */
 export type BucketHead = { etag: string; customMetadata: Record<string, string> };
 export type BucketObject = BucketHead & { arrayBuffer(): Promise<ArrayBuffer>; text(): Promise<string>; json<T = unknown>(): Promise<T> };

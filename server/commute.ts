@@ -1,6 +1,6 @@
 import type { AppEnv } from './contracts.ts';
 import { isRecord, type Point, type SearchFilters } from '../src/domain.ts';
-import type { SourceFetch } from './refresh.ts';
+import type { SourceFetch } from './contracts.ts';
 import type { Bucket } from './contracts.ts';
 import { gunzipSync, gzipSync, strFromU8, strToU8 } from 'fflate';
 import { SearchInputError, isPoint, localWorkplace } from '../src/search.ts';

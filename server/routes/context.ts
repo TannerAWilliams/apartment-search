@@ -8,7 +8,7 @@ import type { Context } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import type { AppEnv, Bucket } from '../contracts.ts';
 import type { ArchiveLoader } from '../dashboard-snapshot.ts';
-import type { SourceFetch } from '../refresh.ts';
+import type { SourceFetch } from '../contracts.ts';
 
 export type SyncJob = { start(delay: boolean, sources?: string[]): Promise<void>; pending(): Promise<string | boolean | null> };
 /** What a request can use besides the settings and storage. The Worker entry passes the real ones; tests pass stand-ins. */

@@ -1,4 +1,4 @@
-import type { SourceFetch } from '../refresh.ts';
+import type { SourceFetch } from '../contracts.ts';
 import { STREETEASY_API_URL, STREETEASY_PUBLIC_SEARCH_URL } from './streeteasy.ts';
 
 const TRANSIENT = new Set([502, 503, 504]);

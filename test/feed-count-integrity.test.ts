@@ -49,7 +49,8 @@ test('raw counts include excluded rows and exact complete inventory is still acc
 });
 
 test('an impossible feed count preserves previously saved inventory', async () => {
-  const { refreshSources, storedFeed } = await import('../server/refresh.ts');
+  const { refreshSources } = await import('../server/refresh.ts');
+  const { storedFeed } = await import('../server/refresh/snapshots.ts');
   const { createMemoryBucket } = await import('./fixtures/memory-bucket.ts');
   const env = { BUCKET: createMemoryBucket(), FREE_PARTNER_FEEDS_JSON: JSON.stringify([feed]) };
   await refreshSources(env, {

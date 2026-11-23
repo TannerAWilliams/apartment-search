@@ -206,7 +206,7 @@ bun run test && bun run build
 | Path | Contents |
 | --- | --- |
 | `App.tsx`, `index.ts`, `src/` | The Expo app: `screens/` (one per tab), `components/`, `hooks/` (the server connection and saved listings). The non-UI modules directly in `src/` (search, regions, listings, market data) are shared with the server. |
-| `server/` | The Worker: `cloudflare.ts` entry (sign-in, rate limits, static files), `api.ts` and `routes/` for the API, `search.ts`, `app-config.ts` and `alerts.ts` behind it, `refresh.ts` source orchestration and `sync-workflow.ts` for the complete syncs. |
+| `server/` | The Worker: `cloudflare.ts` entry (sign-in, rate limits, static files), `api.ts` and `routes/` for the API, `search.ts`, `app-config.ts` and `alerts.ts` behind it, `refresh.ts` runs a refresh and `refresh/` holds its parts (each source's declaration and checks, the saved status, listing snapshots and FirstMover market data), `sync-workflow.ts` runs the complete syncs. |
 | `server/sources/` | One reader per listing source, plus `source-registry.ts` (which sources sync their whole inventory) and `public-rentals.ts` (shared page fetching). |
 | `server/storage/` | The D1 store (`d1-bucket.ts`), how listings are indexed and their price history recorded, and the schemas saved documents are checked against. |
 | `public/` | Files copied into the web build unchanged: `index.html` template, manifest, icons (`scripts/make-icons.ts`) and the StreetEasy dashboard archive, which only the Worker reads. |

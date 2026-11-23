@@ -1,6 +1,6 @@
 import { test, expect } from 'bun:test';
 import { inventoryExpired } from '../src/inventory-freshness.ts';
-import { sourceExpiresAt } from '../server/refresh.ts';
+import { sourceExpiresAt } from '../server/refresh/status.ts';
 
 test('expiry uses original successful observation rather than download time', () => {
   const status = {

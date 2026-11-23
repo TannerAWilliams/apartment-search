@@ -19,7 +19,7 @@ const text = v.string();
 const optionalText = v.optional(v.string());
 const optionalCount = v.optional(v.number());
 
-/** One source's status after its last check (see SourceStatus in server/refresh.ts). */
+/** One source's status after its last check (see SourceStatus in server/refresh/status.ts). */
 export const SourceStatusSchema = v.looseObject({
   id: text,
   name: text,

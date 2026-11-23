@@ -1,4 +1,4 @@
-import type { SourceFetch } from '../refresh.ts';
+import type { SourceFetch } from '../contracts.ts';
 import { isRecord } from '../../src/domain.ts';
 import { buildingKey } from '../../src/listings.ts';
 

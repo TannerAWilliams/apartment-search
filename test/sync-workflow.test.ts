@@ -5,7 +5,7 @@ import { readJson, type RpcRequest, sentJson } from './fixtures/json.ts';
 
 const { CityRealtySync } = await import('../server/sync-workflow.ts');
 const { createD1Bucket } = await import('../server/storage/d1-bucket.ts');
-const { refreshStatus } = await import('../server/refresh.ts');
+const { refreshStatus } = await import('../server/refresh/status.ts');
 const { openiglooPacing } = await import('../server/sources/openigloo.ts');
 const { SYNC_PROGRESS_KEY } = await import('../server/sources/source-registry.ts');
 

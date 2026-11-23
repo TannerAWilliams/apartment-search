@@ -6,7 +6,7 @@
  */
 import * as v from 'valibot';
 import type { Bucket } from '../contracts.ts';
-import type { SourceFetch } from '../refresh.ts';
+import type { SourceFetch } from '../contracts.ts';
 
 export const WESTCHESTER_HOMESEEKER = { id: 'westchester-homeseeker', name: 'Westchester HomeSeeker' };
 export const HOMESEEKER_ORIGIN = 'https://homeseeker.westchestergov.com';

@@ -8,7 +8,8 @@ import { dashboardSnapshot } from '../dashboard-snapshot.ts';
 import { log } from '../log.ts';
 import { storedJerseyAffordable } from '../sources/jersey-affordable.ts';
 import { storedHomeSeeker } from '../sources/westchester-homeseeker.ts';
-import { storedHdcRerentals, storedHousing, storedMarket, storedRentHistory } from '../refresh.ts';
+import { storedHdcRerentals, storedHousing } from '../refresh/snapshots.ts';
+import { storedMarket, storedRentHistory } from '../refresh/market.ts';
 import { apiBodies, factory, fail, refuse } from './context.ts';
 import { BuildingAddressSchema, DashboardQuerySchema, MarketQuerySchema } from './inputs.ts';
 

@@ -3,7 +3,8 @@ import { handleApi } from './fixtures/api.ts';
 import { CITYREALTY_ID } from '../server/sources/cityrealty.ts';
 import type { FetchTransport } from '../src/fetch-type.ts';
 import { createMemoryBucket } from './fixtures/memory-bucket.ts';
-import { refreshSources, storedDirectRentals } from '../server/refresh.ts';
+import { refreshSources } from '../server/refresh.ts';
+import { storedDirectRentals } from '../server/refresh/snapshots.ts';
 import { readJson } from './fixtures/json.ts';
 import type { RefreshInfo } from '../src/api-client.ts';
 
