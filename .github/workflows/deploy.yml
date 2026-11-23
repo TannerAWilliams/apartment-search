@@ -1,0 +1,35 @@
+# Deploys the Worker to Cloudflare. Runs only when started by hand (Actions → Deploy → Run workflow).
+# Needs the repository secret CLOUDFLARE_API_TOKEN: an API token from the "Edit Cloudflare Workers" template.
+name: Deploy
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: bun install --frozen-lockfile
+      - run: bun run typecheck
+      - run: bun run test
+      # Builds the web app and deploys. Unattended, Wrangler moves apartments.5thof6.com to this Worker
+      # if another Worker holds it.
+      - name: Deploy to Cloudflare
+        run: bun run deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

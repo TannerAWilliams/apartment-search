@@ -4,13 +4,19 @@ import { createD1Bucket, type D1Database } from './d1-bucket.ts';
 import { secretsEqual } from './secrets.ts';
 import { isPublicRefresh } from './public-access.ts';
 import { log } from './log.ts';
-import { withWebHeaders } from './web-headers.ts';
+import { STRICT_TRANSPORT_SECURITY, withWebHeaders } from './web-headers.ts';
+import { accessSettings, verifyAccessToken } from './access.ts';
 import { type ArchiveLoader, DASHBOARD_ARCHIVE_PATH } from './dashboard-snapshot.ts';
 import { readRequestBody, RequestTooLarge } from './request-body.ts';
 import { SYNC_PROGRESS_KEY, WORKFLOW_SOURCE_IDS } from './source-registry.ts';
 export { CityRealtySync } from './sync-workflow.ts';
 
 type Environment = AppEnv & {
+  /** The Cloudflare Access application in front of apartments.5thof6.com; see server/access.ts. */
+  ACCESS_TEAM_DOMAIN?: string;
+  ACCESS_AUD?: string;
+  /** Secret: comma-separated emails allowed to sign in, kept out of the repository. */
+  ACCESS_ALLOWED_EMAILS?: string;
   APARTMENTS: D1Database;
   ASSETS: { fetch(request: Request): Promise<Response> };
   SYNC_WORKFLOW?: {
@@ -37,69 +43,89 @@ function dashboardArchive(assets: Environment['ASSETS']) {
   return reader;
 }
 
+/** Every response asks browsers to use HTTPS only. A copy, since a fetched response's headers cannot change. */
+function withStrictTransport(response: Response) {
+  const result = new Response(response.body, response);
+  result.headers.set('Strict-Transport-Security', STRICT_TRANSPORT_SECURITY);
+  return result;
+}
+
 export default {
   async fetch(request: Request, env: Environment) {
-    const url = new URL(request.url);
-    // The deployed app is private: apartment-search-access adds this token after Cloudflare Access
-    // sign-in, so every request, assets included, needs it. PUBLIC_APP opens it for local development.
-    const bearer = Boolean(env.APP_ACCESS_TOKEN && secretsEqual(
-      request.headers.get('Authorization') ?? '', 'Bearer ' + env.APP_ACCESS_TOKEN,
-    ));
-    if (env.PUBLIC_APP !== 'true' && !bearer) return error('Sign in to the private apartment app.', 401);
-    if (url.pathname === '/health' && request.method === 'GET') return new Response('ok', { headers });
-    // The dashboard archive is published with the static files only so the API can read it.
-    if (url.pathname.startsWith('/data/')) return error('Not found.', 404);
-    if (!url.pathname.startsWith('/api/')) return withWebHeaders(await env.ASSETS.fetch(request), url.pathname);
-
-    try {
-      let apiRequest = request;
-      if (request.method === 'POST') {
-        const refresh = url.pathname === '/api/refresh';
-        const body = await readRequestBody(request, refresh && bearer ? 2 * 1024 * 1024 : 4096);
-        if (refresh && !bearer) {
-          if (request.headers.get('Origin') !== url.origin) return error('Cross-origin request rejected.', 403);
-          let value: unknown;
-          try { value = JSON.parse(new TextDecoder().decode(body)); } catch { return error('Send a JSON request.', 400); }
-          if (!isPublicRefresh(value)) return error('Public refresh cannot import listing data.', 403);
-        }
-        apiRequest = new Request(request.url, { method: 'POST', headers: request.headers, signal: request.signal, body });
-      }
-      const appEnv = { ...env, BUCKET: createD1Bucket(env.APARTMENTS) };
-      // Workers reject redirect: 'error'; 'manual' keeps redirects unfollowed, and source readers reject non-success responses.
-      const fetcher = (target: string, options?: RequestInit) =>
-        fetch(target, options?.redirect === 'error' ? { ...options, redirect: 'manual' } : options);
-      const workflow = env.SYNC_WORKFLOW;
-      // One instance ID per two-minute window, so repeated taps start one run. The prefix predates the
-      // Workflow's other sources; status checks look for it.
-      const workflowId = (offset = 0) => 'cityrealty-' + (Math.floor(Date.now() / 120_000) - offset);
-      return await handleApi(apiRequest, appEnv, { fetcher, privateAuthenticated: bearer, dashboardArchive: dashboardArchive(env.ASSETS),
-        syncJob: workflow ? {
-          async start(delay, sources) {
-            const id = workflowId() + (sources ? '-' + sources.join('-') : '');
-            try { await workflow.create({ id, params: { delay, ...(sources ? { sources } : {}) } }); }
-            catch (error) {
-              const existing = await workflow.get(id).then(instance => instance.status()).catch(() => { throw error; });
-              if (existing.status === 'unknown') throw error;
-            }
-          },
-          /** The source the running sync Workflow is on, or null when none runs. */
-          async pending() {
-            const ids = [0, 1].flatMap(offset => ['', ...WORKFLOW_SOURCE_IDS.map(source => '-' + source)].map(suffix => workflowId(offset) + suffix));
-            const statuses = await Promise.allSettled(ids.map(id => workflow.get(id).then(instance => instance.status())));
-            const running = ids.filter((_, index) => { const result = statuses[index];
-              return result.status === 'fulfilled' && ['queued', 'running', 'waiting'].includes(result.value.status); });
-            if (!running.length) return null;
-            const progress = await appEnv.BUCKET.get(SYNC_PROGRESS_KEY).then(object => object?.json()).catch(() => null) as { source?: string } | null;
-            if (progress?.source && WORKFLOW_SOURCE_IDS.includes(progress.source)) return progress.source;
-            return WORKFLOW_SOURCE_IDS.find(source => running[0].endsWith('-' + source)) ?? WORKFLOW_SOURCE_IDS[0];
-          },
-        } : undefined,
-      });
-    } catch (cause) {
-      if (cause instanceof RequestTooLarge) return error('The request is too large.', 413);
-      log.error('request_failed', cause, { path: url.pathname, method: request.method });
-      return error('Apartment Search could not complete the request.', 503);
-    }
+    return withStrictTransport(await respond(request, env));
   },
 };
+
+async function respond(request: Request, env: Environment) {
+  const url = new URL(request.url);
+  // The deployed app is private. A browser signs in with Cloudflare Access, whose token this Worker
+  // verifies; scripts such as the StreetEasy home sync send the app access token instead. Every
+  // request, assets included, needs one of them. PUBLIC_APP opens the app for local development.
+  const bearer = Boolean(env.APP_ACCESS_TOKEN && secretsEqual(
+    request.headers.get('Authorization') ?? '', 'Bearer ' + env.APP_ACCESS_TOKEN,
+  ));
+  const access = bearer ? null : accessSettings(env);
+  const accessEmail = access ? await verifyAccessToken(request.headers.get('Cf-Access-Jwt-Assertion'), access)
+    .catch((cause) => { log.error('access_check_failed', cause); return null; }) : null;
+  const signedIn = bearer || accessEmail !== null;
+  if (env.PUBLIC_APP !== 'true' && !signedIn) return error('Sign in to the private apartment app.', 401);
+  // An Access session rides on a browser cookie, so changes must come from the app's own pages.
+  if (accessEmail && !['GET', 'HEAD'].includes(request.method) && request.headers.get('Origin') !== url.origin) {
+    return error('Cross-origin request rejected.', 403);
+  }
+  if (url.pathname === '/health' && request.method === 'GET') return new Response('ok', { headers });
+  // The dashboard archive is published with the static files only so the API can read it.
+  if (url.pathname.startsWith('/data/')) return error('Not found.', 404);
+  if (!url.pathname.startsWith('/api/')) return withWebHeaders(await env.ASSETS.fetch(request), url.pathname);
+
+  try {
+    let apiRequest = request;
+    if (request.method === 'POST') {
+      const refresh = url.pathname === '/api/refresh';
+      const body = await readRequestBody(request, refresh && signedIn ? 2 * 1024 * 1024 : 4096);
+      if (refresh && !signedIn) {
+        if (request.headers.get('Origin') !== url.origin) return error('Cross-origin request rejected.', 403);
+        let value: unknown;
+        try { value = JSON.parse(new TextDecoder().decode(body)); } catch { return error('Send a JSON request.', 400); }
+        if (!isPublicRefresh(value)) return error('Public refresh cannot import listing data.', 403);
+      }
+      apiRequest = new Request(request.url, { method: 'POST', headers: request.headers, signal: request.signal, body });
+    }
+    const appEnv = { ...env, BUCKET: createD1Bucket(env.APARTMENTS) };
+    // Workers reject redirect: 'error'; 'manual' keeps redirects unfollowed, and source readers reject non-success responses.
+    const fetcher = (target: string, options?: RequestInit) =>
+      fetch(target, options?.redirect === 'error' ? { ...options, redirect: 'manual' } : options);
+    const workflow = env.SYNC_WORKFLOW;
+    // One instance ID per two-minute window, so repeated taps start one run. The prefix predates the
+    // Workflow's other sources; status checks look for it.
+    const workflowId = (offset = 0) => 'cityrealty-' + (Math.floor(Date.now() / 120_000) - offset);
+    return await handleApi(apiRequest, appEnv, { fetcher, privateAuthenticated: signedIn, dashboardArchive: dashboardArchive(env.ASSETS),
+      syncJob: workflow ? {
+        async start(delay, sources) {
+          const id = workflowId() + (sources ? '-' + sources.join('-') : '');
+          try { await workflow.create({ id, params: { delay, ...(sources ? { sources } : {}) } }); }
+          catch (error) {
+            const existing = await workflow.get(id).then(instance => instance.status()).catch(() => { throw error; });
+            if (existing.status === 'unknown') throw error;
+          }
+        },
+        /** The source the running sync Workflow is on, or null when none runs. */
+        async pending() {
+          const ids = [0, 1].flatMap(offset => ['', ...WORKFLOW_SOURCE_IDS.map(source => '-' + source)].map(suffix => workflowId(offset) + suffix));
+          const statuses = await Promise.allSettled(ids.map(id => workflow.get(id).then(instance => instance.status())));
+          const running = ids.filter((_, index) => { const result = statuses[index];
+            return result.status === 'fulfilled' && ['queued', 'running', 'waiting'].includes(result.value.status); });
+          if (!running.length) return null;
+          const progress = await appEnv.BUCKET.get(SYNC_PROGRESS_KEY).then(object => object?.json()).catch(() => null) as { source?: string } | null;
+          if (progress?.source && WORKFLOW_SOURCE_IDS.includes(progress.source)) return progress.source;
+          return WORKFLOW_SOURCE_IDS.find(source => running[0].endsWith('-' + source)) ?? WORKFLOW_SOURCE_IDS[0];
+        },
+      } : undefined,
+    });
+  } catch (cause) {
+    if (cause instanceof RequestTooLarge) return error('The request is too large.', 413);
+    log.error('request_failed', cause, { path: url.pathname, method: request.method });
+    return error('Apartment Search could not complete the request.', 503);
+  }
+}
 
