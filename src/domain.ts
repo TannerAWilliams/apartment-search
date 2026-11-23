@@ -2,6 +2,16 @@
 export interface Point { latitude: number; longitude: number }
 export interface Workplace extends Point { label: string }
 export interface SourceLink { id: string; name: string; url?: string | null; kind: string }
+/**
+ * The fields of T, each of unknown type: for values read from device storage, feeds or requests, which are
+ * checked field by field before use.
+ */
+export type Loose<T> = { readonly [K in keyof T]?: unknown };
+/** A plain object, for narrowing an unknown value before reading its fields. */
+export const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
+/** Whether a value is one of a fixed list of options. */
+export const oneOf = <T>(options: readonly T[], value: unknown): value is T => options.some((option) => option === value);
+
 export interface ListingData {
   id: string; address: string; unit?: string; city: string; state: string; zip: string;
   county?: string; region?: string; neighborhood?: string; company?: string;

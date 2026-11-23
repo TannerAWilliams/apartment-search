@@ -1,3 +1,4 @@
+import type { ListingData } from './domain.ts';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { listingKey } from './listings.ts';
@@ -5,7 +6,7 @@ import { comparisonOptions, comparisonRows, comparisonTitle, MAX_COMPARISON, tog
 import { Button, Field } from './ui.tsx';
 import { styles } from './styles.ts';
 /** When `open` is given, the parent shows the toggle (a tool chip) and this renders only the panel. */
-export function SavedComparison({ listings, open: shown }: { listings: any[]; open?: boolean }) {
+export function SavedComparison({ listings, open: shown }: { listings: ListingData[]; open?: boolean }) {
   const [ownOpen, setOpen] = useState(false);
   const open = shown ?? ownOpen;
   const [keys, setKeys] = useState<string[]>([]);
@@ -13,7 +14,7 @@ export function SavedComparison({ listings, open: shown }: { listings: any[]; op
   const available = useMemo(() => listings.map(listingKey), [listings]);
   useEffect(() => { setKeys(current => current.filter(key => available.includes(key))); }, [available]);
   const choices = comparisonOptions(listings, query);
-  const selected = keys.map(key => listings.find(listing => listingKey(listing) === key)).filter(Boolean);
+  const selected = keys.map(key => listings.find(listing => listingKey(listing) === key)).filter((listing): listing is ListingData => listing !== undefined);
   // Controlled and closed: render nothing, so the parent's spacing does not leave a gap.
   if (shown === false) return null;
   return <View style={{ gap: 10 }}>

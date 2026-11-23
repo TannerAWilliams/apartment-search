@@ -1,21 +1,27 @@
 import type { FetchTransport } from '../src/fetch-type.ts';
 import { buildingReport } from '../src/building-report.ts';
+import { isRecord } from '../src/domain.ts';
 const HOST = 'https://data.cityofnewyork.us/resource/';
 const HCR_REGISTERED_BUILDINGS = 'https://services8.arcgis.com/ek7Sxtay3Z4WZWvk/arcgis/rest/services/registered_buildings_unit_counts/FeatureServer/0/query';
 const LIMIT = 1000;
 const normalize = (value: string) => value.trim().toUpperCase().replace(/\s+/g, ' ');
 const id = (value: unknown) => typeof value === 'string' && /^[1-9]\d{0,14}$/.test(value);
 const quote = (value: string) => "'" + value.replaceAll("'", "''") + "'";
+/** A validated string field; '' when the field is not a string. */
+const text = (value: unknown) => typeof value === 'string' ? value : '';
 const validCount = (value: unknown) => typeof value === 'string' && /^(0|[1-9]\d{0,8})$/.test(value);
 
-function grouping(rows: any[], max: number) {
+/** A row from an official dataset: untrusted until each field is checked. */
+type OfficialRow = Record<string, unknown>;
+
+function grouping(rows: OfficialRow[], max: number) {
   if (rows.length > max || new Set(rows.map(item => item?.status ?? null)).size !== rows.length ||
       rows.some(item => !item || (item.status != null && (typeof item.status !== 'string' || item.status.length > 200)) ||
         !validCount(item.count))) throw new Error('Invalid grouped official records.');
-  return rows.map(item => ({ status: item.status || 'Status unspecified', count: Number(item.count) }));
+  return rows.map(item => ({ status: typeof item.status === 'string' && item.status ? item.status : 'Status unspecified', count: Number(item.count) }));
 }
-export function exactBuildingAddress(input: any) {
-  if (!input || !buildingReport(input).nyc || typeof input.address !== 'string' || input.address.length > 180 || typeof input.zip !== 'string' || !/^\d{5}$/.test(input.zip)) return null;
+export function exactBuildingAddress(input: unknown) {
+  if (!isRecord(input) || !buildingReport(input).nyc || typeof input.address !== 'string' || input.address.length > 180 || typeof input.zip !== 'string' || !/^\d{5}$/.test(input.zip)) return null;
   // Do not guess aliases, ranges, apartment suffixes, street suffixes or nearby buildings.
   const match = normalize(input.address).match(/^([1-9]\d*(?:-\d+)?[A-Z]?) ([A-Z0-9][A-Z0-9 .'-]{1,140})$/);
   if (!match || /\b(APT|APARTMENT|UNIT|SUITE)\b/.test(match[2])) return null;
@@ -26,8 +32,16 @@ export function exactBuildingAddress(input: any) {
   if (!expected.length || new Set(expected).size !== 1) return null;
   return { house: match[1], street: match[2], zip: input.zip, borough: expected[0] }; 
 }
-async function readOfficialJson(url: string, fetcher: FetchTransport, signal: AbortSignal) {
-  const response = await fetcher(url, { signal, redirect: 'error', headers: { Accept: 'application/json' } });
+/** An ArcGIS REST reply: a layer's metadata, or the features a query matched. */
+type ArcGisReply = { error?: unknown; exceededTransferLimit?: unknown; name?: unknown; features?: unknown };
+const arcGis = (value: unknown): ArcGisReply => isRecord(value) ? value : {};
+const attributes = (feature: unknown) => isRecord(feature) && isRecord(feature.attributes) ? feature.attributes : null;
+type FloodZone = { FLD_ZONE: string; SFHA_TF: 'T' | 'F' };
+const floodZone = (value: Record<string, unknown> | null): value is FloodZone =>
+  typeof value?.FLD_ZONE === 'string' && value.FLD_ZONE.length <= 80 && (value.SFHA_TF === 'T' || value.SFHA_TF === 'F');
+
+async function readOfficialJson(url: string, fetcher: FetchTransport, signal: AbortSignal): Promise<unknown> {
+  const response = await fetcher(url, { signal, redirect: 'manual', headers: { Accept: 'application/json' } });
   if (!response.ok || (Number(response.headers.get('content-length')) > 256 * 1024)) { await response.body?.cancel().catch(() => {}); throw new Error('Official source unavailable.'); }
   const reader = response.body?.getReader();
   if (!reader) throw new Error('Missing official response.');
@@ -46,8 +60,8 @@ async function readOfficialJson(url: string, fetcher: FetchTransport, signal: Ab
 }
 export async function readRows(dataset: string, query: Record<string, string>, fetcher: FetchTransport, signal: AbortSignal) {
   const rows = await readOfficialJson(HOST + dataset + '.json?' + new URLSearchParams(query), fetcher, signal);
-  if (!Array.isArray(rows)) throw new Error('Invalid official response.');
-  return rows;
+  if (!Array.isArray(rows) || !rows.every(isRecord)) throw new Error('Invalid official response.');
+  return rows as OfficialRow[];
 }
 export async function retrieveBuildingRecords(input: unknown, fetcher: FetchTransport = fetch, now = new Date(), parentSignal?: AbortSignal) {
   const checkedAt = now.toISOString();
@@ -57,7 +71,7 @@ export async function retrieveBuildingRecords(input: unknown, fetcher: FetchTran
   if (!address) return { ...unknown, status: 'unmatched', errors: ['An exact NYC building street address and ZIP are required. No address inference was attempted.'] };
   const deadline = AbortSignal.timeout(25000);
   const signal = parentSignal ? AbortSignal.any([deadline, parentSignal]) : deadline;
-  let rows: any[];
+  let rows: OfficialRow[];
   try {
     rows = await readRows('kj4p-ruqc', {
       $select: 'buildingid,boroid,boro,housenumber,streetname,zip,bin,block,lot,recordstatus',
@@ -100,7 +114,7 @@ export async function retrieveBuildingRecords(input: unknown, fetcher: FetchTran
       try {
         const data = await readRows('wz6d-d3jb', {
           $select: 'building_id,bin,latitude,longitude,of_dwelling_units,infested_dwelling_unit_count,eradicated_unit_count,re_infested_dwelling_unit,filing_date,filing_period_start_date,filling_period_end_date',
-          $where: `building_id=${quote(row.buildingid)} AND filing_date <= '${until}' AND filling_period_end_date <= '${until}'`,
+          $where: `building_id=${quote(String(row.buildingid))} AND filing_date <= '${until}' AND filling_period_end_date <= '${until}'`,
           $order: 'filling_period_end_date DESC,filing_date DESC', $limit: '2',
         }, fetcher, signal);
         const latest = data[0];
@@ -108,18 +122,19 @@ export async function retrieveBuildingRecords(input: unknown, fetcher: FetchTran
         const count = (value: unknown) => typeof value === 'string' && /^(0|[1-9]\d{0,5})$/.test(value);
         if (data.length < 1 || data.length > 2 || latest.building_id !== row.buildingid || (latest.bin && identity.bin && latest.bin !== identity.bin) ||
             !['filing_date', 'filing_period_start_date', 'filling_period_end_date'].every(key => date(latest[key])) ||
-            latest.filing_period_start_date > latest.filling_period_end_date || latest.filing_date > until || latest.filling_period_end_date > until ||
+            text(latest.filing_period_start_date) > text(latest.filling_period_end_date) || text(latest.filing_date) > until || text(latest.filling_period_end_date) > until ||
             !['of_dwelling_units', 'infested_dwelling_unit_count', 'eradicated_unit_count', 're_infested_dwelling_unit'].every(key => count(latest[key])) ||
             ['infested_dwelling_unit_count', 'eradicated_unit_count', 're_infested_dwelling_unit'].some(key => Number(latest[key]) > Number(latest.of_dwelling_units)) ||
             (data[1] && data[1].filling_period_end_date === latest.filling_period_end_date && data[1].filing_date === latest.filing_date)) throw new Error('No unambiguous latest filing');
         const lat = Number(latest.latitude), lon = Number(latest.longitude);
         const point = typeof latest.latitude === 'string' && typeof latest.longitude === 'string' && Number.isFinite(lat) && Number.isFinite(lon) && lat >= 40.45 && lat <= 40.95 && lon >= -74.3 && lon <= -73.65 ? { latitude: lat, longitude: lon } : null;
-        return { point, periodStart: latest.filing_period_start_date.slice(0, 10), periodEnd: latest.filling_period_end_date.slice(0, 10), filedAt: latest.filing_date,
+        return { point, periodStart: text(latest.filing_period_start_date).slice(0, 10), periodEnd: text(latest.filling_period_end_date).slice(0, 10), filedAt: text(latest.filing_date),
           units: Number(latest.of_dwelling_units), infested: Number(latest.infested_dwelling_unit_count), eradicated: Number(latest.eradicated_unit_count), reinfested: Number(latest.re_infested_dwelling_unit) };
       } catch { errors.push('Latest owner-filed bedbug report unavailable or ambiguous; infestation status is unknown.'); return null; }
     })(),
     (async () => {
-      if (!identity.bin) return null;
+      const bin = identity.bin;
+      if (!bin) return null;
       const datasets = [
         ['3h2n-5cm9', 'violation_category', 'Legacy BIS civil-penalty records'],
         ['855j-jady', 'violation_status', 'DOB NOW Safety civil-penalty records'],
@@ -131,7 +146,7 @@ export async function retrieveBuildingRecords(input: unknown, fetcher: FetchTran
       return Promise.all(datasets.map(async ([dataset, field, label, dateFilter = '']) => {
         try {
           const data = await readRows(dataset, { $select: `${field} as status,count(*) as count`,
-            $where: `bin=${quote(identity.bin)}` + dateFilter, $group: field, $limit: '51' }, fetcher, signal);
+            $where: `bin=${quote(bin)}` + dateFilter, $group: field, $limit: '51' }, fetcher, signal);
           return { dataset, label, groups: grouping(data, 50), error: null };
         } catch { errors.push(`${label} unavailable; unknown, not zero.`); return { dataset, label, groups: null, error: 'Official source unavailable or invalid.' }; }
       }));
@@ -167,12 +182,12 @@ export async function retrieveBuildingRecords(input: unknown, fetcher: FetchTran
           f: 'json', where: `bbl=${quote(bbl)} AND zip_code=${Number(address.zip)}`,
           outFields: 'bbl,zip_code,last_year_registered,registered_units', returnGeometry: 'false', resultRecordCount: '21',
         });
-        const result = await readOfficialJson(url, fetcher, signal);
-        if (result?.error || result?.exceededTransferLimit || !Array.isArray(result?.features) || result.features.length > 20) {
+        const result = arcGis(await readOfficialJson(url, fetcher, signal));
+        if (result.error || result.exceededTransferLimit || !Array.isArray(result.features) || result.features.length > 20) {
           throw new Error('Invalid registration response.');
         }
-        const rows = result.features.map((feature: { attributes?: Record<string, unknown> } | null) => {
-          const info = feature?.attributes;
+        const rows = result.features.map((feature) => {
+          const info = attributes(feature);
           const year = info?.last_year_registered;
           const count = info?.registered_units;
           if (!info || info.bbl !== bbl || info.zip_code !== Number(address.zip) ||
@@ -181,7 +196,7 @@ export async function retrieveBuildingRecords(input: unknown, fetcher: FetchTran
             throw new Error('Registration record did not match the tax lot or expected fields.');
           }
           return { year, count: typeof count === 'number' ? count : null };
-        }) as { year: number; count: number | null }[];
+        });
         if (!rows.length) return { matched: false as const };
         return { matched: true as const, latestYear: Math.max(...rows.map(row => row.year)),
           registeredUnits: rows.length === 1 ? rows[0].count : null };
@@ -192,14 +207,15 @@ export async function retrieveBuildingRecords(input: unknown, fetcher: FetchTran
   if (bedbugs?.point) {
     try {
       const point = bedbugs.point;
-      const metadata = await readOfficialJson('https://a841-dotweb01.nyc.gov/arcgis/rest/services/Climate_Resiliency/Climate_Resiliency/MapServer/7?f=json', fetcher, signal);
+      const metadata = arcGis(await readOfficialJson('https://a841-dotweb01.nyc.gov/arcgis/rest/services/Climate_Resiliency/Climate_Resiliency/MapServer/7?f=json', fetcher, signal));
       if (metadata.error || typeof metadata.name !== 'string' || !/2015.*PFIRM/i.test(metadata.name) || !/100.Year/i.test(metadata.name)) throw new Error('Flood layer edition changed or unavailable');
       const url = 'https://a841-dotweb01.nyc.gov/arcgis/rest/services/Climate_Resiliency/Climate_Resiliency/MapServer/7/query?' + new URLSearchParams({
         f: 'json', geometry: `${point.longitude},${point.latitude}`, geometryType: 'esriGeometryPoint', inSR: '4326', spatialRel: 'esriSpatialRelIntersects', outFields: 'FLD_ZONE,SFHA_TF', returnGeometry: 'false',
       });
-      const data = await readOfficialJson(url, fetcher, signal);
-      if (data.error || data.exceededTransferLimit || !Array.isArray(data.features) || data.features.length > 100 || data.features.some((item: { attributes?: { FLD_ZONE?: unknown; SFHA_TF?: unknown } }) => typeof item?.attributes?.FLD_ZONE !== 'string' || item.attributes.FLD_ZONE.length > 80 || (item.attributes.SFHA_TF !== 'T' && item.attributes.SFHA_TF !== 'F'))) throw new Error('Invalid flood layer response');
-      flood = { point, layer: '2015 preliminary 100-year floodplain (PFIRM)', zones: [...new Set(data.features.map((item: { attributes: { FLD_ZONE: string } }) => item.attributes.FLD_ZONE))], intersects: data.features.some((item: { attributes: { SFHA_TF: string } }) => item.attributes.SFHA_TF === 'T') };
+      const data = arcGis(await readOfficialJson(url, fetcher, signal));
+      const zones = Array.isArray(data.features) ? data.features.map(attributes) : null;
+      if (data.error || data.exceededTransferLimit || !zones || zones.length > 100 || !zones.every(floodZone)) throw new Error('Invalid flood layer response');
+      flood = { point, layer: '2015 preliminary 100-year floodplain (PFIRM)', zones: [...new Set(zones.map((zone) => zone.FLD_ZONE))], intersects: zones.some((zone) => zone.SFHA_TF === 'T') };
     } catch { errors.push('Preliminary flood-map point intersection unavailable; flood risk is unknown.'); }
   }
   return { checkedAt, status: errors.length ? 'partial' : 'matched', identity, openViolations, complaintsLast365Days,

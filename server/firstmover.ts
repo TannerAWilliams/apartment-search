@@ -1,5 +1,6 @@
 import type { MarketRow } from '../src/market.ts';
 import type { FetchTransport } from '../src/fetch-type.ts';
+import { isRecord } from '../src/domain.ts';
 import { parse } from 'csv-parse/browser/esm/sync';
 
 const REPOSITORY_PATH = 'benfwalla/firstmover-open-data-project';
@@ -89,17 +90,21 @@ export function parseFirstMoverCsv(csv: string, month: string) {
 }
 
 export type FirstMoverState = { month?: string; revision?: string; catalogEtag?: string; csvEtag?: string };
+/** A file in GitHub's directory listing; sha and size are checked before use. */
+type CatalogFile = { type: 'file'; name: string; sha?: unknown; size?: unknown };
+
 export async function checkFirstMover(previous: FirstMoverState | null | undefined, fetcher: FetchTransport = fetch) {
   const headers: Record<string, string> = { Accept: 'application/vnd.github+json' };
   if (previous?.catalogEtag) headers['If-None-Match'] = previous.catalogEtag;
-  const response = await fetcher(CATALOG_URL, { headers, redirect: 'error', signal: AbortSignal.timeout(12000) });
+  const response = await fetcher(CATALOG_URL, { headers, redirect: 'manual', signal: AbortSignal.timeout(12000) });
   if (response.status === 304 && previous?.revision) return { changed: false as const, ...previous };
   if (!response.ok) throw new Error(`FirstMover catalog returned HTTP ${response.status}.`);
   const entries = await response.json();
   if (!Array.isArray(entries)) throw new Error('The FirstMover catalog was invalid.');
-  const entry = entries.filter((file) => file?.type === 'file' && MONTHLY_FILE.test(file.name))
-    .sort((a, b) => b.name.localeCompare(a.name))[0];
-  if (!entry || !/^[a-f0-9]{40}$/.test(entry.sha) || !(entry.size > 0 && entry.size <= MAX_CSV_BYTES)) {
+  const entry = entries.filter((file): file is CatalogFile => isRecord(file) && file.type === 'file' &&
+    typeof file.name === 'string' && MONTHLY_FILE.test(file.name)).sort((a, b) => b.name.localeCompare(a.name))[0];
+  if (!entry || typeof entry.sha !== 'string' || !/^[a-f0-9]{40}$/.test(entry.sha) ||
+      typeof entry.size !== 'number' || !(entry.size > 0 && entry.size <= MAX_CSV_BYTES)) {
     throw new Error('The latest FirstMover CSV is unavailable or too large.');
   }
 
@@ -108,7 +113,7 @@ export async function checkFirstMover(previous: FirstMoverState | null | undefin
   if (previous?.month && previous.month > month) throw new Error('The FirstMover catalog returned an older snapshot.');
   if (previous?.revision === entry.sha) return { changed: false as const, ...previous, catalogEtag };
 
-  const download = await fetcher(CSV_ROOT + entry.name, { redirect: 'error', signal: AbortSignal.timeout(20000) });
+  const download = await fetcher(CSV_ROOT + entry.name, { redirect: 'manual', signal: AbortSignal.timeout(20000) });
   const raw = await readCsv(download);
   const rows = parseFirstMoverCsv(new TextDecoder().decode(raw), month);
   return { changed: true as const, month, revision: entry.sha, catalogEtag, csvEtag: download.headers.get('ETag') ?? '', rows };
@@ -132,7 +137,7 @@ async function gitRevision(raw: ArrayBuffer) {
 }
 
 export async function checkPublishedFirstMover(previous: FirstMoverState | null | undefined, fetcher: FetchTransport) {
-  const page = await fetcher(PUBLISHED_CATALOG, { redirect: 'error', signal: AbortSignal.timeout(9000) });
+  const page = await fetcher(PUBLISHED_CATALOG, { redirect: 'manual', signal: AbortSignal.timeout(9000) });
   if (!page.ok) throw new Error(`FirstMover catalog returned HTTP ${page.status}.`);
   const html = await page.text();
   const file = [...html.matchAll(/\bhref=["']([^"']+)["']/gi)]
@@ -143,7 +148,7 @@ export async function checkPublishedFirstMover(previous: FirstMoverState | null 
   const month = file.slice(0, 7);
   if (previous?.month && previous.month > month) throw new Error('The FirstMover catalog returned an older snapshot.');
   const headers: Record<string, string> = previous?.month === month && previous.csvEtag ? { 'If-None-Match': previous.csvEtag } : {};
-  const download = await fetcher(CSV_ROOT + file, { headers, redirect: 'error', signal: AbortSignal.timeout(20000) });
+  const download = await fetcher(CSV_ROOT + file, { headers, redirect: 'manual', signal: AbortSignal.timeout(20000) });
   if (download.status === 304 && headers['If-None-Match']) return { changed: false as const, ...previous };
 
   const raw = await readCsv(download);

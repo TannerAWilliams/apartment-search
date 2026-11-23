@@ -1,3 +1,4 @@
+import type { ListingData } from './domain.ts';
 import React, { useEffect, useRef, useState } from 'react';
 import { Platform, Pressable, ScrollView, Share, Text, View } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -7,7 +8,7 @@ import { listingKey } from './listings.ts';
 import { TOUR_KEY, MAX_TOURS, TOUR_CHECKLIST, parseTours, validateTours, localTourStart, moveTour, chronologicalTours, overlappingTourIds, tourRoute, tourDay, toursOnDay, exportTours, type Tour } from './tour-planner.ts';
 
 /** When `open` is given, the parent shows the toggle (a tool chip) and this renders only the panel. */
-export function TourPlanner({ listings, open: shown }: { listings: any[]; open?: boolean }) {
+export function TourPlanner({ listings, open: shown }: { listings: ListingData[]; open?: boolean }) {
   const [ownOpen, setOpen] = useState(false), [tours, setTours] = useState<Tour[]>([]), [ready, setReady] = useState(false);
   const open = shown ?? ownOpen;
   const [error, setError] = useState(''), [message, setMessage] = useState(''), [busy, setBusy] = useState(false);
@@ -31,7 +32,7 @@ export function TourPlanner({ listings, open: shown }: { listings: any[]; open?:
       const listing = listings.find(l => listingKey(l) === selected);
       if (!previous && !listing) throw Error('Choose a saved apartment first.');
       const minutes = Number(duration); if (!/^\d+$/.test(duration) || minutes < 5 || minutes > 240) throw Error('Duration must be 5–240 minutes.');
-      const address = previous?.address ?? [listing.address, listing.unit ? 'Unit ' + listing.unit : '', listing.city, listing.state, listing.zip].filter(Boolean).join(', ');
+      const address = previous?.address ?? (listing ? [listing.address, listing.unit ? 'Unit ' + listing.unit : '', listing.city, listing.state, listing.zip].filter(Boolean).join(', ') : '');
       const tour: Tour = { id: previous?.id ?? 'tour-' + Date.now() + '-' + Math.random().toString(36).slice(2), listingKey: previous?.listingKey ?? selected, address,
         startsAt: localTourStart(date, time), minutes, notes, checked: previous?.checked ?? [] };
       if (await save(previous ? tours.map(t => t.id === previous.id ? tour : t) : [...tours, tour])) clearForm();

@@ -12,7 +12,7 @@ export async function geocodeRentalAddresses<T extends Pick<ListingData, 'id' | 
   form.set('addressFile', new Blob([data], { type: 'text/csv' }), 'apartments.csv');
   form.set('benchmark', 'Public_AR_Current');
   const response = await fetcher('https://geocoding.geo.census.gov/geocoder/locations/addressbatch', {
-    method: 'POST', body: form, redirect: 'error', signal: AbortSignal.timeout(timeout),
+    method: 'POST', body: form, redirect: 'manual', signal: AbortSignal.timeout(timeout),
   });
   if (!response.ok) return listings;
   const points = new Map();

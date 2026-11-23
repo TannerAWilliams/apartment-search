@@ -1,3 +1,4 @@
+import { required } from './test-values.ts';
 import { test } from 'bun:test';
 import assert from 'node:assert/strict';
 import { handleApi, search } from '../server/api.ts';
@@ -8,6 +9,8 @@ import { assignedJson, loadPublicPages, deduplicatePublicRentals } from '../serv
 import { parseApartmentListPage } from '../server/apartmentlist.ts';
 import { parseRedfinPage } from '../server/redfin.ts';
 import { normalizeListing } from '../src/listings.ts';
+import { readJson } from './fixtures/json.ts';
+import type { ApiConfig, ConfigSource, RefreshInfo } from '../src/api-client.ts';
 
 const at = new Date(Date.now() - 10_000);
 const source = { id: 'compass', name: 'Compass', kind: 'feed' };
@@ -27,22 +30,22 @@ async function until(check: () => Promise<boolean>) {
 }
 
 test('every implemented rental provider is visible and resyncable before its first fetch', async () => {
-  const result = await (await handleApi(new Request('https://app.test/api/config'), { BUCKET: createMemoryBucket() })).json();
+  const result = await readJson<ApiConfig>(handleApi(new Request('https://app.test/api/config'), { BUCKET: createMemoryBucket() }));
   for (const id of ['zillow', 'compass', 'renthop', 'realtor', 'redfin', 'apartmentlist', 'cityrealty']) {
-    assert.ok(result.sources.some((source: { id: string }) => source.id === id));
-    assert.equal(result.sourceCatalog.find((source: { id: string }) => source.id === id + '-live')?.resyncable, true);
+    assert.ok(result.sources.some((source) => source.id === id));
+    assert.equal(result.sourceCatalog?.find((source) => source.id === id + '-live')?.resyncable, true);
   }
 });
 
 test('new sources show that they need a feed and a paused StreetEasy cannot be refreshed', async () => {
   const env = { BUCKET: createMemoryBucket(), STREETEASY_SYNC_ENABLED: 'false' };
-  const config = await (await handleApi(new Request('https://app.test/api/config'), env)).json();
+  const config = await readJson<ApiConfig>(handleApi(new Request('https://app.test/api/config'), env));
   for (const id of ['bhs', 'citysnap', 'craigslist', 'rebny-rls']) {
-    const source = config.sourceCatalog.find((entry: { id: string }) => entry.id === id);
+    const source = config.sourceCatalog?.find((entry) => entry.id === id);
     assert.equal(source?.resyncable, false);
-    assert.match(source?.coverage, /feed.*required/i);
+    assert.match(source?.coverage ?? '', /feed.*required/i);
   }
-  assert.equal(config.sourceCatalog.find((entry: { id: string }) => entry.id === 'streeteasy-live')?.paused, true);
+  assert.equal(config.sourceCatalog?.find((entry) => entry.id === 'streeteasy-live')?.paused, true);
   const response = await handleApi(new Request('https://app.test/api/refresh', { method: 'POST',
     headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ check: 'now', source: 'streeteasy-live' }) }), env, {
     fetcher: () => { throw new Error('A paused source must not be fetched.'); },
@@ -64,7 +67,7 @@ test('an approved RESO feed imports paginated active rentals and skips rows with
   const result = await refreshSources(env, { sourceId: 'rebny-rls', onDemand: true, fetcher: (input, options) => {
     requests.push(input);
     assert.equal(new Headers(options?.headers).get('Authorization'), 'Bearer test-feed-token');
-    assert.equal(options?.redirect, 'error');
+    assert.equal(options?.redirect, 'manual');
     if (input === url) return Response.json({
       '@odata.count': 3, '@odata.nextLink': '?$skiptoken=next',
       value: [listing, { ...listing, ListingKey: 'hidden', InternetAddressDisplayYN: false }],
@@ -149,7 +152,7 @@ test('Redfin excludes communities, rent ranges and inactive rentals', () => {
   const home = { homeData: { propertyType: 4, url: '/NY/New-York/Example/unit-2/home/1',
     addressInfo: { formattedStreetLine: '10 Example Street #2', unitNumber: '#2', zip: '10001', centroid: { centroid: { latitude: 40.75, longitude: -73.99 } } } },
     rentalExtension: { rentalId: 'one', status: 1, numAvailableUnits: 1, bedRange: { min: 1, max: 1 }, rentPriceRange: { min: 2500, max: 2500 } } };
-  const html = (homes: any[]) => '<script>root.__reactServerState.InitialContext = ' + JSON.stringify({ 'ReactServerAgent.cache': { dataCache: {
+  const html = (homes: unknown[]) => '<script>root.__reactServerState.InitialContext = ' + JSON.stringify({ 'ReactServerAgent.cache': { dataCache: {
     '/stingray/api/v1/search/rentals?includeKeyFacts=true': { res: { text: JSON.stringify({ homes }) } },
   } } }) + ';</script>';
   assert.equal(parseRedfinPage(html([home]), {}, at.toISOString()).length, 1);
@@ -193,13 +196,13 @@ test('the existing StreetEasy resync checks the configured feed, preserves inven
     assert.equal(new Headers(options?.headers).get('Authorization'), 'Bearer ' + feed.token);
     return Response.json({ listings: [listing], total });
   } });
-  const updated = await (await run(1)).json();
-  assert.equal(updated.sources.find(({ id }: { id: string }) => id === 'streeteasy-live')?.transport, 'partner-feed');
+  const updated = await readJson<RefreshInfo>(run(1));
+  assert.equal(updated.sources.find(({ id }) => id === 'streeteasy-live')?.transport, 'partner-feed');
   const results = await search({ source: 'streeteasy', liveOnly: true }, env);
   assert.equal(results.matches[0]?.sources[0].url, listing.url);
   assert.equal(results.sources.filter(({ id }) => id === 'streeteasy').length, 1);
-  const failed = await (await run(2)).json();
-  assert.equal(failed.sources.find(({ id }: { id: string }) => id === 'streeteasy-live')?.status, 'failed');
+  const failed = await readJson<RefreshInfo>(run(2));
+  assert.equal(failed.sources.find(({ id }) => id === 'streeteasy-live')?.status, 'failed');
   const cached = await search({ source: 'streeteasy', liveOnly: true, includeCached: true }, env);
   assert.equal(cached.matches[0]?.sources[0].url, listing.url);
   assert.equal(cached.matches[0]?.kind, 'cached');
@@ -226,8 +229,8 @@ test('StreetEasy resync can read the public active search as a bounded sample', 
       return new Response(html, { headers: { 'Content-Type': 'text/html' } });
     },
   });
-  const { sources } = await response.json();
-  const status = sources.find(({ id }: { id: string }) => id === 'streeteasy-live');
+  const { sources } = await readJson<RefreshInfo>(response);
+  const status = required(sources.find(({ id }) => id === 'streeteasy-live'));
   assert.equal(status.transport, 'public-search');
   assert.equal(status.total, 15000);
   assert.equal(status.listingCount, 1);
@@ -285,7 +288,7 @@ test('a complete StreetEasy export syncs all rows in one request and preserves t
     fetcher: (requested, options) => {
       called++;
       assert.equal(requested, url);
-      assert.equal(options?.redirect, 'error');
+      assert.equal(options?.redirect, 'manual');
       assert.equal(new Headers(options?.headers).get('Authorization'), 'Bearer export-test-secret');
       return Response.json({ ...complete, ...overrides });
     },
@@ -299,7 +302,7 @@ test('a complete StreetEasy export syncs all rows in one request and preserves t
   const result = await search({ liveOnly: true, source: 'streeteasy' }, env);
   assert.equal(result.total, 601);
   const config = await (await handleApi(new Request('https://app.test/api/config'), env)).text();
-  const streetEasy = JSON.parse(config).sources.find(({ id }: { id: string }) => id === 'streeteasy');
+  const streetEasy = (JSON.parse(config) as { sources: (ConfigSource & { coverage?: string })[] }).sources.find(({ id }) => id === 'streeteasy');
   assert.equal(streetEasy?.coverage, 'provider-supplied complete active StreetEasy export');
   assert.equal(streetEasy?.sample, false);
   assert.ok(!config.includes('export-test-secret'));

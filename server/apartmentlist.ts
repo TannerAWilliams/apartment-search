@@ -1,3 +1,4 @@
+import { isRecord } from '../src/domain.ts';
 import { normalizeListing } from '../src/listings.ts';
 import type { FetchTransport } from '../src/fetch-type.ts';
 import { nycBorough } from './firstmover.ts';
@@ -16,22 +17,30 @@ export const APARTMENTLIST_LIVE = {
   listingUrl, load: (fetcher: FetchTransport, now: Date) => loadPublicPages(SOURCE, PAGES, parseApartmentListPage, fetcher, now),
 };
 
+type ApartmentListUnit = { unit_rental_id?: unknown; unitTitle?: string; unitType?: string; availableNow?: unknown; price?: unknown; isTotalPrice?: unknown };
+
 export function parseApartmentListPage(html: string, _market: unknown, checkedAt: string) {
   const flight = [...html.matchAll(/self\.__next_f\.push\((\[[\s\S]*?\])\)<\/script>/g)]
-    .map((match) => { const chunk = JSON.parse(match[1]); return typeof chunk[1] === 'string' ? chunk[1] : ''; }).join('');
-  const properties = new Map<string, any>();
-  const units = new Map<string, any[]>();
-  function visit(value: any) {
+    .map((match) => { const chunk = JSON.parse(match[1]); return Array.isArray(chunk) && typeof chunk[1] === 'string' ? chunk[1] : ''; }).join('');
+  const properties = new Map<string, { slug: string }>();
+  const units = new Map<string, ApartmentListUnit[]>();
+  function visit(value: unknown) {
     if (!value || typeof value !== 'object') return;
-    if (typeof value.rental_id === 'string' && typeof value.slug === 'string') properties.set(value.rental_id, value);
-    if (value.status === 'success' && value.data && typeof value.data === 'object') {
-      for (const [id, rows] of Object.entries(value.data)) if (Array.isArray(rows) && rows.some((row) => row?.unit_rental_id)) units.set(id, rows);
+    if (isRecord(value)) {
+      const { rental_id: rentalId, slug, status, data } = value;
+      if (typeof rentalId === 'string' && typeof slug === 'string') properties.set(rentalId, { slug });
+      if (status === 'success' && isRecord(data)) {
+        for (const [id, rows] of Object.entries(data)) {
+          // Unit rows carry these fields; normalizeListing checks each one it keeps.
+          if (Array.isArray(rows) && rows.some((row) => isRecord(row) && row.unit_rental_id)) units.set(id, rows.filter(isRecord) as ApartmentListUnit[]);
+        }
+      }
     }
     for (const child of Object.values(value)) visit(child);
   }
   for (const line of flight.split('\n')) {
     const content = line.slice(line.indexOf(':') + 1);
-    let value;
+    let value: unknown;
     try { value = JSON.parse(content); } catch { continue; }
     visit(value);
   }

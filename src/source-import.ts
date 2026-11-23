@@ -1,5 +1,6 @@
 import base64 from 'base64-js';
 import { gzipSync, gunzipSync, strFromU8, strToU8 } from 'fflate';
+import { isRecord } from './domain.ts';
 
 /** Public exports the browser can fetch itself when the Worker could not (see pull-sources.ts). */
 export const PUBLIC_SOURCE_IDS = ['firstmover', 'housingconnect'];
@@ -22,6 +23,6 @@ export function decodeSourceImport(body: unknown) {
     throw new Error('The source import is invalid or too large.');
   }
   const data = JSON.parse(strFromU8(gunzipSync(bytes)));
-  if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('The source import is invalid.');
+  if (!isRecord(data)) throw new Error('The source import is invalid.');
   return data;
 }

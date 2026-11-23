@@ -23,19 +23,19 @@ export function parseApartmentsPage(html: string, { borough, bedrooms }: {boroug
   const entries = collection?.mainEntity?.itemListElement;
   if (!Array.isArray(entries) || !entries.length) throw new Error('Apartments.com did not return a recognized rental page.');
 
-  const advertisedBeds = new Map();
+  const advertisedBeds = new Map<string, unknown>();
   for (const [, id, lines] of html.matchAll(/data-listing-key="([a-z0-9]{7})"[^>]*?data-listing-share-lines='([^']*)'/gi)) {
-    try { advertisedBeds.set(id, JSON.parse(lines)[5]); }
+    try { const share = JSON.parse(lines); advertisedBeds.set(id, Array.isArray(share) ? share[5] : undefined); }
     catch { /* Skip cards with malformed share data. */ }
   }
   return entries.flatMap(({ item }) => {
     const url = listingUrl(item?.url);
-    const id = url?.split('/').at(-2);
+    const id = url?.split('/').at(-2) ?? '';
     const unit = item?.name?.match(/\s+(?:Unit\s+|#\s*)([^,]+)$/i)?.[1]?.trim();
     const { streetAddress, addressRegion, postalCode } = item?.mainEntity?.address ?? {};
     const { latitude, longitude } = item?.mainEntity?.geo ?? {};
     const offer = item?.offers;
-    if (!url || !unit || advertisedBeds.get(id) !== bedrooms + ' bd' ||
+    if (!item || !url || !unit || !addressRegion || advertisedBeds.get(id) !== bedrooms + ' bd' ||
         item.potentialAction?.['@type'] !== 'RentAction' || offer?.['@type'] !== 'Offer' ||
         offer.availability !== 'https://schema.org/InStock' || offer.priceCurrency !== 'USD' ||
         !/^\d/.test(streetAddress ?? '') || !/^\d{5}$/.test(postalCode ?? '') ||

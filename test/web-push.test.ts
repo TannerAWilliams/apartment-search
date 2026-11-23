@@ -1,6 +1,7 @@
 import { test } from 'bun:test';
 import assert from 'node:assert/strict';
 import { encryptPayload, fromBase64Url, generateVapidKeys, sendPush, toBase64Url, validSubscription } from '../server/web-push.ts';
+import { sentJson } from './fixtures/json.ts';
 
 const encoder = new TextEncoder();
 /** A browser's side of a subscription: its key pair and auth secret, plus RFC 8291 decryption. */
@@ -59,7 +60,7 @@ test('delivery is signed with the VAPID key for the push service, and an expired
   assert.equal(url, subscription.endpoint);
   const headers = init.headers as Record<string, string>;
   assert.equal(headers['Content-Encoding'], 'aes128gcm');
-  assert.equal(JSON.parse(await decrypt(init.body as Uint8Array<ArrayBuffer>)).title, 'Hello');
+  assert.equal(sentJson<{ title: string }>(await decrypt(init.body as Uint8Array<ArrayBuffer>)).title, 'Hello');
   const [, jwt, key] = headers.Authorization.match(/^vapid t=([^,]+), k=(.+)$/)!;
   assert.equal(key, vapid.publicKey);
   const [head, claims, signature] = jwt.split('.');

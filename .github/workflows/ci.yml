@@ -32,6 +32,9 @@ jobs:
         run: bun run test:coverage
       - name: Build the web app and bundle the Worker
         run: bun run build
+      # The Worker in Cloudflare's own runtime (workerd), which unit tests under Bun cannot catch.
+      - name: Worker routes in workerd
+        run: bun run test:workerd
       - name: Install Chromium
         run: bun ./node_modules/playwright/cli.js install --with-deps chromium
       # Ubuntu 24.04 can block the user namespaces Chromium's sandbox needs; allow them rather than turn the sandbox off.

@@ -1,5 +1,6 @@
 import type { FetchTransport } from '../src/fetch-type.ts';
 import { MARKETPLACE_NAMES, safeListingUrl } from '../src/marketplaces.ts';
+import { isRecord, type ListingData } from '../src/domain.ts';
 import { normalizeListing } from '../src/listings.ts';
 import { DIRECT_RENTAL_SOURCES } from './direct-rentals.ts';
 import { HDC_RERENTALS } from './hdc-rerentals.ts';
@@ -17,6 +18,12 @@ const MAX_ROWS = 25000;
 // Bound decoded response bytes before JSON parsing, independently of row count.
 // Large authorized feeds can paginate rather than exhaust a free server's memory.
 const MAX_PAGE_BYTES = 16 * 1024 * 1024;
+
+/** A partner feed page as sent. Every field is checked before it is used. */
+type FeedPage = { listings?: unknown; total?: unknown; next?: unknown; limited?: unknown };
+type ResoPage = { value?: unknown; '@odata.count'?: unknown; '@odata.nextLink'?: unknown };
+type ExportPage = FeedPage & { generatedAt?: unknown; schema?: unknown; scope?: unknown; complete?: unknown; partial?: unknown };
+type FeedConfig = { id?: unknown; name?: unknown; url?: unknown; token?: unknown; format?: unknown };
 
 class IncompleteFeedError extends Error {
   code = 'incomplete_feed';
@@ -52,7 +59,7 @@ async function readFeedPage(response: Response) {
 
 export function configuredFeeds(env: { FREE_PARTNER_FEEDS_JSON?: string }) {
   if (!env.FREE_PARTNER_FEEDS_JSON) return [];
-  let configured;
+  let configured: unknown;
   try {
     configured = JSON.parse(env.FREE_PARTNER_FEEDS_JSON);
   } catch {
@@ -62,11 +69,13 @@ export function configuredFeeds(env: { FREE_PARTNER_FEEDS_JSON?: string }) {
     throw new Error('Configure up to 15 authorized free feeds.');
   }
 
-  const ids = new Set();
-  return configured.map((feed) => {
-    const id = feed?.id;
-    const name = Object.hasOwn(MARKETPLACE_NAMES, id) ? MARKETPLACE_NAMES[id] : feed?.name?.trim();
-    const url = safeListingUrl(feed?.url);
+  const ids = new Set<string>();
+  return configured.map((entry) => {
+    const feed: FeedConfig = isRecord(entry) ? entry : {};
+    const id = feed.id;
+    const name = typeof id === 'string' && Object.hasOwn(MARKETPLACE_NAMES, id) ? MARKETPLACE_NAMES[id]
+      : typeof feed.name === 'string' ? feed.name.trim() : '';
+    const url = safeListingUrl(feed.url);
     if (typeof id !== 'string' || !/^[a-z][a-z0-9_-]{0,47}$/.test(id) || RESERVED_FEEDS.has(id) || ids.has(id) || !name || !url) {
       throw new Error('A free feed is missing a unique ID, name, or HTTPS URL.');
     }
@@ -74,8 +83,9 @@ export function configuredFeeds(env: { FREE_PARTNER_FEEDS_JSON?: string }) {
     if (feed.format !== undefined && feed.format !== validFormat) {
       throw new Error('The listing feed has an unsupported export format.');
     }
+    if (feed.token !== undefined && typeof feed.token !== 'string') throw new Error('A free feed token must be text.');
     ids.add(id);
-    return { id, name: name.slice(0, 48), url, token: feed.token, kind: 'feed', format: feed.format };
+    return { id, name: name.slice(0, 48), url, token: feed.token, kind: 'feed', format: feed.format === undefined ? undefined : validFormat };
 
   });
 }
@@ -87,30 +97,29 @@ export async function loadFeed(feed: { id: string; name: string; url: string; to
   start.hash = '';
   const deadline = AbortSignal.timeout(25000);
   const visited = new Set();
-  const listings = [];
+  const listings: ListingData[] = [];
   const listingIds = new Set<string>();
   let rowCount = 0;
-  let reportedTotal;
+  let reportedTotal: number | undefined;
   let url: string | null = start.href;
   while (url) {
     if (visited.has(url) || visited.size >= MAX_PAGES) throw new IncompleteFeedError('Pagination did not finish');
     visited.add(url);
     const response = await fetcher(url, {
-      headers, redirect: 'error', signal: AbortSignal.any([deadline, AbortSignal.timeout(9000)]),
+      headers, redirect: 'manual', signal: AbortSignal.any([deadline, AbortSignal.timeout(9000)]),
     });
     if (!response.ok) throw new Error('Feed unavailable');
     const payload = await readFeedPage(response);
-    const body = feed.format === RESO_FEED_FORMAT ? {
-      listings: payload?.value,
-      total: payload?.['@odata.count'],
-      next: payload?.['@odata.nextLink'],
-    } : payload;
-    const rows = Array.isArray(body) ? body : body?.listings;
+    const reso: ResoPage = isRecord(payload) ? payload : {};
+    const body: FeedPage = feed.format === RESO_FEED_FORMAT
+      ? { listings: reso.value, total: reso['@odata.count'], next: reso['@odata.nextLink'] }
+      : isRecord(payload) ? payload : {};
+    const rows = feed.format !== RESO_FEED_FORMAT && Array.isArray(payload) ? payload : body.listings;
     if (!Array.isArray(rows)) throw new Error('Invalid feed response');
     rowCount += rows.length;
     if (rowCount > MAX_ROWS || body.limited === true) throw new IncompleteFeedError('Inventory exceeded its limit');
     if (body.total != null) {
-      if (!Number.isSafeInteger(body.total) || body.total < 0 || body.total > MAX_ROWS ||
+      if (typeof body.total !== 'number' || !Number.isSafeInteger(body.total) || body.total < 0 || body.total > MAX_ROWS ||
           (reportedTotal !== undefined && reportedTotal !== body.total)) {
         throw new IncompleteFeedError('Inventory count changed or exceeded its limit');
       }
@@ -130,7 +139,7 @@ export async function loadFeed(feed: { id: string; name: string; url: string; to
     }
     if (body.next == null) break;
     if (typeof body.next !== 'string' || !body.next.trim()) throw new IncompleteFeedError('Invalid next page');
-    let next;
+    let next: URL;
     try { next = new URL(body.next, url); }
     catch { throw new IncompleteFeedError('Invalid next page'); }
     next.hash = '';
@@ -150,29 +159,32 @@ export async function loadFeed(feed: { id: string; name: string; url: string; to
 export async function loadStreetEasyExport(feed: { url: string; token?: string }, fetcher: FetchTransport, now: Date) {
   const headers = new Headers({ Accept: 'application/json' });
   if (feed.token) headers.set('Authorization', 'Bearer ' + feed.token);
-  const response = await fetcher(feed.url, { headers, redirect: 'error', signal: AbortSignal.timeout(30_000) });
+  const response = await fetcher(feed.url, { headers, redirect: 'manual', signal: AbortSignal.timeout(30_000) });
   if (!response.ok) throw new Error('StreetEasy export returned HTTP ' + response.status + '.');
-  const body = await readFeedPage(response);
-  const rows = body?.listings;
-  const generatedAt = typeof body?.generatedAt === 'string' && /Z$/.test(body.generatedAt) ? Date.parse(body.generatedAt) : NaN;
+  const payload = await readFeedPage(response);
+  const body: ExportPage = isRecord(payload) ? payload : {};
+  const rows = body.listings;
+  const generatedAt = typeof body.generatedAt === 'string' && /Z$/.test(body.generatedAt) ? Date.parse(body.generatedAt) : NaN;
   const age = now.getTime() - generatedAt;
   if (!Number.isFinite(age) || age < 0 || age >= STREETEASY_EXPORT_MAX_AGE) {
     throw new Error('StreetEasy export must have an observation time less than 12 hours old.');
   }
   if (body.schema !== STREETEASY_EXPORT_FORMAT || body.scope !== 'all-markets' || body.complete !== true ||
       body.next != null || body.limited === true || body.partial === true ||
-      !Number.isSafeInteger(body.total) || body.total < 0 || body.total > MAX_ROWS ||
+      typeof body.total !== 'number' || !Number.isSafeInteger(body.total) || body.total < 0 || body.total > MAX_ROWS ||
       !Array.isArray(rows) || rows.length !== body.total) {
     throw new Error('StreetEasy export did not contain a complete, count-verified inventory.');
   }
   const checkedAt = new Date(generatedAt).toISOString();
   const ids = new Set<string>();
   const source = { ...STREETEASY_LIVE, id: STREETEASY_LIVE.marketplace };
-  const listings = rows.map((row: Record<string, unknown> | null) => {
-    const id = row?.id;
-    const url = streetEasyListingUrl(row?.listingUrl);
+  const total = body.total;
+  const listings = rows.map((entry) => {
+    const row = isRecord(entry) ? entry : {};
+    const id = row.id;
+    const url = streetEasyListingUrl(row.listingUrl);
     if (typeof id !== 'string' || !/^\d{1,30}$/.test(id) || ids.has(id) || !url ||
-        typeof row?.listingUrl !== 'string' || !row.listingUrl.startsWith('https://streeteasy.com/')) {
+        typeof row.listingUrl !== 'string' || !row.listingUrl.startsWith('https://streeteasy.com/')) {
       throw new Error('StreetEasy export returned a repeated ID or invalid original link.');
     }
     ids.add(id);
@@ -182,5 +194,5 @@ export async function loadStreetEasyExport(feed: { url: string; token?: string }
     }
     return listing;
   });
-  return { listings, total: body.total as number, pages: 1, checkedAt, transport: STREETEASY_EXPORT_FORMAT };
+  return { listings, total, pages: 1, checkedAt, transport: STREETEASY_EXPORT_FORMAT };
 }

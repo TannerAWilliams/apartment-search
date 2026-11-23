@@ -1,3 +1,4 @@
+import { malformed } from './test-values.ts';
 import { test, expect } from 'bun:test';
 import { addSavedSearch, readSavedSearches, serializeSavedSearches, presetFilters, compareWholeSnapshot, parseWholeSnapshot } from '../src/saved-searches.ts';
 const point = (rent = 2000, day = 1, key = 'unit1', includesFees = false) => ({ key, label: 'Apartment', sourceId: 'feed', checkedAt: new Date(Date.UTC(2026, 0, day)).toISOString(), rent, includesFees });
@@ -20,7 +21,7 @@ test('presets pick validated filters, ignore secrets and pagination, round-trip 
 test('corrupt saved state fails closed and no generated document bypasses read validation', () => {
   for (const raw of ['{', 'null', '{}', '{"version":2,"searches":[]}', '{"version":1,"searches":null}']) expect(() => readSavedSearches(raw)).toThrow();
   const one = addSavedSearch([], 'Name', {}, 'one')[0];
-  for (const patch of [{ lastCheckedAt: 'bad' }, { lastCheckedAt: 1 }, { baseline: {} }, { name: 2 }, { id: null }]) expect(() => serializeSavedSearches([{ ...one, ...patch } as any])).toThrow();
+  for (const patch of [{ lastCheckedAt: 'bad' }, { lastCheckedAt: 1 }, { baseline: {} }, { name: 2 }, { id: null }]) expect(() => serializeSavedSearches([malformed<typeof one>({ ...one, ...patch })])).toThrow();
   const withBaseline = { ...one, baseline: compareWholeSnapshot(snapshot(), null).baseline, lastCheckedAt: '2026-02-01T00:00:00Z' };
   expect(readSavedSearches(serializeSavedSearches([withBaseline]))[0]).toEqual(withBaseline);
   expect(() => readSavedSearches('x'.repeat(40 * 1024 * 1024 + 1))).toThrow();

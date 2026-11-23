@@ -13,7 +13,9 @@ export class ReportSink extends WorkerEntrypoint<Env> {
     if (request.method !== 'POST') return new Response(null, { status: 405 });
     const text = await request.text();
     if (text.length > 4096) return new Response(null, { status: 413 });
-    await this.env.PROBE.getByName('test').record(JSON.parse(text));
+    const result: unknown = JSON.parse(text);
+    if (typeof result !== 'object' || result === null || Array.isArray(result)) return new Response(null, { status: 400 });
+    await this.env.PROBE.getByName('test').record({ ...result });
     return new Response('recorded');
   }
 }

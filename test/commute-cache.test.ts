@@ -2,6 +2,8 @@ import { test } from 'bun:test';
 import assert from 'node:assert/strict';
 import { routeCommutes } from '../server/commute.ts';
 import { createMemoryBucket } from './fixtures/memory-bucket.ts';
+import { sentJson } from './fixtures/json.ts';
+import type { TravelTimeRequest } from '../server/commute.ts';
 
 const workplace = { label: 'Rockefeller Center', latitude: 40.75874, longitude: -73.97867 };
 const credentials = { appId: 'synthetic-app', apiKey: 'synthetic-key' };
@@ -10,8 +12,8 @@ const point = (n: number) => ({ id: 'l' + n, latitude: 40.7 + n / 1000, longitud
 function traveltime() {
   const sent: number[] = [];
   const fetcher = async (_url: string, options?: RequestInit) => {
-    const body = JSON.parse(String(options?.body));
-    const origins = body.locations.filter((location: { id: string }) => location.id !== 'workplace');
+    const body = sentJson<TravelTimeRequest>(options?.body);
+    const origins = body.locations.filter((location) => location.id !== 'workplace');
     sent.push(origins.length);
     return Response.json({ results: ['transit', 'driving'].map((search_id) => ({ search_id,
       // The second origin of each request has no transit route.

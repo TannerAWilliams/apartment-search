@@ -13,6 +13,10 @@ import { ZUMPER_LIVE, ZUMPER_MARKETS, zumperPacing } from '../server/zumper.ts';
 // Real Zumper syncs space pages a second apart; these tests use local fakes.
 zumperPacing.intervalMs = 0;
 import { rentSeries } from '../src/rent-history.ts';
+import { type GraphQlRequest, readJson, sentJson } from './fixtures/json.ts';
+import type { RefreshInfo } from '../src/api-client.ts';
+import type { SearchResult } from '../src/domain.ts';
+import type { RentMarket } from '../src/rent-history.ts';
 
 const CSV = [
   'id,street,unit,state,zip_code,neighborhood,latitude,longitude,bedrooms,price,url,created_at_utc,building_type,ignored',
@@ -34,7 +38,7 @@ class TestBucket {
     return {
       ...record.meta,
       text: async () => new TextDecoder().decode(bytes),
-      json: async () => JSON.parse(new TextDecoder().decode(bytes)),
+      json: async <T>() => JSON.parse(new TextDecoder().decode(bytes)) as T,
       arrayBuffer: async () => bytes.slice().buffer,
     };
   }
@@ -71,20 +75,20 @@ test('the API refreshes active rentals, scopes cards and pins, and removes a ren
   const filters = { region: 'manhattan-brooklyn', bedrooms: 1, maxRent: 5000, liveOnly: true, includeMap: true };
   const refresh = await request('refresh', { check: 'now' });
   assert.equal(refresh.status, 200);
-  assert.equal((await refresh.json()).sources.find(({ id }: { id: string }) => id === 'zillow').status, 'updated');
+  assert.equal((await readJson<RefreshInfo>(refresh)).sources.find(({ id }) => id === 'zillow')?.status, 'updated');
   const result = await request('search', filters);
   assert.equal(result.headers.get('cache-control'), 'no-store');
-  const { total, matches, mapPoints } = await result.json();
+  const { total, matches, mapPoints } = await readJson<SearchResult>(result);
   assert.equal(total, 1);
   assert.equal(matches[0].id, 'zillow:brooklyn');
-  assert.equal(mapPoints[0].url, apartment.listingUrl);
-  const market = await (await request('market?region=manhattan-brooklyn&grouping=city')).json();
-  assert.deepEqual(market.areas.slice(1).map(({ label }: { label: string }) => label), ['Brooklyn, NY', 'Manhattan, NY']);
+  assert.equal(required(mapPoints)[0].url, apartment.listingUrl);
+  const market = await readJson<RentMarket>(request('market?region=manhattan-brooklyn&grouping=city'));
+  assert.deepEqual(market.areas.slice(1).map(({ label }) => label), ['Brooklyn, NY', 'Manhattan, NY']);
   assert.equal((await request('search', { ...filters, maxTransitMinutes: 30 })).status, 503);
 
   rows = [{ ...apartment, status: 'Rented' }];
   assert.equal((await request('refresh', { check: 'now' })).status, 200);
-  const after = await (await request('search', filters)).json();
+  const after = await readJson<SearchResult>(request('search', filters));
   assert.deepEqual(after.matches, []);
   assert.deepEqual(after.mapPoints, []);
   await Promise.all(waits);
@@ -147,7 +151,7 @@ test('an hourly refresh persists each source, makes charts use the imported reco
   assert.equal((await storedHousing(env.BUCKET, at)).opportunities[0].addresses[0], '28 Example St, Brooklyn 11215');
 
   const api = await handleApi(new Request('https://private.test/api/market?region=nyc'), env);
-  const chart = await api.json();
+  const chart = await readJson<RentMarket>(api);
   assert.equal(chart.month, '2026-10');
   assert.equal(chart.areas[0].sizes[1].median, 1900);
 
@@ -195,7 +199,7 @@ test('the private writer imports a completed public check without publisher acce
   });
   const response = await handleApi(request, env);
   assert.equal(response.status, 200);
-  assert.equal((await response.json()).state, 'complete');
+  assert.equal((await readJson<RefreshInfo>(response)).state, 'complete');
   assert.equal((await storedHousing(env.BUCKET, at)).opportunities.length, 1);
   assert.equal((await storedMarket(env.BUCKET)).listings.length, 2);
 });
@@ -337,7 +341,7 @@ test('an approved marketplace feed syncs every page before replacing its saved i
   const fetcher = async (url: string, options: RequestInit = {}) => {
     if (new URL(url).hostname !== 'feed.example.test') return sources()(url, options);
     assert.equal(new Headers(options.headers).get('Authorization'), 'Bearer fixture-token');
-    assert.equal(options.redirect, 'error');
+    assert.equal(options.redirect, 'manual');
     if (url === partner.url) return Response.json(first);
     assert.equal(url, partner.url + '?page=2');
     return Response.json({ listings: [
@@ -432,7 +436,7 @@ test('a resync reads StreetEasy v6 each time and checks Apartments.com in both b
     if (parsed.hostname === 'api-v6.streeteasy.com') {
       requested.push(url);
       assert.equal(options.method, 'POST');
-      const { query } = JSON.parse(String(options.body));
+      const { query } = sentJson<GraphQlRequest>(options.body);
       assert.match(query, /rentalStatus: ACTIVE/);
       assert.doesNotMatch(query, /areas:/);
       assert.doesNotMatch(query, /lowerBound/);
@@ -519,7 +523,7 @@ test('a new FirstMover month keeps the previous published medians in the six-mon
     ...firstmover, month: '2026-11', revision: 'b'.repeat(40),
     rows: parseFirstMoverCsv(CSV.replaceAll('2026-10', '2026-11').replace('1900', '2200'), '2026-11'),
   } } });
-  const chart = await (await handleApi(new Request('https://private.test/api/market?region=nyc'), env)).json();
+  const chart = await readJson<RentMarket>(handleApi(new Request('https://private.test/api/market?region=nyc'), env));
   const trend = rentSeries(chart.areas[0], 1, chart.month, chart.history);
   assert.equal(trend.length, 6);
   assert.deepEqual(trend.slice(-2), [
@@ -621,7 +625,7 @@ test('provider 403 without wrapper metadata saves failure, releases lock and pre
   assert.equal(required(status).updatedAt, at.toISOString());
   assert.equal(Date.parse(required(required(status).retryAt)), next.getTime() + 15 * 60_000);
   assert.deepEqual(await storedDirectRentals(env.BUCKET, STREETEASY_LIVE), before);
-  assert.equal((await required((await env.BUCKET.get('rentals/refresh.json'))).json()).running, false);
+  assert.equal((await required(await env.BUCKET.get('rentals/refresh.json')).json<{ running?: boolean }>()).running, false);
 });
 
 test('duplicate imported listing IDs fail without replacing the last valid source snapshot', async () => {

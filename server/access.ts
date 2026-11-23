@@ -4,6 +4,8 @@
  * Worker verifies the token itself: RS256 signature against the team's published keys, issuer, audience,
  * expiry, and an allowlist of emails.
  */
+import { isRecord } from '../src/domain.ts';
+
 export type AccessSettings = { issuer: string; audience: string; emails: string[] };
 type Jwk = JsonWebKey & { kid?: string };
 type KeyFetch = (url: string, init?: RequestInit) => Promise<Response>;
@@ -28,7 +30,7 @@ async function signingKey(issuer: string, kid: string, fetcher: KeyFetch, now: n
   const cached = keyCache.get(issuer);
   const known = cached && cached.expires > now ? cached.keys.find((key) => key.kid === kid) : undefined;
   if (known || (cached && now - cached.fetchedAt < REFETCH_INTERVAL)) return known;
-  // Workers reject redirect: 'error'. 'manual' leaves a redirect unfollowed, and its 3xx status fails the check below.
+  // 'manual' leaves a redirect unfollowed, and its 3xx status fails the check below (Workers reject 'error').
   const response = await fetcher(issuer + '/cdn-cgi/access/certs', { redirect: 'manual', signal: AbortSignal.timeout(5000) });
   if (!response.ok) throw new Error('Cloudflare Access keys returned HTTP ' + response.status + '.');
   const { keys } = await response.json() as { keys?: Jwk[] };
@@ -39,6 +41,8 @@ async function signingKey(issuer: string, kid: string, fetcher: KeyFetch, now: n
 
 const base64url = (value: string) => Uint8Array.from(atob(value.replaceAll('-', '+').replaceAll('_', '/')), (char) => char.charCodeAt(0));
 const json = (value: string) => JSON.parse(new TextDecoder().decode(base64url(value)));
+type TokenHeader = { alg?: unknown; kid?: unknown };
+type TokenClaims = { iss?: unknown; aud?: unknown; email?: unknown; exp?: unknown; nbf?: unknown };
 
 /** The signed-in email when the token is valid for this application and allowed, otherwise null. */
 export async function verifyAccessToken(token: string | null, settings: AccessSettings,
@@ -47,12 +51,16 @@ export async function verifyAccessToken(token: string | null, settings: AccessSe
   const parts = token.split('.');
   if (parts.length !== 3 || parts.some((part) => !part)) return null;
   const [head, body, signature] = parts;
-  let header, claims;
-  try { header = json(head); claims = json(body); } catch { return null; }
+  let header: TokenHeader, claims: TokenClaims;
+  try {
+    const decoded = [json(head), json(body)];
+    if (!decoded.every(isRecord)) return null;
+    [header, claims] = decoded;
+  } catch { return null; }
   const seconds = now / 1000;
-  const audiences = Array.isArray(claims?.aud) ? claims.aud : [claims?.aud];
-  const email = typeof claims?.email === 'string' ? claims.email.toLowerCase() : '';
-  if (header?.alg !== 'RS256' || typeof header.kid !== 'string' || claims.iss !== settings.issuer || !audiences.includes(settings.audience) ||
+  const audiences: unknown[] = Array.isArray(claims.aud) ? claims.aud : [claims.aud];
+  const email = typeof claims.email === 'string' ? claims.email.toLowerCase() : '';
+  if (header.alg !== 'RS256' || typeof header.kid !== 'string' || claims.iss !== settings.issuer || !audiences.includes(settings.audience) ||
       typeof claims.exp !== 'number' || claims.exp + LEEWAY_SECONDS <= seconds ||
       (typeof claims.nbf === 'number' && claims.nbf - LEEWAY_SECONDS > seconds) || !settings.emails.includes(email)) return null;
   const jwk = await signingKey(settings.issuer, header.kid, fetcher, now);

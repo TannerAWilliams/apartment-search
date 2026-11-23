@@ -1,15 +1,16 @@
+import type { ListingData, Loose } from './domain.ts';
 import { savedCommuteEstimate } from './commute-estimate.ts';
 import { listingKey, listingPresentation } from './listings.ts';
 import { discoveryFacts, LAUNDRY_LABELS } from './discovery.ts';
 import { formatRent } from './search.ts';
 export const MAX_COMPARISON = 4;
-export const comparisonTitle = (listing: any) => [listing.address, listing.unit ? `Unit ${listing.unit}` : '', listing.city].filter(Boolean).join(', ');
+export const comparisonTitle = (listing: Loose<Pick<ListingData, 'address' | 'unit' | 'city'>>) => [listing.address, listing.unit ? `Unit ${listing.unit}` : '', listing.city].filter(Boolean).join(', ');
 export function toggleComparison(keys: string[], key: string, available: string[]) {
   const current = [...new Set(keys)].filter(item => available.includes(item)).slice(0, MAX_COMPARISON);
   if (current.includes(key)) return current.filter(item => item !== key);
   return available.includes(key) && current.length < MAX_COMPARISON ? [...current, key] : current;
 }
-export function comparisonOptions(listings: any[], query: string) {
+export function comparisonOptions(listings: ListingData[], query: string) {
   const needle = query.trim().toLocaleLowerCase();
   const seen = new Set<string>();
   return listings.filter(listing => {
@@ -19,7 +20,7 @@ export function comparisonOptions(listings: any[], query: string) {
     return `${comparisonTitle(listing)} ${listing.zip ?? ''}`.toLocaleLowerCase().includes(needle);
   });
 }
-export function comparisonRows(listing: any) {
+export function comparisonRows(listing: ListingData) {
   const facts = discoveryFacts(listing), presentation = listingPresentation(listing);
   for (const key of (Object.keys(facts) as (keyof typeof facts)[])) if (Array.isArray(listing.discoveryConflicts) && listing.discoveryConflicts.includes(key)) facts[key] = null;
   const commute = savedCommuteEstimate(listing);

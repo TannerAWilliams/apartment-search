@@ -1,5 +1,5 @@
 import type { AppEnv, Bucket } from './contracts.ts';
-import type { ListingData, SourceStatus as SearchSource, SearchResult } from '../src/domain.ts';
+import { isRecord, oneOf, type ListingData, type SourceStatus as SearchSource, type SearchResult } from '../src/domain.ts';
 import type { SourceStatus } from './refresh.ts';
 import { CITYREALTY_ID } from './cityrealty.ts';
 import { isCompleteCoverage, isCompleteSnapshot, WORKFLOW_SOURCE_IDS } from './source-registry.ts';
@@ -74,9 +74,9 @@ async function storedSample(status: { sources: SourceStatus[] } | null, id: stri
 
 type SearchResponse = SearchResult & { snapshotMonth?: string; commute?: boolean; commuteNotice?: string };
 type ObservationResponse = { matches: ListingData[]; sources: SearchSource[]; notices: string[] };
-export function search(rawFilters: Record<string, unknown>, env: AppEnv, fetcher?: SourceFetch, observationsOnly?: false): Promise<SearchResponse>;
-export function search(rawFilters: Record<string, unknown>, env: AppEnv, fetcher: SourceFetch | undefined, observationsOnly: true): Promise<ObservationResponse>;
-export async function search(rawFilters: Record<string, unknown>, env: AppEnv, fetcher: SourceFetch = fetch, observationsOnly = false) {
+export function search(rawFilters: unknown, env: AppEnv, fetcher?: SourceFetch, observationsOnly?: false): Promise<SearchResponse>;
+export function search(rawFilters: unknown, env: AppEnv, fetcher: SourceFetch | undefined, observationsOnly: true): Promise<ObservationResponse>;
+export async function search(rawFilters: unknown, env: AppEnv, fetcher: SourceFetch = fetch, observationsOnly = false) {
   const filters = parseFilters(rawFilters);
   const requireCommute = needsCommute(filters);
   const credentials = routingCredentials(env);
@@ -216,7 +216,7 @@ export function alertChannels(env: AppEnv): AlertChannels {
   };
 }
 
-const alertMatches = (env: AppEnv) => async (filters: object) => (await search(filters as Record<string, unknown>, env, offline, true)).matches;
+const alertMatches = (env: AppEnv) => async (filters: object) => (await search(filters, env, offline, true)).matches;
 
 /** Checks every saved alert against the saved inventory; runs after refreshes, never on a schedule. */
 export async function runAlerts(env: AppEnv, origin = env.APP_ORIGIN ?? '') {
@@ -231,13 +231,14 @@ async function alertState(env: AppEnv & { BUCKET: Bucket }) {
     channels: { email: Boolean(channels.email), push: channels.vapid ? { publicKey: channels.vapid.publicKey } : null } };
 }
 
-async function alertAction(body: any, env: AppEnv & { BUCKET: Bucket }, origin: string) {
+async function alertAction(raw: unknown, env: AppEnv & { BUCKET: Bucket }, origin: string) {
   const bucket = env.BUCKET;
-  if (body?.action === 'add-rule') await addRule(bucket, body.rule, alertMatches(env));
-  else if (body?.action === 'delete-rule') await deleteRule(bucket, body.id);
-  else if (body?.action === 'add-device') await addDevice(bucket, body.subscription, body.label);
-  else if (body?.action === 'remove-device') await removeDevice(bucket, body.endpoint);
-  else if (body?.action === 'test') {
+  const body = isRecord(raw) ? raw : {};
+  if (body.action === 'add-rule') await addRule(bucket, body.rule, alertMatches(env));
+  else if (body.action === 'delete-rule') await deleteRule(bucket, body.id);
+  else if (body.action === 'add-device') await addDevice(bucket, body.subscription, body.label);
+  else if (body.action === 'remove-device') await removeDevice(bucket, body.endpoint);
+  else if (body.action === 'test') {
     const delivered = await deliver(bucket, [{ id: crypto.randomUUID(), at: new Date().toISOString(), ruleId: 'test', title: 'Test alert from Apartment Search',
       lines: ['Alerts are working. New apartments and price drops in your saved alerts will arrive like this.'], newCount: 0, dropCount: 0 }], alertChannels(env), origin);
     return { ...await alertState(env), delivered };
@@ -267,9 +268,9 @@ export async function handleApi(request: Request, env: AppEnv, { privateAuthenti
     const page = typeof report?.page === 'string' && /^[a-z-]{1,20}$/.test(report.page) ? report.page : 'other';
     let logged = 0;
     for (const metric of metrics) {
-      const { name, value, rating, navigationType } = metric ?? {};
-      if (!VITAL_NAMES.includes(name) || typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 600_000 ||
-          !['good', 'needs-improvement', 'poor'].includes(rating)) continue;
+      const { name, value, rating, navigationType }: Record<string, unknown> = isRecord(metric) ? metric : {};
+      if (!oneOf(VITAL_NAMES, name) || typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 600_000 ||
+          !oneOf(['good', 'needs-improvement', 'poor'], rating)) continue;
       log.info('web_vital', { name, value, rating, page, navigationType: typeof navigationType === 'string' ? navigationType.slice(0, 20) : undefined });
       logged++;
     }
@@ -366,7 +367,7 @@ export async function handleApi(request: Request, env: AppEnv, { privateAuthenti
   if (Number(request.headers.get('Content-Length')) > maxBytes) {
     return json({ error: 'The request is too large.' }, 413);
   }
-  let body;
+  let body: unknown;
   try {
     const text = await request.text();
     if (text.length > maxBytes) return json({ error: 'The request is too large.' }, 413);
@@ -374,23 +375,27 @@ export async function handleApi(request: Request, env: AppEnv, { privateAuthenti
   } catch {
     return json({ error: 'Send a JSON request.' }, 400);
   }
+  const fields: Record<string, unknown> = isRecord(body) ? body : {};
   try {
     if (path === '/api/refresh') {
-      if (body?.check === 'now') {
+      const source = fields.source;
+      if (fields.check === 'now') {
         // The app no longer checks sources when it opens. A page loaded before that change still asks
         // with sessionStart; it gets the saved status and nothing is fetched.
-        if (body.sessionStart === true) return json({ ...await refreshPlan(env.BUCKET), state: 'already_checked' });
-        if (body.source !== undefined && !refreshCatalog(env).some((source) => source.id === body.source && source.resyncable)) return json({ error: 'Unknown or disconnected refresh source.' }, 422);
-        if (syncJob && WORKFLOW_SOURCE_IDS.includes(body.source)) {
+        if (fields.sessionStart === true) return json({ ...await refreshPlan(env.BUCKET), state: 'already_checked' });
+        if (source !== undefined && (typeof source !== 'string' || !refreshCatalog(env).some((item) => item.id === source && item.resyncable))) {
+          return json({ error: 'Unknown or disconnected refresh source.' }, 422);
+        }
+        if (syncJob && source !== undefined && WORKFLOW_SOURCE_IDS.includes(source)) {
           const current = await refreshPlan(env.BUCKET);
-          const previous = current.sources.find(item => item.id === body.source);
+          const previous = current.sources.find(item => item.id === source);
           if (previous?.retryAt && Date.parse(previous.retryAt) > Date.now()) return json({ ...current, state: 'already_checked' });
-          if (!current.checking || current.activeSource !== body.source) await syncJob.start(Boolean(current.checking), [body.source]);
-          return json({ ...current, state: 'running', checking: true, activeSource: body.source }, 202);
+          if (!current.checking || current.activeSource !== source) await syncJob.start(Boolean(current.checking), [source]);
+          return json({ ...current, state: 'running', checking: true, activeSource: source }, 202);
         }
         const work = refreshSources(env, { fetcher, onDemand: true,
-          sourceId: body.source, excludeWorkflowSources: Boolean(syncJob) });
-        if (syncJob && body.source === undefined) {
+          sourceId: source, excludeWorkflowSources: Boolean(syncJob) });
+        if (syncJob && source === undefined) {
           try { await syncJob.start(true); }
           catch (cause) { await work.catch(() => {}); throw cause; }
         }
@@ -400,8 +405,8 @@ export async function handleApi(request: Request, env: AppEnv, { privateAuthenti
       let imports;
       try { imports = decodeSourceImport(body); }
       catch { return json({ error: 'Send a valid compressed source import.' }, 422); }
-      if (body.source !== undefined && body.source !== 'streeteasy-live') return json({ error: 'Unknown refresh source.' }, 422);
-      const result = await refreshSources(env, { fetcher, imports, fallback: body.fallback === true, onlyStreetEasy: body.source === 'streeteasy-live' });
+      if (source !== undefined && source !== 'streeteasy-live') return json({ error: 'Unknown refresh source.' }, 422);
+      const result = await refreshSources(env, { fetcher, imports, fallback: fields.fallback === true, onlyStreetEasy: source === 'streeteasy-live' });
       afterRefresh(result);
       const unavailable = result.state === 'partial' && result.sources.every(({ status }) =>
         status === 'failed' || status === 'feed_required');
@@ -413,8 +418,8 @@ export async function handleApi(request: Request, env: AppEnv, { privateAuthenti
     }
     if (path === '/api/building-report') return json(await retrieveBuildingRecords(body, async (url, options) => fetcher(url, options), new Date(), request.signal));
     if (path === '/api/search-check') return json(await wholeSearchCheck(body, env, filters => search(filters, env, offline, true)));
-    if (path === '/api/geocode') return json(await geocodeAddress(body?.address, fetcher));
-    if ((body?.includeCommute || needsCommute(body ?? {})) && !request.headers.get('Content-Type')?.startsWith('application/json')) {
+    if (path === '/api/geocode') return json(await geocodeAddress(fields.address, fetcher));
+    if ((fields.includeCommute || needsCommute(fields)) && !request.headers.get('Content-Type')?.startsWith('application/json')) {
       return json({ error: 'Send commute searches as JSON.' }, 400);
     }
     return json(await search(body, env, fetcher));

@@ -3,12 +3,13 @@ import assert from 'node:assert/strict';
 import { log } from '../server/log.ts';
 import { handleApi } from '../server/api.ts';
 import type { Bucket } from '../server/contracts.ts';
+import { logRecord } from './fixtures/json.ts';
 
 const quiet = log.sink;
 afterEach(() => { log.sink = quiet; });
 function capture() {
   const lines: { level: string; entry: Record<string, unknown> }[] = [];
-  log.sink = (level, line) => { lines.push({ level, entry: JSON.parse(line) }); };
+  log.sink = (level, line) => { lines.push({ level, entry: logRecord(line) }); };
   return lines;
 }
 

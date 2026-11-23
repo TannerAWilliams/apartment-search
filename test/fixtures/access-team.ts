@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { accessSettings } from '../../server/access.ts';
+import { checkWorkersFetchInit } from './workers-fetch.ts';
 
 const encoder = new TextEncoder();
 export const encode = (value: Uint8Array | string) =>
@@ -12,8 +13,7 @@ export async function team(name: string) {
   const jwk = { ...await crypto.subtle.exportKey('jwk', pair.publicKey), kid: 'key-1' };
   let keyRequests = 0;
   const fetcher = async (url: string, init?: RequestInit) => {
-    // As in the Workers runtime, which accepts only 'follow' and 'manual'.
-    if (init?.redirect === 'error') throw new TypeError('Invalid redirect value, must be one of "follow" or "manual"');
+    checkWorkersFetchInit(init);
     assert.equal(url, issuer + '/cdn-cgi/access/certs');
     keyRequests++;
     return Response.json({ keys: [jwk] });

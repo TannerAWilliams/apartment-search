@@ -1,4 +1,4 @@
-import type { SearchResult } from './domain.ts';
+import { isRecord, type SearchResult } from './domain.ts';
 import type { FetchTransport } from './fetch-type.ts';
 import type { SourceDefinition, SourceStatus } from './source-status.ts';
 
@@ -56,7 +56,7 @@ export function createApi(origin: string | null, fetcher: FetchTransport = (inpu
     let data: Record<string, unknown>;
     try {
       const parsed = await response.json();
-      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) throw new Error('Not an object');
+      if (!isRecord(parsed)) throw new Error('Not an object');
       data = parsed;
     } catch {
       throw apiError(response.ok ? 'The apartment search server returned an unreadable response.' : UNREACHABLE, response.status, refreshRetryAt);

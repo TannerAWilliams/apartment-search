@@ -2,6 +2,7 @@ import { required } from './test-values.ts';
 import { test } from 'bun:test';
 import assert from 'node:assert/strict';
 import { loadStreetEasy } from '../server/streeteasy.ts';
+import { type GraphQlRequest, sentJson } from './fixtures/json.ts';
 
 const rental = (id: number, price: number) => ({ id: String(id), price, street: '1 Test Street', unit: String(id),
   zipCode: '10001', status: 'ACTIVE', bedroomCount: 1, urlPath: '/rental/' + (1000000 + id),
@@ -14,8 +15,8 @@ function server(rows: Rental[], mutate: (result: RentalResult, page: number, ran
     requests++; active++; maxActive = Math.max(maxActive, active);
     await Promise.resolve();
     try {
-      const query = JSON.parse(String(required(options).body)).query;
-      const page = Number(query.match(/page: (\d+)/)[1]);
+      const query = sentJson<GraphQlRequest>(required(options).body).query;
+      const page = Number(query.match(/page: (\d+)/)?.[1]);
       const match = query.match(/lowerBound: (\d+), upperBound: (\d+)/);
       const range = match ? [Number(match[1]), Number(match[2])] : null;
       const selected = rows.filter((row) => !range || (row.price >= range[0] && row.price <= range[1]) ||
@@ -54,7 +55,7 @@ test('cancels sibling requests after a partition failure', async()=>{
  const rows=Array.from({length:1200},(_,id)=>rental(id,2000+id));
  const fetcher=async(_url: string,options: RequestInit = {})=>{
    calls++;
-   const query=JSON.parse(String(options.body)).query;
+   const query=sentJson<GraphQlRequest>(options.body).query;
    if(!query.includes('lowerBound'))return Response.json({data:{searchRentals:{totalCount:1200,edges:rows.slice(0,500).map(node=>({node}))}}});
    if(query.includes('lowerBound: 0'))return new Response(null,{status:429});
    await new Promise<void>((resolve)=>required(options.signal).addEventListener('abort',()=>{cancelled=true;resolve();},{once:true}));
@@ -83,7 +84,7 @@ test('queries all markets and retains all five boroughs and New Jersey',async()=
  const zips=['10001','11215','11375','10451','10301','07302','07030'];
  const mock=server(zips.map((zipCode,i)=>({...rental(i,2500),zipCode})));
  const result=await loadStreetEasy(async(url,options)=>{
-  assert.doesNotMatch(JSON.parse(String(required(options).body)).query,/areas:/);
+  assert.doesNotMatch(sentJson<GraphQlRequest>(required(options).body).query,/areas:/);
   return mock.fetcher(url,options);
  });
  assert.deepEqual(result.listings.map(x=>x.city),['Manhattan','Brooklyn','Queens','Bronx','Staten Island','Jersey City','Hoboken']);

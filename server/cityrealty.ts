@@ -1,5 +1,5 @@
 import type { FetchTransport } from '../src/fetch-type.ts';
-import type { ListingData } from '../src/domain.ts';
+import { isRecord, type ListingData } from '../src/domain.ts';
 import { normalizeListing } from '../src/listings.ts';
 import { NJ_ZIPS, nycBorough } from './firstmover.ts';
 import { assignedJson, fetchPublicHtml, publicListingUrl } from './public-rentals.ts';
@@ -27,13 +27,21 @@ type Candidate = {
   address: string;
   unit: string;
   neighborhood: string;
-  latitude: number;
-  longitude: number;
+  /** Checked by normalizeListing. */
+  latitude: unknown;
+  longitude: unknown;
 };
 
+/** CityRealty's analytics record for a listing page; each field is checked before use. */
+/** A CityRealty search page as this reader uses it; each field is checked before it is saved. */
+type SearchPage = { tableTools?: { pagination?: { total?: unknown; currentPage?: unknown; rowsPerPage?: unknown } }; items?: unknown };
+type SearchRow = { [K in 'listing_id' | 'active' | 'rented' | 'out_of_market' | 'in_contract' | 'isPublic' | 'url_listing' |
+  'building_address' | 'mask_id' | 'sale_or_rent' | 'unit' | 'hood' | 'lat' | 'lng']?: unknown };
+type ListingDetails = { [K in 'lzip' | 'lzone' | 'laddress' | 'lid' | 'ltype' | 'lstatus' | 'lbeds' | 'lbaths' | 'lprice']?: unknown };
+
 function parseListing(html: string, candidate: Candidate, checkedAt: string) {
-  const details = assignedJson(html, /window\.dataLayer\.push\(\s*(?=\{"utype":[^\r\n]*?"ptype":"listing")/);
-  const zip = Number.isInteger(details?.lzip) ? String(details.lzip).padStart(5, '0') : '';
+  const details = assignedJson(html, /window\.dataLayer\.push\(\s*(?=\{"utype":[^\r\n]*?"ptype":"listing")/) as ListingDetails | null;
+  const zip = Number.isInteger(details?.lzip) ? String(details?.lzip).padStart(5, '0') : '';
   const state = details?.lzone === 'new jersey' ? 'NJ' : 'NY';
   const [city, county] = state === 'NJ' ? NJ_ZIPS[zip] ?? [] : [nycBorough(zip), undefined];
   const providerAddress = typeof details?.laddress === 'string' ? details.laddress.trim().replace(/\s+/g, ' ').toLowerCase() : '';
@@ -56,7 +64,7 @@ function parseListing(html: string, candidate: Candidate, checkedAt: string) {
 async function searchPage(fetcher: FetchTransport, page: number) {
   const url = page === 1 ? SEARCH : SEARCH + '?page=' + page;
   const response = await fetcher(url, {
-    headers: { Accept: 'application/json' }, redirect: 'error', signal: AbortSignal.timeout(PAGE_TIMEOUT_MS),
+    headers: { Accept: 'application/json' }, redirect: 'manual', signal: AbortSignal.timeout(PAGE_TIMEOUT_MS),
   });
   if (!response.ok) throw new Error('CityRealty returned HTTP ' + response.status + '.');
   if (!response.headers.get('content-type')?.includes('application/json') ||
@@ -64,15 +72,16 @@ async function searchPage(fetcher: FetchTransport, page: number) {
     await response.body?.cancel();
     throw new Error('CityRealty did not return recognizable rental search results.');
   }
-  const payload = await response.json();
+  const payload = await response.json() as SearchPage | null;
   const { total, currentPage, rowsPerPage } = payload?.tableTools?.pagination ?? {};
   const rows = payload?.items;
-  if (Number(currentPage) !== page || rowsPerPage !== ROWS_PER_PAGE || !Number.isSafeInteger(total) ||
+  if (Number(currentPage) !== page || rowsPerPage !== ROWS_PER_PAGE || typeof total !== 'number' || !Number.isSafeInteger(total) ||
       total < 0 || total > MAX_PAGES * ROWS_PER_PAGE || !Array.isArray(rows) ||
       rows.length !== Math.min(ROWS_PER_PAGE, Math.max(0, total - (page - 1) * ROWS_PER_PAGE))) {
     throw new Error('CityRealty rental search returned an unexpected page or result count.');
   }
-  return { rows, total };
+  // A row that is not an object has no listing ID, which the caller reports.
+  return { rows: rows.map((row) => isRecord(row) ? row : {}) as SearchRow[], total };
 }
 
 async function retryTimedOut<T>(request: () => Promise<T>): Promise<T> {
@@ -94,8 +103,8 @@ export async function loadCityRealty(fetcher: FetchTransport, now: Date) {
   const collect = ({ rows, total: pageTotal }: Awaited<ReturnType<typeof searchPage>>) => {
     if (pageTotal !== total) throw new Error('CityRealty inventory changed while reading search pages. Please try again.');
     for (const row of rows) {
-      const id = row?.listing_id;
-      if (!Number.isSafeInteger(id) || seen.has(id)) {
+      const id = row.listing_id;
+      if (typeof id !== 'number' || !Number.isSafeInteger(id) || seen.has(id)) {
         throw new Error('CityRealty returned a missing or repeated listing ID across search pages.');
       }
       seen.add(id);

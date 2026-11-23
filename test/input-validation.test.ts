@@ -4,6 +4,8 @@ import { bedroomLabel, parseFilters, SearchInputError } from '../src/search.ts';
 import { listingLinkLabel } from '../src/listings.ts';
 import { geocodeAddress, routeCommutes } from '../server/commute.ts';
 import { createMemoryBucket } from './fixtures/memory-bucket.ts';
+import { sentJson } from './fixtures/json.ts';
+import type { TravelTimeRequest } from '../server/commute.ts';
 
 test('bedroom labels read naturally', () => {
   assert.deepEqual([null, 0, 1, 2].map(bedroomLabel), ['Any beds', 'Studio', '1 bedroom', '2 bedrooms']);
@@ -37,7 +39,7 @@ test('an unreadable commute cache is ignored and rebuilt rather than failing the
   let routed = 0;
   const fetcher = async (_url: string, options?: RequestInit) => {
     routed++;
-    const ids = JSON.parse(String(options?.body)).locations.filter((location: { id: string }) => location.id !== 'workplace').map(({ id }: { id: string }) => id);
+    const ids = sentJson<TravelTimeRequest>(options?.body).locations.filter((location) => location.id !== 'workplace').map(({ id }) => id);
     return Response.json({ results: ['transit', 'driving'].map((search_id) => ({ search_id, locations: ids.map((id: string) => ({ id, properties: { travel_time: 900 } })) })) });
   };
   const [listing] = await routeCommutes([{ latitude: 40.7, longitude: -73.95 }], workplace, { appId: 'a', apiKey: 'b' }, fetcher, new Date(), bucket);

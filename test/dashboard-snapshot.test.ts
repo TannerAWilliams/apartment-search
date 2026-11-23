@@ -3,6 +3,11 @@ import { test, expect } from 'bun:test';
 import { dashboardSnapshot } from '../server/dashboard-snapshot.ts';
 import { handleApi } from '../server/api.ts';
 import { formatDashboardValue } from '../src/dashboard-data.ts';
+import { readJson, type ErrorBody } from './fixtures/json.ts';
+
+/** The dashboard catalog and one dashboard file, as the API returns them. */
+type DashboardCatalog = { files: unknown[] };
+type DashboardDownload = { file: { months: string[] }; provenance: { source: string } };
 
 const archive = () => Bun.file(new URL('../public/data/streeteasy-dashboard-2026-11-17.zip', import.meta.url)).bytes();
 test('official frozen master includes45files and every historic cell; anomalies explicitly retained', async () => {
@@ -30,12 +35,12 @@ test('the dashboard is served only to a signed-in request in private mode', asyn
   // The Worker entry checks the token in constant time and reports the result; a header alone is not trusted here.
   expect((await handleApi(request('', { headers: { Authorization: 'Bearer secret' } }), env)).status).toBe(403);
   const res = await handleApi(request(), env, signedIn);
-  expect(res.status).toBe(200); expect(res.headers.get('cache-control')).toBe('no-store'); expect((await res.json()).files).toHaveLength(45);
+  expect(res.status).toBe(200); expect(res.headers.get('cache-control')).toBe('no-store'); expect((await readJson<DashboardCatalog>(res)).files).toHaveLength(45);
   expect((await handleApi(request(), { PUBLIC_APP: 'true' })).status).toBe(200);
   expect((await handleApi(request('?file=missing.csv'), env, signedIn)).status).toBe(404);
   expect((await handleApi(request('', { method: 'POST' }), env, signedIn)).status).toBe(405);
   const file = await handleApi(request('?file=rentalIndex_All.csv'), env, signedIn);
-  expect((await file.json()).file.months[0]).toBe('2007-01');
+  expect((await readJson<DashboardDownload>(file)).file.months[0]).toBe('2007-01');
 });
 
 test('a missing or altered archive is reported, and a later read can still succeed', async () => {
@@ -46,5 +51,5 @@ test('a missing or altered archive is reported, and a later read can still succe
   expect(attempt).toBe(2);
   const unconfigured = await handleApi(new Request('https://app.test/api/dashboard?file=rentalIndex_All.csv'), { PUBLIC_APP: 'true' });
   expect(unconfigured.status).toBe(503);
-  expect((await unconfigured.json()).error).toMatch(/could not be read/);
+  expect((await readJson<ErrorBody>(unconfigured)).error).toMatch(/could not be read/);
 });

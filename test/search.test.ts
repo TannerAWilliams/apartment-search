@@ -9,6 +9,8 @@ import { localSearch, median, rentAreas, SNAPSHOT_MONTH } from '../src/market.ts
 import { marketSnapshot, snapshotSearch } from '../src/bundled-market.ts';
 import { IMPORT_COLUMNS, parseListingImport } from '../src/import-listings.ts';
 import { appConfig, handleApi, search } from '../server/api.ts';
+import { type ErrorBody, readJson, sentJson } from './fixtures/json.ts';
+import type { TravelTimeRequest } from '../server/commute.ts';
 
 const sample = {
   id: 'first', addressLine1: '12 Grove Street', addressLine2: 'Apt 2',
@@ -66,13 +68,13 @@ test('commute routing checks all matching origins before filtering, sorting, and
     async (url: string, options?: RequestInit) => {
       if (url === 'https://feed.example.test/zillow') return Response.json(rows);
       assert.equal(url, 'https://api.traveltimeapp.com/v4/time-filter/fast');
-      assert.equal(required(options).redirect, 'error');
+      assert.equal(required(options).redirect, 'manual');
       assert.equal(new Headers(required(options).headers).get('X-Application-Id'), 'demo-id');
       assert.equal(new Headers(required(options).headers).get('X-Api-Key'), 'demo-key');
-      const body = JSON.parse(String(required(options).body));
+      const body = sentJson<TravelTimeRequest>(required(options).body);
       assert.equal(body.locations.length, 106);
       assert.deepEqual(body.locations.at(-1), { id: 'workplace', coords: { lat: 40.75874, lng: -73.97867 } });
-      const routes: { id: string; transportation: { type: string }; arrival_location_id: string; arrival_time_period: string }[] = body.arrival_searches.many_to_one;
+      const routes = body.arrival_searches.many_to_one;
       assert.deepEqual(routes.map(({ transportation }) => transportation.type), ['public_transport', 'driving+ferry']);
       assert.ok(routes.every((route) => route.arrival_location_id === 'workplace' && route.arrival_time_period === 'weekday_morning'));
       const times: Record<string, number[]> = { transit: [1800, 1801, 1600, 1200], driving: [2700, 2300, 2701, 2000] };
@@ -93,7 +95,7 @@ test('a commute filter requires server credentials and reports an unavailable ro
     body: JSON.stringify({ maxDrivingMinutes: 45, routingCredentials: { appId: 'client-id', apiKey: 'client-key' } }),
   }), {}, { fetcher: () => assert.fail('No routing request is sent without credentials') });
   assert.equal(response.status, 503);
-  assert.equal((await response.json()).commuteError, true);
+  assert.equal((await readJson<ErrorBody>(response)).commuteError, true);
 });
 
 test('a routing outage preserves ordinary results but fails an explicitly filtered search', async () => {

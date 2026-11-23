@@ -1,4 +1,5 @@
 import type { FetchTransport } from '../src/fetch-type.ts';
+import { isRecord } from '../src/domain.ts';
 import { normalizeListing } from '../src/listings.ts';
 import { nycBorough } from './firstmover.ts';
 import { loadPublicPages, publicListingUrl } from './public-rentals.ts';
@@ -21,19 +22,26 @@ export const REALTOR_LIVE = {
   listingUrl, load: (fetcher: FetchTransport, now: Date) => loadPublicPages(SOURCE, PAGES, parseRealtorPage, fetcher, now),
 };
 
+/** A Realtor.com search result as this parser reads it; normalizeListing checks every field it keeps. */
+type RealtorRow = {
+  listing_id?: unknown; permalink?: unknown; status?: unknown; list_price?: unknown; flags?: { is_pending?: unknown };
+  description?: { type?: string; beds?: unknown };
+  location?: { address?: { line?: string; city?: string; state_code?: string; postal_code?: string; coordinate?: { lat?: unknown; lon?: unknown } } };
+};
+
 export function parseRealtorPage(html: string, market: {city:string; region:string}, checkedAt: string) {
   const script = html.match(/<script\b[^>]*\bid=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script\s*>/i);
-  const rows = script && JSON.parse(script[1])?.props?.pageProps?.properties;
+  const rows = script ? (JSON.parse(script[1]) as { props?: { pageProps?: { properties?: unknown } } } | null)?.props?.pageProps?.properties : null;
   if (!Array.isArray(rows)) throw new Error('Realtor.com did not return a recognized rental page.');
-  return rows.flatMap((row) => {
-    const description = row?.description;
-    const address = row?.location?.address;
+  return (rows.filter(isRecord) as RealtorRow[]).flatMap((row) => {
+    const description = row.description;
+    const address = row.location?.address;
     const { lat, lon } = address?.coordinate ?? {};
-    const url = typeof row?.permalink === 'string' ? listingUrl('/rentals/details/' + row.permalink) : null;
+    const url = typeof row.permalink === 'string' ? listingUrl('/rentals/details/' + row.permalink) : null;
     const city = market.region === 'nyc' ? nycBorough(address?.postal_code ?? '') : address?.city;
-    if (!url || row.status !== 'for_rent' || row.flags?.is_pending || !APARTMENTS.has(description?.type) ||
-        !Number.isInteger(description.beds) || !Number.isFinite(row.list_price) || row.list_price > 2800 ||
-        address?.state_code !== 'NY' || !/^\d{5}$/.test(address.postal_code) || !/^\d/.test(address.line ?? '') ||
+    if (!url || !description || row.status !== 'for_rent' || row.flags?.is_pending || !APARTMENTS.has(description.type ?? '') ||
+        !Number.isInteger(description.beds) || typeof row.list_price !== 'number' || !Number.isFinite(row.list_price) || row.list_price > 2800 ||
+        address?.state_code !== 'NY' || !/^\d{5}$/.test(address.postal_code ?? '') || !/^\d/.test(address.line ?? '') ||
         city?.toLowerCase() !== market.city.toLowerCase() || !Number.isFinite(lat) || !Number.isFinite(lon)) return [];
 
     const listing = normalizeListing({

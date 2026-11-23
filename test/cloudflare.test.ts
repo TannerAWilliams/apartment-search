@@ -2,6 +2,8 @@ import { afterEach, mock, test } from 'bun:test';
 import assert from 'node:assert/strict';
 import { fakeD1 } from './fixtures/fake-d1.ts';
 import { team } from './fixtures/access-team.ts';
+import { readJson, type ErrorBody } from './fixtures/json.ts';
+import type { RefreshInfo } from '../src/api-client.ts';
 
 // The Workers runtime module does not exist under Bun; the Workflow class only needs a base class.
 mock.module('cloudflare:workers', () => ({
@@ -79,7 +81,7 @@ test('a public app accepts same-origin refresh checks but not imports or cross-o
   assert.equal((await call(env, '/api/refresh', { method: 'POST', body: 'not json', headers: { Origin: 'https://app.test' } }, null)).status, 400);
   const importing = await call(env, '/api/refresh', post({ payload: 'abc' }, { Origin: 'https://app.test' }), null);
   assert.equal(importing.status, 403);
-  assert.match((await importing.json()).error, /cannot import/);
+  assert.match((await readJson<ErrorBody>(importing)).error, /cannot import/);
   assert.equal((await call(env, '/api/config', {}, null)).status, 200);
   assert.equal(await (await call(env, '/index.html', {}, null)).text(), 'asset /index.html');
 });
@@ -91,7 +93,7 @@ test('oversized requests are refused and unexpected failures keep saved data', a
   const broken = { ...env, APARTMENTS: { prepare() { throw new Error('database down'); }, batch() { throw new Error('database down'); } } };
   const failed = await call(broken, '/api/config');
   assert.equal(failed.status, 503);
-  assert.match((await failed.json()).error, /Saved source data could not be read/, 'a storage failure is not blamed on feed settings');
+  assert.match((await readJson<ErrorBody>(failed)).error, /Saved source data could not be read/, 'a storage failure is not blamed on feed settings');
 });
 
 test('a manual resync of a complete source starts its Workflow job and reports it running', async () => {
@@ -101,7 +103,7 @@ test('a manual resync of a complete source starts its Workflow job and reports i
   assert.equal(created.length, 1);
   assert.match(created[0].id, /^cityrealty-\d+-openigloo$/);
   assert.deepEqual(created[0].params, { delay: false, sources: ['openigloo'] });
-  const status = await (await call(env, '/api/refresh')).json();
+  const status = await readJson<RefreshInfo>(call(env, '/api/refresh'));
   assert.equal(status.checking, true);
   assert.equal(status.activeSource, 'openigloo', 'a single-source job is named by its id');
 });
@@ -111,11 +113,11 @@ test('status names the source the Workflow recorded, and nothing once jobs finis
   const { env } = await environment({ instances });
   instances.set('cityrealty-' + Math.floor(Date.now() / 120_000), { status: 'running' });
   await createD1Bucket(env.APARTMENTS).put(SYNC_PROGRESS_KEY, JSON.stringify({ source: 'zumper-live' }));
-  assert.equal((await (await call(env, '/api/refresh')).json()).activeSource, 'zumper-live');
+  assert.equal((await readJson<RefreshInfo>(call(env, '/api/refresh'))).activeSource, 'zumper-live');
   await createD1Bucket(env.APARTMENTS).put(SYNC_PROGRESS_KEY, JSON.stringify({ source: 'unknown-source' }));
-  assert.equal((await (await call(env, '/api/refresh')).json()).activeSource, 'cityrealty-live', 'a full run falls back to its first source');
+  assert.equal((await readJson<RefreshInfo>(call(env, '/api/refresh'))).activeSource, 'cityrealty-live', 'a full run falls back to its first source');
   for (const instance of instances.values()) instance.status = 'complete';
-  assert.ok(!(await (await call(env, '/api/refresh')).json()).checking);
+  assert.ok(!(await readJson<RefreshInfo>(call(env, '/api/refresh'))).checking);
 });
 
 test('starting a job that already exists is accepted, but a failure with no job is reported', async () => {

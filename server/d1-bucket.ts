@@ -30,7 +30,8 @@ const WRITE_PART = `INSERT INTO apartment_object_parts (key, etag, part, body)
   SELECT ?1, ?2, ?3, ?4 WHERE EXISTS (SELECT 1 FROM apartment_objects WHERE key = ?1 AND etag = ?2)`;
 
 function headFrom(row: StoredObject): BucketHead {
-  return { etag: row.etag, customMetadata: JSON.parse(row.metadata) };
+  // Written by put() below from a Record<string, string>.
+  return { etag: row.etag, customMetadata: JSON.parse(row.metadata) as Record<string, string> };
 }
 
 /** One bucket per database binding, so caches keyed by bucket survive across requests in an isolate. */
@@ -63,7 +64,7 @@ export function createD1Bucket(database: D1Database): Bucket {
         offset += part.length;
       }
       const text = async () => new TextDecoder().decode(bytes);
-      return { ...headFrom(row), arrayBuffer: async () => bytes.slice().buffer, text, json: async () => JSON.parse(await text()) };
+      return { ...headFrom(row), arrayBuffer: async () => bytes.slice().buffer, text, json: async <T>() => JSON.parse(await text()) as T };
     },
     async put(key, body, options) {
       const bytes = typeof body === 'string' ? new TextEncoder().encode(body) : body;

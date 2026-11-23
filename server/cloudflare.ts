@@ -92,14 +92,11 @@ async function respond(request: Request, env: Environment) {
       apiRequest = new Request(request.url, { method: 'POST', headers: request.headers, signal: request.signal, body });
     }
     const appEnv = { ...env, BUCKET: createD1Bucket(env.APARTMENTS) };
-    // Workers reject redirect: 'error'; 'manual' keeps redirects unfollowed, and source readers reject non-success responses.
-    const fetcher = (target: string, options?: RequestInit) =>
-      fetch(target, options?.redirect === 'error' ? { ...options, redirect: 'manual' } : options);
     const workflow = env.SYNC_WORKFLOW;
     // One instance ID per two-minute window, so repeated taps start one run. The prefix predates the
     // Workflow's other sources; status checks look for it.
     const workflowId = (offset = 0) => 'cityrealty-' + (Math.floor(Date.now() / 120_000) - offset);
-    return await handleApi(apiRequest, appEnv, { fetcher, privateAuthenticated: signedIn, dashboardArchive: dashboardArchive(env.ASSETS),
+    return await handleApi(apiRequest, appEnv, { privateAuthenticated: signedIn, dashboardArchive: dashboardArchive(env.ASSETS),
       syncJob: workflow ? {
         async start(delay, sources) {
           const id = workflowId() + (sources ? '-' + sources.join('-') : '');

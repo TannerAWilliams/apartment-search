@@ -1,3 +1,4 @@
+import type { ListingData, Loose } from './domain.ts';
 import { regionOf } from './regions.ts';
 
 const JUSTFIX_WHO_OWNS_WHAT = 'https://whoownswhat.justfix.org/en';
@@ -21,8 +22,9 @@ export const BUILDING_SOURCES = [
   { name: 'HPD bedbug annual reporting', url: 'https://www.nyc.gov/site/hpd/services-and-information/bedbugs.page', purpose: 'Review the owner-filed annual report period and history in HPD Online. A filing is not an independent inspection or a guarantee of current conditions.' },
   { name: 'NYC flood maps', url: 'https://www.nyc.gov/site/floodmaps/maps/your-risk.page', purpose: 'Look up the exact property on official flood maps; distinguish map editions and risk scenarios. No flood-zone result has been checked here.' },
 ] as const;
-export function buildingReport(listing: any) {
-  const location = Object.fromEntries(['state', 'county', 'zip', 'city'].map(key => [key, typeof listing?.[key] === 'string' ? listing[key] : ''])) as { state: string; county: string; zip: string; city: string };
+export function buildingReport(listing: Loose<Pick<ListingData, 'address' | 'city' | 'county' | 'state' | 'zip'>> | null | undefined) {
+  const text = (value: unknown) => typeof value === 'string' ? value : '';
+  const location = { state: text(listing?.state), county: text(listing?.county), zip: text(listing?.zip), city: text(listing?.city) };
   const nyc = location.state === 'NY' && regionOf(location) === 'nyc';
   return {
     address: [listing?.address, listing?.city, listing?.state, listing?.zip].filter(value => typeof value === 'string' && value.trim()).join(', '),

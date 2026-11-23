@@ -1,6 +1,7 @@
 import { test } from 'bun:test';
 import assert from 'node:assert/strict';
 import { syncStreetEasy } from '../scripts/sync-streeteasy.ts';
+import { type GraphQlRequest, sentJson } from './fixtures/json.ts';
 for (const state of ['missing', 'stale', 'current']) test('external runner handles ' + state + ' inventory with injected offline transport', async () => {
   let imported = false;
   const old = new Date(Date.now() - 25 * 60 * 60_000).toISOString();
@@ -72,7 +73,7 @@ test('the command line reads the token from stdin, honors --origin and --manual,
   await main({ argv: ['bun', 'sync', '--origin=https://worker.example.test/', '--manual'], env: {}, input: Readable.from(['secret-token\n']),
     sync: (async (options: { token: string; origin: string; manual?: boolean }) => { calls.push(options); return { state: 'updated' }; }) as never, log: (line) => printed.push(line) });
   assert.deepEqual(calls, [{ token: 'secret-token', origin: 'https://worker.example.test', manual: true }]);
-  assert.equal(JSON.parse(printed[0]).state, 'updated');
+  assert.equal(sentJson<{ state: string }>(printed[0]).state, 'updated');
   await assert.rejects(main({ argv: ['bun', 'sync'], env: { APARTMENT_SEARCH_ORIGIN: 'https://worker.example.test' }, input: Readable.from([]), sync: (async () => ({})) as never, log: () => {} }),
     /token on stdin/);
 });
@@ -84,7 +85,7 @@ test('a sync retries once when StreetEasy inventory moves mid-download', async (
   let imported = false;
   const fetcher = async (url: string, options?: RequestInit) => {
     if (url === 'https://api-v6.streeteasy.com/') {
-      const page = Number(JSON.parse(String(options?.body)).query.match(/page: (\d+)/)[1]);
+      const page = Number(sentJson<GraphQlRequest>(options?.body).query.match(/page: (\d+)/)?.[1]);
       if (page === 1) rootRequests++;
       // During the first attempt, the second page reports one more rental than the first.
       const totalCount = page === 2 && rootRequests === 1 ? rows.length + 1 : rows.length;

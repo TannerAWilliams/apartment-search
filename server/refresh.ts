@@ -1,10 +1,10 @@
-import type { RentHistory } from '../src/rent-history.ts';
+import type { PackedRentRow, RentHistory } from '../src/rent-history.ts';
 import type { ListingData } from '../src/domain.ts';
 import type { AppEnv, Bucket, BucketObject, BucketHead, HousingSnapshot, HdcSnapshot } from './contracts.ts';
 import { withoutCommuteEstimate } from '../src/commute-estimate.ts';
-import { type UnitHistory, type ObservationHistory, recordListingHistory } from './listing-history.ts';
+import { type ObservationHistory, type ObservedListing, type UnitHistory, recordListingHistory } from './listing-history.ts';
 import { gzipSync, gunzipSync, strFromU8, strToU8 } from 'fflate';
-import { decodeMarketRows, packRentMonth, SNAPSHOT_MONTH } from '../src/market.ts';
+import { decodeMarketRows, packRentMonth, SNAPSHOT_MONTH, type MarketRow } from '../src/market.ts';
 import { priorRentMonths } from '../src/rent-history.ts';
 import { bundledRentAreas, marketSnapshot } from '../src/bundled-market.ts';
 import { checkFirstMover, checkPublishedFirstMover } from './firstmover.ts';
@@ -90,7 +90,8 @@ export type RefreshState = {
 type RefreshOptions = {
   fetcher?: SourceFetch;
   now?: Date;
-  imports?: Record<string, any>;
+  /** Snapshots uploaded by the home sync, keyed by source id; each stands in for what that source's loader returns. */
+  imports?: Readonly<Record<string, unknown>>;
   onDemand?: boolean;
   onlyStreetEasy?: boolean;
   sourceId?: string;
@@ -126,7 +127,8 @@ export function refreshCatalog(env: AppEnv): SourceDefinition[] {
 let cachedMarket: { bucket: Bucket; etag: string; market: { month: string; listings: ListingData[] } } | undefined;
 
 const compressed = (value: unknown) => gzipSync(strToU8(JSON.stringify(value)));
-const unpack = async (object: BucketObject) => JSON.parse(strFromU8(gunzipSync(new Uint8Array(await object.arrayBuffer()))));
+/** A gzipped JSON snapshot this Worker wrote, read back with the type it was written with. */
+const unpack = async <T>(object: BucketObject) => JSON.parse(strFromU8(gunzipSync(new Uint8Array(await object.arrayBuffer())))) as T;
 
 function deepFreeze<T>(value: T): T {
   if (value && typeof value === 'object' && !Object.isFrozen(value)) {
@@ -151,7 +153,7 @@ async function readSnapshot<T>(bucket: Bucket, key: string): Promise<T | null> {
   if (hit?.etag === head.etag) return hit.value as T;
   const object = await bucket.get(key);
   if (!object) { cache.delete(key); return null; }
-  const value = deepFreeze(await unpack(object));
+  const value = deepFreeze(await unpack<T>(object));
   cache.set(key, { etag: object.etag, value });
   return value as T;
 }
@@ -230,7 +232,7 @@ export async function storedMarket(bucket: Bucket | undefined) {
 
   const object = await bucket!.get(MARKET_KEY);
   if (!object) return { month: SNAPSHOT_MONTH, listings: marketSnapshot() };
-  const market = { month: object.customMetadata.month, listings: decodeMarketRows(await unpack(object)) };
+  const market = { month: object.customMetadata.month, listings: decodeMarketRows(await unpack<MarketRow[]>(object)) };
   cachedMarket = { bucket: bucket!, etag: object.etag, market };
   return market;
 }
@@ -238,8 +240,9 @@ export async function storedMarket(bucket: Bucket | undefined) {
 export async function storedRentHistory(bucket: Bucket | undefined, latest: string, region: string, grouping: string): Promise<RentHistory> {
   return Promise.all(priorRentMonths(latest).map(async (month) => {
     const object = month >= SNAPSHOT_MONTH ? await bucket?.get(HISTORY_PREFIX + month + '.json.gz') : null;
-    const areas = object ? (await unpack(object))[region]?.[grouping] : bundledRentAreas(month, region, grouping);
-    return [month, areas ?? []];
+    const areas = object ? (await unpack<Record<string, Record<string, PackedRentRow[]> | undefined>>(object))[region]?.[grouping] :
+      bundledRentAreas(month, region, grouping);
+    return [month, areas ?? []] as const;
   }));
 }
 
@@ -256,14 +259,16 @@ function marketBaseline(object: BucketHead | null | undefined, previous: Refresh
   return { ...metadata, month: metadata.month, revision: metadata.revision, updatedAt: metadata.updatedAt, catalogEtag: sameRelease ? previous?.catalogEtag : '', csvEtag: sameRelease ? previous?.csvEtag : '' };
 }
 
-async function refreshMarket(bucket: Bucket, previous: RefreshState['market'], checkedAt: string, fetcher: SourceFetch, imported: Awaited<ReturnType<typeof checkFirstMover>>, isImport: boolean, onDemand: boolean) {
+async function refreshMarket(bucket: Bucket, previous: RefreshState['market'], checkedAt: string, fetcher: SourceFetch, imported: Awaited<ReturnType<typeof checkFirstMover>> | undefined, isImport: boolean, onDemand: boolean) {
   const stored = await bucket.head(MARKET_KEY);
   const baseline = marketBaseline(stored, previous);
   const check = onDemand ? checkPublishedFirstMover : checkFirstMover;
   const result = isImport ? imported : await check(baseline, fetcher);
-  if (!result || !/^20\d{2}-(0[1-9]|1[0-2])$/.test(result.month) || !/^[a-f0-9]{40}$/.test(result.revision) ||
-      (baseline && result.month < baseline.month)) throw new Error('The FirstMover import failed.');
-  if (!result.changed && result.revision !== baseline?.revision) throw new Error('The FirstMover release has changed.');
+  const month = result?.month, revision = result?.revision;
+  if (!result || typeof month !== 'string' || !/^20\d{2}-(0[1-9]|1[0-2])$/.test(month) ||
+      typeof revision !== 'string' || !/^[a-f0-9]{40}$/.test(revision) ||
+      (baseline && month < baseline.month)) throw new Error('The FirstMover import failed.');
+  if (!result.changed && revision !== baseline?.revision) throw new Error('The FirstMover release has changed.');
   if (result.changed && (!Array.isArray(result.rows) || result.rows.length === 0 || result.rows.length > 60000 ||
       result.rows.some((row: unknown) => !Array.isArray(row) || row.length !== 15 ||
         typeof row[12] !== 'string' || !/^\/(rental|building)\//.test(row[12])))) {
@@ -271,16 +276,16 @@ async function refreshMarket(bucket: Bucket, previous: RefreshState['market'], c
   }
   const updatedAt = result.changed ? checkedAt : baseline!.updatedAt;
   if (result.changed) {
-    if (stored && stored.customMetadata.month >= SNAPSHOT_MONTH && stored.customMetadata.month < result.month) {
+    if (stored && stored.customMetadata.month >= SNAPSHOT_MONTH && stored.customMetadata.month < month) {
       const previousMarket = await storedMarket(bucket);
       await bucket.put(HISTORY_PREFIX + previousMarket.month + '.json.gz', compressed(packRentMonth(previousMarket.listings)));
     }
     await bucket.put(MARKET_KEY, compressed(result.rows), {
-      customMetadata: { month: result.month, revision: result.revision, updatedAt, schema: MARKET_SCHEMA },
+      customMetadata: { month: month, revision: revision, updatedAt, schema: MARKET_SCHEMA },
     });
   }
-  return { status: result.changed ? 'updated' : 'current', month: result.month,
-    revision: result.revision, catalogEtag: 'catalogEtag' in result ? result.catalogEtag : undefined, csvEtag: result.csvEtag, updatedAt };
+  return { status: result.changed ? 'updated' : 'current', month: month,
+    revision: revision, catalogEtag: 'catalogEtag' in result ? result.catalogEtag : undefined, csvEtag: result.csvEtag, updatedAt };
 }
 
 export async function storedHousing(bucket: Bucket | undefined, now = new Date()): Promise<HousingSnapshot> {
@@ -315,13 +320,13 @@ async function refreshHousing(bucket: Bucket, checkedAt: string, fetcher: Source
 
 export async function saveObservedSnapshot(bucket: Bucket, key: string, result: object, listings: ListingData[], sourceId: string, at: string, customMetadata: Record<string, string> = {}) {
   const object = await bucket.get(key);
-  const previous = object ? await unpack(object) : null;
+  const previous = object ? await unpack<{ observationHistory?: ObservationHistory; listings?: ObservedListing[] }>(object) : null;
   const carriesForward = ('partial' in result && result.partial === true) || ('limited' in result && result.limited === true && sourceId === STREETEASY_LIVE.id);
   const observed = recordListingHistory(listings, previous?.observationHistory, sourceId, at, { keepUnseen: carriesForward });
   if (carriesForward) {
     const ids = new Set(observed.listings.map(listing => listing.id));
-    const retained = (previous?.listings ?? []).filter((listing: ListingData) => !ids.has(listing.id))
-      .map((listing: ListingData) => ({ ...listing, kind: 'cached',
+    const retained = (previous?.listings ?? []).filter((listing) => !ids.has(listing.id))
+      .map((listing) => ({ ...listing, kind: 'cached',
         sources: listing.sources.map(source => ({ ...source, kind: 'cached' })) }));
     observed.listings.push(...retained);
   }
@@ -509,8 +514,10 @@ export async function refreshSources(env: AppEnv, { fetcher = fetch, now = new D
   const feedChecks = onlyStreetEasy || fallback ? [] : feeds.filter(({ id }) => id !== STREETEASY_LIVE.marketplace && (!onDemand || ready(id)));
   const publicChecks = onlyStreetEasy ? [] : fallback ? PUBLIC_IDS.filter((id) => imports?.[id] && previousById.get(id)?.status === 'failed' && ready(id)) :
     PUBLIC_IDS.filter((id) => !onDemand || ready(id));
+  /** The uploaded snapshot for a source. It was made by this app's own sync, so it has the loader's result type. */
+  const imported = <T>(id: string) => imports?.[id] as T | undefined;
   const priorStreetEasy = previousById.get(STREETEASY_LIVE.id);
-  const recoveredStreetEasy = imports?.[STREETEASY_LIVE.id]?.transport === STREETEASY_TRANSPORT &&
+  const recoveredStreetEasy = imported<{ transport?: string }>(STREETEASY_LIVE.id)?.transport === STREETEASY_TRANSPORT &&
     (!priorStreetEasy || priorStreetEasy.status === 'failed' ||
       now.getTime() - Date.parse(priorStreetEasy.updatedAt ?? '') >= STREETEASY_SYNC_INTERVAL);
   const requestedLiveChecks = onlyStreetEasy ? (ready(STREETEASY_LIVE.id) ? [STREETEASY_LIVE.id] : []) : fallback ? (recoveredStreetEasy ? [STREETEASY_LIVE.id] : []) : onDemand ? AUTO_IDS.filter(ready) : LIVE_IDS.filter((id) => imports && Object.hasOwn(imports, id));
@@ -518,7 +525,7 @@ export async function refreshSources(env: AppEnv, { fetcher = fetch, now = new D
     requestedLiveChecks.filter((id) => id !== STREETEASY_LIVE.id) : requestedLiveChecks;
   const checkHdc = onDemand && !onlyStreetEasy && !fallback && ready(HDC_RERENTALS.id);
   const ids = [...publicChecks, ...liveChecks, ...feedChecks.map(({ id }) => id), ...(checkHdc ? [HDC_RERENTALS.id] : [])].filter((id) => !selected || id === selected);
-  if (ids.length === 0 || (!onDemand && !selected && !onlyStreetEasy && !previous.running && !imports?.firstmover?.changed && checkedDuring(previous.sources, ids, hour))) {
+  if (ids.length === 0 || (!onDemand && !selected && !onlyStreetEasy && !previous.running && !imported<{ changed?: boolean }>('firstmover')?.changed && checkedDuring(previous.sources, ids, hour))) {
     return { state: 'already_checked', ...publicStatus(previous) };
   }
 
@@ -530,12 +537,12 @@ export async function refreshSources(env: AppEnv, { fetcher = fetch, now = new D
 
   const sourceFetch = onDemand ? requestForRefresh(fetcher, AbortSignal.timeout(ids.includes(STREETEASY_LIVE.id) ? 120_000 : PAGE_FETCH_TIMEOUT)) : fetcher;
   const liveData = <T>(id: string, load: (fetcher: SourceFetch, now: Date) => T): T => onDemand ? load(completeSync(id) ?
-    requestForRefresh(fetcher, AbortSignal.timeout(completeSync(id)!.timeoutMs)) : sourceFetch, now) : imports?.[id];
+    requestForRefresh(fetcher, AbortSignal.timeout(completeSync(id)!.timeoutMs)) : sourceFetch, now) : imported<T>(id) as T;
   const candidates: { id: string; name: string; work: () => Promise<CheckResult> }[] = [
     ...(publicChecks.includes('firstmover') ? [{ id: 'firstmover', name: 'FirstMover (StreetEasy)', work: () =>
-      refreshMarket(bucket, previous.market, at, sourceFetch, imports?.firstmover, Boolean(imports), onDemand) }] : []),
+      refreshMarket(bucket, previous.market, at, sourceFetch, imported('firstmover'), Boolean(imports), onDemand) }] : []),
     ...(publicChecks.includes('housingconnect') ? [{ id: 'housingconnect', name: 'NYC Housing Connect', work: () =>
-      refreshHousing(bucket, at, sourceFetch, now, imports?.housingconnect, Boolean(imports)) }] : []),
+      refreshHousing(bucket, at, sourceFetch, now, imported('housingconnect'), Boolean(imports)) }] : []),
     ...(checkHdc ? [{ ...HDC_RERENTALS, work: async () => {
       const data = await loadHdcRerentals(sourceFetch);
       await bucket.put(HDC_KEY, JSON.stringify({ ...data, checkedAt: at }));

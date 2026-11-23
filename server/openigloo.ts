@@ -1,5 +1,5 @@
 import type { FetchTransport } from '../src/fetch-type.ts';
-import type { ListingData } from '../src/domain.ts';
+import { isRecord, type ListingData } from '../src/domain.ts';
 import { normalizeListing } from '../src/listings.ts';
 import { marketplaceIdForUrl } from '../src/marketplaces.ts';
 import { boroughKey, boroughLabel } from '../src/regions.ts';
@@ -36,6 +36,9 @@ type Row = {
 type Search = { borough: string; area: string; bedrooms: number; min: number; max: number | null };
 export type OpeniglooRow = Row & { search: Search };
 type Page = { total: number; rows: Row[] };
+/** A JSON-RPC reply from the Openigloo MCP server, and the result of its search tool. */
+type RpcMessage = { id?: unknown; error?: unknown; result?: unknown };
+type ToolResult = { isError?: unknown; content?: { text?: unknown }[]; structuredContent?: { total_matches?: unknown; apartments?: unknown } };
 export type OpeniglooSearch = (search: Search) => Promise<Page>;
 
 /** Opens an MCP session with Openigloo's public server and returns its search tool. */
@@ -49,7 +52,7 @@ export async function openiglooSearch(fetcher: FetchTransport, wait: (ms: number
       if (gap > 0) await wait(gap);
       lastRequest = Date.now();
       const response = await fetcher(ENDPOINT, {
-        method: 'POST', headers: { ...headers }, body, redirect: 'error', signal: AbortSignal.timeout(20000),
+        method: 'POST', headers: { ...headers }, body, redirect: 'manual', signal: AbortSignal.timeout(20000),
       });
       if (response.status !== 429 || attempt >= RATE_LIMIT_RETRIES) return response;
       await response.body?.cancel();
@@ -65,36 +68,37 @@ export async function openiglooSearch(fetcher: FetchTransport, wait: (ms: number
     if (session) headers['Mcp-Session-Id'] = session;
     if (notification || response.status === 202 || response.status === 204) { await response.body?.cancel(); return null; }
     const data = await response.text();
-    const message = response.headers.get('Content-Type')?.includes('text/event-stream') ?
+    const message = (response.headers.get('Content-Type')?.includes('text/event-stream') ?
       data.split(/\r?\n/).filter((line) => line.startsWith('data: '))
-        .map((line) => JSON.parse(line.slice(6))).find((event) => event.id === id) : JSON.parse(data);
-    if (message?.error || message?.id !== id) throw new Error('The Openigloo request failed.');
+        .map((line) => JSON.parse(line.slice(6)) as RpcMessage | null).find((event) => event?.id === id) : JSON.parse(data)) as RpcMessage | null | undefined;
+    if (!message || message.error || message.id !== id) throw new Error('The Openigloo request failed.');
     return message.result;
   }
   const handshake = await request('initialize', {
     protocolVersion: PROTOCOL, capabilities: {}, clientInfo: { name: 'Apartment Search', version: '1.0' },
   });
-  if (handshake?.protocolVersion !== PROTOCOL) throw new Error('The Openigloo protocol changed.');
+  if ((handshake as { protocolVersion?: unknown } | null)?.protocolVersion !== PROTOCOL) throw new Error('The Openigloo protocol changed.');
   headers['MCP-Protocol-Version'] = PROTOCOL;
   await request('notifications/initialized', undefined, true);
   return async ({ area, bedrooms, min, max }) => {
     const rent = { ...(min > 0 ? { min_rent: min } : {}), ...(max !== null ? { max_rent: max } : {}) };
-    let result;
+    let result: ToolResult | null;
     for (let attempt = 0; ; attempt++) {
       result = await request('tools/call', { name: 'search_apartments', arguments: {
         area, bedrooms: [bedrooms], ...rent, limit: PAGE_SIZE,
-      } });
+      } }) as ToolResult | null;
       const busy = result?.isError && /try again/i.test(String(result?.content?.[0]?.text ?? ''));
       if (!busy || attempt >= RETRY_DELAYS.length) break;
       await wait(RETRY_DELAYS[attempt]);
     }
     const content = result?.structuredContent;
-    if (result?.isError || !Number.isSafeInteger(content?.total_matches) || content.total_matches < 0 ||
+    if (result?.isError || typeof content?.total_matches !== 'number' || !Number.isSafeInteger(content.total_matches) || content.total_matches < 0 ||
         !Array.isArray(content?.apartments) || content.apartments.length > PAGE_SIZE) {
       throw new Error('Openigloo did not return listing results' + (result?.isError ? ': ' + String(result?.content?.[0]?.text ?? '').slice(0, 160) : '.'));
     }
     // With no matches the tool suggests unrelated alternatives; they are not results.
-    return { total: content.total_matches, rows: content.total_matches > 0 ? content.apartments : [] };
+    // Rows have the tool's documented fields; each one is checked before it is saved.
+    return { total: content.total_matches, rows: content.total_matches > 0 ? content.apartments.map((row) => isRecord(row) ? row as Row : {}) : [] };
   };
 }
 

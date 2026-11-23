@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { startVitals, vitalReport } from '../src/web-vitals-report.ts';
 import { handleApi } from '../server/api.ts';
 import { log } from '../server/log.ts';
+import { logRecord } from './fixtures/json.ts';
 
 const quiet = log.sink;
 afterEach(() => { log.sink = quiet; });
@@ -18,7 +19,7 @@ function fakePage({ automated = false } = {}) {
 }
 /** web-vitals stand-in: each metric reports the values queued for it. */
 function fakeLibrary(values: Record<string, number[]>) {
-  const measure = (name: string) => (report: (metric: any) => void) => {
+  const measure = (name: string) => (report: (metric: { name: string; value: number; rating: string; navigationType: string }) => void) => {
     for (const value of values[name] ?? []) report({ name, value, rating: value > 1000 ? 'poor' : 'good', navigationType: 'navigate' });
   };
   return { onCLS: measure('CLS'), onFCP: measure('FCP'), onINP: measure('INP'), onLCP: measure('LCP'), onTTFB: measure('TTFB') } as never;
@@ -36,7 +37,7 @@ test('measurements are sent once, with each metric\'s latest value, when the pag
   hide();
   leave();
   assert.equal(sent.length, 1, 'nothing new to send when leaving');
-  assert.deepEqual(JSON.parse(sent[0]).metrics.map(({ name, value }: { name: string; value: number }) => [name, value]), [['CLS', 0.02], ['LCP', 2400]]);
+  assert.deepEqual((JSON.parse(sent[0]) as { metrics: { name: string; value: number }[] }).metrics.map(({ name, value }) => [name, value]), [['CLS', 0.02], ['LCP', 2400]]);
 });
 
 test('automated browsers and non-browser runtimes are not measured', async () => {
@@ -44,12 +45,13 @@ test('automated browsers and non-browser runtimes are not measured', async () =>
   const load = async () => { loaded = true; return fakeLibrary({}); };
   assert.equal(await startVitals({ page: fakePage({ automated: true }).page, load }), false);
   assert.equal(await startVitals({ load }), false, 'no window under Bun');
+  assert.equal(await startVitals(), false, 'with every default, still no window under Bun');
   assert.equal(loaded, false);
 });
 
 test('the Worker logs valid measurements and refuses anything else', async () => {
   const lines: Record<string, unknown>[] = [];
-  log.sink = (_level, line) => { lines.push(JSON.parse(line)); };
+  log.sink = (_level, line) => { lines.push(logRecord(line)); };
   const post = (body: unknown) => handleApi(new Request('https://app.test/api/vitals', { method: 'POST', body: JSON.stringify(body) }), {});
   const ok = await post({ page: 'results', metrics: [{ name: 'LCP', value: 2400, rating: 'good', navigationType: 'navigate' }, { name: 'FID', value: 1, rating: 'good' }, { name: 'CLS', value: -1, rating: 'good' }] });
   assert.equal(ok.status, 204);
@@ -65,12 +67,12 @@ test('in a browser, the batch goes to /api/vitals as a beacon tagged with the op
   const globals = globalThis as Record<string, unknown>;
   const listeners: Record<string, () => void> = {};
   const beacons: [string, Blob][] = [];
-  const saved = { window: globals.window, document: globals.document, location: globals.location, sendBeacon: (navigator as any).sendBeacon };
+  const saved = { window: globals.window, document: globals.document, location: globals.location, sendBeacon: navigator.sendBeacon };
   try {
     globals.window = { addEventListener: (event: string, listener: () => void) => { listeners[event] = listener; } };
     globals.document = { visibilityState: 'visible', addEventListener: (event: string, listener: () => void) => { listeners[event] = listener; } };
     globals.location = { hash: '#saved' };
-    (navigator as any).sendBeacon = (url: string, body: Blob) => { beacons.push([url, body]); return true; };
+    navigator.sendBeacon = (url, body) => { beacons.push([String(url), body as Blob]); return true; };
     assert.equal(await startVitals({ load: async () => fakeLibrary({ INP: [120] }) }), true);
     listeners.pagehide();
     assert.equal(beacons[0][0], '/api/vitals');
@@ -78,6 +80,6 @@ test('in a browser, the batch goes to /api/vitals as a beacon tagged with the op
     assert.deepEqual(JSON.parse(await beacons[0][1].text()), { page: 'saved', metrics: [{ name: 'INP', value: 120, rating: 'good', navigationType: 'navigate' }] });
   } finally {
     globals.window = saved.window; globals.document = saved.document; globals.location = saved.location;
-    (navigator as any).sendBeacon = saved.sendBeacon;
+    navigator.sendBeacon = saved.sendBeacon;
   }
 });

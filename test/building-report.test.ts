@@ -13,7 +13,8 @@ test('all five boroughs supported, outside jurisdiction never inherits provider 
   }
 });
 test('official source links fixed HTTPS destinations, never listing-controlled URLs', () => {
-  const report = buildingReport({ state: 'NY', zip: '11201', sources: [{ url: 'https://evil.invalid' }] });
+  const listing = { state: 'NY', zip: '11201', sources: [{ url: 'https://evil.invalid' }] };
+  const report = buildingReport(listing);
   expect(report.sources).toEqual(BUILDING_SOURCES);
   expect(report.sources.map(source => source.name)).toContain('NYC flood maps');
   expect(report.sources.map(source => source.name)).toContain('HPD bedbug annual reporting');

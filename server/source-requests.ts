@@ -34,7 +34,8 @@ async function streetEasyDenial(response: Response): Promise<string | undefined>
 }
 
 
-class SourceResponseError extends Error {
+/** A source that answered with an error status; its fields say when to retry and why it refused. */
+export class SourceResponseError extends Error {
   declare httpStatus: number;
   declare receivedAt: number;
   declare retryAfter: number;

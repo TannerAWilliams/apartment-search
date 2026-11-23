@@ -1,10 +1,11 @@
 import { test } from 'bun:test';
 import assert from 'node:assert/strict';
 import { checkObservedChanges, parseChangeBaseline, MAX_BASELINE_UNITS } from '../src/observed-changes.ts';
+import { testListing } from './fixtures/listing.ts';
 const unit = (rent = 2000, day = 1, id = '1', includesFees = false, sourceId = 'feed') => {
   const date = new Date(Date.UTC(2026, 0, day)).toISOString();
-  return { id, address: '12 Grove Street', unit: id, city: 'Jersey City', state: 'NJ', zip: '07302', rent, priceIncludesFees: includesFees,
-    priceHistory: { sourceId, firstObservedAt: date, lastObservedAt: date, truncated: false, observations: [{ checkedAt: date, rent, priceIncludesFees: includesFees }] } };
+  return testListing({ id, address: '12 Grove Street', unit: id, city: 'Jersey City', state: 'NJ', zip: '07302', rent, priceIncludesFees: includesFees,
+    priceHistory: { sourceId, firstObservedAt: date, lastObservedAt: date, truncated: false, observations: [{ checkedAt: date, rent, priceIncludesFees: includesFees }] } });
 };
 test('first opted-in check seeds without alerts; subsequent newer same-basis observations produce changes', () => {
   const first = checkObservedChanges([unit()], null);

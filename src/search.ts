@@ -1,4 +1,4 @@
-import type { ListingData, Point, SearchFilters } from './domain.ts';
+import { oneOf, type ListingData, type Loose, type Point, type SearchFilters } from './domain.ts';
 import { LAUNDRY_OPTIONS, matchesDiscovery } from './discovery.ts';
 import { companyMatches } from './companies.ts';
 import { REGIONS, WORKPLACES, matchesRegion, regionOf } from './regions.ts';
@@ -30,7 +30,7 @@ export const formatRent = new Intl.NumberFormat('en-US', { style: 'currency', cu
 export const RESULT_SORTS = { best: 'Best fit: rent + commute', recent: 'Recently checked', rent: 'Lowest rent', transit: 'Fastest transit', driving: 'Fastest drive' };
 const SORT_METRICS: Record<string, 'miles' | 'transitSeconds' | 'drivingSeconds'> = { distance: 'miles', transit: 'transitSeconds', driving: 'drivingSeconds' };
 
-export const needsCommute = (filters: Partial<SearchFilters>) => filters.maxTransitMinutes != null || filters.maxDrivingMinutes != null ||
+export const needsCommute = (filters: Loose<Pick<SearchFilters, 'maxTransitMinutes' | 'maxDrivingMinutes' | 'sort'>>) => filters.maxTransitMinutes != null || filters.maxDrivingMinutes != null ||
   filters.sort === 'transit' || filters.sort === 'driving';
 
 export class SearchInputError extends Error {}
@@ -73,7 +73,7 @@ export function parseFilters(rawInput: unknown = {}): SearchFilters {
     throw new SearchInputError('Use the transit directions link on a listing to check travel time.');
   }
 
-  if (input.laundry != null && input.laundry !== '' && !LAUNDRY_OPTIONS.includes(input.laundry as any)) throw new SearchInputError('Choose a supported laundry option.');
+  if (input.laundry != null && input.laundry !== '' && !oneOf(LAUNDRY_OPTIONS, input.laundry)) throw new SearchInputError('Choose a supported laundry option.');
   if (input.petsRequired != null && typeof input.petsRequired !== 'boolean') throw new SearchInputError('Choose whether pets must be allowed.');
   return {
     bestFitRentWeight: optionalNumber(input.bestFitRentWeight, 'rent ranking weight', 0, 100) ?? 60,

@@ -1,6 +1,7 @@
+import type { ListingData, Loose } from './domain.ts';
 import { savedCommuteEstimate } from './commute-estimate.ts';
 /** Transparent ordering. Never substitute straight-line distance for a route. */
-export function bestFit(listing: any, filters: { bestFitRentWeight?: number; maxRent?: number | null; maxTransitMinutes?: number | null; maxDrivingMinutes?: number | null }, workplace?: { latitude: number; longitude: number }) {
+export function bestFit(listing: Loose<Pick<ListingData, 'rent' | 'commuteEstimate' | 'transitSeconds' | 'drivingSeconds'>>, filters: { bestFitRentWeight?: number; maxRent?: number | null; maxTransitMinutes?: number | null; maxDrivingMinutes?: number | null }, workplace?: { latitude: number; longitude: number }) {
   const rentWeight = typeof filters.bestFitRentWeight === 'number' && Number.isInteger(filters.bestFitRentWeight) && filters.bestFitRentWeight >= 0 && filters.bestFitRentWeight <= 100 ? filters.bestFitRentWeight : 60;
   const commuteWeight = 100 - rentWeight;
   const rentLimit = typeof filters.maxRent === 'number' && Number.isFinite(filters.maxRent) && filters.maxRent > 0 ? filters.maxRent : 5000;

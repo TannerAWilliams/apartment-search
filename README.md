@@ -32,7 +32,7 @@ your computer ── scripts/sync-streeteasy.ts ── uploads the StreetEasy in
 - **Static data.** The web app's files are served with a Content Security Policy and other security headers (`server/web-headers.ts`); fingerprinted bundles are cached for a year, everything else is revalidated. The 2.4 MB StreetEasy dashboard archive is published with the static files (`public/data/`) rather than built into the Worker, read through the assets binding when a dashboard series is first opened, checked against its SHA-256, and never served directly.
 - **Logs.** Unexpected failures and failed source checks are written as one JSON object per line (`server/log.ts`) to [Workers Logs](https://developers.cloudflare.com/workers/observability/logs/workers-logs/), with source maps so stack traces point at the TypeScript. Look for the `event` field: `request_failed`, `storage_read_failed`, `dashboard_read_failed`, `source_check_failed`, `complete_sync_failed`, `alert_check_failed`, `alert_email_failed` or `alert_push_failed`; `alerts_sent` and `web_vital` record alerts and real-user performance.
 - **Alerts.** Saved alerts (`server/alerts.ts`) are checked after each resync you start, after the sync Workflow, and after the StreetEasy upload from your computer, never on a schedule. Each alert's matches are compared with its last check, and new apartments and price drops go out by email (Cloudflare Email Service) and as notifications (standard Web Push with VAPID keys and encrypted messages, `server/web-push.ts`) to every device that turned them on.
-- **Installable app.** The web app has a manifest, icons and a service worker (`public/`), so it can be added to the Home Screen; iPhone notifications need that. The service worker caches nothing, so the app always loads current code and listings.
+- **Installable app.** The web app has a manifest, icons (`public/`) and a service worker (`web/`), so it can be added to the Home Screen; iPhone notifications need that. The service worker caches nothing, so the app always loads current code and listings.
 - **Performance.** Screens other than search load on first use: the map, rent charts, alerts, tours, comparison, sources and import. The web build also leaves out the offline snapshot, which only native builds and the Worker use. Real visits report Core Web Vitals to Workers Logs (`src/web-vitals-report.ts`, using Google's `web-vitals`), and `bun run perf` runs a Lighthouse audit (below).
 
 API routes: `config`, `search`, `search-check`, `refresh`, `market`, `housing`, `dashboard`, `building-report`, `geocode`, `alerts` and `vitals`, all under `/api/`.
@@ -62,6 +62,8 @@ A sample source replaces only the listings it confirmed; earlier units stay as c
 ## Develop
 
 Requires [Bun](https://bun.sh) 1.4.4 for the app, tests and scripts, and Node.js 22.12 or later for Wrangler, whose local server does not run under Bun.
+
+**Languages and runtimes.** Every source file is TypeScript, checked in strict mode, with no `any` and no comments that switch the checker off. JSON from the network, storage or a request is `unknown` until the code checks it (`types/strict-json.d.ts`). `test/typed-codebase.test.ts` fails if a JavaScript or shell file, an `any` or a suppression comes back. Bun runs everything outside production: the tests (`bun test`), the service worker build (`Bun.build`), the scripts (Bun Shell, `Bun.file`, `Bun.spawn`) and the browser tests' web server (`Bun.serve`). In production the Worker runs on Cloudflare's own runtime, workerd, not on Bun, and the two differ in places (workerd refuses `fetch` with `redirect: 'error'`, for example). `bun run test:workerd` runs the built Worker in workerd and calls its main routes, and the test setup refuses what workerd refuses. Wrangler, Cloudflare's tool for local development and deploys, is the one part that needs Node.js.
 
 ```sh
 bun install --frozen-lockfile
@@ -95,6 +97,7 @@ bun run typecheck
 bun run test             # unit and integration tests; external network is blocked
 bun run test:coverage    # fails below 98% of lines or 96% of functions
 bun run test:e2e         # typecheck, web build, unit tests, then Playwright
+bun run test:workerd     # the built Worker in Cloudflare's runtime (bun run build:web first)
 bun run build            # web build plus a Wrangler dry-run bundle of the Worker
 bun run perf             # Lighthouse audit of the running app (bun run dev first); fails below its budgets
 ```
@@ -148,10 +151,10 @@ One-time setup on a Mac or Linux computer that is usually on (Bun 1.4.4 required
 
 ```sh
 git clone https://github.com/TannerAWilliams/apartment-search.git && cd apartment-search
-scripts/install-streeteasy-schedule.sh --origin=https://apartment-search.<subdomain>.workers.dev
+bun scripts/install-streeteasy-schedule.ts --origin=https://apartment-search.<subdomain>.workers.dev
 ```
 
-Use the Worker's own URL, not `apartments.5thof6.com`, which needs an interactive Access sign-in. The installer asks for the Worker's `APP_ACCESS_TOKEN` and stores it in the macOS Keychain (or `~/.config/apartment-search/token`, mode 600, on Linux). It runs daily at 6:17 local time (`SYNC_HOUR` and `SYNC_MINUTE` change this); on a Mac, a run missed while asleep happens at wake. Logs go to `~/Library/Logs/apartment-search-streeteasy.log` or `~/.config/apartment-search/streeteasy.log`. Run it now with `scripts/streeteasy-daily.sh` (add `--manual` to fetch even when saved data is under a day old), and remove it with `scripts/install-streeteasy-schedule.sh --uninstall`.
+Use the Worker's own URL, not `apartments.5thof6.com`, which needs an interactive Access sign-in. The installer asks for the Worker's `APP_ACCESS_TOKEN` and stores it in the macOS Keychain (or `~/.config/apartment-search/token`, mode 600, on Linux). It runs daily at 6:17 local time (`SYNC_HOUR` and `SYNC_MINUTE` change this); on a Mac, a run missed while asleep happens at wake. Logs go to `~/Library/Logs/apartment-search-streeteasy.log` or `~/.config/apartment-search/streeteasy.log`. Run it now with `bun scripts/streeteasy-daily.ts` (add `--manual` to fetch even when saved data is under a day old), and remove it with `bun scripts/install-streeteasy-schedule.ts --uninstall`. If you installed the daily sync before it moved from shell scripts to TypeScript, run the installer again once; it replaces the old job.
 
 Failures leave saved listings unchanged. The runner skips work when saved StreetEasy data is under a day old, respects the source retry time, retries once if the inventory moves during the download, and refuses an upload above the Worker's 2 MiB request limit rather than sending a truncated one. The import was about 1.9 MB in November 2026, so a much larger inventory will need a larger limit. If StreetEasy starts refusing your home connection too, the run fails with that status in the log.
 
@@ -189,9 +192,11 @@ bun run test && bun run build
 | --- | --- |
 | `App.tsx`, `index.ts`, `src/` | The Expo app. Non-UI modules in `src/` (search, regions, listings, market data) are shared with the server. |
 | `server/` | The Worker: `cloudflare.ts` entry, `api.ts` routes, `refresh.ts` source orchestration, one module per source, `d1-bucket.ts` storage, `sync-workflow.ts` and `source-registry.ts` for the complete syncs. |
-| `public/` | Files copied into the web build unchanged: `index.html` template, manifest, icons (`scripts/make-icons.ts`), the notification service worker, and the StreetEasy dashboard archive, which only the Worker reads. |
+| `public/` | Files copied into the web build unchanged: `index.html` template, manifest, icons (`scripts/make-icons.ts`) and the StreetEasy dashboard archive, which only the Worker reads. |
+| `web/` | The notification service worker in TypeScript, checked against the browser's service worker types and built to `sw.js` by `scripts/build-service-worker.ts`. |
+| `types/` | `strict-json.d.ts`: JSON reads return `unknown` in every project. |
 | `deploy/cloudflare/` | `wrangler.jsonc`, `schema.sql` and `.dev.vars.example`. |
-| `scripts/` | The StreetEasy home sync, offline data rebuilds and the coverage report. |
+| `scripts/` | The StreetEasy home sync and its installer, offline data rebuilds, the workerd smoke test, the Lighthouse audit and the coverage report. All run with Bun. |
 | `test/`, `e2e/` | Bun unit and integration tests, and the Playwright suite ([e2e/README.md](e2e/README.md)). |
 | `docs/`, `investigations/` | Feature and source references, and dated research notes. |
 | `cloudflare/streeteasy-container-test/` | A one-off StreetEasy probe for Cloudflare Containers. Not deployed. |

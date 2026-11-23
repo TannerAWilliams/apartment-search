@@ -4,7 +4,7 @@ import type { ListingData, SearchFilters } from './domain.ts';
 import { SNAPSHOT_GZIP } from './data/snapshot.ts';
 import { RENT_HISTORY_GZIP } from './data/rent-history.ts';
 import { SNAPSHOT_MONTH } from './data/snapshot-month.ts';
-import { decodeMarketRows, localSearch } from './market.ts';
+import { decodeMarketRows, localSearch, type MarketRow } from './market.ts';
 import { priorRentMonths, type PackedRentRow, type RentHistory } from './rent-history.ts';
 import { localWorkplace } from './search.ts';
 
@@ -16,10 +16,11 @@ import { localWorkplace } from './search.ts';
 let snapshot: ListingData[] | undefined;
 let history: Record<string, Record<string, Record<string, PackedRentRow[]>>> | undefined;
 
-const unpack = (encoded: string) => JSON.parse(strFromU8(gunzipSync(base64.toByteArray(encoded))));
+/** Data bundled by scripts/update-market.ts and scripts/update-rent-history.ts, read back with the type it was written with. */
+const unpack = <T>(encoded: string) => JSON.parse(strFromU8(gunzipSync(base64.toByteArray(encoded)))) as T;
 
 export function marketSnapshot() {
-  snapshot ??= decodeMarketRows(unpack(SNAPSHOT_GZIP));
+  snapshot ??= decodeMarketRows(unpack<MarketRow[]>(SNAPSHOT_GZIP));
   return snapshot;
 }
 
@@ -31,8 +32,8 @@ export function snapshotSearch(filters: SearchFilters, workplace = localWorkplac
 }
 
 export function bundledRentAreas(month: string, region: string, grouping: string) {
-  history ??= unpack(RENT_HISTORY_GZIP);
-  return history![month]?.[region]?.[grouping] ?? [];
+  history ??= unpack<NonNullable<typeof history>>(RENT_HISTORY_GZIP);
+  return history[month]?.[region]?.[grouping] ?? [];
 }
 
 export function bundledRentHistory(latest: string, region: string, grouping: string): RentHistory {

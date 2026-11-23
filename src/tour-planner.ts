@@ -1,19 +1,22 @@
+import { isRecord, type Loose } from './domain.ts';
 export const TOUR_KEY = 'apartment-search:tours:v1';
 export const MAX_TOURS = 30;
 export const TOUR_CHECKLIST = ['Water pressure and hot water', 'Noise and natural light', 'Phone signal and outlets', 'Windows, locks and pests', 'Laundry and building access', 'Confirm rent, fees and lease terms'] as const;
 export type Tour = { id: string; listingKey: string; address: string; startsAt: string; minutes: number; notes: string; checked: number[] };
-const plain = (s: unknown, max: number) => typeof s === 'string' && s.length > 0 && s.length <= max && !/[\x00-\x1f\x7f]/.test(s);
+const plain = (s: unknown, max: number): s is string => typeof s === 'string' && s.length > 0 && s.length <= max && !/[\x00-\x1f\x7f]/.test(s);
+const checklistItem = (i: unknown): i is number => typeof i === 'number' && Number.isInteger(i) && i >= 0 && i < TOUR_CHECKLIST.length;
 export function validateTours(value: unknown): Tour[] {
   if (!Array.isArray(value) || value.length > MAX_TOURS) throw Error('Tour plan is invalid or too large.');
   const ids = new Set<string>();
-  return value.map(t => {
-    if (!t || !plain(t.id, 200) || ids.has(t.id) || !plain(t.listingKey, 2000) || !plain(t.address, 1000) ||
-      typeof t.startsAt !== 'string' || !Number.isFinite(Date.parse(t.startsAt)) || new Date(t.startsAt).toISOString() !== t.startsAt ||
-      !Number.isInteger(t.minutes) || t.minutes < 5 || t.minutes > 240 || typeof t.notes !== 'string' || t.notes.length > 2000 ||
-      !Array.isArray(t.checked) || t.checked.some((i: unknown) => typeof i !== 'number' || !Number.isInteger(i) || i < 0 || i >= TOUR_CHECKLIST.length) || new Set(t.checked).size !== t.checked.length)
+  return value.map((entry) => {
+    const { id, listingKey, address, startsAt, minutes, notes, checked }: Loose<Tour> = isRecord(entry) ? entry : {};
+    if (!plain(id, 200) || ids.has(id) || !plain(listingKey, 2000) || !plain(address, 1000) ||
+      typeof startsAt !== 'string' || !Number.isFinite(Date.parse(startsAt)) || new Date(startsAt).toISOString() !== startsAt ||
+      typeof minutes !== 'number' || !Number.isInteger(minutes) || minutes < 5 || minutes > 240 || typeof notes !== 'string' || notes.length > 2000 ||
+      !Array.isArray(checked) || !checked.every(checklistItem) || new Set(checked).size !== checked.length)
       throw Error('Stored tour plan is invalid. It has not been overwritten.');
-    ids.add(t.id);
-    return { id: t.id, listingKey: t.listingKey, address: t.address, startsAt: t.startsAt, minutes: t.minutes, notes: t.notes, checked: [...t.checked] };
+    ids.add(id);
+    return { id, listingKey, address, startsAt, minutes, notes, checked: [...checked] };
   });
 }
 export function parseTours(raw: string | null): Tour[] { return raw === null ? [] : validateTours(JSON.parse(raw)); }

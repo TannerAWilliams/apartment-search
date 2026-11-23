@@ -15,7 +15,8 @@ test('facts retain only explicit structured fields and keep missing details unkn
     assert.equal(discoveryFacts({ squareFeet: value }).squareFeet, null);
   }
   assert.equal(discoveryFacts({ bathrooms: 1.7 }).bathrooms, null);
-  assert.equal(discoveryFacts({ petsAllowed: 'yes', laundry: 'maybe', description: 'Pets and laundry!' }).petsAllowed, null);
+  const prose = { petsAllowed: 'yes', laundry: 'maybe', description: 'Pets and laundry!' };
+  assert.equal(discoveryFacts(prose).petsAllowed, null);
 });
 test('feature requirements exclude unknowns and apply all conditions', () => {
   const known = { bathrooms: 2, squareFeet: 900, petsAllowed: true, laundry: 'in_unit' };

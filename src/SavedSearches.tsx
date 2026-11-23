@@ -1,3 +1,4 @@
+import type { SearchFilters } from './domain.ts';
 import React, { useEffect, useRef, useState } from 'react';
 import { Text, View } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -8,7 +9,7 @@ import { type ObservedChange } from './observed-changes.ts';
 import { formatRent } from './search.ts';
 const KEY = 'apartment-search:saved-searches:v1';
 /** When `open` is given, the parent shows the toggle (a tool chip) and this renders only the panel. */
-export function SavedSearches({ filters, apply, check, disabled = false, open: shown }: { filters: unknown; apply: (filters: any) => void; check: (filters: any) => Promise<unknown>; disabled?: boolean; open?: boolean }) {
+export function SavedSearches({ filters, apply, check, disabled = false, open: shown }: { filters: unknown; apply: (filters: SearchFilters) => void; check: (filters: SearchFilters) => Promise<unknown>; disabled?: boolean; open?: boolean }) {
   const [ownOpen, setOpen] = useState(false), [name, setName] = useState('');
   const open = shown ?? ownOpen;
   const [searches, setSearches] = useState<SavedSearch[]>([]), [ready, setReady] = useState(false), [busy, setBusy] = useState(false);

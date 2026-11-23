@@ -3,8 +3,6 @@
 //   bun run perf [url]   # defaults to http://127.0.0.1:8787/
 // Lighthouse emulates a mid-range phone on a slow 4G connection. Real visits are measured separately
 // (src/web-vitals-report.ts → Workers Logs, event "web_vital"). Fails below the budgets below.
-import { spawnSync } from 'node:child_process';
-import { readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -31,12 +29,13 @@ if (import.meta.main) {
   const output = join(tmpdir(), `lighthouse-${process.pid}.json`);
   // Chromium's sandbox cannot start as root (for example in a container).
   const flags = ['--headless=new', ...(process.getuid?.() === 0 ? ['--no-sandbox'] : [])].join(' ');
-  const run = spawnSync('bunx', ['--bun', LIGHTHOUSE, url, '--quiet', `--chrome-flags=${flags}`,
+  const run = Bun.spawnSync(['bunx', '--bun', LIGHTHOUSE, url, '--quiet', `--chrome-flags=${flags}`,
     '--only-categories=performance,accessibility,best-practices', '--output=json', `--output-path=${output}`],
-  { stdio: 'inherit', env: { ...process.env, CHROME_PATH: chrome } });
-  if (run.status !== 0) throw new Error('Lighthouse did not finish. Is the app running at ' + url + '?');
-  const { scores, metrics, failing, overBudget } = summarize(JSON.parse(readFileSync(output, 'utf8')));
-  rmSync(output, { force: true });
+  { stdio: ['inherit', 'inherit', 'inherit'], env: { ...process.env, CHROME_PATH: chrome } });
+  if (run.exitCode !== 0) throw new Error('Lighthouse did not finish. Is the app running at ' + url + '?');
+  const report = Bun.file(output);
+  const { scores, metrics, failing, overBudget } = summarize(await report.json() as Report);
+  await report.delete();
   console.log('Scores: ' + Object.entries(scores).map(([id, score]) => `${id} ${score}`).join(', '));
   for (const line of metrics) console.log('  ' + line);
   if (failing.length) console.log('To improve:\n' + failing.map((line) => '  - ' + line).join('\n'));
