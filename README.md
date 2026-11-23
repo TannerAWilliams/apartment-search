@@ -61,7 +61,7 @@ A sample source replaces only the listings it confirmed; earlier units stay as c
 
 ## Develop
 
-Requires [Bun](https://bun.sh) 1.4.4 for the app, tests and scripts, and Node.js 22.12 or later for Wrangler, whose local server does not run under Bun.
+Requires [Bun](https://bun.sh) at the version in `.bun-version` (1.4.5) for the app, tests and scripts, and Node.js 22.12 or later for Wrangler, whose local server does not run under Bun.
 
 **Languages and runtimes.** Every source file is TypeScript, checked in strict mode, with no `any` and no comments that switch the checker off. JSON from the network, storage or a request is `unknown` until the code checks it (`types/strict-json.d.ts`). `test/typed-codebase.test.ts` fails if a JavaScript or shell file, an `any` or a suppression comes back. Bun runs everything outside production: the tests (`bun test`), the service worker build (`Bun.build`), the scripts (Bun Shell, `Bun.file`, `Bun.spawn`) and the browser tests' web server (`Bun.serve`). In production the Worker runs on Cloudflare's own runtime, workerd, not on Bun, and the two differ in places (workerd refuses `fetch` with `redirect: 'error'`, for example). `bun run test:workerd` runs the built Worker in workerd and calls its main routes, and the test setup refuses what workerd refuses. Wrangler, Cloudflare's tool for local development and deploys, is the one part that needs Node.js.
 
@@ -139,7 +139,7 @@ Alerts → **Send a test alert** checks both channels.
 
 Cloud hosts, including the Worker, get HTTP 403 from StreetEasy, so the sync runs on a computer you own and uploads the result. It downloads the complete partitioned inventory with ordinary requests, requires the count to reconcile with StreetEasy's reported total, uploads it through the authenticated `/api/refresh` import, and then confirms the saved count.
 
-One-time setup on a Mac or Linux computer that is usually on (Bun 1.4.4 required):
+One-time setup on a Mac or Linux computer that is usually on (Bun at the version in `.bun-version` required):
 
 ```sh
 git clone https://github.com/TannerAWilliams/apartment-search.git && cd apartment-search

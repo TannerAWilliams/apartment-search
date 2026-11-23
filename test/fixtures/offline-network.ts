@@ -1,8 +1,9 @@
 // Loaded by Bun before any test imports. Fixtures may inject fake fetch functions;
 // the process-global network path is loopback-only and never follows redirects.
+import { requirePinnedBun } from '../../scripts/check-runtime.ts';
 import { checkWorkersFetchInit } from './workers-fetch.ts';
 
-if (process.versions.bun !== '1.4.4') throw new Error('Tests require Bun 1.4.4.');
+requirePinnedBun('The tests');
 const localFetch = globalThis.fetch;
 globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
   checkWorkersFetchInit(init);

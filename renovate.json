@@ -8,7 +8,7 @@
       "enabled": false
     },
     {
-      "description": "The Bun runtime is pinned to 1.4.4 across scripts and CI, and Wrangler runs on Node 22; change those pins deliberately.",
+      "description": "Bun is pinned in .bun-version, which CI and the test setup read, and Wrangler runs on Node 26; change major versions of these deliberately.",
       "matchPackageNames": ["@types/bun", "@types/node", "node"],
       "matchUpdateTypes": ["major"],
       "enabled": false

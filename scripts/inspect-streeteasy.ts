@@ -1,6 +1,8 @@
-import './check-runtime.ts';
+import { requirePinnedBun } from './check-runtime.ts';
 import { MAX_PUBLIC_HTML_BYTES } from '../server/public-rentals.ts';
 import { parseStreetEasyPublicSearch } from '../server/streeteasy.ts';
+
+requirePinnedBun();
 
 const usage = 'Usage: bun run inspect:streeteasy ./streeteasy.html';
 
