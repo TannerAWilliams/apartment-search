@@ -22,7 +22,7 @@ your computer ── scripts/sync-streeteasy.ts ── uploads the StreetEasy in
 ```
 
 - **One Worker, two ways in.** `server/cloudflare.ts` serves the web app and the API at `apartments.5thof6.com` and its workers.dev URL. Every request, including the web app's files, needs one of:
-  - a **Cloudflare Access sign-in.** Access signs a token for each request it lets through. The Worker verifies it against the team's published keys (issuer, audience, expiry, signature) and allows only the emails in `ACCESS_ALLOWED_EMAILS`. Workers with Static Assets don't receive `ctx.access`, so the Worker checks the token itself. Changes from a signed-in browser must come from the app's own pages (same `Origin`).
+  - a **Cloudflare Access sign-in**, with a passkey (Face ID or Touch ID) or an emailed one-time code. Sessions last 24 hours. Access signs a token for each request it lets through. The Worker verifies it against the team's published keys (issuer, audience, expiry, signature) and allows only the emails in `ACCESS_ALLOWED_EMAILS`. Workers with Static Assets don't receive `ctx.access`, so the Worker checks the token itself. Changes from a signed-in browser must come from the app's own pages (same `Origin`).
   - the **app access token** (`Authorization: Bearer <APP_ACCESS_TOKEN>`), for scripts such as the StreetEasy home sync.
 
   Every response carries `Strict-Transport-Security` (HTTPS only, for a year). `/health` returns `ok` to a signed-in caller.
