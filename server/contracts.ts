@@ -53,8 +53,10 @@ export type AppEnv = {
   STREET_VIEW_MONTHLY_LIMIT?: string;
   TRAVELTIME_APP_ID?: string;
   TRAVELTIME_API_KEY?: string;
-  /** Who may sign in through Cloudflare Access; alert emails go to the same addresses. */
+  /** Who may sign in: comma-separated email addresses. */
   ACCESS_ALLOWED_EMAILS?: string;
+  /** Who may resync and change platform settings (server/roles.ts); the first allowed address when unset. */
+  ADMIN_EMAILS?: string;
   /** The app's address, for links in alerts. */
   APP_ORIGIN?: string;
   /** Cloudflare Email Service binding and the sender on an Email Routing domain. */

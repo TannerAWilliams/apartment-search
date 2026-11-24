@@ -18,6 +18,8 @@ export type ApiServices = {
   privateAuthenticated: boolean;
   /** The email of the person signed in with an email code, so the app can offer to sign out. */
   account?: string | null;
+  /** Whether the caller may resync and change platform settings (server/roles.ts). */
+  admin?: boolean;
   fetcher: SourceFetch;
   /** Runs work after the response is sent: the Worker's `ctx.waitUntil`. */
   waitUntil?: (work: Promise<unknown>) => void;

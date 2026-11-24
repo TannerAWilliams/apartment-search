@@ -15,6 +15,7 @@ import { historyRoutes } from './routes/history.ts';
 import { searchRoutes } from './routes/search.ts';
 import { sourceRoutes } from './routes/sources.ts';
 import { vitalsRoutes } from './routes/vitals.ts';
+import { settingsRoutes } from './routes/settings.ts';
 
 export const api = factory
   .createApp()
@@ -29,6 +30,7 @@ export const api = factory
   .route('/', dataRoutes)
   .route('/', historyRoutes)
   .route('/', alertRoutes)
+  .route('/', settingsRoutes)
   .route('/', vitalsRoutes);
 
 /** The routes and the shape of each reply, for the app's API client. */

@@ -8,6 +8,8 @@ import type { AppEnv, Bucket } from './contracts.ts';
 import { createD1Bucket, type D1Database } from './storage/d1-bucket.ts';
 import { timingSafeEqual } from 'hono/utils/buffer';
 import { type Auth, createAuth, sessionEmail } from './auth.ts';
+import { isAdmin } from './roles.ts';
+import { runNightly } from './nightly.ts';
 import { log } from './log.ts';
 import { securityHeaders, withCacheControl } from './web-headers.ts';
 import { type ArchiveLoader, DASHBOARD_ARCHIVE_PATH } from './dashboard-snapshot.ts';
@@ -185,6 +187,7 @@ app.use('/api/*', async (c, next) => {
   c.set('services', {
     privateAuthenticated: c.var.signedIn,
     account: c.var.account,
+    admin: isAdmin(env, { account: c.var.account, token: c.var.caller === 'app-access-token' }),
     fetcher: (url, options) => fetch(url, options),
     waitUntil: ctx ? (work) => ctx.waitUntil(work) : undefined,
     syncJob: env.SYNC_WORKFLOW ? workflowJob(env.SYNC_WORKFLOW, appEnv.BUCKET) : undefined,
@@ -219,4 +222,18 @@ app.onError((cause, c) => {
   return fail(c, 503, 'Walkup could not complete the request.');
 });
 
-export default app;
+/** The nightly resync (server/nightly.ts): Cloudflare wakes the Worker at 05:00 and 06:00 UTC. */
+async function scheduled(_controller: unknown, env: Environment, ctx: { waitUntil(work: Promise<unknown>): void }) {
+  const bucket = createD1Bucket(env.APARTMENTS);
+  const run = runNightly(
+    { ...env, BUCKET: bucket },
+    {
+      fetcher: (url, options) => fetch(url, options),
+      syncJob: env.SYNC_WORKFLOW ? workflowJob(env.SYNC_WORKFLOW, bucket) : undefined,
+    },
+  ).catch((cause) => log.error('nightly_resync_failed', cause));
+  ctx.waitUntil(run);
+  await run;
+}
+
+export default { fetch: app.fetch, scheduled };

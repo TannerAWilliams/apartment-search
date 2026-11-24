@@ -29,7 +29,8 @@ export const sourceRoutes = factory
       log.error('feed_settings_invalid', cause);
       return fail(c, 503, 'The free feed settings need to be corrected on the server.');
     }
-    const account = c.var.services.account ? { account: c.var.services.account } : {};
+    const { account: email, admin } = c.var.services;
+    const account = email ? { account: email, admin: admin === true } : {};
     if (!env.BUCKET) return c.json({ ...config, ...account }, 200);
     try {
       return c.json({ ...(await savedAppConfig({ ...env, BUCKET: env.BUCKET }, config)), ...account }, 200);
@@ -57,8 +58,10 @@ export const sourceRoutes = factory
       const {
         appEnv,
         bucket,
-        services: { fetcher, syncJob, waitUntil },
+        services: { fetcher, syncJob, waitUntil, account, admin },
       } = c.var;
+      // Signed-in people search and save; resyncing sources is an admin's job (server/roles.ts).
+      if (account && !admin) return fail(c, 403, 'Only an admin can resync sources.');
       const env = { ...appEnv, BUCKET: bucket };
       const body = c.req.valid('json');
       const source = body.source;

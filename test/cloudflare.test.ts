@@ -234,3 +234,41 @@ test('every response, including a refusal, tells browsers to use HTTPS only', as
     expect((await call(env, path, {}, token)).headers.get('Strict-Transport-Security'), path).toBe('max-age=31536000; includeSubDomains');
   }
 });
+
+test('the Worker wakes at 05:00 and 06:00 UTC and runs the nightly resync only at 1 AM in New York', async () => {
+  const { env, created } = await environment();
+  const waited: Promise<unknown>[] = [];
+  globalThis.fetch = (async () => new Response(null, { status: 404 })) as unknown as typeof fetch;
+  const RealDate = Date;
+  // 06:00 UTC on a winter night is 1 AM in New York.
+  const at = new RealDate('2026-01-15T06:00:00Z').getTime();
+  globalThis.Date = class extends RealDate {
+    constructor(...args: ConstructorParameters<typeof RealDate>) {
+      super(...((args.length ? args : [at]) as [number]));
+    }
+    static override now = () => at;
+  } as DateConstructor;
+  try {
+    await worker.scheduled({}, env as Parameters<typeof worker.scheduled>[1], { waitUntil: (work) => waited.push(work) });
+  } finally {
+    globalThis.Date = RealDate;
+  }
+  expect(waited).toHaveLength(1);
+  expect(created).toHaveLength(1);
+  const settings = await readJson<{ lastNightly?: { background: boolean } }>(call(env, '/api/settings'));
+  expect(settings.lastNightly?.background).toBe(true);
+});
+
+test('a broken nightly run is logged, not thrown', async () => {
+  const { env } = await environment();
+  const broken = {
+    ...env,
+    APARTMENTS: {
+      prepare: () => {
+        throw new Error('database down');
+      },
+      batch: async () => [],
+    },
+  };
+  await worker.scheduled({}, broken as unknown as Parameters<typeof worker.scheduled>[1], { waitUntil: () => {} });
+});

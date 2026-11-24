@@ -21,6 +21,8 @@ export type ApiConfig = {
   refreshRetryAt?: number;
   browserImportAllowed?: boolean;
   dashboardAvailable?: boolean;
+  /** Whether the signed-in person can resync and change platform settings (server/roles.ts). */
+  admin?: boolean;
   /** Whether listing cards can show Street View images (server/street-view.ts). */
   streetViewAvailable?: boolean;
   storageMode?: string;
