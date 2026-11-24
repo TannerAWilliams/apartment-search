@@ -66,7 +66,7 @@ export const sourceRoutes = factory
       const body = c.req.valid('json');
       // Visitors and members search and save; resyncing sources is an admin's or the app token's job
       // (server/roles.ts). An old page that still asks on opening gets the saved status, as below.
-      const mayResync = privateAuthenticated && (!account || admin);
+      const mayResync = admin === true || (privateAuthenticated && !account);
       if (!mayResync && !('check' in body && body.sessionStart === true)) return fail(c, 403, 'Only an admin can resync sources.');
       const source = body.source;
       const afterRefresh = alertsAfter(env, waitUntil, c.req.url);

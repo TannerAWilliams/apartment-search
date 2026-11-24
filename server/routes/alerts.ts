@@ -56,7 +56,7 @@ const FREE_ACTIONS = new Set(['delete-rule', 'remove-device']);
 export const alertRoutes = factory
   .createApp()
   .get('/alerts', needsStorage(STORAGE), async (c) => {
-    if (!c.var.services.privateAuthenticated) return fail(c, 401, NO_ACCOUNT);
+    if (!c.var.services.privateAuthenticated && !c.var.services.admin) return fail(c, 401, NO_ACCOUNT);
     try {
       const env = { ...c.var.appEnv, BUCKET: c.var.bucket };
       const plan: Plan = await planFor(env, c.var.bucket, c.var.services.account, c.var.services.admin);
@@ -67,7 +67,7 @@ export const alertRoutes = factory
     }
   })
   .post('/alerts', needsStorage(STORAGE), apiBodies, vValidator('json', AlertRequestSchema, refuse), async (c) => {
-    if (!c.var.services.privateAuthenticated) return fail(c, 401, NO_ACCOUNT);
+    if (!c.var.services.privateAuthenticated && !c.var.services.admin) return fail(c, 401, NO_ACCOUNT);
     const env = { ...c.var.appEnv, BUCKET: c.var.bucket };
     const origin = env.APP_ORIGIN ?? new URL(c.req.url).origin;
     const body = c.req.valid('json');
