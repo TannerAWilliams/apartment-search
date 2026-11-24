@@ -4,11 +4,10 @@
  */
 
 /** Screens whose path is not simply their name. */
-const NAMED: Record<string, string> = { chart: '/market', results: '/search', more: '/profile' };
-/** Screens whose path is their name: /saved, /alerts, /welcome. */
+const NAMED: Record<string, string> = { home: '/', chart: '/market', results: '/search', more: '/profile' };
+/** Screens whose path is their name: /saved, /alerts. */
 const PLAIN = [
   'saved',
-  'welcome',
   'sources',
   'marketplaces',
   'affordable',
@@ -26,8 +25,8 @@ const PLAIN = [
 const BY_PATH = new Map<string, string>([
   ...Object.entries(NAMED).map(([tab, path]) => [path, tab] as const),
   ...PLAIN.map((tab) => ['/' + tab, tab] as const),
-  ['/', 'chart'],
-  ['/home', 'chart'],
+  ['/home', 'home'],
+  ['/welcome', 'home'],
 ]);
 
 /** Every path the app answers, for the Worker; a listing's own page is /listing/ and its ID. */
@@ -37,18 +36,18 @@ export const isAppPath = (path: string) => BY_PATH.has(path.replace(/\/+$/, '') 
 /** The path for a screen; a listing's page is "listing=ID" as a screen, its ID kept URL-encoded. */
 export function pathForTab(tab: string) {
   if (tab.startsWith('listing=')) return '/listing/' + tab.slice('listing='.length);
-  return NAMED[tab] ?? (PLAIN.includes(tab) ? '/' + tab : '/market');
+  return NAMED[tab] ?? (PLAIN.includes(tab) ? '/' + tab : '/');
 }
 
 /**
  * The screen for an address. Links from before paths ("/#saved", "/#listing=ID") still open their screen;
- * anything unknown opens Market.
+ * anything unknown opens the home page.
  */
 export function tabForLocation(pathname: string, hash = '') {
   const legacy = hash.replace(/^#/, '');
   if (legacy.startsWith('listing=')) return legacy;
-  if (legacy) return legacy in NAMED || PLAIN.includes(legacy) ? legacy : 'chart';
+  if (legacy) return legacy in NAMED || PLAIN.includes(legacy) ? legacy : 'home';
   const listing = /^\/listing\/([^/]+)$/.exec(pathname);
   if (listing) return 'listing=' + listing[1]!;
-  return BY_PATH.get(pathname.replace(/\/+$/, '') || '/') ?? 'chart';
+  return BY_PATH.get(pathname.replace(/\/+$/, '') || '/') ?? 'home';
 }

@@ -60,12 +60,14 @@ export const sourceRoutes = factory
       const {
         appEnv,
         bucket,
-        services: { fetcher, syncJob, waitUntil, account, admin },
+        services: { fetcher, syncJob, waitUntil, account, admin, privateAuthenticated },
       } = c.var;
-      // Signed-in people search and save; resyncing sources is an admin's job (server/roles.ts).
-      if (account && !admin) return fail(c, 403, 'Only an admin can resync sources.');
       const env = { ...appEnv, BUCKET: bucket };
       const body = c.req.valid('json');
+      // Visitors and members search and save; resyncing sources is an admin's or the app token's job
+      // (server/roles.ts). An old page that still asks on opening gets the saved status, as below.
+      const mayResync = privateAuthenticated && (!account || admin);
+      if (!mayResync && !('check' in body && body.sessionStart === true)) return fail(c, 403, 'Only an admin can resync sources.');
       const source = body.source;
       const afterRefresh = alertsAfter(env, waitUntil, c.req.url);
       if ('check' in body) {

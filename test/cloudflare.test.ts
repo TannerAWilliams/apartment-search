@@ -91,15 +91,24 @@ test('the app’s own addresses get the app, and other missing files stay missin
   expect((await call(onlyIndex, '/nothing-here.png')).status).toBe(404);
 });
 
-test('the private app requires the access token for every request, assets included', async () => {
+test('visitors use the app without signing in; what belongs to an account, and resyncing, need one', async () => {
   const { env } = await environment();
-  for (const path of ['/api/config', '/index.html', '/health']) {
-    const denied = await call(env, path, {}, null);
-    expect(denied.status, path).toBe(401);
-    expect(denied.headers.get('Cache-Control')).toBe('no-store');
+  for (const path of ['/api/config', '/index.html', '/health']) expect((await call(env, path, {}, null)).status, path).toBe(200);
+  // A wrong or unset token is a visitor, never the app's own scripts.
+  for (const [given, token] of [
+    [env, 'wrong-token'],
+    [{ ...env, APP_ACCESS_TOKEN: '' }, ''],
+  ] as const) {
+    expect((await call(given, '/api/alerts', {}, token)).status).toBe(401);
+    expect((await call(given, '/api/saved', {}, token)).status).toBe(404);
   }
-  expect((await call(env, '/api/config', {}, 'wrong-token')).status).toBe(401);
-  expect((await call({ ...env, APP_ACCESS_TOKEN: '' }, '/api/config', {}, '')).status, 'an unset token opens nothing').toBe(401);
+  const resync = await call(
+    env,
+    '/api/refresh',
+    { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: 'https://app.test' }, body: JSON.stringify({ check: 'now' }) },
+    null,
+  );
+  expect(resync.status, 'a visitor cannot resync sources').toBe(403);
   expect((await call(env, '/api/config')).status).toBe(200);
 });
 
@@ -293,5 +302,5 @@ test('Stripe reaches its webhook without signing in, and nothing else does', asy
   const { env } = await environment();
   const response = await call({ ...env, STRIPE_WEBHOOK_SECRET: 'whsec_x' }, '/api/billing/webhook', { method: 'POST', body: '{}' }, null);
   expect(response.status, 'unsigned').toBe(400);
-  expect((await call(env, '/api/billing', {}, null)).status).toBe(401);
+  expect((await call(env, '/api/billing', {}, null)).status).toBe(404);
 });

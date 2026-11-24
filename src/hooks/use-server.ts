@@ -241,9 +241,15 @@ export function useServer({ appliedFilters, searchVersion, submitted, setResult,
   );
   /** The signed-in account's saved listings: read them, or replace them with this list. */
   const savedRequest = useCallback(
-    async (listings?: ListingData[]) =>
-      (await api<{ listings: ListingData[] }>('saved', listings ? { body: { listings }, token: activeToken } : { token: activeToken }))
-        .listings,
+    async (listings?: ListingData[]) => {
+      const { listings: stored } = await api<{ listings?: unknown }>(
+        'saved',
+        listings ? { body: { listings }, token: activeToken } : { token: activeToken },
+      );
+      // An answer without a list is a failed load, never an empty account that would replace what is here.
+      if (!Array.isArray(stored)) throw new Error('Saved listings could not be read.');
+      return stored as ListingData[];
+    },
     [activeToken],
   );
   /** Platform settings: anyone can read them; only an admin can change them. */

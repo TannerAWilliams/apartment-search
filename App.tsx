@@ -28,10 +28,9 @@ import {
   api,
 } from './src/app-shared.ts';
 import { Filters, WebsiteFilter } from './src/components/Filters.tsx';
-import { Landing } from './src/screens/Landing.tsx';
+import { HomePage } from './src/screens/HomePage.tsx';
+import { AccountPrompt } from './src/components/AccountPrompt.tsx';
 import { CategoryBar } from './src/components/CategoryBar.tsx';
-import { WELCOME_KEY, Welcome } from './src/screens/Welcome.tsx';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StreetViewContext } from './src/components/ListingThumbnail.tsx';
 import {
   BrandMark,
@@ -222,23 +221,14 @@ function ApartmentSearch() {
 
   const savedKeys = useMemo(() => new Set(saved.map(listingKey)), [saved]);
 
+  /** Saving belongs to an account: a visitor is asked to create one first. */
   function saveListing(listing: ListingData) {
+    if (!member) {
+      navigateTab('saved');
+      return;
+    }
     setSaved((current) => mergeListings([...current, { ...listing, buildingLinks: undefined }]));
     showToast('Saved to your list');
-  }
-
-  // The first-visit setup, its own page (/welcome), once per device after signing in.
-  useEffect(() => {
-    if (serverState !== 'ready' || !account) return;
-    AsyncStorage.getItem(WELCOME_KEY)
-      .then((seen) => {
-        if (!seen) navigateTab('welcome', true);
-      })
-      .catch(() => {});
-    // biome-ignore lint/correctness/useExhaustiveDependencies: once, when the account is known
-  }, [serverState, account]);
-  function finishWelcome() {
-    AsyncStorage.setItem(WELCOME_KEY, new Date().toISOString()).catch(() => {});
   }
 
   // A short confirmation at the bottom after saving, with a way to the list, as listing apps confirm a save.
@@ -275,6 +265,10 @@ function ApartmentSearch() {
   const listVisible = !WEB_MAP || !mapView || wide;
   const marketArea = Object.entries(REGIONS).find(([key]) => key === applied.region)?.[1].label ?? applied.region;
 
+  // A visitor (no account, not the app's own admin token) uses everything except what belongs to an account.
+  const member = Boolean(account) || admin;
+  const view = !member && ACCOUNT_TABS[tab] ? 'account' : tab;
+
   const topBar = (
     <>
       <StatusBar barStyle="dark-content" {...{ backgroundColor: colors.navy }} />
@@ -282,23 +276,37 @@ function ApartmentSearch() {
         <Pressable
           accessibilityRole="link"
           accessibilityLabel="Walkup, home"
-          onPress={() => navigateTab('chart')}
+          onPress={() => navigateTab('home')}
           style={({ pressed }) => [styles.brand, pressed && styles.pressed]}
         >
           <BrandMark />
           <Text style={styles.brandText}>walkup</Text>
         </Pressable>
-        <View />
+        {member ? (
+          <View />
+        ) : (
+          // Visitors use everything; an account is one tap away for saving and alerts.
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => navigateTab('more')}
+            style={({ pressed }) => [
+              { borderWidth: 1, borderColor: colors.ink, borderRadius: 999, paddingHorizontal: 16, paddingVertical: 8 },
+              pressed && styles.pressed,
+            ]}
+          >
+            <Text style={{ fontWeight: '600', color: colors.ink }}>Log in</Text>
+          </Pressable>
+        )}
       </View>
     </>
   );
 
-  // Signed out, the app is its landing page, with the sign-in form: nothing else works until the server knows who you are.
+  // A server that still asks everyone to sign in: only the sign-in form.
   if (serverState === 'locked')
     return (
       <SafeAreaView style={styles.safe}>
         <StatusBar barStyle="dark-content" />
-        <Landing onSignedIn={signedIn} />
+        <AccountPrompt reason="use Walkup" onSignedIn={signedIn} />
       </SafeAreaView>
     );
 
@@ -306,23 +314,23 @@ function ApartmentSearch() {
     <StreetViewContext.Provider value={streetViewAvailable}>
       <SafeAreaView style={styles.safe}>
         {topBar}
-        {(tab === 'results' || tab === 'saved') && (
+        {(view === 'results' || view === 'saved') && (
           <View style={mobileStyles.searchBar}>
             {/* The search pill: where, and for what. On Search it opens the filters. */}
             <Pressable
-              accessibilityRole={tab === 'results' ? 'button' : undefined}
-              accessibilityLabel={tab === 'results' ? 'Edit search: ' + marketArea : undefined}
-              disabled={tab !== 'results'}
+              accessibilityRole={view === 'results' ? 'button' : undefined}
+              accessibilityLabel={view === 'results' ? 'Edit search: ' + marketArea : undefined}
+              disabled={view !== 'results'}
               onPress={() => toggleFilter('more')}
               style={mobileStyles.summary}
             >
-              {tab === 'results' ? <SearchIcon color={colors.ink} size={18} /> : <HeartIcon color={colors.green} size={18} filled />}
+              {view === 'results' ? <SearchIcon color={colors.ink} size={18} /> : <HeartIcon color={colors.green} size={18} filled />}
               <View style={mobileStyles.summaryCopy}>
                 <Text numberOfLines={1} style={mobileStyles.summaryTitle}>
-                  {tab === 'saved' ? 'Your saved apartments' : marketArea}
+                  {view === 'saved' ? 'Your saved apartments' : marketArea}
                 </Text>
                 <Text numberOfLines={1} style={mobileStyles.destinationText}>
-                  {tab === 'saved'
+                  {view === 'saved'
                     ? 'Saved on this device'
                     : bedroomLabel(applied.bedrooms) +
                       ' · ' +
@@ -330,7 +338,7 @@ function ApartmentSearch() {
                 </Text>
               </View>
             </Pressable>
-            {tab === 'results' && (
+            {view === 'results' && (
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Filters"
@@ -342,7 +350,7 @@ function ApartmentSearch() {
             )}
           </View>
         )}
-        {tab === 'results' && (
+        {view === 'results' && (
           <View style={{ paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: colors.border }}>
             <CategoryBar
               applied={applied}
@@ -425,11 +433,11 @@ function ApartmentSearch() {
                     {error}
                   </Text>
                 )}
-                {(tab === 'results' || tab === 'saved') && (
+                {(view === 'results' || view === 'saved') && (
                   <>
                     {
                       <View style={styles.toolbar}>
-                        {!(tab === 'saved' && saved.length === 0) ? (
+                        {!(view === 'saved' && saved.length === 0) ? (
                           <Pressable
                             accessibilityRole="button"
                             accessibilityLabel="Change destination"
@@ -449,9 +457,9 @@ function ApartmentSearch() {
                           <View />
                         )}
                         <View style={[styles.chipRow, { flexShrink: 1 }]}>
-                          {TOOLS[tab]
+                          {TOOLS[view]
                             .filter(([id]) => id !== 'changes' || !staleInventory)
-                            .filter(() => tab !== 'saved' || saved.length > 0)
+                            .filter(() => view !== 'saved' || saved.length > 0)
                             .map(([id, short, full]) => (
                               <Chip key={id} label={full} selected={tool === id} onPress={() => setTool(tool === id ? '' : id)}>
                                 {short}
@@ -460,9 +468,9 @@ function ApartmentSearch() {
                         </View>
                       </View>
                     }
-                    {tab === 'saved' && <SavedComparison listings={saved} open={tool === 'compare'} />}
-                    {tab === 'saved' && <TourPlanner listings={saved} open={tool === 'tours'} />}
-                    {tab === 'results' && (
+                    {view === 'saved' && <SavedComparison listings={saved} open={tool === 'compare'} />}
+                    {view === 'saved' && <TourPlanner listings={saved} open={tool === 'tours'} />}
+                    {view === 'results' && (
                       <SavedSearches
                         open={tool === 'searches'}
                         filters={applied}
@@ -479,8 +487,8 @@ function ApartmentSearch() {
                         }}
                       />
                     )}
-                    {tab === 'results' && !staleInventory && <ObservedChanges listings={result.matches} open={tool === 'changes'} />}
-                    {tab === 'results' && staleInventory && (
+                    {view === 'results' && !staleInventory && <ObservedChanges listings={result.matches} open={tool === 'changes'} />}
+                    {view === 'results' && staleInventory && (
                       <View style={styles.empty}>
                         <Text accessibilityRole="header" style={styles.panelTitle}>
                           These results need a fresh check
@@ -495,7 +503,7 @@ function ApartmentSearch() {
                         </Button>
                       </View>
                     )}
-                    {(tab === 'saved' || !staleInventory) && (
+                    {(view === 'saved' || !staleInventory) && (
                       <View style={[styles.resultLayout, split && styles.resultLayoutWide]}>
                         {listVisible && (
                           <View style={styles.results}>
@@ -516,7 +524,7 @@ function ApartmentSearch() {
                               savedByKey={savedByKey}
                               showMarkets={() => navigateTab('marketplaces')}
                               showSources={() => navigateTab('sources')}
-                              onAlert={account ? () => navigateTab('alerts') : undefined}
+                              onAlert={() => navigateTab('alerts')}
                               onSave={saveListing}
                               onSaveLink={saveLink}
                               onRemove={(listing) =>
@@ -524,7 +532,7 @@ function ApartmentSearch() {
                               }
                               onError={setError}
                               status={
-                                tab === 'results' ? (
+                                view === 'results' ? (
                                   <Pressable
                                     accessibilityRole="button"
                                     accessibilityLabel={freshness + ' · Details: source freshness and coverage'}
@@ -556,7 +564,7 @@ function ApartmentSearch() {
                     )}
                   </>
                 )}
-                {tab === 'more' && (
+                {view === 'more' && (
                   <ProfilePage
                     account={account}
                     admin={admin}
@@ -567,11 +575,12 @@ function ApartmentSearch() {
                     savedCount={savedResults.total}
                     onOpen={navigateTab}
                     onSignOut={() => void signOut()}
+                    signInCard={member ? undefined : <AccountPrompt reason="save apartments and get alerts" onSignedIn={signedIn} />}
                     settingsRequest={serverState === 'ready' ? settingsRequest : undefined}
                     onError={setError}
                   />
                 )}
-                {tab === 'chart' && (
+                {view === 'chart' && (
                   <RentChart
                     initialRegion={applied.region}
                     saved={saved}
@@ -581,7 +590,7 @@ function ApartmentSearch() {
                     loadHistory={serverState === 'ready' && dashboardAvailable ? loadHistory : undefined}
                   />
                 )}
-                {tab === 'sources' && (
+                {view === 'sources' && (
                   <>
                     <Text accessibilityRole="header" style={styles.panelTitle}>
                       Sources & sync
@@ -600,7 +609,7 @@ function ApartmentSearch() {
                     />
                   </>
                 )}
-                {tab === 'marketplaces' && (
+                {view === 'marketplaces' && (
                   <Marketplaces
                     filters={applied}
                     sources={result.sources}
@@ -611,7 +620,7 @@ function ApartmentSearch() {
                     onError={setError}
                   />
                 )}
-                {tab === 'alerts' && (
+                {view === 'alerts' && (
                   <AlertsPage
                     request={alertRequest}
                     filters={applied}
@@ -619,7 +628,7 @@ function ApartmentSearch() {
                     onError={setError}
                   />
                 )}
-                {tab === 'shared' && (
+                {view === 'shared' && (
                   <SharedListPage
                     request={serverState === 'ready' && account ? householdRequest : undefined}
                     saved={saved}
@@ -629,27 +638,25 @@ function ApartmentSearch() {
                     onError={setError}
                   />
                 )}
-                {tab === 'apply' && <ApplyPage saved={saved} onError={setError} />}
-                {tab === 'welcome' && (
-                  <Welcome
-                    onSkip={() => {
-                      finishWelcome();
-                      navigateTab('chart', true);
-                    }}
+                {view === 'apply' && <ApplyPage saved={saved} onError={setError} />}
+                {view === 'home' && (
+                  <HomePage
+                    signedIn={member}
+                    onOpen={navigateTab}
                     onDone={(changes, alerts) => {
-                      finishWelcome();
                       const next = { ...draft, ...changes };
                       setDraft(next);
-                      navigateTab('results', true);
+                      navigateTab('results');
                       void submit(next).then(() => {
                         if (alerts) navigateTab('alerts');
                       });
                     }}
                   />
                 )}
-                {tab.startsWith('listing=') && (
+                {view === 'account' && <AccountPrompt reason={ACCOUNT_TABS[tab] ?? 'save apartments'} onSignedIn={signedIn} />}
+                {view.startsWith('listing=') && (
                   <ListingPage
-                    id={decodeURIComponent(tab.slice('listing='.length))}
+                    id={decodeURIComponent(view.slice('listing='.length))}
                     load={serverState === 'ready' ? loadListing : undefined}
                     workplace={result.workplace}
                     saved={(listing) => savedByKey.has(listingKey(listing))}
@@ -659,15 +666,15 @@ function ApartmentSearch() {
                     onError={setError}
                   />
                 )}
-                {tab === 'admin' && <AdminPage load={serverState === 'ready' && admin ? loadAdminStats : undefined} onError={setError} />}
-                {tab === 'list' && (
+                {view === 'admin' && <AdminPage load={serverState === 'ready' && admin ? loadAdminStats : undefined} onError={setError} />}
+                {view === 'list' && (
                   <DirectPage
                     request={serverState === 'ready' && account ? directRequest : undefined}
                     account={account}
                     onError={setError}
                   />
                 )}
-                {tab === 'afford' && (
+                {view === 'afford' && (
                   <AffordPage
                     onSearch={(maxRent) => {
                       const next = { ...draft, maxRent };
@@ -676,9 +683,9 @@ function ApartmentSearch() {
                     }}
                   />
                 )}
-                {tab === 'terms' && <LegalPage kind="terms" />}
-                {tab === 'privacy' && <LegalPage kind="privacy" />}
-                {tab === 'neighborhoods' && (
+                {view === 'terms' && <LegalPage kind="terms" />}
+                {view === 'privacy' && <LegalPage kind="privacy" />}
+                {view === 'neighborhoods' && (
                   <NeighborhoodsPage
                     loadNeighborhoods={serverState === 'ready' ? loadNeighborhoods : undefined}
                     loadReport={serverState === 'ready' ? loadNeighborhoodReport : undefined}
@@ -690,14 +697,14 @@ function ApartmentSearch() {
                     }}
                   />
                 )}
-                {tab === 'renewal' && (
+                {view === 'renewal' && (
                   <RenewalPage
                     loadNeighborhoods={serverState === 'ready' ? loadNeighborhoods : undefined}
                     loadReport={serverState === 'ready' ? loadNeighborhoodReport : undefined}
                     onError={setError}
                   />
                 )}
-                {tab === 'affordable' && (
+                {view === 'affordable' && (
                   <AffordableHousing
                     region={applied.region}
                     loadHousing={serverState === 'ready' ? loadHousing : undefined}
@@ -712,7 +719,7 @@ function ApartmentSearch() {
           </View>
         </ScrollView>
         {/* Map and list switch from a floating pill above the tab bar. */}
-        {WEB_MAP && (tab === 'results' || (tab === 'saved' && saved.length > 0)) && (
+        {WEB_MAP && (view === 'results' || (view === 'saved' && saved.length > 0)) && (
           <View pointerEvents="box-none" style={mobileStyles.floatingRow}>
             <Pressable
               accessibilityRole="button"
@@ -753,7 +760,7 @@ function ApartmentSearch() {
               ['more', 'Profile', ProfileIcon],
             ] as const
           ).map(([key, label, Icon]) => {
-            const selected = key === 'more' ? !['chart', 'results', 'saved'].includes(tab) : tab === key;
+            const selected = key === 'more' ? !['home', 'chart', 'results', 'saved'].includes(tab) : tab === key;
             return (
               <Pressable
                 key={key}
@@ -774,6 +781,14 @@ function ApartmentSearch() {
     </StreetViewContext.Provider>
   );
 }
+
+/** Screens that belong to an account, and what a visitor is asked to create one for. */
+const ACCOUNT_TABS: Record<string, string> = {
+  saved: 'save apartments',
+  alerts: 'get email alerts',
+  shared: 'share a list',
+  list: 'list your apartment',
+};
 
 export default function App() {
   useEffect(() => {

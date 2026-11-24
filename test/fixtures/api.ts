@@ -21,7 +21,7 @@ export function handleApi(request: Request, env: AppEnv, services: Partial<ApiSe
   return standalone.fetch(request, {
     appEnv: env,
     services: {
-      privateAuthenticated: false,
+      privateAuthenticated: true,
       fetcher: (url, options) => globalThis.fetch(url, options),
       dashboardArchive: noDashboardArchive,
       ...services,

@@ -2,7 +2,7 @@
  * The profile: the account, its saved listings and email alerts, and links to the rest of the app. Admins also get
  * the platform's settings: the nightly resync switch and the sources page.
  */
-import { useCallback, useEffect, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useState } from 'react';
 import { Linking, Platform, Pressable, Share, Switch, Text, View } from 'react-native';
 import { Button, Field } from '../components/ui.tsx';
 import { MenuIcon } from '../components/MenuIcons.tsx';
@@ -288,7 +288,10 @@ export function ProfilePage({
   onSignOut,
   settingsRequest,
   onError,
+  signInCard,
 }: {
+  /** For a visitor: creating an account, above the tools that work without one. */
+  signInCard?: ReactNode;
   account: string | null;
   admin: boolean;
   plan: 'free' | 'paid';
@@ -332,6 +335,7 @@ export function ProfilePage({
       <Text accessibilityRole="header" style={styles.panelTitle}>
         Profile
       </Text>
+      {signInCard}
       {account && (
         <View style={[styles.menu, styles.menuRow]}>
           <View

@@ -24,7 +24,9 @@ test('tour planner adds, persists, edits, checks and removes a personal appointm
     const url = new URL(route.request().url());
     if (url.origin !== 'http://127.0.0.1:4173') return route.abort();
     if (url.pathname === '/api/config')
-      return route.fulfill({ json: { mode: 'snapshot', commuteConfigured: false, sources: [], refresh: { sources: [] } } });
+      return route.fulfill({
+        json: { mode: 'snapshot', commuteConfigured: false, sources: [], refresh: { sources: [] }, account: 'renter@example.test' },
+      });
     if (url.pathname === '/api/refresh') return route.fulfill({ json: { checking: false, sources: [] } });
     if (url.pathname.startsWith('/api/'))
       return route.fulfill({ json: { matches: [], total: 0, mapPoints: [], refresh: { sources: [] } } });

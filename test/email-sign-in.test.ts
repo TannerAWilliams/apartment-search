@@ -55,8 +55,9 @@ test('the D1 migrations create the tables the auth settings need', async () => {
 
 test('an allowed email signs in with a code, and the session opens the API', async () => {
   const { env, sent } = await environment();
-  expect((await call(env, '/api/config')).status).toBe(401);
-  // The app's pages load signed out, so they can show the sign-in form.
+  const visitor = (await (await call(env, '/api/config')).json()) as { account?: string };
+  expect(visitor.account, 'a visitor uses the app without an account').toBeUndefined();
+  // The app's pages load signed out.
   expect(await (await call(env, '/')).text()).toBe('asset /');
 
   const { cookie, token } = await signIn(env, sent);
@@ -101,7 +102,7 @@ test('sign-in is off without its secret', async () => {
   const { env } = await environment();
   const off = { ...env, BETTER_AUTH_SECRET: undefined };
   expect((await post(off, '/api/auth/email-otp/send-verification-otp', { email: ALLOWED, type: 'sign-in' })).status).toBe(404);
-  expect((await call(off, '/')).status).toBe(401);
+  expect((await call(off, '/')).status, 'the app still opens for visitors').toBe(200);
 });
 
 test('without an email binding, a code request is answered but logged as unsendable', async () => {
@@ -139,7 +140,8 @@ test('when the sign-in database fails, the request is refused and the failure lo
   log.sink = (_level, line) => lines.push(line);
   try {
     const response = await call(broken, '/api/config', { headers: { Authorization: 'Bearer session-token-from-the-app' } });
-    expect(response.status).toBe(401);
+    // Treated as a visitor, never as signed in; the visitor's request then needs the same database.
+    expect(response.status).toBe(503);
   } finally {
     log.sink = sink;
   }
@@ -184,7 +186,8 @@ test('the app is told who is signed in, and signing out ends the session', async
   const config = await call(env, '/api/config', { headers: bearer });
   expect(((await config.json()) as { account?: string }).account).toBe(ALLOWED);
   expect((await post(env, '/api/auth/sign-out', {}, bearer)).status).toBe(200);
-  expect((await call(env, '/api/config', { headers: bearer })).status).toBe(401);
+  const after = (await (await call(env, '/api/config', { headers: bearer })).json()) as { account?: string };
+  expect(after.account).toBeUndefined();
 });
 
 test('with open sign-ups anyone gets a code and a free account', async () => {

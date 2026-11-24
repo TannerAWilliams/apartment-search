@@ -138,9 +138,10 @@ app.on(['GET', 'POST'], '/api/auth/*', async (c): Promise<Response> => {
 // Stripe reports payments here (server/billing.ts). It cannot sign in, so its signature is checked instead.
 app.post('/api/billing/webhook', (c) => stripeWebhook(c.env, createD1Bucket(c.env.APARTMENTS), c.req.raw));
 
-// The deployed app is private. People sign in with an email code (Better Auth, server/auth.ts); scripts such
-// as the StreetEasy home sync send the app access token instead. The app's own pages load signed out, so they
-// can show the sign-in form; the API and data need one or the other. PUBLIC_APP opens the app for local development.
+// The app is public: anyone can search and read market data without an account. An account (an email code,
+// Better Auth, server/auth.ts) is needed only for what belongs to someone: saved apartments, alerts, a shared list,
+// billing; those routes refuse without one. Scripts such as the StreetEasy home sync send the app access token.
+// PUBLIC_APP makes everyone an admin, for local development only.
 app.use(async (c, next) => {
   const env = c.env;
   const bearer = Boolean(
@@ -155,9 +156,6 @@ app.use(async (c, next) => {
     : null;
   const signedIn = bearer || session !== null;
   const reading = ['GET', 'HEAD'].includes(c.req.method);
-  if (env.PUBLIC_APP !== 'true' && !signedIn && !(auth && reading && !c.req.path.startsWith('/api/'))) {
-    return fail(c, 401, 'Sign in to the private apartment app.');
-  }
   // The web app's session rides on a browser cookie, so changes must come from the app's own pages.
   // The native app sends its session as a bearer token, which another site cannot make a browser send.
   const cookie = session !== null && !c.req.header('Authorization');

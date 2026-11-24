@@ -146,7 +146,7 @@ export function useRetryCooldown() {
  * to it. Changing screen collapses any expanded listing; the Saved screen scopes listing actions to saved apartments.
  */
 export function useHashNavigation() {
-  const [tab, setTab] = useState('chart');
+  const [tab, setTab] = useState('home');
   const [scope, setScope] = useState('market');
   const [expanded, setExpanded] = useState('');
   useEffect(() => {

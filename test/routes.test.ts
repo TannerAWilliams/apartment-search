@@ -5,14 +5,15 @@ test('each screen has its own path, and each path opens its screen', () => {
   expect(pathForTab('chart')).toBe('/market');
   expect(pathForTab('results')).toBe('/search');
   expect(pathForTab('more')).toBe('/profile');
-  expect(pathForTab('welcome')).toBe('/welcome');
-  expect(pathForTab('nowhere')).toBe('/market');
+  expect(pathForTab('home')).toBe('/');
+  expect(pathForTab('nowhere')).toBe('/');
   expect(pathForTab('listing=a%2Fb')).toBe('/listing/a%2Fb');
-  for (const tab of ['chart', 'results', 'more', 'saved', 'alerts', 'afford', 'welcome']) expect(tabForLocation(pathForTab(tab))).toBe(tab);
-  expect(tabForLocation('/')).toBe('chart');
-  expect(tabForLocation('/home')).toBe('chart');
+  for (const tab of ['home', 'chart', 'results', 'more', 'saved', 'alerts', 'afford']) expect(tabForLocation(pathForTab(tab))).toBe(tab);
+  expect(tabForLocation('/')).toBe('home');
+  expect(tabForLocation('/home')).toBe('home');
+  expect(tabForLocation('/welcome')).toBe('home');
   expect(tabForLocation('/profile/')).toBe('more');
-  expect(tabForLocation('/unknown')).toBe('chart');
+  expect(tabForLocation('/unknown')).toBe('home');
   expect(tabForLocation('/listing/a%2Fb')).toBe('listing=a%2Fb');
   expect(APP_PATHS).toContain('/search');
 });
@@ -21,7 +22,7 @@ test('links from before paths still open their screen', () => {
   expect(tabForLocation('/', '#saved')).toBe('saved');
   expect(tabForLocation('/', '#more')).toBe('more');
   expect(tabForLocation('/', '#listing=abc')).toBe('listing=abc');
-  expect(tabForLocation('/', '#bogus')).toBe('chart');
+  expect(tabForLocation('/', '#bogus')).toBe('home');
 });
 
 test('the Worker serves the app for its own paths only', () => {

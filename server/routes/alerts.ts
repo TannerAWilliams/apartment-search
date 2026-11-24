@@ -49,12 +49,14 @@ const STORAGE = 'Alerts need saved storage.';
 /** The signed-in account an alert belongs to, in lower case; none for the app's own token or a public app. */
 const ownerOf = (account: string | null | undefined) => (account ? account.toLowerCase() : undefined);
 const PAID_ONLY = 'Email alerts are part of the paid plan. Upgrade on your Profile page.';
+const NO_ACCOUNT = 'Create a free account or sign in to get email alerts.';
 /** Actions a free account may still take: removing what it set up before. */
 const FREE_ACTIONS = new Set(['delete-rule', 'remove-device']);
 
 export const alertRoutes = factory
   .createApp()
   .get('/alerts', needsStorage(STORAGE), async (c) => {
+    if (!c.var.services.privateAuthenticated) return fail(c, 401, NO_ACCOUNT);
     try {
       const env = { ...c.var.appEnv, BUCKET: c.var.bucket };
       const plan: Plan = await planFor(env, c.var.bucket, c.var.services.account, c.var.services.admin);
@@ -65,6 +67,7 @@ export const alertRoutes = factory
     }
   })
   .post('/alerts', needsStorage(STORAGE), apiBodies, vValidator('json', AlertRequestSchema, refuse), async (c) => {
+    if (!c.var.services.privateAuthenticated) return fail(c, 401, NO_ACCOUNT);
     const env = { ...c.var.appEnv, BUCKET: c.var.bucket };
     const origin = env.APP_ORIGIN ?? new URL(c.req.url).origin;
     const body = c.req.valid('json');

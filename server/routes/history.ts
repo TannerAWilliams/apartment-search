@@ -42,18 +42,8 @@ async function catalog(database: D1Database | undefined) {
   };
 }
 
-/** The figures are licensed research data, so a private server serves them only to someone signed in. */
-const signedIn = factory.createMiddleware(async (c, next) => {
-  const { appEnv: env, services } = c.var;
-  if (env.PUBLIC_APP !== 'true' && !services.privateAuthenticated)
-    return fail(c, 403, 'Private authenticated access is required for this research snapshot.');
-  return next();
-});
-
 export const historyRoutes = factory
   .createApp()
-  .use('/history', signedIn)
-  .use('/history/*', signedIn)
   .get('/history', async (c) => {
     try {
       return c.json(await catalog(c.var.services.database), 200);

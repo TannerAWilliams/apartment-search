@@ -56,8 +56,6 @@ async function mockApp(
     plan?: 'free' | 'paid';
     /** The first listing has building facts, a price comparison and a warning. */
     insights?: boolean;
-    /** Show the first-visit setup, as for a new device. */
-    welcome?: boolean;
   } = {},
 ) {
   const requests: MockRequest[] = [];
@@ -230,7 +228,6 @@ async function mockApp(
     }
     await route.fulfill({ json: data });
   });
-  if (!options.welcome) await page.addInitScript(() => localStorage.setItem('apartment-search:welcome:v1', 'seen'));
   await page.goto(options.start ?? '/search');
   // Signed out, the app searches only after sign-in.
   if (!options.signIn) await expect.poll(() => requests.filter((r) => r.path === '/api/search').length).toBeGreaterThan(0);
@@ -780,10 +777,11 @@ test('market history charts one area, compares another, and says when figures ca
   await expect(page.getByRole('link', { name: /FirstMover snapshot data/ })).toBeVisible();
   await expect(page.getByRole('link', { name: /StreetEasy Data Dashboard/ }).first()).toBeVisible();
 
-  // The logo and title go home, to Market, from anywhere.
+  // The logo and title go to the home page from anywhere.
   await page.getByRole('tab', { name: /^Saved/ }).click();
   await page.getByRole('link', { name: 'Walkup, home', exact: true }).click();
-  await expect(page.getByRole('tab', { name: 'Market', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await expect(page).toHaveURL(/127\.0\.0\.1:4173\/$/);
+  await expect(page.getByRole('heading', { name: 'Find the good apartment before everyone else does.', exact: true })).toBeVisible();
 });
 
 test('iPhone 17 portrait keeps primary controls inside the screen', async ({ page }, testInfo) => {
@@ -850,8 +848,8 @@ test('signing in with an email code opens the app', async ({ page }) => {
   await expect(page.getByRole('alert').filter({ hasText: 'Check the code and try again.' })).toBeVisible();
   await page.getByLabel('Sign-in code', { exact: true }).fill('123456');
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-  // Signing in opens the market overview, not the search filters.
-  await expect(page.getByRole('tab', { name: 'Market', exact: true })).toHaveAttribute('aria-selected', 'true');
+  // Signing in opens the home page, not the search filters.
+  await expect(page.getByRole('heading', { name: 'Find the good apartment before everyone else does.', exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Filters', exact: true })).toHaveCount(0);
   await page.getByRole('tab', { name: 'Search', exact: true }).click();
   await expect(page.getByText('12 Grove Street', { exact: true })).toBeVisible();
@@ -1297,17 +1295,26 @@ test('results offer email alerts for the search, and newest and best-value sorti
   await expect(page.getByRole('heading', { name: 'Alerts', exact: true })).toBeVisible();
 });
 
-test('signed out, the landing page explains Walkup, shows the plans, and opens the terms', async ({ page }) => {
-  await mockApp(page, { signIn: true, start: '/' });
+test('a visitor uses Walkup without an account, and is asked for one only to save or get alerts', async ({ page }) => {
+  const { requests } = await mockApp(page, { admin: false, start: '/' });
   await expect(page.getByRole('heading', { name: 'Find the good apartment before everyone else does.', exact: true })).toBeVisible();
   await expect(page.getByText('12% below similar · median $3,920 for 28 nearby', { exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Plans', exact: true })).toBeVisible();
+  // Search works signed out.
+  await page.getByRole('tab', { name: 'Search', exact: true }).click();
+  await expect(page.getByText('12 Grove Street', { exact: true })).toBeVisible();
+  // Saving asks for an account, and saves nothing.
+  await page.getByRole('button', { name: 'Save apartment', exact: true }).first().click();
+  await expect(page.getByRole('heading', { name: 'Create a free account to save apartments', exact: true })).toBeVisible();
   await expect(page.getByLabel('Email', { exact: true })).toBeVisible();
-  await page.getByRole('link', { name: 'Terms of Service', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Terms of Service', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: '← Back', exact: true }).click();
-  await page.getByRole('button', { name: 'Start searching', exact: true }).click();
-  await expect(page.getByLabel('Email', { exact: true })).toBeInViewport();
+  await page.goto('/alerts');
+  await expect(page.getByRole('heading', { name: 'Create a free account to get email alerts', exact: true })).toBeVisible();
+  expect(requests.filter(({ path }) => path === '/api/alerts' || path === '/api/saved')).toHaveLength(0);
+  // Other tools need no account.
+  await page.goto('/afford');
+  await expect(page.getByRole('heading', { name: 'What can I afford?', exact: true })).toBeVisible();
+  await page.getByRole('tab', { name: 'Profile', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Create a free account to save apartments and get alerts', exact: true })).toBeVisible();
 });
 
 test('categories under the search bar search with one tap, and a save is confirmed', async ({ page }) => {
@@ -1340,11 +1347,10 @@ test('an apartment has its own page from a shared link, with its details open', 
   await expect(page.getByRole('tab', { name: 'Search', exact: true })).toHaveAttribute('aria-selected', 'true');
 });
 
-test('a first visit asks where, how big and what budget, then shows the matches and offers alerts', async ({ page }) => {
-  const { requests } = await mockApp(page, { account: 'renter@example.test', welcome: true });
-  await expect(page.getByRole('heading', { name: 'Welcome to Walkup', exact: true })).toBeVisible();
-  // Its own page, not a sheet over the app.
-  await expect(page).toHaveURL(/\/welcome$/);
+test('the home page asks where, how big and what budget, then shows the matches and offers alerts', async ({ page }) => {
+  const { requests } = await mockApp(page, { account: 'renter@example.test', start: '/' });
+  await expect(page.getByRole('heading', { name: 'Three quick questions', exact: true })).toBeVisible();
+  // Its own page, at the site's address, not a sheet over the app; /welcome opens it too.
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await page.getByRole('button', { name: 'Brooklyn', exact: true }).click();
   await page.getByRole('button', { name: '2 bedrooms', exact: true }).click();
@@ -1354,9 +1360,8 @@ test('a first visit asks where, how big and what budget, then shows the matches 
     .poll(() => requests.filter(({ path }) => path === '/api/search').at(-1)?.body)
     .toMatchObject({ region: 'brooklyn', bedrooms: 2, maxRent: 4000 });
   await expect(page.getByRole('heading', { name: 'Alerts', exact: true })).toBeVisible();
-  // Shown once per device.
-  await page.reload();
-  await expect(page.getByRole('heading', { name: 'Welcome to Walkup', exact: true })).toHaveCount(0);
+  await page.goto('/welcome');
+  await expect(page.getByRole('heading', { name: 'Three quick questions', exact: true })).toBeVisible();
 });
 
 test('an owner lists a no-fee apartment for review', async ({ page }) => {

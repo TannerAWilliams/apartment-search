@@ -60,8 +60,9 @@ test('neighborhood pages, their index, the sitemap and robots.txt are public', a
   expect(html).toContain('<link rel="canonical" href="https://walkup.test/rents/' + first.path + '">');
 
   expect((await get(env, '/rents/brooklyn/nowhere')).status).toBe(404);
-  // The app itself still needs signing in.
-  expect((await get(env, '/api/config')).status).toBe(401);
+  // The app is public too; what belongs to an account still needs one.
+  expect((await get(env, '/api/config')).status).toBe(200);
+  expect((await get(env, '/api/saved')).status).toBe(404);
 });
 
 test('a page whose neighborhood moved borough is not shown under the old one', async () => {

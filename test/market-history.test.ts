@@ -244,10 +244,8 @@ test('the market history API refuses bad requests and reports what it cannot rea
   const services = { privateAuthenticated: true, dashboardArchive: archive, database: d1 };
   const get = (path: string, env = {}, given: object = services) =>
     handleApi(new Request('https://app.test/api/history' + path), env, given);
-  // A private server shares the figures only with someone signed in; a public one with anyone.
-  expect((await get('', {}, {})).status).toBe(403);
-  expect((await get('/values?series=x', {}, {})).status).toBe(403);
-  expect((await get('', { PUBLIC_APP: 'true' }, {})).status).toBe(200);
+  // StreetEasy's published figures are open to visitors, with the source named on the page.
+  expect((await get('', {}, { privateAuthenticated: false })).status).toBe(200);
 
   for (const query of [
     `/values?series=missing.csv&areas=1&from=2026-01&to=2026-10`,
