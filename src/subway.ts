@@ -2,8 +2,9 @@
  * Subway stations near a listing: the closest stations within a short walk, and the lines that stop there in the
  * daytime. Stations are put in a grid of about a kilometer so each listing checks only the stations around it.
  */
-export type Station = { name: string; routes: string[]; latitude: number; longitude: number };
-export type NearbySubway = { station: string; routes: string[]; minutes: number };
+/** `accessible`: the MTA marks the station fully accessible (step-free, with elevators). */
+export type Station = { name: string; routes: string[]; latitude: number; longitude: number; accessible?: boolean };
+export type NearbySubway = { station: string; routes: string[]; minutes: number; accessible?: boolean };
 
 /** Every daytime line, in the MTA's order. */
 export const SUBWAY_LINES = [
@@ -68,8 +69,17 @@ export function stationIndex(stations: Station[]) {
           const minutes = walkMinutes(latitude, longitude, station);
           if (minutes > NEAR_MINUTES) continue;
           const known = found.get(station.name);
-          if (!known || minutes < known.minutes) found.set(station.name, { station: station.name, routes: [...station.routes], minutes });
-          else if (minutes === known.minutes) known.routes = [...new Set([...known.routes, ...station.routes])];
+          if (!known || minutes < known.minutes)
+            found.set(station.name, {
+              station: station.name,
+              routes: [...station.routes],
+              minutes,
+              ...(station.accessible ? { accessible: true } : {}),
+            });
+          else if (minutes === known.minutes) {
+            known.routes = [...new Set([...known.routes, ...station.routes])];
+            if (station.accessible) known.accessible = true;
+          }
         }
     return [...found.values()].sort((a, b) => a.minutes - b.minutes || a.station.localeCompare(b.station)).slice(0, 3);
   };

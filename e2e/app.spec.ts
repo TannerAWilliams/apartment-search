@@ -92,7 +92,9 @@ async function mockApp(
         comparedWith: 12,
         vsMarket: -0.25,
         warnings: ['This unit is also listed at $2,100.'],
-        subway: [{ station: 'Bedford Av', routes: ['L'], minutes: 3 }],
+        subway: [{ station: 'Bedford Av', routes: ['L'], minutes: 3, accessible: true }],
+        firstSeen: new Date().toISOString(),
+        priceCut: 150,
       },
     });
   if (options.discovery) Object.assign(listings[0], { bathrooms: 1.5, squareFeet: 900, petsAllowed: true, laundry: 'in_unit' });
@@ -173,6 +175,21 @@ async function mockApp(
       data = body
         ? { url: 'https://checkout.stripe.test/session' }
         : { available: true, plans: { monthly: '$15 a month', pass: '$35 for 3 months' } };
+    } else if (url.pathname === '/api/admin/stats' && options.admin) {
+      data = {
+        members: { total: 12, paid: 5, free: 7 },
+        payments: { monthly: 3, passes: 2, estimatedMonthlyRevenue: 68 },
+        alerts: { rules: 9, accounts: 4, devices: 2, sentThisWeek: 31 },
+        data: {
+          stabilizedBuildings: { checkedAt: now, count: 60789 },
+          subwayStations: { checkedAt: now, count: 475 },
+          buildingsChecked: 410,
+        },
+        sources: { total: 40, failed: ['Zillow'], lastCheckedAt: now },
+        runs: { nightly: { at: now, updated: 30, failed: 2 }, daytime: null },
+      };
+    } else if (url.pathname === '/api/account' && options.account) {
+      data = body ? { deleted: true } : { account: options.account, savedListings: [] };
     } else if (url.pathname === '/api/saved' && options.account) {
       if (body) savedOnAccount = body.listings;
       data = { listings: savedOnAccount };
@@ -1059,6 +1076,8 @@ test('cards show the building’s grade, rent stabilization, the price against s
   await expect(page.getByText('Rent-stabilized building', { exact: true }).first()).toBeVisible();
   await expect(page.getByText('Building A', { exact: true }).first()).toBeVisible();
   await expect(page.getByText('3 min to L', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('New today', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('Price cut $150', { exact: true }).first()).toBeVisible();
   await expect(page.getByText(/25% below similar · median \$2,400 for 12 nearby/).first()).toBeVisible();
   await expect(page.getByText('⚠ This unit is also listed at $2,100.', { exact: true }).first()).toBeVisible();
   await page
@@ -1218,4 +1237,45 @@ test('profile: a free member upgrades through Stripe Checkout', async ({ page })
   await expect
     .poll(() => requests.find(({ path, method }) => path === '/api/billing' && method === 'POST')?.body)
     .toEqual({ action: 'checkout', plan: 'monthly' });
+});
+
+test('admin dashboard shows members, revenue, alerts, sources and public data', async ({ page }) => {
+  await mockApp(page, { account: 'owner@example.test', admin: true });
+  await page.getByRole('tab', { name: 'Profile', exact: true }).click();
+  await page.getByRole('button', { name: 'Dashboard', exact: true }).click();
+  await expect(page.getByText('5 paid · 7 free', { exact: true })).toBeVisible();
+  await expect(page.getByText('$68', { exact: true })).toBeVisible();
+  await expect(page.getByText(/Failing: Zillow/)).toBeVisible();
+  await expect(page.getByText(/Rent-stabilized buildings: 60,789/)).toBeVisible();
+});
+
+test('an account downloads its data, reads the terms, and deletes itself after typing DELETE', async ({ page }) => {
+  const { requests } = await mockApp(page, { account: 'renter@example.test', admin: false, plan: 'free' });
+  await page.getByRole('tab', { name: 'Profile', exact: true }).click();
+  const download = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Download my data', exact: true }).click();
+  expect((await download).suggestedFilename()).toBe('walkup-account.json');
+  await page.getByRole('link', { name: 'Privacy Policy', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Privacy Policy', exact: true })).toBeVisible();
+  await expect(page.getByText(/we never see or store card numbers/)).toBeVisible();
+  await page.getByRole('tab', { name: 'Profile', exact: true }).click();
+  await page.getByRole('link', { name: 'Terms of Service', exact: true }).click();
+  await expect(page.getByText(/Walkup is not a landlord, broker or agent/)).toBeVisible();
+  await page.getByRole('tab', { name: 'Profile', exact: true }).click();
+  await page.getByRole('button', { name: 'Delete my account', exact: true }).click();
+  const confirm = page.getByRole('button', { name: 'Delete my account for good', exact: true });
+  await expect(confirm).toBeDisabled();
+  await page.getByRole('textbox', { name: 'Type DELETE to confirm', exact: true }).fill('DELETE');
+  await confirm.click();
+  await expect
+    .poll(() => requests.find(({ path, method }) => path === '/api/account' && method === 'POST')?.body)
+    .toEqual({ action: 'delete', confirm: 'DELETE' });
+});
+
+test('results offer email alerts for the search, and newest and best-value sorting', async ({ page }) => {
+  await mockApp(page, { account: 'owner@example.test', admin: true });
+  await expect(page.getByRole('button', { name: 'Newest on Walkup', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Best value for the area', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Get email alerts for this search', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Alerts', exact: true })).toBeVisible();
 });

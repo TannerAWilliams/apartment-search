@@ -39,6 +39,8 @@ export const RESULT_SORTS = {
   best: 'Best fit: rent + commute',
   recent: 'Recently checked',
   rent: 'Lowest rent',
+  newest: 'Newest on Walkup',
+  value: 'Best value for the area',
   transit: 'Fastest transit',
   driving: 'Fastest drive',
 };
@@ -113,6 +115,8 @@ export const SearchFiltersSchema = v.pipe(
     ),
     subwayLines: v.fallback(v.pipe(v.array(v.picklist(SUBWAY_LINES)), v.maxLength(SUBWAY_LINES.length)), []),
     nearSubway: flag,
+    accessibleSubway: flag,
+    newWithinDays: v.fallback(v.nullable(v.picklist([1, 3, 7, 14])), null),
     stabilizedOnly: flag,
     goodBuildings: flag,
     belowMarket: flag,
@@ -150,6 +154,8 @@ export const SearchFiltersSchema = v.pipe(
       ...(input.neighborhood ? { neighborhood: input.neighborhood } : {}),
       ...(input.subwayLines.length ? { subwayLines: [...new Set(input.subwayLines)] } : {}),
       ...(input.nearSubway ? { nearSubway: true } : {}),
+      ...(input.accessibleSubway ? { accessibleSubway: true } : {}),
+      ...(input.newWithinDays ? { newWithinDays: input.newWithinDays } : {}),
       ...(input.stabilizedOnly ? { stabilizedOnly: true } : {}),
       ...(input.goodBuildings ? { goodBuildings: true } : {}),
       ...(input.belowMarket ? { belowMarket: true } : {}),
@@ -208,11 +214,11 @@ export function distanceMiles(from: unknown, to: unknown) {
 }
 
 export function compareResults(
-  a: Pick<ListingData, 'id' | 'rent' | 'seenAt' | 'miles' | 'transitSeconds' | 'drivingSeconds'> & {
+  a: Pick<ListingData, 'id' | 'rent' | 'seenAt' | 'miles' | 'transitSeconds' | 'drivingSeconds' | 'insights'> & {
     kind?: string;
     bestFit?: { score: number };
   },
-  b: Pick<ListingData, 'id' | 'rent' | 'seenAt' | 'miles' | 'transitSeconds' | 'drivingSeconds'> & {
+  b: Pick<ListingData, 'id' | 'rent' | 'seenAt' | 'miles' | 'transitSeconds' | 'drivingSeconds' | 'insights'> & {
     kind?: string;
     bestFit?: { score: number };
   },
@@ -220,6 +226,15 @@ export function compareResults(
 ) {
   if (sort === 'best') {
     const difference = (b.bestFit?.score ?? -1) - (a.bestFit?.score ?? -1);
+    if (difference) return difference;
+  }
+  if (sort === 'newest') {
+    const first = Date.parse(a.insights?.firstSeen ?? '') || 0;
+    const second = Date.parse(b.insights?.firstSeen ?? '') || 0;
+    if (first !== second) return second - first;
+  }
+  if (sort === 'value') {
+    const difference = (a.insights?.vsMarket ?? Infinity) - (b.insights?.vsMarket ?? Infinity);
     if (difference) return difference;
   }
   if (sort === 'recent') {
@@ -258,6 +273,8 @@ export function matchListings(listings: ListingData[], filters: SearchFilters, w
       (filters.maxRent !== null && listing.rent > filters.maxRent) ||
       (filters.neighborhood && placeName(listing.neighborhood ?? '') !== placeName(filters.neighborhood)) ||
       (filters.nearSubway && !listing.insights?.subway?.length) ||
+      (filters.accessibleSubway && !listing.insights?.subway?.some(({ accessible }) => accessible)) ||
+      (filters.newWithinDays && !(Date.parse(listing.insights?.firstSeen ?? '') >= Date.now() - filters.newWithinDays * 86_400_000)) ||
       (filters.subwayLines?.length && !nearbyLines(listing.insights?.subway).some((line) => filters.subwayLines!.includes(line))) ||
       (filters.stabilizedOnly && listing.building?.stabilized !== true) ||
       (filters.goodBuildings && ['C', 'D'].includes(buildingGrade(listing.building) ?? '')) ||

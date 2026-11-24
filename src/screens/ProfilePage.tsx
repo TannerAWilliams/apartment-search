@@ -3,8 +3,8 @@
  * the platform's settings: the nightly resync switch and the sources page.
  */
 import { useCallback, useEffect, useState } from 'react';
-import { Linking, Platform, Pressable, Switch, Text, View } from 'react-native';
-import { Button } from '../components/ui.tsx';
+import { Linking, Platform, Pressable, Share, Switch, Text, View } from 'react-native';
+import { Button, Field } from '../components/ui.tsx';
 import { colors, styles } from '../styles.ts';
 
 type Run = { at: string; state: string; updated: number; failed: number; background?: boolean };
@@ -108,6 +108,94 @@ function PlanCard({ plan, request, onError }: { plan: 'free' | 'paid'; request: 
   );
 }
 
+/** Download everything kept for the account, or delete the account after typing DELETE. */
+function YourData({
+  request,
+  onSignOut,
+  onError,
+}: {
+  request: (body?: { action: 'delete'; confirm: 'DELETE' }) => Promise<Record<string, unknown>>;
+  onSignOut: () => void;
+  onError: (message: string) => void;
+}) {
+  const [confirming, setConfirming] = useState(false);
+  const [typed, setTyped] = useState('');
+  const [busy, setBusy] = useState(false);
+  async function download() {
+    setBusy(true);
+    try {
+      const text = JSON.stringify(await request(), null, 2);
+      if (Platform.OS === 'web') {
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+        link.download = 'walkup-account.json';
+        link.click();
+        URL.revokeObjectURL(link.href);
+      } else await Share.share({ message: text });
+    } catch (error) {
+      onError(error instanceof Error ? error.message : 'Your data could not be downloaded.');
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function remove() {
+    setBusy(true);
+    try {
+      await request({ action: 'delete', confirm: 'DELETE' });
+      onSignOut();
+    } catch (error) {
+      onError(error instanceof Error ? error.message : 'Your account could not be deleted.');
+      setBusy(false);
+    }
+  }
+  return (
+    <>
+      <Text accessibilityRole="header" style={styles.fieldLabel}>
+        Your data
+      </Text>
+      <View style={[styles.menu, { padding: 16, gap: 10 }]}>
+        <Text style={styles.smallMuted}>
+          Download everything Walkup keeps for your account, or delete your account and all of it. Your application kit, tours and notes
+          stay on this device.
+        </Text>
+        <View style={styles.chipRow}>
+          <Button secondary disabled={busy} onPress={() => void download()}>
+            Download my data
+          </Button>
+          {!confirming && (
+            <Button secondary disabled={busy} onPress={() => setConfirming(true)}>
+              Delete my account
+            </Button>
+          )}
+        </View>
+        {confirming && (
+          <>
+            <Text style={styles.bodyText}>
+              This removes your saved apartments, alerts, notification devices, shared-list membership and sign-in. It can’t be undone.
+            </Text>
+            <Field label="Type DELETE to confirm" value={typed} onChangeText={setTyped} maxLength={6} placeholder="DELETE" />
+            <View style={styles.chipRow}>
+              <Button dark disabled={busy || typed !== 'DELETE'} onPress={() => void remove()}>
+                Delete my account for good
+              </Button>
+              <Button
+                secondary
+                disabled={busy}
+                onPress={() => {
+                  setConfirming(false);
+                  setTyped('');
+                }}
+              >
+                Keep my account
+              </Button>
+            </View>
+          </>
+        )}
+      </View>
+    </>
+  );
+}
+
 export type SettingsChange = { nightlyResync?: boolean; daytimeChecks?: boolean };
 export type Member = { email: string; admin: boolean; paid: boolean };
 
@@ -191,6 +279,7 @@ export function ProfilePage({
   admin,
   plan,
   billingRequest,
+  accountRequest,
   membersRequest,
   savedCount,
   onOpen,
@@ -202,6 +291,7 @@ export function ProfilePage({
   admin: boolean;
   plan: 'free' | 'paid';
   billingRequest?: BillingRequest;
+  accountRequest?: (body?: { action: 'delete'; confirm: 'DELETE' }) => Promise<Record<string, unknown>>;
   membersRequest?: (body?: { email: string; paid: boolean }) => Promise<{ members: Member[] }>;
   savedCount: number;
   onOpen: (tab: string) => void;
@@ -335,7 +425,13 @@ export function ProfilePage({
               </View>
             ))}
           </View>
-          <Menu onOpen={onOpen} rows={[['sources', 'Sources & sync', 'Where listings come from, and resync them now']]} />
+          <Menu
+            onOpen={onOpen}
+            rows={[
+              ['admin', 'Dashboard', 'Members, payments, alerts, sources and runs'],
+              ['sources', 'Sources & sync', 'Where listings come from, and resync them now'],
+            ]}
+          />
           {account && membersRequest && (
             <>
               <Text accessibilityRole="header" style={styles.fieldLabel}>
@@ -346,6 +442,16 @@ export function ProfilePage({
           )}
         </>
       )}
+      {account && accountRequest && <YourData request={accountRequest} onSignOut={onSignOut} onError={onError} />}
+      <View style={[styles.chipRow, { justifyContent: 'center' }]}>
+        <Pressable accessibilityRole="link" onPress={() => onOpen('terms')}>
+          <Text style={styles.linkText}>Terms of Service</Text>
+        </Pressable>
+        <Text style={styles.smallMuted}>·</Text>
+        <Pressable accessibilityRole="link" onPress={() => onOpen('privacy')}>
+          <Text style={styles.linkText}>Privacy Policy</Text>
+        </Pressable>
+      </View>
     </View>
   );
 }

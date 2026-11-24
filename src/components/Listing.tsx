@@ -1,6 +1,6 @@
 import type { ListingData, SourceLink, Workplace } from '../domain.ts';
 import { typicalCosts } from '../move-in.ts';
-import { buildingGrade, marketBadge, type BuildingFacts } from '../insights.ts';
+import { buildingGrade, listedLabel, marketBadge, type BuildingFacts } from '../insights.ts';
 import type { CheckBuilding } from './BuildingReport.tsx';
 import { BuildingReport } from './BuildingReport.tsx';
 import { discoveryFacts, LAUNDRY_LABELS } from '../discovery.ts';
@@ -133,6 +133,7 @@ export function Listing({
   const grade = buildingGrade(listing.building);
   const badge = marketBadge(listing.insights);
   const nearest = listing.insights?.subway?.[0];
+  const listed = listedLabel(listing.insights?.firstSeen);
   const facts = discoveryFacts(listing);
   // Only what the listing says; unknown details are simply not listed.
   const knownFacts = [
@@ -167,6 +168,8 @@ export function Listing({
                 {nearest.minutes} min to {nearest.routes.join(' ')}
               </Text>
             )}
+            {listed?.startsWith('New') && <Text style={card.tag}>{listed}</Text>}
+            {listing.insights?.priceCut ? <Text style={card.tag}>Price cut {formatRent(listing.insights.priceCut)}</Text> : null}
             {listing.building?.stabilized && <Text style={card.tag}>Rent-stabilized building</Text>}
             {grade && <Text style={card.tag}>Building {grade}</Text>}
           </View>
@@ -198,6 +201,12 @@ export function Listing({
             {(listing.kind === 'snapshot' || listing.priceIncludesFees) &&
               (listing.kind === 'snapshot' ? ' · Recorded rent' : ' · Total price, fees included')}
           </Text>
+          {listed && !listed.startsWith('New') && (
+            <Text style={card.subtitle}>
+              {listed}
+              {Date.now() - Date.parse(listing.insights!.firstSeen!) >= 21 * 86_400_000 ? ': worth asking for a better price' : ''}
+            </Text>
+          )}
           {badge && (
             <Text style={[card.subtitle, listing.insights!.vsMarket! < 0 && { color: colors.ink, fontWeight: '600' }]}>
               {badge} · median {formatRent(listing.insights!.marketMedian!)} for {listing.insights!.comparedWith} nearby
@@ -260,7 +269,10 @@ export function Listing({
               <Text style={styles.smallMuted}>
                 Subway within a 10-minute walk:{' '}
                 {listing
-                  .insights!.subway!.map(({ station, routes, minutes }) => `${station} (${routes.join(' ')}), ${minutes} min`)
+                  .insights!.subway!.map(
+                    ({ station, routes, minutes, accessible }) =>
+                      `${station} (${routes.join(' ')}), ${minutes} min${accessible ? ', accessible' : ''}`,
+                  )
                   .join(' · ')}
               </Text>
             )}

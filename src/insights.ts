@@ -8,6 +8,7 @@
  */
 import type { ListingData } from './domain.ts';
 import { buildingKey } from './listings.ts';
+import { displayPriceHistory } from './price-history.ts';
 import { type NearbySubway, type Station, stationIndex } from './subway.ts';
 
 export type BuildingFacts = {
@@ -29,7 +30,36 @@ export type ListingInsights = {
   warnings: string[];
   /** Subway stations within a ten-minute walk, the closest first. */
   subway?: NearbySubway[];
+  /** When Walkup first saw the listing, from its price history. */
+  firstSeen?: string;
+  /** How much the rent dropped at its last change, when it dropped. */
+  priceCut?: number;
 };
+
+/** First seen and the last price cut, from a listing's recorded price history. */
+export function freshness(history: unknown) {
+  const shown = displayPriceHistory(history);
+  if (!shown) return {};
+  const rents = shown.observations.map(({ rent }) => rent);
+  const change = rents.findLastIndex((rent, index) => index > 0 && rent !== rents[index - 1]);
+  const cut = change > 0 && rents[change] < rents[change - 1] ? rents[change - 1] - rents[change] : 0;
+  return {
+    ...(shown.truncated ? {} : { firstSeen: shown.firstObservedAt }),
+    ...(cut ? { priceCut: cut } : {}),
+  };
+}
+
+/** "New on Walkup today", "On Walkup 3 weeks" and the like; null when the first sighting is unknown. */
+export function listedLabel(firstSeen: string | undefined, now = new Date()) {
+  const seen = firstSeen ? Date.parse(firstSeen) : NaN;
+  if (!Number.isFinite(seen)) return null;
+  const days = Math.max(0, Math.floor((now.getTime() - seen) / 86_400_000));
+  if (days === 0) return 'New today';
+  if (days === 1) return 'New yesterday';
+  if (days < 7) return `New ${days} days ago`;
+  if (days < 60) return `On Walkup ${Math.floor(days / 7)} week${days < 14 ? '' : 's'}`;
+  return `On Walkup ${Math.floor(days / 30)} months`;
+}
 
 /** Similar apartments needed before a median is shown. */
 export const MIN_COMPARABLES = 5;
@@ -132,6 +162,7 @@ export function withInsights<T extends ListingData>(
       ...(compared ? { marketMedian: compared.median, comparedWith: compared.count, vsMarket } : {}),
       warnings,
       ...(subway.length ? { subway } : {}),
+      ...freshness(listing.priceHistory),
     };
     return { ...listing, insights, ...(building ? { building } : {}) };
   });

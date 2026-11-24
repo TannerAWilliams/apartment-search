@@ -59,6 +59,7 @@ export function Results({
   onError,
   onCheckBuilding,
   status,
+  onAlert,
 }: {
   visible: number;
   setVisible: (value: number) => void;
@@ -83,13 +84,16 @@ export function Results({
   onCheckBuilding?: React.ComponentProps<typeof Listing>['onCheckBuilding'];
   /** One line on how fresh the sources are, shown with the coverage notes. */
   status?: React.ReactNode;
+  /** Opens the alert form for this search. */
+  onAlert?: () => void;
 }) {
   const { matches } = result;
   const savedView = result.mode === 'saved';
   // A sort with only one option (saved apartments without routing) is not a choice, so it is not shown.
   const sortOptions = Object.entries(RESULT_SORTS).filter(
     // Best fit and the commute sorts weigh travel times, so they are offered only where there are travel times.
-    ([id]) => id === 'rent' || (!savedView && commuteConfigured && id !== 'recent'),
+    // Newest and best value need the whole inventory's history and medians, which saved apartments do not have.
+    ([id]) => id === 'rent' || (!savedView && (id === 'newest' || id === 'value')) || (!savedView && commuteConfigured && id !== 'recent'),
   );
   const unavailable = inventoryUnavailable(result);
   const summary = savedView
@@ -121,6 +125,11 @@ export function Results({
             </Text>
             {!savedView && (applied.zip || applied.source || applied.maxTransitMinutes != null || applied.maxDrivingMinutes != null) && (
               <Text style={styles.smallMuted}>{summary}</Text>
+            )}
+            {!savedView && onAlert && result.total > 0 && (
+              <Pressable accessibilityRole="button" onPress={onAlert} style={{ paddingVertical: 4 }}>
+                <Text style={styles.linkText}>Get email alerts for this search</Text>
+              </Pressable>
             )}
           </View>
           {sortOptions.length > 1 && (

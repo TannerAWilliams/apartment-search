@@ -407,3 +407,23 @@ export async function alertState(env: AppEnv & { BUCKET: Bucket }, owner?: strin
     channels: { email: Boolean(channels.email), push: channels.vapid ? { publicKey: channels.vapid.publicKey } : null },
   };
 }
+
+/** Removes everything alerts keep for one account: its rules, devices and recent alerts. */
+export async function forgetAlerts(bucket: Bucket, owner: string) {
+  const [rules, devices, recent] = await Promise.all([readRules(bucket), readDevices(bucket), readRecent(bucket)]);
+  await write(
+    bucket,
+    RULES_KEY,
+    rules.filter((rule) => rule.owner !== owner),
+  );
+  await write(
+    bucket,
+    DEVICES_KEY,
+    devices.filter((device) => device.owner !== owner),
+  );
+  await write(
+    bucket,
+    RECENT_KEY,
+    recent.filter((alert) => alert.owner !== owner),
+  );
+}

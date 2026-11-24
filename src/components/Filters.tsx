@@ -185,10 +185,25 @@ export function Filters({
               Hide buildings graded C or D
             </Chip>
           </View>
+          <Text style={styles.fieldLabel}>New on Walkup</Text>
+          <View style={styles.chipRow}>
+            {([null, 1, 3, 7, 14] as const).map((days) => (
+              <Chip
+                key={String(days)}
+                selected={(draft.newWithinDays ?? null) === days}
+                onPress={() => set('newWithinDays')(days ?? undefined)}
+              >
+                {days === null ? 'Any time' : days === 1 ? 'Last day' : `Last ${days} days`}
+              </Chip>
+            ))}
+          </View>
           <Text style={styles.fieldLabel}>Subway</Text>
           <View style={styles.chipRow}>
             <Chip selected={draft.nearSubway === true} onPress={() => set('nearSubway')(!draft.nearSubway)}>
               Within a 10-minute walk
+            </Chip>
+            <Chip selected={draft.accessibleSubway === true} onPress={() => set('accessibleSubway')(!draft.accessibleSubway)}>
+              Accessible station (elevators)
             </Chip>
             {SUBWAY_LINES.map((line) => (
               <Chip

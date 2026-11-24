@@ -22,3 +22,9 @@ The code is deployed (`server/billing.ts`); payments stay off, and the upgrade b
   - [ ] `wrangler secret put STRIPE_PRICE_PASS`
 - [ ] Test end to end with Stripe's test keys first: sign in as a free account, upgrade from Profile with card `4242 4242 4242 4242`, and check that Profile shows the paid date and that alerts can be set. Then switch to the live keys.
 - [ ] If the prices change, update `PLAN_LABELS` in `server/billing.ts` so the buttons match.
+
+## Before charging customers
+
+- [ ] Have a lawyer review the Terms of Service and Privacy Policy drafts (`src/screens/LegalPage.tsx`, shown from Profile).
+- [ ] Set `CONTACT_EMAIL` in `src/screens/LegalPage.tsx` to the address customers should write to.
+- [ ] Have a lawyer review each listing source's terms for commercial use (see `docs/nyc-rental-sources.md`).

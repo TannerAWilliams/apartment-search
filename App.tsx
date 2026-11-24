@@ -62,6 +62,8 @@ const NeighborhoodsPage = lazy(() =>
   import('./src/screens/NeighborhoodsPage.tsx').then((module) => ({ default: module.NeighborhoodsPage })),
 );
 const RenewalPage = lazy(() => import('./src/screens/NeighborhoodsPage.tsx').then((module) => ({ default: module.RenewalPage })));
+const AdminPage = lazy(() => import('./src/screens/AdminPage.tsx').then((module) => ({ default: module.AdminPage })));
+const LegalPage = lazy(() => import('./src/screens/LegalPage.tsx').then((module) => ({ default: module.LegalPage })));
 const AlertsPage = lazy(() => import('./src/screens/AlertsPage.tsx').then((module) => ({ default: module.AlertsPage })));
 
 function ApartmentSearch() {
@@ -111,6 +113,8 @@ function ApartmentSearch() {
     membersRequest,
     householdRequest,
     billingRequest,
+    loadAdminStats,
+    accountRequest,
     loadNeighborhoodReport,
     configuredSources,
     companies,
@@ -476,6 +480,7 @@ function ApartmentSearch() {
                               savedByKey={savedByKey}
                               showMarkets={() => navigateTab('marketplaces')}
                               showSources={() => navigateTab('sources')}
+                              onAlert={account ? () => navigateTab('alerts') : undefined}
                               onSave={saveListing}
                               onSaveLink={saveLink}
                               onRemove={(listing) =>
@@ -521,6 +526,7 @@ function ApartmentSearch() {
                     admin={admin}
                     plan={plan}
                     billingRequest={serverState === 'ready' && account ? billingRequest : undefined}
+                    accountRequest={serverState === 'ready' && account ? accountRequest : undefined}
                     membersRequest={serverState === 'ready' ? membersRequest : undefined}
                     savedCount={savedResults.total}
                     onOpen={navigateTab}
@@ -588,6 +594,9 @@ function ApartmentSearch() {
                   />
                 )}
                 {tab === 'apply' && <ApplyPage saved={saved} onError={setError} />}
+                {tab === 'admin' && <AdminPage load={serverState === 'ready' && admin ? loadAdminStats : undefined} onError={setError} />}
+                {tab === 'terms' && <LegalPage kind="terms" />}
+                {tab === 'privacy' && <LegalPage kind="privacy" />}
                 {tab === 'neighborhoods' && (
                   <NeighborhoodsPage
                     loadNeighborhoods={serverState === 'ready' ? loadNeighborhoods : undefined}

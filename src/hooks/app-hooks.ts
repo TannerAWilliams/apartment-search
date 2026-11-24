@@ -99,6 +99,9 @@ const APP_TABS = [
   'apply',
   'neighborhoods',
   'renewal',
+  'admin',
+  'terms',
+  'privacy',
 ];
 
 /**

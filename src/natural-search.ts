@@ -105,9 +105,18 @@ export function understand(text: string, neighborhoods: { name: string; borough:
     changes.nearSubway = true;
     understood.push('near the subway');
   }
+  if (/\b(?:accessible|wheelchair|elevator|step free|ada)\b/.test(said)) {
+    changes.accessibleSubway = true;
+    understood.push('accessible subway station');
+  }
   if (/\b(?:pets?|dogs?|cats?|pet friendly)\b/.test(said)) {
     changes.petsRequired = true;
     understood.push('pets allowed');
+  }
+  // "New" as in recently listed, not New York or New Jersey.
+  if (/\b(?:new|just listed|fresh)\b/.test(said.replace(/\bnew (?:jersey|york)\b/g, ''))) {
+    changes.newWithinDays = 3;
+    understood.push('new in the last 3 days');
   }
   if (/\b(?:in unit laundry|laundry in unit|washer|w d|in unit washer)\b/.test(said)) {
     changes.laundry = 'in_unit';

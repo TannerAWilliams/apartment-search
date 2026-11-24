@@ -93,6 +93,10 @@ export interface SearchFilters {
   subwayLines?: string[];
   /** Only listings within a ten-minute walk of a subway station. */
   nearSubway?: boolean;
+  /** Only listings within a ten-minute walk of a fully accessible (step-free) station. */
+  accessibleSubway?: boolean;
+  /** Only listings Walkup first saw within this many days. */
+  newWithinDays?: number;
   /** Only buildings that register rent-stabilized units. */
   stabilizedOnly?: boolean;
   /** Leave out buildings graded C or D from their records. */

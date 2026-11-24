@@ -203,6 +203,11 @@ export const BillingRequestSchema = v.variant(
   ],
   'Choose checkout or the billing portal.',
 );
+/** Deleting the account must be asked for in words, so a stray request cannot do it. */
+export const AccountRequestSchema = v.object(
+  { action: v.literal('delete', 'Say delete.'), confirm: v.literal('DELETE', 'Type DELETE to confirm.') },
+  'Type DELETE to confirm.',
+);
 export const SettingsRequestSchema = v.pipe(
   v.object({ nightlyResync: v.optional(v.boolean(SETTING)), daytimeChecks: v.optional(v.boolean(SETTING)) }, SETTING),
   v.check((change) => change.nightlyResync !== undefined || change.daytimeChecks !== undefined, SETTING),

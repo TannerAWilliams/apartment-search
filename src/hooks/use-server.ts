@@ -11,6 +11,7 @@ import type { AffordableHousing } from '../screens/AffordableHousing.tsx';
 import type { AlertState } from '../screens/AlertsPage.tsx';
 import type { HouseholdReply } from '../screens/SharedListPage.tsx';
 import type { NeighborhoodReport } from '../screens/NeighborhoodsPage.tsx';
+import type { AdminStats } from '../screens/AdminPage.tsx';
 import type { BillingState, Member, PlatformSettings, SettingsChange } from '../screens/ProfilePage.tsx';
 import type { ListingData, SearchFilters, SearchResult } from '../domain.ts';
 import type { Listing } from '../components/Listing.tsx';
@@ -271,6 +272,14 @@ export function useServer({ appliedFilters, searchVersion, submitted, setResult,
       api<BillingState & { url?: string }>('billing', body ? { body, token: activeToken } : { token: activeToken }),
     [activeToken],
   );
+  /** The admin dashboard's figures. */
+  const loadAdminStats = useCallback(() => api<AdminStats>('admin/stats', { token: activeToken }), [activeToken]);
+  /** The account's data as JSON, or deleting the account (confirmed with the word DELETE). */
+  const accountRequest = useCallback(
+    (body?: { action: 'delete'; confirm: 'DELETE' }) =>
+      api<Record<string, unknown>>('account', body ? { body, token: activeToken } : { token: activeToken }),
+    [activeToken],
+  );
   const loadHousing = useCallback(
     (signal?: AbortSignal) =>
       api<Awaited<ReturnType<NonNullable<React.ComponentProps<typeof AffordableHousing>['loadHousing']>>>>('housing', {
@@ -330,6 +339,8 @@ export function useServer({ appliedFilters, searchVersion, submitted, setResult,
     membersRequest,
     householdRequest,
     billingRequest,
+    loadAdminStats,
+    accountRequest,
     loadNeighborhoodReport,
     configuredSources,
     companies,

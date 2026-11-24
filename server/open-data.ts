@@ -29,7 +29,15 @@ const RECENT_YEARS = 2;
 const RegistrySchema = v.object({ checkedAt: v.string(), buildings: v.record(v.string(), v.number()) });
 const StationsSchema = v.object({
   checkedAt: v.string(),
-  stations: v.array(v.object({ name: v.string(), routes: v.array(v.string()), latitude: v.number(), longitude: v.number() })),
+  stations: v.array(
+    v.object({
+      name: v.string(),
+      routes: v.array(v.string()),
+      latitude: v.number(),
+      longitude: v.number(),
+      accessible: v.optional(v.boolean()),
+    }),
+  ),
 });
 
 async function readJson(fetcher: FetchTransport, url: string): Promise<unknown> {
@@ -94,7 +102,11 @@ export async function loadStations(fetcher: FetchTransport, now = new Date()) {
     const longitude = String(row.gtfs_longitude ?? '');
     if (!NUMBER.test(latitude) || !NUMBER.test(longitude)) return [];
     const routes = row.daytime_routes.split(/\s+/).filter((route) => /^[0-9A-Z]{1,2}$/.test(route));
-    return routes.length ? [{ name: row.stop_name, routes, latitude: Number(latitude), longitude: Number(longitude) }] : [];
+    // ADA 1 is fully accessible; 2 is partly (one direction only), which is not enough to count on.
+    const accessible = String(row.ada) === '1';
+    return routes.length
+      ? [{ name: row.stop_name, routes, latitude: Number(latitude), longitude: Number(longitude), ...(accessible ? { accessible } : {}) }]
+      : [];
   });
   if (!stations.length) throw new Error('The subway station list was empty.');
   return { checkedAt: now.toISOString(), stations };

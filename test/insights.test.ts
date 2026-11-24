@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import { buildingGrade, marketBadge, rentBenchmarks, withInsights } from '../src/insights.ts';
-import { matchListings, parseFilters } from '../src/search.ts';
+import { compareResults, matchListings, parseFilters } from '../src/search.ts';
 import { buildingKey } from '../src/listings.ts';
 import { testListing } from './fixtures/listing.ts';
 
@@ -83,4 +83,44 @@ test('a neighborhood filter matches its name without case or punctuation', () =>
     matchListings(listings, parseFilters({ region: 'all', bedrooms: null, maxRent: null, neighborhood }), null).map(({ id }) => id);
   expect(ids('west-village')).toEqual(['w']);
   expect(ids('')).toEqual(['w', 'c', 'n']);
+});
+
+test('first seen, the last price cut, and newest and best-value sorting', async () => {
+  const { freshness, listedLabel } = await import('../src/insights.ts');
+  const history = (rents: number[], truncated = false) => ({
+    sourceId: 's',
+    firstObservedAt: '2026-11-01T00:00:00Z',
+    lastObservedAt: `2026-11-0${rents.length}T00:00:00Z`,
+    truncated,
+    observations: rents.map((rent, index) => ({ checkedAt: `2026-11-0${index + 1}T00:00:00Z`, rent, priceIncludesFees: false })),
+  });
+  expect(freshness(history([3000, 2800]))).toEqual({ firstSeen: '2026-11-01T00:00:00Z', priceCut: 200 });
+  expect(freshness(history([3000, 2800, 2900]))).toEqual({ firstSeen: '2026-11-01T00:00:00Z' });
+  expect(freshness(history([3000, 2800, 2800]))).toMatchObject({ priceCut: 200 });
+  expect(freshness(history([3000], true)), 'an older first sighting is unknown').toEqual({});
+  expect(freshness(null)).toEqual({});
+  const now = new Date('2026-11-24T12:00:00Z');
+  const ago = (days: number) => new Date(now.getTime() - days * 86_400_000).toISOString();
+  expect([0, 1, 3, 7, 13, 21, 90].map((days) => listedLabel(ago(days), now))).toEqual([
+    'New today',
+    'New yesterday',
+    'New 3 days ago',
+    'On Walkup 1 week',
+    'On Walkup 1 week',
+    'On Walkup 3 weeks',
+    'On Walkup 3 months',
+  ]);
+  expect(listedLabel(undefined, now)).toBeNull();
+
+  const recent = testListing({ id: 'new', rent: 3000, insights: { warnings: [], firstSeen: new Date().toISOString(), vsMarket: 0.1 } });
+  const old = testListing({ id: 'old', rent: 2000, insights: { warnings: [], firstSeen: '2020-01-01T00:00:00Z', vsMarket: -0.2 } });
+  const unknown = testListing({ id: 'unknown', rent: 1000 });
+  const ids = (raw: Record<string, unknown>, sort = 'rent') =>
+    matchListings([recent, old, unknown], parseFilters({ region: 'all', bedrooms: null, maxRent: null, ...raw }), null)
+      .sort((a, b) => compareResults(a, b, sort))
+      .map(({ id }) => id);
+  expect(ids({ newWithinDays: 3 })).toEqual(['new']);
+  expect(ids({ newWithinDays: 5 }), 'only offered windows').toEqual(['unknown', 'old', 'new']);
+  expect(ids({}, 'newest')).toEqual(['new', 'old', 'unknown']);
+  expect(ids({}, 'value')).toEqual(['old', 'new', 'unknown']);
 });
