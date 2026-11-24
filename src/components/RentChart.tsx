@@ -6,7 +6,7 @@ import { Pressable, ScrollView, Text, View } from 'react-native';
 import { formatSnapshotMonth, RENT_GROUPINGS, rentAreas, SNAPSHOT_MONTH, SNAPSHOT_SOURCE } from '../market.ts';
 // Resolves to offline-rent-data.web.ts on the web, which bundles no data.
 import { offlineRentData } from '../offline-rent-data';
-import { NYC_SEARCH_AREAS } from '../regions.ts';
+import { NYC_SEARCH_AREAS, searchBorough } from '../regions.ts';
 import { bedroomLabel, formatRent } from '../search.ts';
 import { styles } from '../styles.ts';
 import { Button, Chip, Field, Link, toggleProps } from './ui.tsx';
@@ -118,6 +118,7 @@ export function RentChart({
   const [visible, setVisible] = useState(PAGE_SIZE);
   const [remote, setRemote] = useState<(RentMarket & { region: string; grouping: string }) | null>(null);
   const [failedLoad, setFailedLoad] = useState('');
+  const [historyArea, setHistoryArea] = useState<string | undefined>();
 
   useEffect(() => {
     if (dataset !== 'market' || !loadMarket) return;
@@ -179,7 +180,7 @@ export function RentChart({
         <Button secondary onPress={() => setDataset('market')}>
           Back to rent trends
         </Button>
-        <MarketHistory load={loadHistory} />
+        <MarketHistory load={loadHistory} initialArea={historyArea} />
       </View>
     );
 
@@ -196,7 +197,13 @@ export function RentChart({
         <Chip selected={dataset === 'market'} onPress={() => resetAreas(setDataset, 'market')}>
           Market snapshot
         </Chip>
-        <Chip selected={false} onPress={() => setDataset('dashboard')}>
+        <Chip
+          selected={false}
+          onPress={() => {
+            setHistoryArea(undefined);
+            setDataset('dashboard');
+          }}
+        >
           Market history 2010–2026
         </Chip>
         <Chip selected={dataset === 'saved'} onPress={() => resetAreas(setDataset, 'saved')}>
@@ -229,6 +236,20 @@ export function RentChart({
               setQuery(value);
               setSelection('overall');
               setVisible(PAGE_SIZE);
+              // A ZIP code is found among ZIP areas, in its own borough, whatever was chosen above.
+              const digits = value.trim();
+              if (!/^\d{1,5}$/.test(digits)) return;
+              if (grouping !== 'zip') {
+                setGrouping('zip');
+                setPinned([]);
+              }
+              const borough = digits.length === 5 ? searchBorough({ state: 'NY', zip: digits }) : null;
+              const covered =
+                region === borough || (region === 'manhattan-brooklyn' && (borough === 'manhattan' || borough === 'brooklyn'));
+              if (borough && !covered) {
+                setRegion(borough);
+                setPinned([]);
+              }
             }}
             maxLength={80}
           />
@@ -264,6 +285,21 @@ export function RentChart({
                 month={month}
                 history={history}
               />
+              {dataset === 'market' && loadHistory && grouping !== 'zip' && (
+                // This snapshot starts in May 2026. StreetEasy's figures for the same neighborhood or borough go back
+                // to 2010, though not by ZIP code.
+                <Pressable
+                  accessibilityRole="link"
+                  onPress={() => {
+                    setHistoryArea(selected.id === 'overall' ? 'NYC' : selected.label);
+                    setDataset('dashboard');
+                  }}
+                >
+                  <Text style={styles.linkText}>
+                    {selected.id === 'overall' ? 'New York City' : selected.label} since 2010 (StreetEasy) →
+                  </Text>
+                </Pressable>
+              )}
               <View style={styles.chartCompare}>
                 <Text style={styles.smallMuted}>Pin this area, then select another in the table to compare.</Text>
                 <View style={styles.chipRow}>

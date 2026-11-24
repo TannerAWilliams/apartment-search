@@ -115,7 +115,8 @@ function AreaPicker({
   );
 }
 
-export function MarketHistory({ load }: { load?: LoadHistory }) {
+/** `initialArea` opens the page on that neighborhood or borough by name, when StreetEasy reports it. */
+export function MarketHistory({ load, initialArea }: { load?: LoadHistory; initialArea?: string }) {
   const catalog = useHistory<HistoryCatalog>(load, 'history');
   const [market, setMarket] = useState<Market>('Rentals');
   const [segment, setSegment] = useState('All');
@@ -130,6 +131,13 @@ export function MarketHistory({ load }: { load?: LoadHistory }) {
 
   const data = catalog.data;
   const areas = data?.areas ?? [];
+  useEffect(() => {
+    const wanted = initialArea?.trim().toLowerCase();
+    const match = wanted ? areas.find(({ name }) => name.toLowerCase() === wanted) : undefined;
+    if (match) setAreaId(match.id);
+    // Only when the catalog first arrives; later choices on the page are the person's own.
+    // biome-ignore lint/correctness/useExhaustiveDependencies: see above
+  }, [data]);
   const area = areas.find(({ id }) => id === areaId);
   const latestMonth = data?.latestMonth ?? '2026-10';
   const config = MARKETS[market];

@@ -554,6 +554,23 @@ test('market history charts one area, compares another, and says when figures ca
       },
     });
   });
+  // The snapshot's own figures: neighborhoods, or ZIP codes in the region asked for.
+  const sizes = [3000, 3500, 4200, 5000, 6000].map((median) => ({ median, count: 4 }));
+  const marketRequests: string[] = [];
+  await page.route('**/api/market**', async (route) => {
+    const url = new URL(route.request().url());
+    const region = url.searchParams.get('region')!;
+    const grouping = url.searchParams.get('grouping')!;
+    marketRequests.push(region + '|' + grouping);
+    const area = (id: string, label: string, detail: string) => ({ id, label, detail, count: 20, sizes });
+    const areas =
+      grouping !== 'zip'
+        ? [area('overall', 'All covered areas', ''), area('park-slope', 'Park Slope', 'Brooklyn, NY')]
+        : region === 'queens'
+          ? [area('overall', 'All covered areas', ''), area('11101', '11101', 'Long Island City, Queens, NY')]
+          : [area('overall', 'All covered areas', ''), area('11215', '11215', 'Park Slope, Brooklyn, NY')];
+    return route.fulfill({ json: { month: '2026-10', areas, history: [] } });
+  });
   await page.getByRole('tab', { name: 'Market', exact: true }).click();
   await page.getByRole('button', { name: 'Market history 2010–2026', exact: true }).click();
   await expect(page.getByText('These figures could not be loaded. No values have been substituted; try again shortly.')).toBeVisible();
@@ -577,6 +594,23 @@ test('market history charts one area, compares another, and says when figures ca
   await expect(page.getByRole('button', { name: 'Stop comparing DUMBO', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Back to rent trends', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Market history', exact: true })).toHaveCount(0);
+
+  // A neighborhood in the snapshot links to the same neighborhood's StreetEasy history since 2010.
+  await page.getByText('Park Slope', { exact: true }).first().click();
+  await page.getByRole('link', { name: 'Park Slope since 2010 (StreetEasy) →', exact: true }).click();
+  await expect(page.getByText('Area: Park Slope (Brooklyn)', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Back to rent trends', exact: true }).click();
+
+  // Typing a ZIP code finds it among ZIP areas, in its own borough.
+  const find = page.getByPlaceholder('Search names or ZIP codes');
+  await find.fill('11215');
+  await expect.poll(() => marketRequests.at(-1)).toMatch(/^(manhattan-brooklyn|brooklyn)\|zip$/);
+  await expect(page.getByText('Park Slope, Brooklyn, NY', { exact: true }).first()).toBeVisible();
+  await find.fill('11101');
+  await expect.poll(() => marketRequests.at(-1)).toBe('queens|zip');
+  await expect(page.getByText('Long Island City, Queens, NY', { exact: true }).first()).toBeVisible();
+  // ZIP areas have no StreetEasy history to link to.
+  await expect(page.getByRole('link', { name: /since 2010/ })).toHaveCount(0);
 });
 
 test('iPhone 17 portrait keeps primary controls inside the screen', async ({ page }, testInfo) => {
