@@ -6,7 +6,14 @@ import { loadPublicPages, publicListingUrl } from './public-rentals.ts';
 
 const SOURCE = { id: 'apartmentlist', name: 'Apartment List', kind: 'feed' };
 const ORIGIN = 'https://www.apartmentlist.com';
-const PAGES = [{ url: ORIGIN + '/ny/new-york' }];
+// Apartment List's NYC search runs to about 65 pages of 20 buildings; robots.txt allows them. Reading 60 leaves
+// room for the count to shrink without asking for pages that do not exist.
+const PAGE_COUNT = 60;
+const PAGES = Array.from({ length: PAGE_COUNT }, (_, index) => ({
+  url: ORIGIN + '/ny/new-york' + (index ? `/page-${index + 1}` : ''),
+}));
+/** Units free now or within this many days are kept; later move-ins are not yet on the market for a renter. */
+const AVAILABLE_WITHIN_DAYS = 60;
 const listingUrl = (url: unknown) => publicListingUrl(url, ORIGIN, /^\/ny\/new-york\/[^/]+$/);
 const plain = (html: string) =>
   html
@@ -19,10 +26,10 @@ export const APARTMENTLIST_LIVE = {
   ...SOURCE,
   id: 'apartmentlist-live',
   marketplace: SOURCE.id,
-  coverage: 'NYC first search page; individually identified units marked available now',
+  coverage: `NYC search, ${PAGE_COUNT} pages; individually identified units available now or within ${AVAILABLE_WITHIN_DAYS} days`,
   regions: ['nyc'],
-  minPages: 1,
-  maxPages: 1,
+  minPages: PAGE_COUNT,
+  maxPages: PAGE_COUNT,
   rowsPerPage: 150,
   listingUrl,
   load: (fetcher: FetchTransport, now: Date) => loadPublicPages(SOURCE, PAGES, parseApartmentListPage, fetcher, now),
@@ -33,6 +40,7 @@ type ApartmentListUnit = {
   unitTitle?: string;
   unitType?: string;
   availableNow?: unknown;
+  availableWhen?: unknown;
   price?: unknown;
   isTotalPrice?: unknown;
 };
@@ -83,7 +91,9 @@ export function parseApartmentListPage(html: string, _market: unknown, checkedAt
     return (units.get(id) ?? []).flatMap((unit) => {
       const number = unit.unitTitle?.match(/^Unit\s+([\w-]+)$/)?.[1];
       const beds = unit.unitType === 'Studio' ? 0 : Number(unit.unitType?.match(/^(\d+) Beds?$/)?.[1]);
-      if (unit.availableNow !== true || !number || !Number.isInteger(beds) || !Number.isFinite(unit.price)) return [];
+      const availableOn = typeof unit.availableWhen === 'string' ? Date.parse(unit.availableWhen) : NaN;
+      const available = unit.availableNow === true || availableOn - Date.parse(checkedAt) <= AVAILABLE_WITHIN_DAYS * 24 * 60 * 60 * 1000;
+      if (!available || !number || !Number.isInteger(beds) || !Number.isFinite(unit.price)) return [];
       const listing = normalizeListing(
         {
           id: unit.unit_rental_id,

@@ -232,7 +232,7 @@ test('partial refresh keeps older units dated and cached, and a complete refresh
   expect((await search(parseFilters({ liveOnly: true, includeCached: true }), env)).total).toBe(1);
 });
 
-test('Apartment List imports identified available units without collapsing units sharing a property URL', () => {
+test('Apartment List imports identified units available within 60 days without collapsing units sharing a property URL', () => {
   const payload = [
     'a:' + JSON.stringify({ rental_id: 'p1', slug: '/ny/new-york/example' }),
     // A flight line that is not JSON is skipped.
@@ -245,14 +245,31 @@ test('Apartment List imports identified available units without collapsing units
             { unit_rental_id: 'p1-A', unitTitle: 'Unit A', unitType: '1 Bed', price: 2500, availableNow: true },
             { unit_rental_id: 'p1-B', unitTitle: 'Unit B', unitType: 'Studio', price: 2200, availableNow: true },
             { unit_rental_id: 'p1-C', unitTitle: 'Unit C', unitType: '1 Bed', price: 2400, availableNow: false },
+            {
+              unit_rental_id: 'p1-D',
+              unitTitle: 'Unit D',
+              unitType: '2 Beds',
+              price: 3100,
+              availableNow: false,
+              availableWhen: new Date(at.getTime() + 30 * 86_400_000).toISOString(),
+            },
+            {
+              unit_rental_id: 'p1-E',
+              unitTitle: 'Unit E',
+              unitType: '1 Bed',
+              price: 2600,
+              availableNow: false,
+              availableWhen: new Date(at.getTime() + 90 * 86_400_000).toISOString(),
+            },
           ],
         },
       }),
   ].join('\n');
   const html = `<a href="/ny/new-york/example">Example</a><address>10 Example Street, New York City, NY 10001</address><script>self.__next_f.push(${JSON.stringify([1, payload])})</script>`;
   const listings = parseApartmentListPage(html, {}, at.toISOString());
-  expect(listings.map((item) => item.unit)).toStrictEqual(['A', 'B']);
-  expect(deduplicatePublicRentals([...listings, ...listings]).length).toBe(2);
+  // C has no move-in date; D is free within 60 days; E is too far off.
+  expect(listings.map((item) => item.unit)).toStrictEqual(['A', 'B', 'D']);
+  expect(deduplicatePublicRentals([...listings, ...listings]).length).toBe(3);
 });
 
 test('Redfin excludes communities, rent ranges and inactive rentals', () => {
