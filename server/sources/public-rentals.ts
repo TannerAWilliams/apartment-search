@@ -36,9 +36,15 @@ export function publicListingUrl(value: unknown, origin: string, pathPattern: Re
   }
 }
 
-export async function fetchPublicHtml(fetcher: FetchTransport, url: string, name: string, timeout = 9000) {
+/**
+ * How the app names itself to sites that turn away clients without the usual "Mozilla/5.0 (compatible; …)"
+ * crawler form. It says what the app is and where it lives; it never claims to be a browser.
+ */
+export const CRAWLER_USER_AGENT = 'Mozilla/5.0 (compatible; apartment-search/1.0; +https://apartments.5thof6.com)';
+
+export async function fetchPublicHtml(fetcher: FetchTransport, url: string, name: string, timeout = 9000, userAgent?: string) {
   const response = await fetcher(url, {
-    headers: { Accept: 'text/html' },
+    headers: { Accept: 'text/html', ...(userAgent ? { 'User-Agent': userAgent } : {}) },
     redirect: 'manual',
     signal: AbortSignal.timeout(timeout),
   });
@@ -47,6 +53,8 @@ export async function fetchPublicHtml(fetcher: FetchTransport, url: string, name
   if (response.headers.get('x-amzn-waf-action') === 'challenge' || response.headers.get('cf-mitigated') === 'challenge') {
     throw Object.assign(new Error(name + ' answered with a browser verification challenge (bot protection).'), { code: 'bot_challenge' });
   }
+  // Some sites send rate-limited clients to a page of their own (ratelimited.<site>) instead of answering 429.
+  if (/^https:\/\/ratelimited\./.test(response.headers.get('location') ?? '')) throw new Error(name + ' returned HTTP 429 (rate limited).');
   if (!response.ok) throw new Error(name + ' returned HTTP ' + response.status + '.');
   if (
     !response.headers.get('content-type')?.includes('text/html') ||
@@ -103,7 +111,12 @@ export async function loadPublicPages<P extends { url: string }>(
   fetcher: FetchTransport = fetch,
   now = new Date(),
   /** How many pages to read at once, and the pause between groups, for sites that limit how fast they are read. */
-  { concurrency = 3, intervalMs = 0 }: { concurrency?: number; intervalMs?: number } = {},
+  {
+    concurrency = 3,
+    intervalMs = 0,
+    userAgent,
+    timeoutMs,
+  }: { concurrency?: number; intervalMs?: number; userAgent?: string; timeoutMs?: number } = {},
 ) {
   const listings: ListingData[] = [];
   const failures: unknown[] = [];
@@ -113,7 +126,7 @@ export async function loadPublicPages<P extends { url: string }>(
     if (index > 0 && intervalMs > 0) await new Promise((resolve) => setTimeout(resolve, intervalMs));
     const batch = await Promise.allSettled(
       pages.slice(index, index + concurrency).map(async (page) => {
-        const html = await fetchPublicHtml(fetcher, page.url, source.name);
+        const html = await fetchPublicHtml(fetcher, page.url, source.name, timeoutMs, userAgent);
         return parser(html, page, checkedAt);
       }),
     );
@@ -123,6 +136,8 @@ export async function loadPublicPages<P extends { url: string }>(
         listings.push(...result.value);
       } else failures.push(result.reason);
     }
+    // A site that fails its whole first batch is not serving its search; it is not asked for the rest.
+    if (index === 0 && completedPages === 0) break;
     // A site that blocks, rate-limits or challenges us is not asked for more pages.
     if (
       failures.some(

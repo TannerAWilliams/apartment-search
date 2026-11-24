@@ -10,6 +10,7 @@ import { ZUMPER_LIVE } from './zumper.ts';
 import { HOTPADS_LIVE } from './hotpads.ts';
 import { REDFIN_LIVE } from './redfin.ts';
 import { APARTMENTLIST_LIVE } from './apartmentlist.ts';
+import { APARTMENTGUIDE_LIVE } from './apartmentguide.ts';
 import { CITYREALTY_LIVE } from './cityrealty.ts';
 import { BRODSKY_LIVE } from './brodsky.ts';
 import { GLENWOOD_LIVE } from './glenwood.ts';
@@ -28,6 +29,7 @@ export const DIRECT_RENTAL_SOURCES = [
   HOTPADS_LIVE,
   REDFIN_LIVE,
   APARTMENTLIST_LIVE,
+  APARTMENTGUIDE_LIVE,
   CITYREALTY_LIVE,
   // Landlords' own listings.
   STUYTOWN_LIVE,
