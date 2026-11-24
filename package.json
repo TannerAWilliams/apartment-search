@@ -51,7 +51,7 @@
   },
   "devDependencies": {
     "@axe-core/playwright": "4.10.2",
-    "@biomejs/biome": "2.6.8",
+    "@biomejs/biome": "2.6.9",
     "@types/bun": "1.4.5",
     "@types/leaflet": "^1.9.22",
     "@types/leaflet.markercluster": "^1.5.6",
