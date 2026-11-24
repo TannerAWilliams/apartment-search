@@ -23,10 +23,17 @@ The code is deployed (`server/billing.ts`); payments stay off, and the upgrade b
 - [ ] Test end to end with Stripe's test keys first: sign in as a free account, upgrade from Profile with card `4242 4242 4242 4242`, and check that Profile shows the paid date and that alerts can be set. Then switch to the live keys.
 - [ ] If the prices change, update `PLAN_LABELS` in `server/billing.ts` so the buttons match.
 
+## Now that the site is public (do these first, in order)
+
+- [ ] Check that sign-in codes reach any address: in a private browser window, open the site, tap **Log in**, and request a code for an email that is not yours (a friend's). Confirm it arrives. If it does not, Cloudflare is only sending to verified addresses; set up Cloudflare Email Service sending for `5thof6.com` (Email → Email Sending) first.
+- [ ] Open sign-ups: `wrangler secret put OPEN_SIGNUPS` with the value `true` (from `deploy/cloudflare`). Until this is set, visitors can search but only `ACCESS_ALLOWED_EMAILS` can create an account to save apartments or get alerts; anyone else asking for a code gets none.
+- [ ] Try the site as a visitor, in a private window: the home page opens at `/`, the three questions show apartments, Search and Rent prices work, and tapping a heart asks you to create an account.
+- [ ] Decide whether StreetEasy's market history (the inventory, price-cut, ranking and best-month cards on Rent prices) stays public or goes back to signed-in members only. It is public now, credited to StreetEasy; ask Claude to switch it if you prefer members only.
+- [ ] Have a lawyer check StreetEasy's Data Dashboard terms for showing its figures on a public site (add it to the source review below).
+- [ ] Tell search engines about the public site: add `apartments.5thof6.com` to Google Search Console and submit `https://apartments.5thof6.com/sitemap.xml`.
+
 ## Before charging customers
 
-- [ ] Open sign-ups: `wrangler secret put OPEN_SIGNUPS` with the value `true` (from `deploy/cloudflare`). The site is public now, but until this is set only `ACCESS_ALLOWED_EMAILS` can create an account to save apartments or get alerts; anyone else asking for a code gets none.
-- [ ] Check that sign-in codes reach any address: request a code for an email that is not yours (a friend's) and confirm it arrives. If it does not, Cloudflare is only sending to verified addresses; set up Cloudflare Email Service sending for `5thof6.com` (Email → Email Sending) before opening sign-ups.
 - [ ] Have a lawyer review the Terms of Service and Privacy Policy drafts (`src/screens/LegalPage.tsx`, shown from Profile).
 - [ ] Set `CONTACT_EMAIL` in `src/screens/LegalPage.tsx` to the address customers should write to.
 - [ ] Have a lawyer review each listing source's terms for commercial use (see `docs/nyc-rental-sources.md`).
