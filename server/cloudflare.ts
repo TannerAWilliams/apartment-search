@@ -24,6 +24,7 @@ type Workflow = {
 type Environment = AppEnv & {
   /** Secret: comma-separated emails allowed to sign in, kept out of the repository. */
   ACCESS_ALLOWED_EMAILS?: string;
+  OPEN_SIGNUPS?: string;
   /** Secret: turns on sign-in with an email code (server/auth.ts) and signs its sessions. */
   BETTER_AUTH_SECRET?: string;
   APARTMENTS: D1Database;

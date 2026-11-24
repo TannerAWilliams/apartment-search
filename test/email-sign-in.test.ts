@@ -186,3 +186,22 @@ test('the app is told who is signed in, and signing out ends the session', async
   expect((await post(env, '/api/auth/sign-out', {}, bearer)).status).toBe(200);
   expect((await call(env, '/api/config', { headers: bearer })).status).toBe(401);
 });
+
+test('with open sign-ups anyone gets a code and a free account', async () => {
+  const { env, sent } = await environment();
+  const open = { ...env, OPEN_SIGNUPS: 'true' };
+  const stranger = 'stranger@example.test';
+  expect((await post(open, '/api/auth/email-otp/send-verification-otp', { email: stranger, type: 'sign-in' })).status).toBe(200);
+  expect(sent.at(-1)?.to).toEqual([stranger]);
+  const response = await post(open, '/api/auth/sign-in/email-otp', { email: stranger, otp: code(sent.at(-1)?.text ?? '') });
+  expect(response.status).toBe(200);
+  const token = response.headers.get('set-auth-token') ?? '';
+  const config = await (await call(open, '/api/config', { headers: { Authorization: 'Bearer ' + token } })).json();
+  expect(config).toMatchObject({ account: stranger, admin: false, plan: 'free' });
+  // The admin's account list includes people who signed up.
+  const admin = await signIn(open, sent);
+  const members = (await (await call(open, '/api/members', { headers: { Cookie: admin.cookie } })).json()) as {
+    members: { email: string }[];
+  };
+  expect(members.members.map(({ email }) => email)).toContain(stranger);
+});

@@ -127,6 +127,7 @@ EAS keeps the build number and asks for your Apple Developer account the first t
 | Variable | Where | Purpose |
 | --- | --- | --- |
 | `ACCESS_ALLOWED_EMAILS` | Worker secret | Required for sign-in: comma-separated emails that may sign in with an email code. Kept out of the repository. |
+| `OPEN_SIGNUPS` | Worker secret or variable | Optional: `true` lets anyone create an account with their email (it starts on the free plan). Without it, only `ACCESS_ALLOWED_EMAILS` can sign in. |
 | `PAID_EMAILS` | Worker secret | Optional: comma-separated emails on the paid plan, besides those an admin marks paid on the Profile page. |
 | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_MONTHLY`, `STRIPE_PRICE_PASS` | Worker secrets | Optional: Stripe payments for the paid plan; see Payments above. |
 | `ADMIN_EMAILS` | Worker secret | Optional: comma-separated admin emails. Without it, the first address in `ACCESS_ALLOWED_EMAILS` is the admin. |

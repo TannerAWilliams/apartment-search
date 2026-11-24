@@ -25,6 +25,9 @@ The code is deployed (`server/billing.ts`); payments stay off, and the upgrade b
 
 ## Before charging customers
 
+- [ ] Open sign-ups: `wrangler secret put OPEN_SIGNUPS` with the value `true` (from `deploy/cloudflare`). Until then only `ACCESS_ALLOWED_EMAILS` can sign in.
+- [ ] Check that sign-in codes reach any address: request a code for an email that is not yours (a friend's) and confirm it arrives. If it does not, Cloudflare is only sending to verified addresses; set up Cloudflare Email Service sending for `5thof6.com` (Email → Email Sending) before opening sign-ups.
+
 - [ ] Have a lawyer review the Terms of Service and Privacy Policy drafts (`src/screens/LegalPage.tsx`, shown from Profile).
 - [ ] Set `CONTACT_EMAIL` in `src/screens/LegalPage.tsx` to the address customers should write to.
 - [ ] Have a lawyer review each listing source's terms for commercial use (see `docs/nyc-rental-sources.md`).

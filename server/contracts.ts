@@ -59,6 +59,8 @@ export type AppEnv = {
   ADMIN_EMAILS?: string;
   /** Accounts on the paid plan besides those an admin marks paid (server/plans.ts). */
   PAID_EMAILS?: string;
+  /** "true" lets anyone sign up (server/auth.ts). */
+  OPEN_SIGNUPS?: string;
   /** Stripe payments (server/billing.ts). */
   STRIPE_SECRET_KEY?: string;
   STRIPE_WEBHOOK_SECRET?: string;

@@ -43,10 +43,13 @@ export async function setPaid(bucket: Bucket, email: string, paid: boolean) {
   return next;
 }
 
-/** The accounts an admin can see on the Profile page: everyone allowed to sign in, and anyone marked paid. */
-export async function members(env: AppEnv, bucket: Bucket) {
+/**
+ * The accounts an admin can see on the Profile page: everyone allowed to sign in, everyone who has an account
+ * (`accounts`, from the sign-in database; with open sign-ups that is anyone who joined), and anyone marked paid.
+ */
+export async function members(env: AppEnv, bucket: Bucket, accounts: string[] = []) {
   const admins = new Set(adminEmails(env));
   const paid = await paidEmails(env, bucket);
-  const everyone = [...new Set([...addresses(env.ACCESS_ALLOWED_EMAILS), ...paid])].sort();
+  const everyone = [...new Set([...addresses(env.ACCESS_ALLOWED_EMAILS), ...accounts.map((email) => email.toLowerCase()), ...paid])].sort();
   return everyone.map((email) => ({ email, admin: admins.has(email), paid: paid.has(email) }));
 }

@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Linking, Platform, Pressable, Share, Switch, Text, View } from 'react-native';
 import { Button, Field } from '../components/ui.tsx';
+import { MenuIcon } from '../components/MenuIcons.tsx';
 import { colors, styles } from '../styles.ts';
 
 type Run = { at: string; state: string; updated: number; failed: number; background?: boolean };
@@ -263,6 +264,7 @@ function Menu({ rows, onOpen }: { rows: Row[]; onOpen: (key: string) => void }) 
           onPress={() => onOpen(key)}
           style={({ pressed }) => [styles.menuRow, index > 0 && styles.menuDivider, pressed && styles.pressed]}
         >
+          <MenuIcon name={key} color={colors.ink} />
           <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
             <Text style={styles.menuLabel}>{label}</Text>
             <Text style={styles.smallMuted}>{detail}</Text>

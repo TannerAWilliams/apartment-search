@@ -113,10 +113,7 @@ export function Landing({ onSignedIn }: { onSignedIn: (token: string) => void })
       <Text accessibilityRole="header" style={{ fontSize: 20, fontWeight: '600', color: colors.ink }}>
         Sign in or join
       </Text>
-      <Text style={styles.smallMuted}>
-        Enter your email and we’ll send a six-digit code. No password. Walkup is opening to people in stages; if your email isn’t on the
-        list yet, no code is sent.
-      </Text>
+      <Text style={styles.smallMuted}>Enter your email and we’ll send a six-digit code. No password needed.</Text>
       <SignIn onSignedIn={onSignedIn} primary />
     </View>
   );

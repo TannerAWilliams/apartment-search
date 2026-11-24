@@ -15,6 +15,8 @@ export type AuthEnv = {
   /** Secret: signs sessions. Sign-in is off without it. */
   BETTER_AUTH_SECRET?: string;
   APP_ORIGIN?: string;
+  /** "true" lets anyone create an account with their email; otherwise only ACCESS_ALLOWED_EMAILS can. */
+  OPEN_SIGNUPS?: string;
   ACCESS_ALLOWED_EMAILS?: string;
   /** The Email Service binding and sender that alerts use, which also send the codes. */
   ALERT_EMAIL?: SendEmail;
@@ -27,6 +29,14 @@ export const AUTH_BASE_PATH = '/api/auth';
 const CODE_MINUTES = 10;
 
 /** The allowed emails, lowercased. */
+/**
+ * Whether an email may sign in: anyone when OPEN_SIGNUPS is "true" (a new account starts on the free plan),
+ * otherwise only the addresses in ACCESS_ALLOWED_EMAILS.
+ */
+export function mayUseEmail(env: Pick<AuthEnv, 'ACCESS_ALLOWED_EMAILS' | 'OPEN_SIGNUPS'>, email: string) {
+  return env.OPEN_SIGNUPS === 'true' || allowedEmails(env).includes(email.toLowerCase());
+}
+
 export const allowedEmails = (env: Pick<AuthEnv, 'ACCESS_ALLOWED_EMAILS'>) =>
   (env.ACCESS_ALLOWED_EMAILS ?? '')
     .split(',')
@@ -35,7 +45,7 @@ export const allowedEmails = (env: Pick<AuthEnv, 'ACCESS_ALLOWED_EMAILS'>) =>
 
 /** Better Auth's settings for this app. The schema generator and tests use them too, so all three match. */
 export function authOptions(env: AuthEnv, database: AuthDatabase) {
-  const allowed = new Set(allowedEmails(env));
+  const allowed = { has: (email: string) => mayUseEmail(env, email) };
   const origin = env.APP_ORIGIN?.replace(/\/$/, '');
   return {
     database,
@@ -98,5 +108,5 @@ export type Auth = ReturnType<typeof createAuth>;
 export async function sessionEmail(auth: Auth, env: AuthEnv, headers: Headers) {
   const session = await auth.api.getSession({ headers });
   const email = session?.user.email.toLowerCase();
-  return email && allowedEmails(env).includes(email) ? email : null;
+  return email && mayUseEmail(env, email) ? email : null;
 }
