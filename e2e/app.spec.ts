@@ -28,8 +28,8 @@ const now = '2026-11-13T12:00:00Z';
 /** Source checks sent to the server. Opening the app sends none, so each one is a resync the user started. */
 type MockRequest = { path: string; method: string; body: Record<string, unknown> | null };
 const userRefreshes = (requests: MockRequest[]) => requests.filter((r) => r.path === '/api/refresh' && r.method === 'POST');
-/** A one-pixel PNG for image requests. */
-const PIXEL = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64');
+/** A one-pixel image for image requests. */
+const PIXEL = '<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>';
 
 async function mockApp(
   page: Page,
@@ -109,7 +109,7 @@ async function mockApp(
     // Street View has an image at the first listing (40.72, -74.04) and none elsewhere.
     if (options.streetView && url.pathname === '/api/street-view')
       return url.searchParams.get('lat') === '40.72000'
-        ? route.fulfill({ contentType: 'image/png', body: PIXEL })
+        ? route.fulfill({ contentType: 'image/svg+xml', body: PIXEL })
         : route.fulfill({ status: 404, json: { error: 'Street View has no image here.' } });
     if (options.signIn && url.pathname === '/api/auth/email-otp/send-verification-otp') data = { success: true };
     else if (options.signIn && url.pathname === '/api/auth/sign-in/email-otp') {
