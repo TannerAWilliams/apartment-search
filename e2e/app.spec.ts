@@ -690,7 +690,7 @@ test('market history charts one area, compares another, and says when figures ca
 
   // The logo and title go home, to Market, from anywhere.
   await page.getByRole('tab', { name: /^Saved/ }).click();
-  await page.getByRole('link', { name: 'Apartment Search, home', exact: true }).click();
+  await page.getByRole('link', { name: 'Walkup, home', exact: true }).click();
   await expect(page.getByRole('tab', { name: 'Market', exact: true })).toHaveAttribute('aria-selected', 'true');
 });
 

@@ -53,7 +53,7 @@ api.onError((error, c) => {
   if (error instanceof CommuteError) return c.json({ error: error.message, commuteError: true }, error.status as ContentfulStatusCode);
   if (error instanceof SearchInputError) return fail(c, 422, error.message);
   log.error('request_failed', error, { path: c.req.path, method: c.req.method });
-  if (c.req.method !== 'POST') return fail(c, 503, 'Apartment Search could not complete the request.');
+  if (c.req.method !== 'POST') return fail(c, 503, 'Walkup could not complete the request.');
   if (c.req.path === '/api/refresh') return fail(c, 502, 'The listing sources could not be checked. Try reloading the page.');
   return fail(c, 502, 'The address or listing feed could not be reached. Try again or use a workplace preset.');
 });

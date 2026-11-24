@@ -1,4 +1,6 @@
-# Apartment Search
+# Walkup
+
+Formerly "Apartment Search"; the Worker, repository and app identifiers keep that name.
 
 Search New York–area rentals from many listing sites in one place, and compare them by asking rent and weekday-morning commute to your workplace. One Expo app runs on the web, iPhone and Android; the web app and its API run on Cloudflare.
 
@@ -165,7 +167,7 @@ Three things watch the app; two need a minute in the Cloudflare dashboard, becau
   2. Choose **Threshold**.
   3. Query: dataset **Workers Logs** (Workers Observability), metric **COUNT**, filters **service = apartment-search** and **level = error**.
   4. Evaluation window **15m**, comparison **greater than 0**.
-  5. Name it "Apartment Search errors", add your email as the destination, and set the repeat interval to **24h** so one bad night sends one email.
+  5. Name it "Walkup errors", add your email as the destination, and set the repeat interval to **24h** so one bad night sends one email.
   6. Select **Create**. Use **Preview** first to check the query matches the Worker's logs.
 - **Billing (optional).** **Billing → Spend limits** emails you at 80% and 100% of a monthly amount you choose for Workers.
 

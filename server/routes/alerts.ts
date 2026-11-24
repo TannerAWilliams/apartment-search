@@ -21,7 +21,7 @@ async function alertAction(body: v.InferOutput<typeof AlertRequestSchema>, env: 
           id: crypto.randomUUID(),
           at: new Date().toISOString(),
           ruleId: 'test',
-          title: 'Test alert from Apartment Search',
+          title: 'Test alert from Walkup',
           lines: ['Alerts are working. New apartments and price drops in your saved alerts will arrive like this.'],
           newCount: 0,
           dropCount: 0,

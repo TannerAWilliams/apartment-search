@@ -15,7 +15,7 @@ export class ErrorBoundary extends React.Component<{ children: ReactNode }, { fa
   }
 
   override componentDidCatch(error: unknown) {
-    console.error('Apartment Search could not render:', error);
+    console.error('Walkup could not render:', error);
   }
 
   override render() {
@@ -23,7 +23,7 @@ export class ErrorBoundary extends React.Component<{ children: ReactNode }, { fa
     return (
       <View accessibilityRole="alert" style={styles.filters}>
         <Text style={styles.sectionHeading}>Something went wrong</Text>
-        <Text style={styles.smallMuted}>Apartment Search hit an unexpected problem. Your saved apartments are kept on this device.</Text>
+        <Text style={styles.smallMuted}>Walkup hit an unexpected problem. Your saved apartments are kept on this device.</Text>
         <Button
           onPress={() => {
             if (Platform.OS === 'web') window.location.reload();

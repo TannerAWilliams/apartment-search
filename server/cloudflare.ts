@@ -216,7 +216,7 @@ app.all('*', async (c) => withCacheControl(await c.env.ASSETS.fetch(c.req.raw), 
 
 app.onError((cause, c) => {
   log.error('request_failed', cause, { path: c.req.path, method: c.req.method });
-  return fail(c, 503, 'Apartment Search could not complete the request.');
+  return fail(c, 503, 'Walkup could not complete the request.');
 });
 
 export default app;

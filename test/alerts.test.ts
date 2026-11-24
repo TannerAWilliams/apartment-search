@@ -116,7 +116,7 @@ test('alerts report new apartments and price drops since the last check, and not
   ]);
   expect(sent.length).toBe(1);
   expect(sent[0].to).toStrictEqual(['owner@example.com']);
-  expect(sent[0].text).toMatch(/Open Apartment Search: https:\/\/apartments\.example\//);
+  expect(sent[0].text).toMatch(/Open Walkup: https:\/\/apartments\.example\//);
   expect(sent[0].html, 'listing text is escaped in the email').toMatch(/14 &#60;b&#62; Example/);
   expect((await readRecent(bucket))[0].title).toBe(alerts[0].title);
   expect((await checkAlerts(bucket, load, channels, { origin: '' })).alerts.length, 'the same changes are reported once').toBe(0);

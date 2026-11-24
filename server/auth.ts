@@ -75,13 +75,13 @@ export function authOptions(env: AuthEnv, database: AuthDatabase) {
             log.error('sign_in_email_unavailable', new Error('ALERT_EMAIL and ALERT_EMAIL_FROM must be set to send sign-in codes.'));
             return;
           }
-          const text = `Your Apartment Search sign-in code is ${otp}. It expires in ${CODE_MINUTES} minutes.`;
+          const text = `Your Walkup sign-in code is ${otp}. It expires in ${CODE_MINUTES} minutes.`;
           await env.ALERT_EMAIL.send({
             from: env.ALERT_EMAIL_FROM,
             to: [email],
-            subject: 'Your Apartment Search sign-in code',
+            subject: 'Your Walkup sign-in code',
             text,
-            html: `<p>Your Apartment Search sign-in code is <strong>${otp}</strong>.</p><p>It expires in ${CODE_MINUTES} minutes.</p>`,
+            html: `<p>Your Walkup sign-in code is <strong>${otp}</strong>.</p><p>It expires in ${CODE_MINUTES} minutes.</p>`,
           });
         },
       }),

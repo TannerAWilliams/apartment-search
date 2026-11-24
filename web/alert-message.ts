@@ -11,7 +11,7 @@ export function alertFromPush(data: { json(): unknown } | null): PushedAlert {
     /* not JSON: use the defaults */
   }
   return {
-    title: typeof value.title === 'string' ? value.title : 'Apartment Search',
+    title: typeof value.title === 'string' ? value.title : 'Walkup',
     body: typeof value.body === 'string' ? value.body : 'A saved search has new matches.',
     tag: typeof value.tag === 'string' ? value.tag : undefined,
     url: typeof value.url === 'string' && value.url.startsWith('/') ? value.url : '/',

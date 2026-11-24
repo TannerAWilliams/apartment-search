@@ -1,12 +1,12 @@
 {
-  "name": "Apartment Search",
-  "short_name": "Apartments",
-  "description": "New York–area rentals from many listing sites, compared by rent and commute.",
+  "name": "Walkup",
+  "short_name": "Walkup",
+  "description": "Walkup: New York–area rentals from many listing sites, compared by rent, commute and the market.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "background_color": "#ffffff",
-  "theme_color": "#06174b",
+  "theme_color": "#ffffff",
   "icons": [
     { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
     { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png" },

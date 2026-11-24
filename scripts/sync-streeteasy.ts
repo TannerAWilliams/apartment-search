@@ -63,7 +63,7 @@ export async function syncStreetEasy({
       redirect: 'manual',
       signal: AbortSignal.timeout(60000),
     });
-    if (!response.ok) throw new Error('Apartment Search returned HTTP ' + response.status + ' for ' + path + '.');
+    if (!response.ok) throw new Error('Walkup returned HTTP ' + response.status + ' for ' + path + '.');
     return (await response.json()) as AppResponse;
   }
   const streetEasyStatus = (data: AppResponse) => data.refresh?.sources.find(({ id }) => id === STREETEASY_LIVE.id);

@@ -45,17 +45,22 @@ export function ChartIcon({ color, size = 22 }: IconProps) {
   );
 }
 
-/** The app's mark, the same building as its home-screen icon (public/icons): a tower with lit windows. */
-export function BrandMark({ size = 28 }: { size?: number }) {
+/**
+ * Walkup's mark: a walk-up building, three rows of windows and a door, above its stoop. The same drawing is the
+ * home-screen icon (public/icons/walkup.svg).
+ */
+export function BrandMark({ size = 30 }: { size?: number }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 32 32" aria-hidden>
       <Rect x={0} y={0} width={32} height={32} rx={8} fill="#d62a52" />
-      <Rect x={9} y={7} width={11} height={18} rx={1} fill="#ffffff" />
-      <Rect x={21} y={12} width={3} height={13} rx={0.5} fill="#f6c1cd" />
-      {[10.5, 14.5, 18.5].flatMap((y) =>
-        [11, 15.5].map((x) => <Rect key={`${x}-${y}`} x={x} y={y} width={2.5} height={2} rx={0.4} fill="#d62a52" />),
+      <Rect x={9} y={5} width={14} height={17} rx={1.5} fill="#ffffff" />
+      {[7.5, 11, 14.5].flatMap((y) =>
+        [11.5, 17].map((x) => <Rect key={`${x}-${y}`} x={x} y={y} width={3.5} height={2.4} rx={0.5} fill="#d62a52" />),
       )}
-      <Rect x={13.5} y={22} width={2.5} height={3} fill="#d62a52" />
+      <Path d="M14.25 22V19.55a1.75 1.75 0 0 1 3.5 0V22Z" fill="#d62a52" />
+      <Rect x={12.5} y={22.6} width={7} height={1.4} rx={0.4} fill="#ffffff" />
+      <Rect x={11} y={24.4} width={10} height={1.4} rx={0.4} fill="#ffffff" />
+      <Rect x={9.5} y={26.2} width={13} height={1.4} rx={0.4} fill="#ffffff" />
     </Svg>
   );
 }

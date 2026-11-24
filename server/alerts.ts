@@ -168,11 +168,11 @@ export async function deliver(bucket: Bucket, alerts: Alert[], channels: AlertCh
     const subject = alerts.length === 1 ? alerts[0].title : `${alerts.length} apartment alerts`;
     const text =
       alerts.map((alert) => [alert.title, ...alert.lines.map((line) => '• ' + line)].join('\n')).join('\n\n') +
-      `\n\nOpen Apartment Search: ${origin}/`;
+      `\n\nOpen Walkup: ${origin}/`;
     const html =
       alerts
         .map((alert) => `<h3>${escapeHtml(alert.title)}</h3><ul>${alert.lines.map((line) => `<li>${escapeHtml(line)}</li>`).join('')}</ul>`)
-        .join('') + `<p><a href="${escapeHtml(origin)}/">Open Apartment Search</a></p>`;
+        .join('') + `<p><a href="${escapeHtml(origin)}/">Open Walkup</a></p>`;
     try {
       await channels.email.send({ from: channels.from, to: channels.to, subject, text, html });
       delivered.email = true;

@@ -139,7 +139,7 @@ function fold(line: string): string {
 }
 export function exportTours(tours: Tour[], now = new Date()): string {
   const valid = validateTours(tours);
-  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Apartment Search//Tour Plan//EN', 'CALSCALE:GREGORIAN'];
+  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Walkup//Tour Plan//EN', 'CALSCALE:GREGORIAN'];
   for (const t of valid)
     lines.push(
       'BEGIN:VEVENT',

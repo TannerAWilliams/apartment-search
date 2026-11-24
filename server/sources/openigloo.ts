@@ -105,7 +105,7 @@ export async function openiglooSearch(
   const handshake = await request('initialize', {
     protocolVersion: PROTOCOL,
     capabilities: {},
-    clientInfo: { name: 'Apartment Search', version: '1.0' },
+    clientInfo: { name: 'Walkup', version: '1.0' },
   });
   if ((handshake as { protocolVersion?: unknown } | null)?.protocolVersion !== PROTOCOL) throw new Error('The Openigloo protocol changed.');
   headers['MCP-Protocol-Version'] = PROTOCOL;

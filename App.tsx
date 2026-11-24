@@ -224,12 +224,12 @@ function ApartmentSearch() {
       <View style={styles.topBar}>
         <Pressable
           accessibilityRole="link"
-          accessibilityLabel="Apartment Search, home"
+          accessibilityLabel="Walkup, home"
           onPress={() => navigateTab('chart')}
           style={({ pressed }) => [styles.brand, pressed && styles.pressed]}
         >
           <BrandMark />
-          <Text style={styles.brandText}>Apartment Search</Text>
+          <Text style={styles.brandText}>walkup</Text>
         </Pressable>
         <Text style={styles.topLabel}>NYC METRO</Text>
       </View>
@@ -246,7 +246,7 @@ function ApartmentSearch() {
             <Text accessibilityRole="header" style={styles.chartTitle}>
               Sign in
             </Text>
-            <Text style={styles.bodyText}>Apartment Search is private. Enter your email and we’ll send you a six-digit code.</Text>
+            <Text style={styles.bodyText}>Walkup is private. Enter your email and we’ll send you a six-digit code.</Text>
             <SignIn onSignedIn={signedIn} />
           </View>
         </ScrollView>
@@ -573,7 +573,7 @@ function ApartmentSearch() {
               </Suspense>
             </View>
             <View style={styles.footer}>
-              <Text style={styles.smallMuted}>Apartment Search · New York, New Jersey and Connecticut</Text>
+              <Text style={styles.smallMuted}>Walkup · New York, New Jersey and Connecticut</Text>
             </View>
           </View>
         </ScrollView>

@@ -12,7 +12,7 @@ const PLACEHOLDER_EMAIL = 'smoke-test@example.com';
 const CHECKS: { path: string; init?: RequestInit; status: number; contains?: string }[] = [
   { path: '/health', status: 200, contains: 'ok' },
   { path: '/', status: 200, contains: '<div id="root">' },
-  { path: '/manifest.webmanifest', status: 200, contains: 'Apartment Search' },
+  { path: '/manifest.webmanifest', status: 200, contains: 'Walkup' },
   { path: '/data/streeteasy-dashboard-2026-11-17.zip', status: 404 },
   { path: '/api/config', status: 200, contains: '"storageMode":"persistent"' },
   { path: '/api/refresh', status: 200 },
