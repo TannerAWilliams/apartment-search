@@ -175,6 +175,10 @@ async function mockApp(
       data = body
         ? { url: 'https://checkout.stripe.test/session' }
         : { available: true, plans: { monthly: '$15 a month', pass: '$35 for 3 months' } };
+    } else if (url.pathname === '/api/listing') {
+      const listing = listings.find(({ id }) => id === url.searchParams.get('id'));
+      if (!listing) return route.fulfill({ status: 404, json: { error: 'This apartment is no longer listed.' } });
+      data = { listing };
     } else if (url.pathname === '/api/admin/stats' && options.admin) {
       data = {
         members: { total: 12, paid: 5, free: 7 },
@@ -1297,4 +1301,16 @@ test('categories under the search bar search with one tap, and a save is confirm
   await expect(page.getByText('Saved to your list', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'View', exact: true }).click();
   await expect(page.getByRole('tab', { name: 'Saved (1)', exact: true })).toHaveAttribute('aria-selected', 'true');
+});
+
+test('an apartment has its own page from a shared link, with its details open', async ({ page }) => {
+  const { listings } = await mockApp(page, { insights: true });
+  await page.goto('/#listing=' + encodeURIComponent(listings[0]!.id));
+  await expect(page.getByRole('button', { name: '← All apartments', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Highlights', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Share this apartment', exact: true })).toBeVisible();
+  await page.goto('/#listing=missing');
+  await expect(page.getByText('This apartment is no longer listed.', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '← All apartments', exact: true }).click();
+  await expect(page.getByRole('tab', { name: 'Search', exact: true })).toHaveAttribute('aria-selected', 'true');
 });

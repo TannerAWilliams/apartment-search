@@ -280,6 +280,11 @@ export function useServer({ appliedFilters, searchVersion, submitted, setResult,
       api<Record<string, unknown>>('account', body ? { body, token: activeToken } : { token: activeToken }),
     [activeToken],
   );
+  /** One listing from saved inventory, for its own page. */
+  const loadListing = useCallback(
+    (id: string) => api<{ listing: ListingData }>('listing?' + new URLSearchParams({ id }), { token: activeToken }),
+    [activeToken],
+  );
   const loadHousing = useCallback(
     (signal?: AbortSignal) =>
       api<Awaited<ReturnType<NonNullable<React.ComponentProps<typeof AffordableHousing>['loadHousing']>>>>('housing', {
@@ -339,6 +344,7 @@ export function useServer({ appliedFilters, searchVersion, submitted, setResult,
     membersRequest,
     householdRequest,
     billingRequest,
+    loadListing,
     loadAdminStats,
     accountRequest,
     loadNeighborhoodReport,

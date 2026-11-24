@@ -6,7 +6,7 @@ import { BuildingReport } from './BuildingReport.tsx';
 import { discoveryFacts, LAUNDRY_LABELS } from '../discovery.ts';
 import type React from 'react';
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, Share, StyleSheet, Text, View } from 'react-native';
 import { matchesRegion, REGIONS, searchBorough } from '../regions.ts';
 import { directionsLink, formatRent } from '../search.ts';
 import { listingLinkLabel, listingPresentation, orderedListingLinks } from '../listings.ts';
@@ -85,6 +85,21 @@ function BuildingSummary({ facts }: { facts: BuildingFacts }) {
   );
 }
 
+/** The address of a listing's own page in this app. */
+export function listingPageUrl(id: string) {
+  const origin = Platform.OS === 'web' && typeof window !== 'undefined' ? window.location.origin : 'https://apartments.5thof6.com';
+  return `${origin}/#listing=${encodeURIComponent(id)}`;
+}
+
+/** Shares a link: the share sheet where there is one, otherwise the clipboard. */
+async function shareLink(url: string, title: string) {
+  if (Platform.OS !== 'web') {
+    await Share.share({ message: url, title });
+    return;
+  }
+  await navigator.clipboard.writeText(url);
+}
+
 /** A part of the details with a divider and a heading, as listing pages separate theirs. */
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -136,6 +151,7 @@ export function Listing({
   onError,
   saved,
   onCheckBuilding,
+  defaultExpanded = false,
 }: {
   listing: ListingData;
   selectedSource?: string;
@@ -147,8 +163,11 @@ export function Listing({
   onError: (message: string) => void;
   saved: boolean;
   onCheckBuilding?: CheckBuilding;
+  /** Opens with its details shown, as on the listing's own page. */
+  defaultExpanded?: boolean;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(defaultExpanded);
+  const [shared, setShared] = useState('');
   const { region, address, unit, city, rent, transitSeconds, drivingSeconds, neighborhood } = listing;
   const regionKey =
     searchBorough(listing) ?? (region === 'metroNorth' && matchesRegion(listing, 'westchester') ? 'westchester' : region) ?? 'all';
@@ -331,6 +350,21 @@ export function Listing({
                 <Text style={styles.buttonText}>{listingLinkLabel(original)} ↗</Text>
               </ExternalLink>
             ) : null}
+            <Pressable
+              accessibilityRole="button"
+              onPress={async () => {
+                const link = listingPageUrl(listing.id);
+                try {
+                  await shareLink(link, title);
+                  setShared('Link copied');
+                } catch {
+                  setShared(link);
+                }
+              }}
+              style={{ paddingVertical: 4 }}
+            >
+              <Text style={styles.linkText}>{shared || 'Share this apartment'}</Text>
+            </Pressable>
             <Text style={styles.smallMuted}>
               {checked}
               {['snapshot', 'cached'].includes(listing.kind) ? ' · Previously saved data' : ''}

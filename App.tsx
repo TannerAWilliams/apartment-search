@@ -65,6 +65,7 @@ const NeighborhoodsPage = lazy(() =>
 const RenewalPage = lazy(() => import('./src/screens/NeighborhoodsPage.tsx').then((module) => ({ default: module.RenewalPage })));
 const AdminPage = lazy(() => import('./src/screens/AdminPage.tsx').then((module) => ({ default: module.AdminPage })));
 const LegalPage = lazy(() => import('./src/screens/LegalPage.tsx').then((module) => ({ default: module.LegalPage })));
+const ListingPage = lazy(() => import('./src/screens/ListingPage.tsx').then((module) => ({ default: module.ListingPage })));
 const AlertsPage = lazy(() => import('./src/screens/AlertsPage.tsx').then((module) => ({ default: module.AlertsPage })));
 
 function ApartmentSearch() {
@@ -114,6 +115,7 @@ function ApartmentSearch() {
     membersRequest,
     householdRequest,
     billingRequest,
+    loadListing,
     loadAdminStats,
     accountRequest,
     loadNeighborhoodReport,
@@ -609,6 +611,18 @@ function ApartmentSearch() {
                   />
                 )}
                 {tab === 'apply' && <ApplyPage saved={saved} onError={setError} />}
+                {tab.startsWith('listing=') && (
+                  <ListingPage
+                    id={decodeURIComponent(tab.slice('listing='.length))}
+                    load={serverState === 'ready' ? loadListing : undefined}
+                    workplace={result.workplace}
+                    saved={(listing) => savedByKey.has(listingKey(listing))}
+                    onSave={saveListing}
+                    onSaveLink={saveLink}
+                    onBack={() => navigateTab('results')}
+                    onError={setError}
+                  />
+                )}
                 {tab === 'admin' && <AdminPage load={serverState === 'ready' && admin ? loadAdminStats : undefined} onError={setError} />}
                 {tab === 'terms' && <LegalPage kind="terms" />}
                 {tab === 'privacy' && <LegalPage kind="privacy" />}

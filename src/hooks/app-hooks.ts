@@ -173,7 +173,8 @@ export function useHashNavigation() {
       const next = window.location.hash.slice(1);
       setExpanded('');
       setScope(next === 'saved' ? 'saved' : 'market');
-      setTab(APP_TABS.includes(next) ? next : 'chart');
+      // A listing's own page is "listing=" and its ID; any other unknown hash opens Market.
+      setTab(APP_TABS.includes(next) || next.startsWith('listing=') ? next : 'chart');
     };
     restore();
     window.addEventListener('popstate', restore);

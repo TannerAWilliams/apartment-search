@@ -35,6 +35,35 @@ function pinIcon(count: number) {
   return L.divIcon({ className: '', html: badge, iconSize: [size + 4, size + 4] });
 }
 
+/** A rent on the map, as listing apps label pins: "$2,450", or "3 from $2,450" for several at one address. */
+function pricePin(listings: MapPoint[]) {
+  const rents = listings.map(({ rent }) => rent).filter((rent) => rent > 0);
+  if (!rents.length) return pinIcon(listings.length);
+  const low = formatRent(Math.min(...rents));
+  const label = listings.length > 1 ? `${listings.length} from ${low}` : low;
+  const pill = document.createElement('span');
+  Object.assign(pill.style, {
+    background: '#ffffff',
+    color: '#222222',
+    border: '1px solid #dddddd',
+    borderRadius: '999px',
+    padding: '4px 9px',
+    fontSize: '13px',
+    fontWeight: '700',
+    whiteSpace: 'nowrap',
+    boxShadow: '0 2px 6px rgba(0,0,0,0.18)',
+    fontFamily: 'inherit',
+    display: 'block',
+    textAlign: 'center',
+    boxSizing: 'border-box',
+    lineHeight: '16px',
+  });
+  pill.textContent = label;
+  // About how wide the label is, so the pill is centered on the spot and can be tapped.
+  const width = label.length * 8 + 20;
+  return L.divIcon({ className: '', html: pill, iconSize: [width, 26], iconAnchor: [width / 2, 13] });
+}
+
 function popupLink(url: unknown, label: string) {
   const href = safeListingUrl(url);
   if (!href) return null;
@@ -178,7 +207,7 @@ export function ListingMap({
       const coordinate = key.split(',').map(Number) as L.LatLngTuple;
       const title = listings.length === 1 ? listings[0].title : listings.length + ' listings at this location';
       pins.push(
-        L.marker(coordinate, { icon: pinIcon(listings.length), title, alt: title, listingCount: listings.length }).bindPopup(
+        L.marker(coordinate, { icon: pricePin(listings), title, alt: title, listingCount: listings.length }).bindPopup(
           () => popupContent(listings, actions.current),
           { maxWidth: 260 },
         ),
