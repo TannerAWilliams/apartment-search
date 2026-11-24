@@ -29,6 +29,7 @@ import { REALNY_LIVE } from './realny.ts';
 import { RELATED_LIVE } from './related.ts';
 import { ROCKROSE_LIVE } from './rockrose.ts';
 import { SERHANT_LIVE } from './serhant.ts';
+import { TFC_LIVE } from './tfc.ts';
 import { TWOTREES_LIVE } from './twotrees.ts';
 import { UDR_LIVE } from './udr.ts';
 
@@ -68,4 +69,5 @@ export const DIRECT_RENTAL_SOURCES = [
   UDR_LIVE,
   ROCKROSE_LIVE,
   TWOTREES_LIVE,
+  TFC_LIVE,
 ];
