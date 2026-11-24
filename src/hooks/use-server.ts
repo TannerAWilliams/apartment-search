@@ -9,7 +9,7 @@ import type { ApiConfig, ConfigSource, RefreshInfo } from '../api-client.ts';
 import { API_ORIGIN, CHECK_TIME, SEARCH_DEFAULTS, api, failureInfo, finishSourceCheck } from '../app-shared.ts';
 import type { AffordableHousing } from '../screens/AffordableHousing.tsx';
 import type { AlertState } from '../screens/AlertsPage.tsx';
-import type { Member, PlatformSettings } from '../screens/ProfilePage.tsx';
+import type { Member, PlatformSettings, SettingsChange } from '../screens/ProfilePage.tsx';
 import type { ListingData, SearchFilters, SearchResult } from '../domain.ts';
 import type { Listing } from '../components/Listing.tsx';
 import type { RentChart } from '../components/RentChart.tsx';
@@ -244,7 +244,7 @@ export function useServer({ appliedFilters, searchVersion, submitted, setResult,
   );
   /** Platform settings: anyone can read them; only an admin can change them. */
   const settingsRequest = useCallback(
-    (body?: { nightlyResync: boolean }) => api<PlatformSettings>('settings', body ? { body, token: activeToken } : { token: activeToken }),
+    (body?: SettingsChange) => api<PlatformSettings>('settings', body ? { body, token: activeToken } : { token: activeToken }),
     [activeToken],
   );
   /** Accounts and their plans, for an admin: read them, or put one on the paid plan or the free one. */

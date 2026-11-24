@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { isNightlyHour, readSettings, runNightly, setNightlyResync } from '../server/nightly.ts';
+import { isDaytimeHour, isNightlyHour, readSettings, runDaytime, runNightly, runScheduled, setNightlyResync } from '../server/nightly.ts';
 import { adminEmails, isAdmin } from '../server/roles.ts';
 import { handleApi } from './fixtures/api.ts';
 import { readJson } from './fixtures/json.ts';
@@ -83,10 +83,18 @@ test('anyone signed in can read the settings; only an admin can turn the nightly
   const env = { BUCKET: createMemoryBucket() };
   const user = { account: 'renter@example.test', admin: false, privateAuthenticated: true };
   const admin = { account: 'owner@example.test', admin: true, privateAuthenticated: true };
-  expect(await readJson(handleApi(new Request('https://app.test/api/settings'), env, user))).toEqual({ nightlyResync: true, admin: false });
+  expect(await readJson(handleApi(new Request('https://app.test/api/settings'), env, user))).toEqual({
+    nightlyResync: true,
+    daytimeChecks: true,
+    admin: false,
+  });
   expect((await handleApi(post('settings', { nightlyResync: false }), env, user)).status).toBe(403);
   expect((await handleApi(post('settings', { nightlyResync: 'no' }), env, admin)).status).toBe(422);
-  expect(await readJson(handleApi(post('settings', { nightlyResync: false }), env, admin))).toEqual({ nightlyResync: false, admin: true });
+  expect(await readJson(handleApi(post('settings', { nightlyResync: false }), env, admin))).toEqual({
+    nightlyResync: false,
+    daytimeChecks: true,
+    admin: true,
+  });
   expect((await readSettings(env.BUCKET)).nightlyResync).toBe(false);
   expect((await handleApi(new Request('https://app.test/api/settings'), {}, admin)).status).toBe(400);
 });
@@ -100,4 +108,40 @@ test('signed-in people who are not admins cannot resync sources, and config says
     readJson<{ account?: string; admin?: boolean }>(handleApi(new Request('https://app.test/api/config'), env, services));
   expect(await config({ account: 'renter@example.test', admin: false })).toMatchObject({ account: 'renter@example.test', admin: false });
   expect(await config({ account: 'owner@example.test', admin: true })).toMatchObject({ admin: true });
+});
+
+test('daytime checks run the quick sources and alerts every two hours from 8 AM to 10 PM New York time', async () => {
+  const env = { BUCKET: createMemoryBucket() };
+  // 8 AM in New York is 12:00 UTC in daylight time and 13:00 UTC in standard time.
+  expect(isDaytimeHour(new Date('2026-07-01T12:00:00Z'))).toBe(true);
+  expect(isDaytimeHour(new Date('2026-01-15T13:00:00Z'))).toBe(true);
+  expect(isDaytimeHour(new Date('2026-07-01T13:00:00Z')), '9 AM').toBe(false);
+  expect(isDaytimeHour(new Date('2026-07-01T07:00:00Z')), '3 AM').toBe(false);
+  expect(await runDaytime(env, { fetcher: missing, now: new Date('2026-07-01T07:00:00Z') })).toBe('not-daytime');
+
+  const started: boolean[] = [];
+  const syncJob = { start: async (delay: boolean) => void started.push(delay), pending: async () => null };
+  const noon = new Date('2026-07-01T16:00:00Z');
+  expect(await runScheduled(env, { fetcher: missing, syncJob, now: noon })).toBe('ran');
+  expect(started, 'the Workflow sources wait for the nightly resync').toEqual([]);
+  expect((await readSettings(env.BUCKET)).lastDaytime).toMatchObject({ at: noon.toISOString() });
+  expect(await runScheduled(env, { fetcher: missing, syncJob, now: new Date('2026-07-01T07:00:00Z') })).toBe('idle');
+  expect(await runScheduled(env, { fetcher: missing, syncJob, now: SUMMER_1AM })).toBe('ran');
+  expect(started).toEqual([true]);
+  expect(await runScheduled(env, { fetcher: missing })).toBeString();
+
+  // An admin turns the daytime checks off; the nightly setting is left alone.
+  const admin = { account: 'owner@example.test', admin: true, privateAuthenticated: true };
+  const changed = await readJson<{ daytimeChecks: boolean; nightlyResync: boolean }>(
+    handleApi(post('settings', { daytimeChecks: false }), env, admin),
+  );
+  expect(changed).toMatchObject({ daytimeChecks: false, nightlyResync: true });
+  expect((await handleApi(post('settings', {}), env, admin)).status).toBe(422);
+  let fetched = 0;
+  const counting = async () => {
+    fetched++;
+    return new Response(null, { status: 404 });
+  };
+  expect(await runDaytime(env, { fetcher: counting, now: noon })).toBe('off');
+  expect(fetched).toBe(0);
 });

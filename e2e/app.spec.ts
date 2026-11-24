@@ -59,7 +59,7 @@ async function mockApp(
   const requests: MockRequest[] = [];
   const unexpected: string[] = [];
   let signedIn = false;
-  let settings = { nightlyResync: true, lastNightly: { at: now, state: 'complete', updated: 12, failed: 1, background: true } };
+  let settings = { nightlyResync: true, daytimeChecks: true, lastNightly: { at: now, state: 'complete', updated: 12, failed: 1, background: true } };
   let savedOnAccount: unknown[] = [];
   let members = [
     { email: 'owner@example.test', admin: true, paid: true },

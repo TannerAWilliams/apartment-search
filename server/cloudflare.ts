@@ -9,7 +9,7 @@ import { createD1Bucket, type D1Database } from './storage/d1-bucket.ts';
 import { timingSafeEqual } from 'hono/utils/buffer';
 import { type Auth, createAuth, sessionEmail } from './auth.ts';
 import { isAdmin } from './roles.ts';
-import { runNightly } from './nightly.ts';
+import { runScheduled } from './nightly.ts';
 import { log } from './log.ts';
 import { securityHeaders, withCacheControl } from './web-headers.ts';
 import { type ArchiveLoader, DASHBOARD_ARCHIVE_PATH } from './dashboard-snapshot.ts';
@@ -222,16 +222,16 @@ app.onError((cause, c) => {
   return fail(c, 503, 'Walkup could not complete the request.');
 });
 
-/** The nightly resync (server/nightly.ts): Cloudflare wakes the Worker at 05:00 and 06:00 UTC. */
+/** Scheduled resyncs (server/nightly.ts): Cloudflare wakes the Worker every hour; the hour in New York decides what runs. */
 async function scheduled(_controller: unknown, env: Environment, ctx: { waitUntil(work: Promise<unknown>): void }) {
   const bucket = createD1Bucket(env.APARTMENTS);
-  const run = runNightly(
+  const run = runScheduled(
     { ...env, BUCKET: bucket },
     {
       fetcher: (url, options) => fetch(url, options),
       syncJob: env.SYNC_WORKFLOW ? workflowJob(env.SYNC_WORKFLOW, bucket) : undefined,
     },
-  ).catch((cause) => log.error('nightly_resync_failed', cause));
+  ).catch((cause) => log.error('scheduled_resync_failed', cause));
   ctx.waitUntil(run);
   await run;
 }

@@ -7,9 +7,12 @@ import { Pressable, Switch, Text, View } from 'react-native';
 import { Button } from '../components/ui.tsx';
 import { colors, styles } from '../styles.ts';
 
+type Run = { at: string; state: string; updated: number; failed: number; background?: boolean };
 export type PlatformSettings = {
   nightlyResync: boolean;
-  lastNightly?: { at: string; state: string; updated: number; failed: number; background: boolean };
+  daytimeChecks: boolean;
+  lastNightly?: Run;
+  lastDaytime?: Run;
   admin: boolean;
 };
 
@@ -23,7 +26,7 @@ const WHEN = new Intl.DateTimeFormat('en-US', {
 });
 
 /** What the last nightly resync did, in a line. */
-export function lastNightlyText(last: PlatformSettings['lastNightly']) {
+export function lastNightlyText(last: Run | undefined) {
   if (!last) return 'It hasn’t run yet.';
   const when = WHEN.format(new Date(last.at));
   const updated = `${last.updated} ${last.updated === 1 ? 'source' : 'sources'} updated`;
@@ -32,6 +35,7 @@ export function lastNightlyText(last: PlatformSettings['lastNightly']) {
   return `Last run ${when}: ${updated}${failed}${background}.`;
 }
 
+export type SettingsChange = { nightlyResync?: boolean; daytimeChecks?: boolean };
 export type Member = { email: string; admin: boolean; paid: boolean };
 
 type Row = [key: string, label: string, detail: string];
@@ -127,7 +131,7 @@ export function ProfilePage({
   savedCount: number;
   onOpen: (tab: string) => void;
   onSignOut: () => void;
-  settingsRequest?: (body?: { nightlyResync: boolean }) => Promise<PlatformSettings>;
+  settingsRequest?: (body?: SettingsChange) => Promise<PlatformSettings>;
   onError: (message: string) => void;
 }) {
   const [settings, setSettings] = useState<PlatformSettings | null>(null);
@@ -144,11 +148,11 @@ export function ProfilePage({
     void load();
   }, [load]);
 
-  async function setNightly(nightlyResync: boolean) {
+  async function change(body: SettingsChange) {
     if (!settingsRequest) return;
     setSaving(true);
     try {
-      setSettings(await settingsRequest({ nightlyResync }));
+      setSettings(await settingsRequest(body));
     } catch (error) {
       onError(error instanceof Error ? error.message : 'The setting could not be saved.');
     } finally {
@@ -221,24 +225,35 @@ export function ProfilePage({
             Admin
           </Text>
           <View style={styles.menu}>
-            <View style={styles.menuRow}>
-              <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-                <Text style={styles.menuLabel}>Nightly resync</Text>
-                <Text style={styles.smallMuted}>
-                  Resync every source at 1 AM Eastern, then send alerts.{' '}
-                  {settings ? lastNightlyText(settings.lastNightly) : settingsRequest ? 'Loading…' : ''}
-                </Text>
+            {(
+              [
+                ['nightlyResync', 'Nightly resync', 'Resync every source at 1 AM Eastern, then send alerts.', settings?.lastNightly],
+                [
+                  'daytimeChecks',
+                  'Daytime checks',
+                  'Check the quick sources every two hours from 8 AM to 10 PM Eastern, then send alerts.',
+                  settings?.lastDaytime,
+                ],
+              ] as const
+            ).map(([key, label, detail, last], index) => (
+              <View key={key} style={[styles.menuRow, index > 0 && styles.menuDivider]}>
+                <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+                  <Text style={styles.menuLabel}>{label}</Text>
+                  <Text style={styles.smallMuted}>
+                    {detail} {settings ? lastNightlyText(last) : settingsRequest ? 'Loading…' : ''}
+                  </Text>
+                </View>
+                <Switch
+                  accessibilityLabel={label}
+                  aria-label={label}
+                  value={settings?.[key] ?? false}
+                  disabled={!settings || saving}
+                  onValueChange={(value) => void change({ [key]: value })}
+                  trackColor={{ false: colors.border, true: colors.ink }}
+                  thumbColor={colors.white}
+                />
               </View>
-              <Switch
-                accessibilityLabel="Nightly resync"
-                aria-label="Nightly resync"
-                value={settings?.nightlyResync ?? false}
-                disabled={!settings || saving}
-                onValueChange={(value) => void setNightly(value)}
-                trackColor={{ false: colors.border, true: colors.ink }}
-                thumbColor={colors.white}
-              />
-            </View>
+            ))}
           </View>
           <Menu onOpen={onOpen} rows={[['sources', 'Sources & sync', 'Where listings come from, and resync them now']]} />
           {account && membersRequest && (

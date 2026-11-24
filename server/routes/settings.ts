@@ -1,6 +1,6 @@
 /** GET and POST /api/settings: platform settings on the profile page. Anyone signed in can read them; only an admin can change them. */
 import { vValidator } from '@hono/valibot-validator';
-import { readSettings, setNightlyResync } from '../nightly.ts';
+import { readSettings, updateSettings } from '../nightly.ts';
 import { apiBodies, factory, fail, needsStorage, refuse } from './context.ts';
 import { SettingsRequestSchema } from './inputs.ts';
 
@@ -13,6 +13,6 @@ export const settingsRoutes = factory
   )
   .post('/settings', needsStorage(STORAGE), apiBodies, vValidator('json', SettingsRequestSchema, refuse), async (c) => {
     if (!c.var.services.admin) return fail(c, 403, 'Only an admin can change platform settings.');
-    const settings = await setNightlyResync(c.var.bucket, c.req.valid('json').nightlyResync);
+    const settings = await updateSettings(c.var.bucket, c.req.valid('json'));
     return c.json({ ...settings, admin: true }, 200);
   });

@@ -11,8 +11,9 @@
   "compatibility_date": "2026-11-18",
   // The app's address. People sign in with an email code (server/auth.ts). workers.dev stays on for scripts
   // that send the app access token, such as the StreetEasy home sync.
-  // The nightly resync (server/nightly.ts): 1 AM in New York is 05:00 UTC in daylight time and 06:00 UTC in standard time.
-  "triggers": { "crons": ["0 5 * * *", "0 6 * * *"] },
+  // Scheduled resyncs (server/nightly.ts): hourly; the hour in New York decides between the 1 AM nightly resync,
+  // the daytime checks every two hours from 8 AM to 10 PM, and nothing.
+  "triggers": { "crons": ["0 * * * *"] },
   "routes": [{ "pattern": "apartments.5thof6.com", "custom_domain": true }],
   "workers_dev": true,
   // No per-version preview URLs; they were off before the first deploy from this file.

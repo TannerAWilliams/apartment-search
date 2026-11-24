@@ -153,7 +153,11 @@ export const PlanRequestSchema = v.object({
   email: v.pipe(v.string(EMAIL), v.trim(), v.email(EMAIL), v.maxLength(254, EMAIL)),
   paid: v.boolean('Say whether the account is paid.'),
 });
-export const SettingsRequestSchema = v.object({ nightlyResync: v.boolean('Say whether the nightly resync is on.') });
+const SETTING = 'Say whether the nightly resync or the daytime checks are on.';
+export const SettingsRequestSchema = v.pipe(
+  v.object({ nightlyResync: v.optional(v.boolean(SETTING)), daytimeChecks: v.optional(v.boolean(SETTING)) }, SETTING),
+  v.check((change) => change.nightlyResync !== undefined || change.daytimeChecks !== undefined, SETTING),
+);
 
 export const BuildingAddressSchema = v.object(
   {
