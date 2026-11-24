@@ -2,12 +2,15 @@
  * A listing card's image area. Listings carry no photos, so it shows where the apartment is: the OpenStreetMap
  * tile that contains it, with a pin on the spot. A listing without coordinates gets a plain tile with a building.
  */
-import { useState } from 'react';
-import { Image, StyleSheet, Text, View } from 'react-native';
+import { createContext, useContext, useState } from 'react';
+import { Image, Platform, StyleSheet, Text, View } from 'react-native';
 import Svg, { Path, Rect } from 'react-native-svg';
 import { colors } from '../styles.ts';
 
 const ZOOM = 15;
+
+/** Whether the server can show Street View images (server/street-view.ts); the app sets it from its config. */
+export const StreetViewContext = createContext(false);
 
 /** The map tile holding a point at ZOOM, and where in that tile (0 to 1 across and down) the point falls. */
 export function tileFor(latitude: number, longitude: number) {
@@ -50,6 +53,9 @@ const thumbnail = StyleSheet.create({
 export function ListingThumbnail({ latitude, longitude }: { latitude?: number | null; longitude?: number | null }) {
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [failed, setFailed] = useState(false);
+  const streetView = useContext(StreetViewContext);
+  // Street View first, when the server has it; no image there, or the month's free images used up, shows the map.
+  const [streetViewFailed, setStreetViewFailed] = useState(false);
   const located = typeof latitude === 'number' && typeof longitude === 'number' && Number.isFinite(latitude) && Number.isFinite(longitude);
   if (!located || failed)
     return (
@@ -62,6 +68,17 @@ export function ListingThumbnail({ latitude, longitude }: { latitude?: number | 
             fill="#f7f7f7"
           />
         </Svg>
+      </View>
+    );
+  if (streetView && Platform.OS === 'web' && !streetViewFailed)
+    return (
+      <View style={StyleSheet.absoluteFill} aria-hidden>
+        <Image
+          source={{ uri: `/api/street-view?lat=${latitude.toFixed(5)}&lng=${longitude.toFixed(5)}` }}
+          onError={() => setStreetViewFailed(true)}
+          resizeMode="cover"
+          style={StyleSheet.absoluteFill}
+        />
       </View>
     );
   const tile = tileFor(latitude, longitude);

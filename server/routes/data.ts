@@ -10,10 +10,32 @@ import { storedHomeSeeker } from '../sources/westchester-homeseeker.ts';
 import { storedHdcRerentals, storedHousing } from '../refresh/snapshots.ts';
 import { storedMarket, storedRentHistory } from '../refresh/market.ts';
 import { apiBodies, factory, fail, refuse } from './context.ts';
-import { BuildingAddressSchema, MarketQuerySchema } from './inputs.ts';
+import { BuildingAddressSchema, MarketQuerySchema, StreetViewQuerySchema } from './inputs.ts';
+import { streetViewImage, streetViewLimit } from '../street-view.ts';
 
 export const dataRoutes = factory
   .createApp()
+  .get('/street-view', vValidator('query', StreetViewQuerySchema, refuse), async (c) => {
+    const env = c.var.appEnv;
+    const { database, fetcher } = c.var.services;
+    if (!env.GOOGLE_MAPS_API_KEY || !database) return fail(c, 404, 'Street View images are not set up.');
+    const { lat, lng } = c.req.valid('query');
+    try {
+      const result = await streetViewImage(
+        { key: env.GOOGLE_MAPS_API_KEY, database, limit: streetViewLimit(env.STREET_VIEW_MONTHLY_LIMIT) },
+        { latitude: lat, longitude: lng },
+        fetcher,
+      );
+      if (result.status !== 200) return fail(c, result.status, result.error);
+      // The browser may keep the image a day, so scrolling back does not count again; the server keeps nothing.
+      return new Response(result.body, {
+        headers: { 'Content-Type': result.contentType, 'Cache-Control': 'private, max-age=86400' },
+      });
+    } catch (cause) {
+      log.warn('street_view_failed', { error: cause instanceof Error ? cause.message : String(cause) });
+      return fail(c, 502, 'Street View could not be reached.');
+    }
+  })
   .get('/market', vValidator('query', MarketQuerySchema, refuse), async (c) => {
     const env = c.var.appEnv;
     const { region, grouping } = c.req.valid('query');

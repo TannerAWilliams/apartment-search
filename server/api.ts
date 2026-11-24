@@ -21,7 +21,8 @@ export const api = factory
   .basePath('/api')
   .use(async (c, next) => {
     await next();
-    c.header('Cache-Control', 'no-store');
+    // API answers are never cached, except a reply that says the browser alone may keep it (Street View images).
+    if (!c.res.headers.get('Cache-Control')?.startsWith('private,')) c.header('Cache-Control', 'no-store');
   })
   .route('/', sourceRoutes)
   .route('/', searchRoutes)

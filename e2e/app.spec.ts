@@ -28,6 +28,9 @@ const now = '2026-11-13T12:00:00Z';
 /** Source checks sent to the server. Opening the app sends none, so each one is a resync the user started. */
 type MockRequest = { path: string; method: string; body: Record<string, unknown> | null };
 const userRefreshes = (requests: MockRequest[]) => requests.filter((r) => r.path === '/api/refresh' && r.method === 'POST');
+/** A one-pixel PNG for image requests. */
+const PIXEL = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64');
+
 async function mockApp(
   page: Page,
   options: {
@@ -40,6 +43,8 @@ async function mockApp(
     commute?: boolean;
     nyc?: boolean;
     dashboardAvailable?: boolean;
+    /** The server can show Street View images on cards. */
+    streetView?: boolean;
     inventoryExpiresAt?: string;
     housing?: HousingResponse;
     /** The server asks for sign-in until the email-code sign-in succeeds. */
@@ -101,6 +106,11 @@ async function mockApp(
     const body = request.postDataJSON();
     requests.push({ path: url.pathname, method: request.method(), body });
     let data: unknown;
+    // Street View has an image at the first listing (40.72, -74.04) and none elsewhere.
+    if (options.streetView && url.pathname === '/api/street-view')
+      return url.searchParams.get('lat') === '40.72000'
+        ? route.fulfill({ contentType: 'image/png', body: PIXEL })
+        : route.fulfill({ status: 404, json: { error: 'Street View has no image here.' } });
     if (options.signIn && url.pathname === '/api/auth/email-otp/send-verification-otp') data = { success: true };
     else if (options.signIn && url.pathname === '/api/auth/sign-in/email-otp') {
       if (body?.otp !== '123456') return route.fulfill({ status: 401, json: { message: 'Invalid code' } });
@@ -112,6 +122,7 @@ async function mockApp(
         mode: 'live',
         storageMode: 'persistent',
         dashboardAvailable: options.dashboardAvailable === true,
+        streetViewAvailable: options.streetView === true,
         browserImportAllowed: false,
         commuteConfigured: false,
         sources: [{ id: 'streeteasy', name: 'StreetEasy' }],
@@ -290,6 +301,25 @@ test('the map view loads its tiles under the Content Security Policy', async ({ 
     .click();
   await expect(popup.getByRole('button', { name: /^Saved: / }).first()).toBeDisabled();
   await expect(page.getByRole('tab', { name: 'Saved (1)', exact: true })).toBeVisible();
+});
+
+test('cards show a Street View image where there is one, and the map elsewhere', async ({ page }) => {
+  const { requests } = await mockApp(page, { streetView: true, listingCount: 2 });
+  await expect(page.getByText('12 Grove Street', { exact: true }).first()).toBeVisible();
+  // Both cards ask; the mock has an image only at the first listing's point.
+  await expect.poll(() => requests.filter(({ path }) => path === '/api/street-view').length).toBeGreaterThanOrEqual(2);
+  // One card shows its Street View image; the other, with none, went back to its map.
+  await expect(page.locator('img[src*="/api/street-view"]')).toHaveCount(1);
+});
+
+test('without Street View set up, cards never ask for it', async ({ page }) => {
+  const asked: string[] = [];
+  page.on('request', (request) => {
+    if (request.url().includes('/api/street-view')) asked.push(request.url());
+  });
+  await mockApp(page);
+  await expect(page.getByText('12 Grove Street', { exact: true })).toBeVisible();
+  expect(asked).toEqual([]);
 });
 
 test('listing links open the listing site in a new tab', async ({ page }) => {

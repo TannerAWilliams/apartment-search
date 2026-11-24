@@ -47,6 +47,10 @@ export type AppEnv = {
   FREE_PARTNER_FEEDS_JSON?: string;
   STREETEASY_SYNC_ENABLED?: string;
   STREETEASY_PUBLIC_SEARCH?: string;
+  /** Google Maps key for Street View images on listing cards (a secret); see server/street-view.ts. */
+  GOOGLE_MAPS_API_KEY?: string;
+  /** The most Street View images to request in a month; 9,000 when unset. */
+  STREET_VIEW_MONTHLY_LIMIT?: string;
   TRAVELTIME_APP_ID?: string;
   TRAVELTIME_API_KEY?: string;
   /** Who may sign in through Cloudflare Access; alert emails go to the same addresses. */

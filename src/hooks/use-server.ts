@@ -44,6 +44,7 @@ export function useServer({ appliedFilters, searchVersion, submitted, setResult,
   const [activeToken, setActiveToken] = useState('');
   const [commuteConfigured, setCommuteConfigured] = useState(false);
   const [dashboardAvailable, setDashboardAvailable] = useState(false);
+  const [streetViewAvailable, setStreetViewAvailable] = useState(false);
   const [account, setAccount] = useState<string | null>(null);
 
   const failedSources = refresh?.sources.filter(({ status }) => status === 'failed') ?? [];
@@ -65,6 +66,7 @@ export function useServer({ appliedFilters, searchVersion, submitted, setResult,
     setSourceCatalog(official(catalog));
     setCommuteConfigured(config.commuteConfigured === true);
     setDashboardAvailable(config.dashboardAvailable === true);
+    setStreetViewAvailable(config.streetViewAvailable === true);
     setAccount(config.account ?? null);
     setCompanies(config.companies ?? {});
     setRefresh(config.refresh ?? null);
@@ -283,6 +285,7 @@ export function useServer({ appliedFilters, searchVersion, submitted, setResult,
     activeToken,
     commuteConfigured,
     dashboardAvailable,
+    streetViewAvailable,
     freshness,
     checkSources,
     loadMarket,

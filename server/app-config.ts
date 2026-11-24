@@ -20,6 +20,7 @@ export function appConfig(env: AppEnv) {
     storageMode: env.BUCKET ? 'persistent' : 'none',
     browserImportAllowed: env.PUBLIC_APP !== 'true',
     // The research data is shared with signed-in people only, so it is offered wherever someone can sign in.
+    streetViewAvailable: Boolean(env.GOOGLE_MAPS_API_KEY),
     dashboardAvailable: env.PUBLIC_APP === 'true' || Boolean(env.APP_ACCESS_TOKEN) || Boolean(env.BETTER_AUTH_SECRET),
     snapshotMonth: SNAPSHOT_MONTH,
     sources: feeds.map(({ id, name }) => ({ id, name })),

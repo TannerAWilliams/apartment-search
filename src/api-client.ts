@@ -21,6 +21,8 @@ export type ApiConfig = {
   refreshRetryAt?: number;
   browserImportAllowed?: boolean;
   dashboardAvailable?: boolean;
+  /** Whether listing cards can show Street View images (server/street-view.ts). */
+  streetViewAvailable?: boolean;
   storageMode?: string;
   /** The email signed in with an email code; absent for the access token or a public app. */
   account?: string;

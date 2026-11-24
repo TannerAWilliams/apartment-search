@@ -29,6 +29,7 @@ import {
 } from './src/app-shared.ts';
 import { Filters, WebsiteFilter } from './src/components/Filters.tsx';
 import { SignIn } from './src/components/SignIn.tsx';
+import { StreetViewContext } from './src/components/ListingThumbnail.tsx';
 import { BrandMark, ChartIcon, HeartIcon, MenuIcon, SearchIcon } from './src/components/Icons.tsx';
 import { Marketplaces } from './src/screens/Marketplaces.tsx';
 import { Results } from './src/screens/Results.tsx';
@@ -98,6 +99,7 @@ function ApartmentSearch() {
     activeToken,
     commuteConfigured,
     dashboardAvailable,
+    streetViewAvailable,
     freshness,
     checkSources,
     loadMarket,
@@ -252,355 +254,357 @@ function ApartmentSearch() {
     );
 
   return (
-    <SafeAreaView style={styles.safe}>
-      {topBar}
-      {(tab === 'results' || tab === 'saved') && (
-        <View style={mobileStyles.searchBar}>
-          {/* The search pill: where, and for what. On Search it opens the filters. */}
-          <Pressable
-            accessibilityRole={tab === 'results' ? 'button' : undefined}
-            accessibilityLabel={tab === 'results' ? 'Edit search: ' + marketArea : undefined}
-            disabled={tab !== 'results'}
-            onPress={() => toggleFilter('more')}
-            style={mobileStyles.summary}
-          >
-            {tab === 'results' ? <SearchIcon color={colors.ink} size={18} /> : <HeartIcon color={colors.green} size={18} filled />}
-            <View style={mobileStyles.summaryCopy}>
-              <Text numberOfLines={1} style={mobileStyles.summaryTitle}>
-                {tab === 'saved' ? 'Your saved apartments' : marketArea}
-              </Text>
-              <Text numberOfLines={1} style={mobileStyles.destinationText}>
-                {tab === 'saved'
-                  ? 'Saved on this device'
-                  : bedroomLabel(applied.bedrooms) +
-                    ' · ' +
-                    (applied.maxRent == null ? 'Any price' : 'Up to ' + formatRent(applied.maxRent))}
-              </Text>
-            </View>
-          </Pressable>
-          {tab === 'results' && (
-            <Button secondary onPress={() => toggleFilter('more')}>
-              Filters
-            </Button>
-          )}
-          {WEB_MAP && !(tab === 'saved' && saved.length === 0) && (
-            <Button secondary onPress={() => setMapView(!mapView)}>
-              {mapView ? 'List' : 'Map'}
-            </Button>
-          )}
-        </View>
-      )}
-      <Modal visible={Boolean(expanded)} transparent animationType="slide" onRequestClose={() => setExpanded('')}>
-        <View style={[mobileStyles.overlay, wide && mobileStyles.overlayCentered]}>
-          <View style={[mobileStyles.sheet, wide && mobileStyles.wideSheet]} accessibilityViewIsModal>
-            <View style={mobileStyles.sheetHeader}>
-              <Text accessibilityRole="header" style={[styles.panelTitle, { flex: 1, minWidth: 0 }]}>
-                {expanded === 'commute' ? 'Change commute destination' : 'Search filters'}
-              </Text>
-              <Button secondary onPress={() => setExpanded('')}>
-                Cancel
-              </Button>
-            </View>
-            <ScrollView keyboardShouldPersistTaps="handled">
-              {error !== '' && (
-                <Text accessibilityRole="alert" style={styles.error}>
-                  {error}
-                </Text>
-              )}
-              <Filters
-                panel={expanded}
-                draft={draft}
-                setDraft={setDraft}
-                submit={() => submit()}
-                busy={busy}
-                serverState={serverState}
-                commuteConfigured={commuteConfigured}
-                connect={connect}
-                lookUp={serverState === 'ready' ? (place) => api('geocode', { body: { address: place }, token: activeToken }) : undefined}
-                websites={
-                  <WebsiteFilter
-                    result={result}
-                    applied={draft}
-                    onSelect={(source) => setDraft((current) => ({ ...current, source }))}
-                    onError={setError}
-                    configuredSources={configuredSources}
-                  />
-                }
-              />
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
-      <ScrollView
-        ref={scrollRef}
-        testID="main-scroll"
-        onScroll={(event) => {
-          if (scrollTab.current) scrollPositions.current[scrollTab.current] = event.nativeEvent.contentOffset.y;
-        }}
-        scrollEventThrottle={16}
-        keyboardShouldPersistTaps="handled"
-        contentContainerStyle={styles.scroll}
-      >
-        <View style={styles.shell}>
-          <View style={styles.results}>
-            <Suspense fallback={<Text style={styles.smallMuted}>Loading…</Text>}>
-              {error !== '' && (
-                <Text accessibilityRole="alert" style={styles.error}>
-                  {error}
-                </Text>
-              )}
-              {(tab === 'results' || tab === 'saved') && (
-                <>
-                  {
-                    <View style={styles.toolbar}>
-                      {!(tab === 'saved' && saved.length === 0) ? (
-                        <Pressable
-                          accessibilityRole="button"
-                          accessibilityLabel="Change destination"
-                          disabled={busy}
-                          onPress={() => {
-                            setError('');
-                            toggleFilter('commute');
-                          }}
-                          style={{ flexShrink: 1, paddingVertical: 6 }}
-                        >
-                          <Text numberOfLines={1} style={mobileStyles.destinationText}>
-                            To <Text style={{ color: colors.ink, fontWeight: '600' }}>{result.workplace.label}</Text> ·{' '}
-                            <Text style={styles.linkText}>Change</Text>
-                          </Text>
-                        </Pressable>
-                      ) : (
-                        <View />
-                      )}
-                      <View style={[styles.chipRow, { flexShrink: 1 }]}>
-                        {TOOLS[tab]
-                          .filter(([id]) => id !== 'changes' || !staleInventory)
-                          .filter(() => tab !== 'saved' || saved.length > 0)
-                          .map(([id, short, full]) => (
-                            <Chip key={id} label={full} selected={tool === id} onPress={() => setTool(tool === id ? '' : id)}>
-                              {short}
-                            </Chip>
-                          ))}
-                      </View>
-                    </View>
-                  }
-                  {tab === 'saved' && <SavedComparison listings={saved} open={tool === 'compare'} />}
-                  {tab === 'saved' && <TourPlanner listings={saved} open={tool === 'tours'} />}
-                  {tab === 'results' && (
-                    <SavedSearches
-                      open={tool === 'searches'}
-                      filters={applied}
-                      disabled={busy}
-                      apply={(filters) => {
-                        const next = { ...filters, includeMap: WEB_MAP };
-                        setDraft({ ...formDefaults(), ...next });
-                        submit(next);
-                      }}
-                      check={(filters) => {
-                        if (serverState !== 'ready')
-                          return Promise.reject(new Error('Connect to the inventory server before checking a saved search.'));
-                        return api('search-check', { body: filters, token: activeToken });
-                      }}
-                    />
-                  )}
-                  {tab === 'results' && !staleInventory && <ObservedChanges listings={result.matches} open={tool === 'changes'} />}
-                  {tab === 'results' && staleInventory && (
-                    <View style={styles.empty}>
-                      <Text accessibilityRole="header" style={styles.panelTitle}>
-                        These results need a fresh check
-                      </Text>
-                      <Text style={styles.bodyText}>
-                        Their source freshness window has expired. The old results and map are hidden rather than presented as current
-                        availability. Search again to read the server’s cached inventory, or review source status. No provider refresh runs
-                        automatically from this notice.
-                      </Text>
-                      <Button secondary onPress={() => navigateTab('sources')}>
-                        Review source status
-                      </Button>
-                    </View>
-                  )}
-                  {(tab === 'saved' || !staleInventory) && (
-                    <View style={[styles.resultLayout, split && styles.resultLayoutWide]}>
-                      {listVisible && (
-                        <View style={styles.results}>
-                          <Results
-                            onCheckBuilding={serverState === 'ready' ? checkBuilding : undefined}
-                            visible={visible}
-                            setVisible={setVisible}
-                            result={displayed}
-                            applied={applied}
-                            sort={scope === 'saved' ? SAVED_FILTERS.sort : applied.sort}
-                            onSort={selectSort}
-                            onPage={fetchPage}
-                            paging={busy}
-                            openCommute={() => setExpanded('commute')}
-                            commuteConfigured={commuteConfigured}
-                            checkingInventory={refreshing || serverState === 'checking' || busy}
-                            columns={split ? 1 : width >= 1200 ? 3 : wide ? 2 : 1}
-                            savedByKey={savedByKey}
-                            showMarkets={() => navigateTab('marketplaces')}
-                            showSources={() => navigateTab('sources')}
-                            onSave={saveListing}
-                            onSaveLink={saveLink}
-                            onRemove={(listing) =>
-                              setSaved((current) => current.filter((item) => listingKey(item) !== listingKey(listing)))
-                            }
-                            onError={setError}
-                            status={
-                              tab === 'results' ? (
-                                <Pressable
-                                  accessibilityRole="button"
-                                  accessibilityLabel={freshness + ' · Details: source freshness and coverage'}
-                                  onPress={() => navigateTab('sources')}
-                                >
-                                  <Text style={styles.smallMuted}>
-                                    {freshness} · <Text style={styles.linkText}>Details</Text>
-                                  </Text>
-                                </Pressable>
-                              ) : undefined
-                            }
-                          />
-                        </View>
-                      )}
-                      {WEB_MAP && mapView && (
-                        <View style={[styles.mapPanel, split && styles.mapPanelWide]}>
-                          <Suspense fallback={<Text style={styles.smallMuted}>Loading map…</Text>}>
-                            <ListingMap
-                              points={points}
-                              total={displayed.total}
-                              visible
-                              onSave={(point) => saveListing(mapListing(point, displayed.matches))}
-                              isSaved={(point) => savedKeys.has(listingKey(mapListing(point, displayed.matches)))}
-                            />
-                          </Suspense>
-                        </View>
-                      )}
-                    </View>
-                  )}
-                </>
-              )}
-              {tab === 'more' && (
-                <View style={{ gap: 16, maxWidth: 720, width: '100%', alignSelf: 'center' }}>
-                  <Text accessibilityRole="header" style={styles.panelTitle}>
-                    More
-                  </Text>
-                  <View style={styles.menu}>
-                    {[
-                      ['alerts', 'Alerts', 'Email or notify me about new apartments and price drops'],
-                      ['affordable', 'Affordable housing', 'Open lotteries and income-restricted rentals'],
-                      ['marketplaces', 'Rental platforms', 'Search StreetEasy, Zillow and other sites directly'],
-                      ['sources', 'Sources & sync', 'Where listings come from, and refresh them'],
-                    ].map(([key, label, detail], index) => (
-                      <Pressable
-                        key={key}
-                        accessibilityRole="button"
-                        accessibilityLabel={label}
-                        onPress={() => navigateTab(key!)}
-                        style={({ pressed }) => [styles.menuRow, index > 0 && styles.menuDivider, pressed && styles.pressed]}
-                      >
-                        <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-                          <Text style={styles.menuLabel}>{label}</Text>
-                          <Text style={styles.smallMuted}>{detail}</Text>
-                        </View>
-                        <Text style={styles.menuChevron}>›</Text>
-                      </Pressable>
-                    ))}
-                  </View>
-                  {account && (
-                    <View style={[styles.menu, styles.menuRow]}>
-                      <View style={{ flex: 1, minWidth: 0 }}>
-                        <Text style={styles.menuLabel}>Account</Text>
-                        <Text style={styles.smallMuted}>Signed in as {account}</Text>
-                      </View>
-                      <Button secondary onPress={() => void signOut()}>
-                        Sign out
-                      </Button>
-                    </View>
-                  )}
-                </View>
-              )}
-              {tab === 'chart' && (
-                <RentChart
-                  initialRegion={applied.region}
-                  saved={saved}
-                  showSaved={showSaved}
-                  onError={setError}
-                  loadMarket={serverState === 'ready' ? loadMarket : undefined}
-                  loadHistory={serverState === 'ready' && dashboardAvailable ? loadHistory : undefined}
-                />
-              )}
-              {tab === 'sources' && (
-                <>
-                  <Text accessibilityRole="header" style={styles.panelTitle}>
-                    Sources & sync
-                  </Text>
-                  {refreshError !== '' && (
-                    <Text accessibilityRole="alert" style={styles.noticeLine}>
-                      {refreshError}
-                    </Text>
-                  )}
-                  <SourcesPage
-                    catalog={sourceCatalog}
-                    refresh={refresh}
-                    refreshing={refreshing}
-                    cooldownSeconds={cooldownSeconds}
-                    onResync={(id) => checkSources(id ?? null)}
-                  />
-                </>
-              )}
-              {tab === 'marketplaces' && (
-                <Marketplaces
-                  filters={applied}
-                  sources={result.sources}
-                  configuredSources={configuredSources}
-                  companies={companies}
-                  onCompany={searchCompany}
-                  refresh={refresh}
-                  onError={setError}
-                />
-              )}
-              {tab === 'alerts' && <AlertsPage request={alertRequest} filters={applied} summary={searchSummary} onError={setError} />}
-              {tab === 'affordable' && (
-                <AffordableHousing
-                  region={applied.region}
-                  loadHousing={serverState === 'ready' ? loadHousing : undefined}
-                  onError={setError}
-                />
-              )}
-            </Suspense>
-          </View>
-          <View style={styles.footer}>
-            <Text style={styles.smallMuted}>Apartment Search · New York, New Jersey and Connecticut</Text>
-          </View>
-        </View>
-      </ScrollView>
-      <View style={mobileStyles.bottomNav} accessibilityRole="tablist">
-        {(
-          [
-            ['chart', 'Market', ChartIcon],
-            ['results', 'Search', SearchIcon],
-            ['saved', `Saved (${savedResults.total})`, HeartIcon],
-            ['more', 'More', MenuIcon],
-          ] as const
-        ).map(([key, label, Icon]) => {
-          const selected = key === 'more' ? !['chart', 'results', 'saved'].includes(tab) : tab === key;
-          return (
+    <StreetViewContext.Provider value={streetViewAvailable}>
+      <SafeAreaView style={styles.safe}>
+        {topBar}
+        {(tab === 'results' || tab === 'saved') && (
+          <View style={mobileStyles.searchBar}>
+            {/* The search pill: where, and for what. On Search it opens the filters. */}
             <Pressable
-              key={key}
-              accessibilityRole="tab"
-              aria-selected={selected}
-              accessibilityState={{ selected }}
-              accessibilityLabel={label}
-              style={[mobileStyles.navItem, selected && mobileStyles.navSelected]}
-              onPress={() => navigateTab(key)}
+              accessibilityRole={tab === 'results' ? 'button' : undefined}
+              accessibilityLabel={tab === 'results' ? 'Edit search: ' + marketArea : undefined}
+              disabled={tab !== 'results'}
+              onPress={() => toggleFilter('more')}
+              style={mobileStyles.summary}
             >
-              <Icon color={selected ? colors.green : colors.muted} />
-              <Text style={[styles.tabLabel, selected && mobileStyles.navTextSelected]}>{label}</Text>
+              {tab === 'results' ? <SearchIcon color={colors.ink} size={18} /> : <HeartIcon color={colors.green} size={18} filled />}
+              <View style={mobileStyles.summaryCopy}>
+                <Text numberOfLines={1} style={mobileStyles.summaryTitle}>
+                  {tab === 'saved' ? 'Your saved apartments' : marketArea}
+                </Text>
+                <Text numberOfLines={1} style={mobileStyles.destinationText}>
+                  {tab === 'saved'
+                    ? 'Saved on this device'
+                    : bedroomLabel(applied.bedrooms) +
+                      ' · ' +
+                      (applied.maxRent == null ? 'Any price' : 'Up to ' + formatRent(applied.maxRent))}
+                </Text>
+              </View>
             </Pressable>
-          );
-        })}
-      </View>
-    </SafeAreaView>
+            {tab === 'results' && (
+              <Button secondary onPress={() => toggleFilter('more')}>
+                Filters
+              </Button>
+            )}
+            {WEB_MAP && !(tab === 'saved' && saved.length === 0) && (
+              <Button secondary onPress={() => setMapView(!mapView)}>
+                {mapView ? 'List' : 'Map'}
+              </Button>
+            )}
+          </View>
+        )}
+        <Modal visible={Boolean(expanded)} transparent animationType="slide" onRequestClose={() => setExpanded('')}>
+          <View style={[mobileStyles.overlay, wide && mobileStyles.overlayCentered]}>
+            <View style={[mobileStyles.sheet, wide && mobileStyles.wideSheet]} accessibilityViewIsModal>
+              <View style={mobileStyles.sheetHeader}>
+                <Text accessibilityRole="header" style={[styles.panelTitle, { flex: 1, minWidth: 0 }]}>
+                  {expanded === 'commute' ? 'Change commute destination' : 'Search filters'}
+                </Text>
+                <Button secondary onPress={() => setExpanded('')}>
+                  Cancel
+                </Button>
+              </View>
+              <ScrollView keyboardShouldPersistTaps="handled">
+                {error !== '' && (
+                  <Text accessibilityRole="alert" style={styles.error}>
+                    {error}
+                  </Text>
+                )}
+                <Filters
+                  panel={expanded}
+                  draft={draft}
+                  setDraft={setDraft}
+                  submit={() => submit()}
+                  busy={busy}
+                  serverState={serverState}
+                  commuteConfigured={commuteConfigured}
+                  connect={connect}
+                  lookUp={serverState === 'ready' ? (place) => api('geocode', { body: { address: place }, token: activeToken }) : undefined}
+                  websites={
+                    <WebsiteFilter
+                      result={result}
+                      applied={draft}
+                      onSelect={(source) => setDraft((current) => ({ ...current, source }))}
+                      onError={setError}
+                      configuredSources={configuredSources}
+                    />
+                  }
+                />
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
+        <ScrollView
+          ref={scrollRef}
+          testID="main-scroll"
+          onScroll={(event) => {
+            if (scrollTab.current) scrollPositions.current[scrollTab.current] = event.nativeEvent.contentOffset.y;
+          }}
+          scrollEventThrottle={16}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={styles.scroll}
+        >
+          <View style={styles.shell}>
+            <View style={styles.results}>
+              <Suspense fallback={<Text style={styles.smallMuted}>Loading…</Text>}>
+                {error !== '' && (
+                  <Text accessibilityRole="alert" style={styles.error}>
+                    {error}
+                  </Text>
+                )}
+                {(tab === 'results' || tab === 'saved') && (
+                  <>
+                    {
+                      <View style={styles.toolbar}>
+                        {!(tab === 'saved' && saved.length === 0) ? (
+                          <Pressable
+                            accessibilityRole="button"
+                            accessibilityLabel="Change destination"
+                            disabled={busy}
+                            onPress={() => {
+                              setError('');
+                              toggleFilter('commute');
+                            }}
+                            style={{ flexShrink: 1, paddingVertical: 6 }}
+                          >
+                            <Text numberOfLines={1} style={mobileStyles.destinationText}>
+                              To <Text style={{ color: colors.ink, fontWeight: '600' }}>{result.workplace.label}</Text> ·{' '}
+                              <Text style={styles.linkText}>Change</Text>
+                            </Text>
+                          </Pressable>
+                        ) : (
+                          <View />
+                        )}
+                        <View style={[styles.chipRow, { flexShrink: 1 }]}>
+                          {TOOLS[tab]
+                            .filter(([id]) => id !== 'changes' || !staleInventory)
+                            .filter(() => tab !== 'saved' || saved.length > 0)
+                            .map(([id, short, full]) => (
+                              <Chip key={id} label={full} selected={tool === id} onPress={() => setTool(tool === id ? '' : id)}>
+                                {short}
+                              </Chip>
+                            ))}
+                        </View>
+                      </View>
+                    }
+                    {tab === 'saved' && <SavedComparison listings={saved} open={tool === 'compare'} />}
+                    {tab === 'saved' && <TourPlanner listings={saved} open={tool === 'tours'} />}
+                    {tab === 'results' && (
+                      <SavedSearches
+                        open={tool === 'searches'}
+                        filters={applied}
+                        disabled={busy}
+                        apply={(filters) => {
+                          const next = { ...filters, includeMap: WEB_MAP };
+                          setDraft({ ...formDefaults(), ...next });
+                          submit(next);
+                        }}
+                        check={(filters) => {
+                          if (serverState !== 'ready')
+                            return Promise.reject(new Error('Connect to the inventory server before checking a saved search.'));
+                          return api('search-check', { body: filters, token: activeToken });
+                        }}
+                      />
+                    )}
+                    {tab === 'results' && !staleInventory && <ObservedChanges listings={result.matches} open={tool === 'changes'} />}
+                    {tab === 'results' && staleInventory && (
+                      <View style={styles.empty}>
+                        <Text accessibilityRole="header" style={styles.panelTitle}>
+                          These results need a fresh check
+                        </Text>
+                        <Text style={styles.bodyText}>
+                          Their source freshness window has expired. The old results and map are hidden rather than presented as current
+                          availability. Search again to read the server’s cached inventory, or review source status. No provider refresh
+                          runs automatically from this notice.
+                        </Text>
+                        <Button secondary onPress={() => navigateTab('sources')}>
+                          Review source status
+                        </Button>
+                      </View>
+                    )}
+                    {(tab === 'saved' || !staleInventory) && (
+                      <View style={[styles.resultLayout, split && styles.resultLayoutWide]}>
+                        {listVisible && (
+                          <View style={styles.results}>
+                            <Results
+                              onCheckBuilding={serverState === 'ready' ? checkBuilding : undefined}
+                              visible={visible}
+                              setVisible={setVisible}
+                              result={displayed}
+                              applied={applied}
+                              sort={scope === 'saved' ? SAVED_FILTERS.sort : applied.sort}
+                              onSort={selectSort}
+                              onPage={fetchPage}
+                              paging={busy}
+                              openCommute={() => setExpanded('commute')}
+                              commuteConfigured={commuteConfigured}
+                              checkingInventory={refreshing || serverState === 'checking' || busy}
+                              columns={split ? 1 : width >= 1200 ? 3 : wide ? 2 : 1}
+                              savedByKey={savedByKey}
+                              showMarkets={() => navigateTab('marketplaces')}
+                              showSources={() => navigateTab('sources')}
+                              onSave={saveListing}
+                              onSaveLink={saveLink}
+                              onRemove={(listing) =>
+                                setSaved((current) => current.filter((item) => listingKey(item) !== listingKey(listing)))
+                              }
+                              onError={setError}
+                              status={
+                                tab === 'results' ? (
+                                  <Pressable
+                                    accessibilityRole="button"
+                                    accessibilityLabel={freshness + ' · Details: source freshness and coverage'}
+                                    onPress={() => navigateTab('sources')}
+                                  >
+                                    <Text style={styles.smallMuted}>
+                                      {freshness} · <Text style={styles.linkText}>Details</Text>
+                                    </Text>
+                                  </Pressable>
+                                ) : undefined
+                              }
+                            />
+                          </View>
+                        )}
+                        {WEB_MAP && mapView && (
+                          <View style={[styles.mapPanel, split && styles.mapPanelWide]}>
+                            <Suspense fallback={<Text style={styles.smallMuted}>Loading map…</Text>}>
+                              <ListingMap
+                                points={points}
+                                total={displayed.total}
+                                visible
+                                onSave={(point) => saveListing(mapListing(point, displayed.matches))}
+                                isSaved={(point) => savedKeys.has(listingKey(mapListing(point, displayed.matches)))}
+                              />
+                            </Suspense>
+                          </View>
+                        )}
+                      </View>
+                    )}
+                  </>
+                )}
+                {tab === 'more' && (
+                  <View style={{ gap: 16, maxWidth: 720, width: '100%', alignSelf: 'center' }}>
+                    <Text accessibilityRole="header" style={styles.panelTitle}>
+                      More
+                    </Text>
+                    <View style={styles.menu}>
+                      {[
+                        ['alerts', 'Alerts', 'Email or notify me about new apartments and price drops'],
+                        ['affordable', 'Affordable housing', 'Open lotteries and income-restricted rentals'],
+                        ['marketplaces', 'Rental platforms', 'Search StreetEasy, Zillow and other sites directly'],
+                        ['sources', 'Sources & sync', 'Where listings come from, and refresh them'],
+                      ].map(([key, label, detail], index) => (
+                        <Pressable
+                          key={key}
+                          accessibilityRole="button"
+                          accessibilityLabel={label}
+                          onPress={() => navigateTab(key!)}
+                          style={({ pressed }) => [styles.menuRow, index > 0 && styles.menuDivider, pressed && styles.pressed]}
+                        >
+                          <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+                            <Text style={styles.menuLabel}>{label}</Text>
+                            <Text style={styles.smallMuted}>{detail}</Text>
+                          </View>
+                          <Text style={styles.menuChevron}>›</Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                    {account && (
+                      <View style={[styles.menu, styles.menuRow]}>
+                        <View style={{ flex: 1, minWidth: 0 }}>
+                          <Text style={styles.menuLabel}>Account</Text>
+                          <Text style={styles.smallMuted}>Signed in as {account}</Text>
+                        </View>
+                        <Button secondary onPress={() => void signOut()}>
+                          Sign out
+                        </Button>
+                      </View>
+                    )}
+                  </View>
+                )}
+                {tab === 'chart' && (
+                  <RentChart
+                    initialRegion={applied.region}
+                    saved={saved}
+                    showSaved={showSaved}
+                    onError={setError}
+                    loadMarket={serverState === 'ready' ? loadMarket : undefined}
+                    loadHistory={serverState === 'ready' && dashboardAvailable ? loadHistory : undefined}
+                  />
+                )}
+                {tab === 'sources' && (
+                  <>
+                    <Text accessibilityRole="header" style={styles.panelTitle}>
+                      Sources & sync
+                    </Text>
+                    {refreshError !== '' && (
+                      <Text accessibilityRole="alert" style={styles.noticeLine}>
+                        {refreshError}
+                      </Text>
+                    )}
+                    <SourcesPage
+                      catalog={sourceCatalog}
+                      refresh={refresh}
+                      refreshing={refreshing}
+                      cooldownSeconds={cooldownSeconds}
+                      onResync={(id) => checkSources(id ?? null)}
+                    />
+                  </>
+                )}
+                {tab === 'marketplaces' && (
+                  <Marketplaces
+                    filters={applied}
+                    sources={result.sources}
+                    configuredSources={configuredSources}
+                    companies={companies}
+                    onCompany={searchCompany}
+                    refresh={refresh}
+                    onError={setError}
+                  />
+                )}
+                {tab === 'alerts' && <AlertsPage request={alertRequest} filters={applied} summary={searchSummary} onError={setError} />}
+                {tab === 'affordable' && (
+                  <AffordableHousing
+                    region={applied.region}
+                    loadHousing={serverState === 'ready' ? loadHousing : undefined}
+                    onError={setError}
+                  />
+                )}
+              </Suspense>
+            </View>
+            <View style={styles.footer}>
+              <Text style={styles.smallMuted}>Apartment Search · New York, New Jersey and Connecticut</Text>
+            </View>
+          </View>
+        </ScrollView>
+        <View style={mobileStyles.bottomNav} accessibilityRole="tablist">
+          {(
+            [
+              ['chart', 'Market', ChartIcon],
+              ['results', 'Search', SearchIcon],
+              ['saved', `Saved (${savedResults.total})`, HeartIcon],
+              ['more', 'More', MenuIcon],
+            ] as const
+          ).map(([key, label, Icon]) => {
+            const selected = key === 'more' ? !['chart', 'results', 'saved'].includes(tab) : tab === key;
+            return (
+              <Pressable
+                key={key}
+                accessibilityRole="tab"
+                aria-selected={selected}
+                accessibilityState={{ selected }}
+                accessibilityLabel={label}
+                style={[mobileStyles.navItem, selected && mobileStyles.navSelected]}
+                onPress={() => navigateTab(key)}
+              >
+                <Icon color={selected ? colors.green : colors.muted} />
+                <Text style={[styles.tabLabel, selected && mobileStyles.navTextSelected]}>{label}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </SafeAreaView>
+    </StreetViewContext.Provider>
   );
 }
 

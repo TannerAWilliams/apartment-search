@@ -105,6 +105,8 @@ EAS keeps the build number and asks for your Apple Developer account the first t
 | `ACCESS_ALLOWED_EMAILS` | Worker secret | Required for sign-in: comma-separated emails that may sign in with an email code. Kept out of the repository. |
 | `BETTER_AUTH_SECRET` | Worker secret | Turns on email-code sign-in and signs its sessions. Make one with `openssl rand -base64 32`. |
 | `APP_ACCESS_TOKEN` | Worker secret | The token scripts send, such as the StreetEasy home sync. |
+| `GOOGLE_MAPS_API_KEY` | Worker secret | Street View images on listing cards ([below](#street-view-images-free)). Without it, cards show a map. |
+| `STREET_VIEW_MONTHLY_LIMIT` | Worker variable | The most Street View images to request in a calendar month; 9,000 when unset. |
 | `TRAVELTIME_APP_ID`, `TRAVELTIME_API_KEY` | Worker secrets | Optional commute estimates. |
 | `FREE_PARTNER_FEEDS_JSON` | Worker secret | Optional authorized feeds. |
 | `STREETEASY_SYNC_ENABLED` | Worker variable | `false` pauses StreetEasy refreshes; saved data stays. |
@@ -235,3 +237,20 @@ bun run test && bun run build
 | `scripts/` | The StreetEasy home sync and its installer, offline data rebuilds, the workerd smoke test, the Lighthouse audit and the coverage report. All run with Bun. |
 | `test/`, `e2e/` | Bun unit and integration tests, and the Playwright suite ([e2e/README.md](e2e/README.md)). |
 | `docs/`, `investigations/` | Feature and source references, and dated research notes. |
+
+## Street View images (free)
+
+Listing cards can show a Google Street View photo of the building. It is set up to cost nothing (`server/street-view.ts`):
+
+- Google's metadata check, which is free, runs first, so an image is requested only where Street View has one.
+- The Worker counts every image in D1 (`street_view_usage`) and stops at 9,000 a month (`STREET_VIEW_MONTHLY_LIMIT`), below Google's free monthly allowance; past it, cards show their map.
+- Images go straight to the browser, which keeps each one for a day; the Worker stores nothing, as Google's terms require, and the key never reaches the page.
+
+To turn it on:
+
+1. In [Google Cloud Console](https://console.cloud.google.com/), create a project. Google asks for a billing account even for free use; the limits below keep the bill at $0.
+2. Under **APIs & Services → Library**, enable **Street View Static API**.
+3. Under **APIs & Services → Credentials**, create an API key. Edit it: under **API restrictions**, allow only Street View Static API.
+4. Under **APIs & Services → Street View Static API → Quotas**, set **Requests per day** to 300. This is Google's own hard stop, so even a bug in the app cannot go past the free allowance.
+5. Save the key as a Worker secret: `node ./node_modules/wrangler/bin/wrangler.js secret put GOOGLE_MAPS_API_KEY -c deploy/cloudflare/wrangler.jsonc`, or in the Cloudflare dashboard under **Workers & Pages → apartment-search → Settings → Variables and Secrets** (type **Secret**).
+

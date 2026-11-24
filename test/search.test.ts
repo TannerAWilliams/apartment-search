@@ -370,6 +370,7 @@ test('without configured feeds the app uses its snapshot and makes no network ca
     mode: 'snapshot',
     storageMode: 'none',
     browserImportAllowed: true,
+    streetViewAvailable: false,
     dashboardAvailable: false,
     snapshotMonth: SNAPSHOT_MONTH,
     sources: [],

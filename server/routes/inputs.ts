@@ -129,6 +129,18 @@ export const GeocodeRequestSchema = v.object(
 );
 
 /** POST /api/building-report: whether this is one exact NYC building is decided by server/building-records.ts. */
+/** A point for a Street View image, rounded to about a meter so cards in one building share a browser-cached image. */
+const coordinate = (min: number, max: number) =>
+  v.pipe(
+    v.string('Give a latitude and longitude.'),
+    v.transform(Number),
+    v.number('Give a latitude and longitude.'),
+    v.minValue(min, 'Give a latitude and longitude.'),
+    v.maxValue(max, 'Give a latitude and longitude.'),
+    v.transform((value) => Math.round(value * 1e5) / 1e5),
+  );
+export const StreetViewQuerySchema = v.object({ lat: coordinate(-90, 90), lng: coordinate(-180, 180) });
+
 export const BuildingAddressSchema = v.object(
   {
     address: v.optional(v.string()),
