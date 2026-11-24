@@ -8,7 +8,7 @@ import { formatSnapshotMonth, rentAreas, SNAPSHOT_MONTH, SNAPSHOT_SOURCE } from 
 // Resolves to offline-rent-data.web.ts on the web, which bundles no data.
 import { offlineRentData } from '../offline-rent-data';
 import { NYC_BOROUGHS, searchBorough } from '../regions.ts';
-import { bedroomLabel, formatRent } from '../search.ts';
+import { formatRent } from '../search.ts';
 import { styles } from '../styles.ts';
 import { Button, Chip, Disclosure, Field, Link, toggleProps } from './ui.tsx';
 import { LongTrend } from './LongTrend.tsx';
@@ -19,31 +19,7 @@ import { StatTile } from './MarketCharts.tsx';
 import { rentSeries } from '../rent-history.ts';
 
 const SIZES = ['Studio', '1 BR', '2 BR', '3 BR', '4 BR'];
-const PAGE_SIZE = 15;
-
-/** Every size in the area, as rows like the area list: the median and how many are listed. A row picks that size. */
-function SizeList({ area, bedrooms, onSize }: { area: RentArea; bedrooms: number; onSize: (size: number) => void }) {
-  return (
-    <View style={styles.menu}>
-      {area.sizes.map(({ median, count }, index) => (
-        <Pressable
-          key={SIZES[index]}
-          accessibilityRole="button"
-          {...toggleProps(bedrooms === index)}
-          accessibilityLabel={`${bedroomLabel(index)}, ${median === null ? 'no listings' : formatRent(Math.round(median)) + ' median asking rent, ' + count + ' listed'}`}
-          onPress={() => onSize(index)}
-          style={({ pressed }) => [styles.menuRow, index > 0 && styles.menuDivider, pressed && styles.pressed]}
-        >
-          <Text style={[styles.menuLabel, { flex: 1 }, bedrooms === index && { fontWeight: '700' }]}>{bedroomLabel(index)}</Text>
-          <View style={{ alignItems: 'flex-end' }}>
-            <Text style={styles.menuLabel}>{median === null ? '—' : formatRent(Math.round(median))}</Text>
-            <Text style={styles.smallMuted}>{count === 0 ? 'None listed' : `${count.toLocaleString('en-US')} listed`}</Text>
-          </View>
-        </Pressable>
-      ))}
-    </View>
-  );
-}
+const PAGE_SIZE = 5;
 
 /** The states the snapshot covers, and the region each one asks the server for. */
 const STATES = [
@@ -336,11 +312,15 @@ export function RentChart({
         </View>
         <Text style={styles.fieldLabel}>Size</Text>
         <ChipLine>
-          {SIZES.map((label, index) => (
-            <Chip key={label} selected={bedrooms === index} onPress={() => setBedrooms(index)}>
-              {label}
-            </Chip>
-          ))}
+          {SIZES.map((label, index) => {
+            // Each size shows its median here, so every size's rent is readable without a chart of its own.
+            const median = displayed?.sizes[index]?.median;
+            return (
+              <Chip key={label} label={label} selected={bedrooms === index} onPress={() => setBedrooms(index)}>
+                {median ? `${label} · ${formatRent(Math.round(median))}` : label}
+              </Chip>
+            );
+          })}
         </ChipLine>
       </View>
       {dataset === 'saved' && (
@@ -440,10 +420,6 @@ export function RentChart({
               )}
             </>
           )}
-          <Text accessibilityRole="header" style={styles.sectionHeading}>
-            Every size in {displayed.label}
-          </Text>
-          <SizeList area={displayed} bedrooms={bedrooms} onSize={setBedrooms} />
         </>
       ) : marketState !== 'ready' && dataset === 'market' ? (
         <View style={styles.empty} aria-live="polite">
@@ -482,25 +458,25 @@ export function RentChart({
           <MarketHistory load={loadHistory} area={historyArea(choice, state, displayed?.label)} />
         </Disclosure>
       )}
-      <View style={styles.chartSource}>
-        <Text accessibilityRole="header" style={styles.fieldLabel}>
-          Where these numbers come from
-        </Text>
-        <Text style={styles.smallMuted}>
-          Recent months, New York City and New Jersey: median asking rents of new listings in FirstMover’s monthly snapshot, since May 2026.
-        </Text>
-        <Link label="FirstMover snapshot data" url={SNAPSHOT_SOURCE} onError={onError} />
-        <Text style={styles.smallMuted}>
-          Longer history, New York City only: StreetEasy’s Data Dashboard, monthly since 2010, by borough and neighborhood.
-        </Text>
-        <Link label="StreetEasy Data Dashboard" url={DASHBOARD_URL} onError={onError} />
-        <Text style={styles.smallMuted}>Connecticut: medians of the apartments currently listed on Walkup.</Text>
-        {dataset === 'market' && (
-          <Pressable accessibilityRole="button" onPress={() => (setDataset('saved'), chooseState(state))} style={{ paddingTop: 6 }}>
-            <Text style={styles.linkText}>Compare with your saved apartments</Text>
-          </Pressable>
-        )}
-      </View>
+      <Disclosure title="Where these numbers come from">
+        <View style={styles.chartSource}>
+          <Text style={styles.smallMuted}>
+            Recent months, New York City and New Jersey: median asking rents of new listings in FirstMover’s monthly snapshot, since May
+            2026.
+          </Text>
+          <Link label="FirstMover snapshot data" url={SNAPSHOT_SOURCE} onError={onError} />
+          <Text style={styles.smallMuted}>
+            Longer history, New York City only: StreetEasy’s Data Dashboard, monthly since 2010, by borough and neighborhood.
+          </Text>
+          <Link label="StreetEasy Data Dashboard" url={DASHBOARD_URL} onError={onError} />
+          <Text style={styles.smallMuted}>Connecticut: medians of the apartments currently listed on Walkup.</Text>
+        </View>
+      </Disclosure>
+      {dataset === 'market' && (
+        <Pressable accessibilityRole="button" onPress={() => (setDataset('saved'), chooseState(state))} style={{ paddingVertical: 6 }}>
+          <Text style={styles.linkText}>Compare with your saved apartments</Text>
+        </Pressable>
+      )}
     </View>
   );
 }

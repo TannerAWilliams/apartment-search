@@ -745,8 +745,12 @@ test('market history charts one area, compares another, and says when figures ca
   // StreetEasy's deep dive is one tap away and follows the same area.
   const tablesBefore = await page.getByRole('button', { name: 'Show table', exact: true }).count();
   await page.getByRole('button', { name: /^More market data from StreetEasy/ }).click();
-  await expect(page.getByText(/Median asking rent in Park Slope was/)).toContainText('$3,550');
+  await expect(page.getByText('$3,550', { exact: true }).first()).toBeVisible();
+  // One chart at a time: rankings, then back to the trend.
+  await page.getByRole('button', { name: 'Rankings', exact: true }).click();
   await expect(page.getByText('Park Slope is number 2 of 2 in Brooklyn, highlighted.', { exact: true })).toBeVisible();
+  await expect(page.getByText(/^Year-over-year change/)).toHaveCount(0);
+  await page.getByRole('button', { name: 'Over time', exact: true }).click();
   await page.getByPlaceholder('Neighborhood or borough').first().fill('dumbo');
   await page.getByRole('button', { name: 'DUMBO · Brooklyn', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Stop comparing DUMBO', exact: true })).toBeVisible();
@@ -772,7 +776,8 @@ test('market history charts one area, compares another, and says when figures ca
   await expect(page.getByText('1 BR · Jersey City, NJ', { exact: true })).toBeVisible();
   await expect(page.getByText(/StreetEasy has no history for Jersey City/).first()).toBeVisible();
 
-  // Sources are named on the page.
+  // Sources are named on the page, one tap away.
+  await page.getByRole('button', { name: 'Where these numbers come from', exact: true }).click();
   await expect(page.getByRole('link', { name: /FirstMover snapshot data/ })).toBeVisible();
   await expect(page.getByRole('link', { name: /StreetEasy Data Dashboard/ }).first()).toBeVisible();
 

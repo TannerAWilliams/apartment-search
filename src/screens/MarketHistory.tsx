@@ -119,6 +119,17 @@ function AreaPicker({
  * `area` is the neighborhood or borough by name, chosen by the Market page's one area picker; StreetEasy's own
  * picker is then hidden. Without it, the section has its own picker (`initialArea` opens it on an area).
  */
+/** The charts this section offers, one shown at a time. */
+const VIEWS = [
+  ['trend', 'Over time'],
+  ['sizes', 'By size'],
+  ['rank', 'Rankings'],
+  ['seasons', 'Best month to rent'],
+  ['year', 'Year over year'],
+  ['temperature', 'Heating or cooling'],
+] as const;
+type ChartView = (typeof VIEWS)[number][0];
+
 export function MarketHistory({ load, initialArea, area: chosenArea }: { load?: LoadHistory; initialArea?: string; area?: string }) {
   const catalog = useHistory<HistoryCatalog>(load, 'history');
   const [market, setMarket] = useState<Market>('Rentals');
@@ -131,6 +142,8 @@ export function MarketHistory({ load, initialArea, area: chosenArea }: { load?: 
   const [rankBorough, setRankBorough] = useState<string | null>(null);
   const [rankBy, setRankBy] = useState<'highest' | 'lowest' | 'rise' | 'fall'>('highest');
   const [showAll, setShowAll] = useState(false);
+  // One chart at a time, so the section is a screen long rather than six charts long.
+  const [view, setView] = useState<ChartView>('trend');
 
   const data = catalog.data;
   const areas = data?.areas ?? [];
@@ -200,15 +213,12 @@ export function MarketHistory({ load, initialArea, area: chosenArea }: { load?: 
 
   const primary = values.data && focusSeries ? (values.data.values[focusSeries.name]?.[areaId] ?? []) : [];
   const allMonths = values.data?.months ?? [];
-  const headline = focusSeries ? latest(allMonths, primary, unit) : null;
   const ranked = useMemo(() => {
     if (!focusMonth.data || !focusSeries) return [];
     const rows = ranking(focusMonth.data, areas, unit, rankingBorough, rankBy === 'highest' || rankBy === 'lowest' ? 'value' : 'change');
     return rankBy === 'lowest' || rankBy === 'fall' ? rows.reverse() : rows;
   }, [focusMonth.data, focusSeries, areas, rankingBorough, rankBy]);
   const position = ranked.findIndex(({ id }) => id === areaId);
-  const peers = focusMonth.data && focusSeries ? ranking(focusMonth.data, areas, unit, borough, 'value') : [];
-  const peerRank = peers.findIndex(({ id }) => id === areaId);
 
   const grid = yearOverYearGrid(allMonths, primary, unit);
   const seasons = seasonality(allMonths, primary);
@@ -263,6 +273,14 @@ export function MarketHistory({ load, initialArea, area: chosenArea }: { load?: 
 
       {data && (
         <View style={[styles.chartCard, { gap: 10 }]}>
+          <Text style={styles.fieldLabel}>Show</Text>
+          <View style={styles.chipRow}>
+            {VIEWS.map(([key, label]) => (
+              <Chip key={key} selected={view === key} onPress={() => setView(key)}>
+                {label}
+              </Chip>
+            ))}
+          </View>
           <View style={styles.chipRow}>
             {(['Rentals', 'Sales'] as const).map((item) => (
               <Chip
@@ -291,7 +309,7 @@ export function MarketHistory({ load, initialArea, area: chosenArea }: { load?: 
                 }}
               />
             )}
-            {compare.length < 3 && (
+            {view === 'trend' && compare.length < 3 && (
               <AreaPicker
                 label="Compare with"
                 areas={areas}
@@ -300,7 +318,7 @@ export function MarketHistory({ load, initialArea, area: chosenArea }: { load?: 
               />
             )}
           </View>
-          {compare.length > 0 && (
+          {view === 'trend' && compare.length > 0 && (
             <View style={styles.chipRow}>
               {compare.map((id) => (
                 <Chip
@@ -313,30 +331,40 @@ export function MarketHistory({ load, initialArea, area: chosenArea }: { load?: 
               ))}
             </View>
           )}
-          <Text style={styles.fieldLabel}>{market === 'Rentals' ? 'Bedrooms' : 'Property type'}</Text>
-          <View style={styles.chipRow}>
-            {config.segments.map((item) => (
-              <Chip key={item} selected={segment === item} onPress={() => setSegment(item)}>
-                {dashboardSegmentLabel(item)}
-              </Chip>
-            ))}
-          </View>
-          <Text style={styles.fieldLabel}>Measure</Text>
-          <View style={styles.chipRow}>
-            {[...new Set(data.series.filter((item) => item.market === market).map(({ metric }) => metric))].map((metric) => (
-              <Chip key={metric} selected={focus === metric} onPress={() => setFocus(metric)}>
-                {data.series.find((item) => item.metric === metric)!.label}
-              </Chip>
-            ))}
-          </View>
-          <Text style={styles.fieldLabel}>Time range</Text>
-          <View style={styles.chipRow}>
-            {RANGES.map(([count, label]) => (
-              <Chip key={count} selected={months === count} onPress={() => setMonths(count)}>
-                {label}
-              </Chip>
-            ))}
-          </View>
+          {view !== 'sizes' && view !== 'temperature' && (
+            <>
+              <Text style={styles.fieldLabel}>{market === 'Rentals' ? 'Bedrooms' : 'Property type'}</Text>
+              <View style={styles.chipRow}>
+                {config.segments.map((item) => (
+                  <Chip key={item} selected={segment === item} onPress={() => setSegment(item)}>
+                    {dashboardSegmentLabel(item)}
+                  </Chip>
+                ))}
+              </View>
+            </>
+          )}
+          {view !== 'temperature' && <Text style={styles.fieldLabel}>Measure</Text>}
+          {view !== 'temperature' && (
+            <View style={styles.chipRow}>
+              {[...new Set(data.series.filter((item) => item.market === market).map(({ metric }) => metric))].map((metric) => (
+                <Chip key={metric} selected={focus === metric} onPress={() => setFocus(metric)}>
+                  {data.series.find((item) => item.metric === metric)!.label}
+                </Chip>
+              ))}
+            </View>
+          )}
+          {(view === 'trend' || view === 'sizes') && (
+            <>
+              <Text style={styles.fieldLabel}>Time range</Text>
+              <View style={styles.chipRow}>
+                {RANGES.map(([count, label]) => (
+                  <Chip key={count} selected={months === count} onPress={() => setMonths(count)}>
+                    {label}
+                  </Chip>
+                ))}
+              </View>
+            </>
+          )}
         </View>
       )}
 
@@ -344,20 +372,6 @@ export function MarketHistory({ load, initialArea, area: chosenArea }: { load?: 
         <Text accessibilityRole="alert" style={styles.error}>
           These figures could not be loaded. No values have been substituted; try again shortly.
         </Text>
-      )}
-
-      {headline && focusSeries && area && (
-        <View accessibilityRole="summary" style={[styles.chartCard, { gap: 6 }]}>
-          <Text style={{ fontSize: 17, lineHeight: 25, color: '#0b0b0b' }}>
-            {focusSeries.label}
-            {focusSeries.segment !== 'All' ? ` (${dashboardSegmentLabel(focusSeries.segment).toLowerCase()})` : ''} in {area.name} was{' '}
-            <Text style={{ fontWeight: '800' }}>{format(headline.value)}</Text> in {monthLabel(headline.month)}
-            {headline.yearly !== null ? `, ${formatChange(headline.yearly, unit)} from a year earlier` : ''}
-            {peerRank >= 0 && peers.length > 1
-              ? `. That is higher than ${peers.length - 1 - peerRank} of ${peers.length - 1} other ${borough} neighborhoods.`
-              : '.'}
-          </Text>
-        </View>
       )}
 
       {values.data && (
@@ -380,7 +394,7 @@ export function MarketHistory({ load, initialArea, area: chosenArea }: { load?: 
         </View>
       )}
 
-      {trend && focusSeries && (
+      {view === 'trend' && trend && focusSeries && (
         <ChartCard
           busy={values.busy}
           title={`${focusSeries.label}${focusSeries.segment !== 'All' ? ` · ${dashboardSegmentLabel(focusSeries.segment)}` : ''}, ${start.slice(0, 4)}–${latestMonth.slice(0, 4)}`}
@@ -424,7 +438,7 @@ export function MarketHistory({ load, initialArea, area: chosenArea }: { load?: 
         </ChartCard>
       )}
 
-      {bySegment.data && focusSeries && segmentNames.length > 0 && (
+      {view === 'sizes' && bySegment.data && focusSeries && segmentNames.length > 0 && (
         <ChartCard
           busy={bySegment.busy}
           title={`${focusSeries.label} by ${market === 'Rentals' ? 'apartment size' : 'property type'} in ${area?.name ?? 'NYC'}`}
@@ -465,7 +479,7 @@ export function MarketHistory({ load, initialArea, area: chosenArea }: { load?: 
         </ChartCard>
       )}
 
-      {grid.rows.length > 0 && focusSeries && (
+      {view === 'year' && grid.rows.length > 0 && focusSeries && (
         <ChartCard
           busy={values.busy}
           title={`Year-over-year change, every month since ${grid.rows.at(-1)?.year}`}
@@ -479,7 +493,7 @@ export function MarketHistory({ load, initialArea, area: chosenArea }: { load?: 
         </ChartCard>
       )}
 
-      {seasons.some(({ value }) => value !== null) && focusSeries && (
+      {view === 'seasons' && seasons.some(({ value }) => value !== null) && focusSeries && (
         <ChartCard
           busy={values.busy}
           title="Seasonality: how each month compares with its year"
@@ -493,7 +507,7 @@ export function MarketHistory({ load, initialArea, area: chosenArea }: { load?: 
         </ChartCard>
       )}
 
-      {focusSeries && focusMonth.data && (
+      {view === 'rank' && focusSeries && focusMonth.data && (
         <ChartCard
           busy={focusMonth.busy}
           title={`Neighborhoods ranked: ${focusSeries.label.toLowerCase()}, ${monthLabel(latestMonth)}`}
@@ -548,7 +562,7 @@ export function MarketHistory({ load, initialArea, area: chosenArea }: { load?: 
         </ChartCard>
       )}
 
-      {scatter.length > 0 && (
+      {view === 'temperature' && scatter.length > 0 && (
         <ChartCard
           busy={priceMonth.busy || cutsMonth.busy}
           title={`Market temperature, ${monthLabel(latestMonth)}`}
