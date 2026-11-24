@@ -8,7 +8,7 @@ import { Pressable, Text, View } from 'react-native';
 import { SERIES_COLORS } from '../chart-colors.ts';
 import { ChartCard } from '../components/ChartParts.tsx';
 import { LineChart } from '../components/LineChart.tsx';
-import { RankedBars, ScatterChart, SeasonColumns, StatTile, YearHeatmap } from '../components/MarketCharts.tsx';
+import { RankedList, ScatterChart, SeasonColumns, StatTile, YearHeatmap } from '../components/MarketCharts.tsx';
 import { Chip, Field, Link } from '../components/ui.tsx';
 import { DASHBOARD_URL, dashboardSegmentLabel, type METRICS } from '../dashboard-data.ts';
 import {
@@ -533,7 +533,7 @@ export function MarketHistory({ load, initialArea, area: chosenArea }: { load?: 
               </Chip>
             ))}
           </View>
-          <RankedBars
+          <RankedList
             rows={showAll ? ranked : ranked.slice(0, 15)}
             highlight={areaId}
             mode={rankBy === 'highest' || rankBy === 'lowest' ? 'value' : 'change'}

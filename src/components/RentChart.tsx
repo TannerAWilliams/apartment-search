@@ -19,35 +19,27 @@ import { StatTile } from './MarketCharts.tsx';
 import { rentSeries } from '../rent-history.ts';
 
 const SIZES = ['Studio', '1 BR', '2 BR', '3 BR', '4 BR'];
-// One series (median rent by size), so one color for every bar.
-const BAR_COLORS = ['#2a78d6', '#2a78d6', '#2a78d6', '#2a78d6', '#2a78d6'];
 const PAGE_SIZE = 15;
 
-function MedianBars({ area }: { area: RentArea }) {
-  const largest = Math.max(1, ...area.sizes.map(({ median }) => median ?? 0));
+/** Every size in the area, as rows like the area list: the median and how many are listed. A row picks that size. */
+function SizeList({ area, bedrooms, onSize }: { area: RentArea; bedrooms: number; onSize: (size: number) => void }) {
   return (
-    <View style={styles.chartCard}>
-      <Text accessibilityRole="header" style={styles.panelTitle}>
-        {area.label}
-      </Text>
-      <Text style={styles.smallMuted}>{[area.detail, `${area.count.toLocaleString('en-US')} listings`].filter(Boolean).join(' · ')}</Text>
+    <View style={styles.menu}>
       {area.sizes.map(({ median, count }, index) => (
-        <View
+        <Pressable
           key={SIZES[index]}
-          style={styles.barRow}
-          accessibilityLabel={`${bedroomLabel(index)}, ${median === null ? 'no observations' : formatRent(Math.round(median)) + ' median asking rent, ' + count + ' listings'}`}
+          accessibilityRole="button"
+          {...toggleProps(bedrooms === index)}
+          accessibilityLabel={`${bedroomLabel(index)}, ${median === null ? 'no listings' : formatRent(Math.round(median)) + ' median asking rent, ' + count + ' listed'}`}
+          onPress={() => onSize(index)}
+          style={({ pressed }) => [styles.menuRow, index > 0 && styles.menuDivider, pressed && styles.pressed]}
         >
-          <Text style={styles.barLabel}>{SIZES[index]}</Text>
-          <View style={styles.barTrack}>
-            {median !== null && (
-              <View style={[styles.barFill, { width: `${(median / largest) * 100}%`, backgroundColor: BAR_COLORS[index] }]} />
-            )}
+          <Text style={[styles.menuLabel, { flex: 1 }, bedrooms === index && { fontWeight: '700' }]}>{bedroomLabel(index)}</Text>
+          <View style={{ alignItems: 'flex-end' }}>
+            <Text style={styles.menuLabel}>{median === null ? '—' : formatRent(Math.round(median))}</Text>
+            <Text style={styles.smallMuted}>{count === 0 ? 'None listed' : `${count.toLocaleString('en-US')} listed`}</Text>
           </View>
-          <View style={styles.barValue}>
-            <Text style={styles.chartPrice}>{median === null ? '—' : formatRent(Math.round(median))}</Text>
-            <Text style={styles.chartCount}>{count === 0 ? 'No data' : `n = ${count}`}</Text>
-          </View>
-        </View>
+        </Pressable>
       ))}
     </View>
   );
@@ -129,7 +121,7 @@ function TodayTiles({ area, bedrooms, month, history }: { area: RentArea; bedroo
       <StatTile
         label="Listed now"
         value={area.count.toLocaleString('en-US')}
-        delta={`${(area.sizes[bedrooms]?.count ?? 0).toLocaleString('en-US')} are ${SIZES[bedrooms]}`}
+        delta={`${(area.sizes[bedrooms]?.count ?? 0).toLocaleString('en-US')} of them ${SIZES[bedrooms]}`}
         period={formatSnapshotMonth(month)}
         values={points.map(({ count }) => count)}
       />
@@ -383,6 +375,7 @@ export function RentChart({
                   bedrooms={bedrooms}
                   month={month}
                   history={history}
+                  compact
                 />
                 <Text style={styles.smallMuted}>
                   Source: {dataset === 'saved' ? 'your saved apartments' : snapshotSource}. Monthly medians of asking rents.
@@ -450,7 +443,7 @@ export function RentChart({
           <Text accessibilityRole="header" style={styles.sectionHeading}>
             Every size in {displayed.label}
           </Text>
-          <MedianBars area={displayed} />
+          <SizeList area={displayed} bedrooms={bedrooms} onSize={setBedrooms} />
         </>
       ) : marketState !== 'ready' && dataset === 'market' ? (
         <View style={styles.empty} aria-live="polite">

@@ -87,7 +87,12 @@ export function Results({
   /** Opens the alert form for this search. */
   onAlert?: () => void;
 }) {
+  const [open, setOpen] = useState<Set<string>>(new Set());
   const { matches } = result;
+  const shown = matches.slice(0, visible);
+  // Cards after the last open one, which takes a whole row; they decide how full the last row is.
+  const lastOpen = shown.findLastIndex(({ id }) => open.has(id));
+  const cardsAfterOpen = shown.length - lastOpen - 1;
   const savedView = result.mode === 'saved';
   // A sort with only one option (saved apartments without routing) is not a choice, so it is not shown.
   const sortOptions = Object.entries(RESULT_SORTS).filter(
@@ -183,11 +188,14 @@ export function Results({
         </View>
       )}
       <View style={styles.listingGrid}>
-        {matches.slice(0, visible).map((listing) => {
+        {shown.map((listing) => {
           const saved = savedByKey.get(listingKey(listing));
           const withLinks = saved ? { ...listing, sources: mergeSourceLinks(listing.sources, saved.sources) } : listing;
           return (
-            <View key={listing.id} style={columns === 3 ? styles.gridCard3 : columns === 2 ? styles.gridCard : styles.fullCard}>
+            <View
+              key={listing.id}
+              style={open.has(listing.id) || columns === 1 ? styles.fullCard : columns === 3 ? styles.gridCard3 : styles.gridCard}
+            >
               <Listing
                 listing={withLinks}
                 selectedSource={savedView ? '' : applied.source}
@@ -199,10 +207,23 @@ export function Results({
                 onError={onError}
                 onRemove={savedView ? onRemove : undefined}
                 saved={Boolean(saved)}
+                onExpandedChange={(expanded) =>
+                  setOpen((current) => {
+                    const next = new Set(current);
+                    if (expanded) next.add(listing.id);
+                    else next.delete(listing.id);
+                    return next;
+                  })
+                }
               />
             </View>
           );
         })}
+        {/* Empty cells fill the last row, so its cards keep the same width as the rows above. */}
+        {columns > 1 &&
+          Array.from({ length: (columns - (cardsAfterOpen % columns)) % columns }, (_, index) => (
+            <View key={`filler-${index}`} style={columns === 3 ? styles.gridCard3 : styles.gridCard} />
+          ))}
       </View>
       {!savedView && onPage && visible >= matches.length && (
         <View style={styles.chipRow}>

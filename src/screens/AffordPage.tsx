@@ -11,6 +11,12 @@ const dollars = (text: string) => {
   return Number.isFinite(amount) && amount > 0 ? amount : null;
 };
 
+/** Shows an amount as it is typed, "$120,000", so a missing or extra zero is easy to see. */
+const money = (text: string) => {
+  const digits = text.replace(/\D/g, '').slice(0, 7);
+  return digits ? '$' + Number(digits).toLocaleString('en-US') : '';
+};
+
 export function AffordPage({ onSearch }: { onSearch: (maxRent: number) => void }) {
   const [income, setIncome] = useState('');
   const [residence, setResidence] = useState<Residence>('nyc');
@@ -47,10 +53,10 @@ export function AffordPage({ onSearch }: { onSearch: (maxRent: number) => void }
         <Field
           label="Your yearly income before tax"
           value={income}
-          onChangeText={setIncome}
+          onChangeText={(text) => setIncome(money(text))}
           keyboardType="number-pad"
-          placeholder="120000"
-          maxLength={9}
+          placeholder="$120,000"
+          maxLength={10}
         />
         <Text style={styles.fieldLabel}>Where you live</Text>
         <View style={styles.chipRow}>
@@ -63,18 +69,18 @@ export function AffordPage({ onSearch }: { onSearch: (maxRent: number) => void }
         <Field
           label="Yearly 401(k) or other pre-tax savings (optional)"
           value={pretax}
-          onChangeText={setPretax}
+          onChangeText={(text) => setPretax(money(text))}
           keyboardType="number-pad"
-          placeholder="0"
-          maxLength={8}
+          placeholder="$0"
+          maxLength={10}
         />
         <Field
           label="Or your actual take-home pay a month (optional)"
           value={own}
-          onChangeText={setOwn}
+          onChangeText={(text) => setOwn(money(text))}
           keyboardType="number-pad"
           placeholder="Estimated for you"
-          maxLength={7}
+          maxLength={10}
         />
       </View>
       {result && taxes && gross ? (

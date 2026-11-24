@@ -131,11 +131,14 @@ export function RentTrend({
   bedrooms,
   month,
   history,
+  compact = false,
 }: {
   areas: RentArea[];
   bedrooms: number;
   month: string;
   history: RentHistory;
+  /** Leaves out the headline figure where the page already shows it above the chart. */
+  compact?: boolean;
 }) {
   const [selectedMonth, setSelectedMonth] = useState('');
   const series = useMemo(
@@ -161,25 +164,27 @@ export function RentTrend({
   const prices = series.flatMap(({ values }) => values.map(({ median }) => median).filter((value) => value !== null));
   return (
     <>
-      <View style={styles.trendHeadline}>
-        <View style={styles.headingCopy}>
-          <Text style={styles.chartKicker}>
-            {bedroomLabel(bedrooms).toUpperCase()} · {formatSnapshotMonth(selected.month).toUpperCase()}
-          </Text>
-          <Text accessibilityRole="header" style={styles.trendPrice}>
-            {selected.median === null ? 'No observations' : formatRent(Math.round(selected.median))}
-          </Text>
-          <Text style={styles.smallMuted}>
-            {primary.label}
-            {primary.detail ? ' · ' + primary.detail : ''}
-          </Text>
+      {!compact && (
+        <View style={styles.trendHeadline}>
+          <View style={styles.headingCopy}>
+            <Text style={styles.chartKicker}>
+              {bedroomLabel(bedrooms).toUpperCase()} · {formatSnapshotMonth(selected.month).toUpperCase()}
+            </Text>
+            <Text accessibilityRole="header" style={styles.trendPrice}>
+              {selected.median === null ? 'No observations' : formatRent(Math.round(selected.median))}
+            </Text>
+            <Text style={styles.smallMuted}>
+              {primary.label}
+              {primary.detail ? ' · ' + primary.detail : ''}
+            </Text>
+          </View>
+          {change !== null && (
+            <Text style={[styles.trendChange, change > 0 && styles.trendChangeUp]}>
+              {(change > 0 ? '+' : '') + change.toFixed(1) + '% vs. ' + monthLabel(previous.month)}
+            </Text>
+          )}
         </View>
-        {change !== null && (
-          <Text style={[styles.trendChange, change > 0 && styles.trendChangeUp]}>
-            {(change > 0 ? '+' : '') + change.toFixed(1) + '% vs. ' + monthLabel(previous.month)}
-          </Text>
-        )}
-      </View>
+      )}
       {prices.length > 0 && (
         <TrendPlot
           series={series}
@@ -200,7 +205,7 @@ export function RentTrend({
                 {detail ? ' · ' + detail : ''}
               </Text>
               <Text style={styles.chartPrice}>{point.median === null ? '—' : formatRent(Math.round(point.median))}</Text>
-              <Text style={styles.chartCount}>n = {point.count.toLocaleString('en-US')}</Text>
+              <Text style={styles.chartCount}>{point.count.toLocaleString('en-US')} listed</Text>
             </View>
           );
         })}

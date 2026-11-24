@@ -6,7 +6,7 @@ import { BuildingReport } from './BuildingReport.tsx';
 import { discoveryFacts, LAUNDRY_LABELS } from '../discovery.ts';
 import type React from 'react';
 import { useState } from 'react';
-import { Platform, Pressable, Share, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, Share, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { matchesRegion, REGIONS, searchBorough } from '../regions.ts';
 import { directionsLink, formatRent } from '../search.ts';
 import { listingLinkLabel, listingPresentation, orderedListingLinks } from '../listings.ts';
@@ -135,6 +135,9 @@ const card = StyleSheet.create({
   priceLine: { fontSize: 15, lineHeight: 20, color: colors.ink, marginTop: 4 },
   notice: { fontSize: 13, lineHeight: 18, color: '#805213' },
   details: { paddingTop: 4, gap: 12 },
+  open: { flexDirection: 'row', alignItems: 'flex-start', gap: 40 },
+  openSummary: { width: '40%', maxWidth: 440 },
+  openDetails: { flex: 1, minWidth: 0, maxWidth: 640 },
   highlight: { fontSize: 15, lineHeight: 20, fontWeight: '600', color: colors.ink },
   costRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 12 },
   costTotal: { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 8, marginTop: 2 },
@@ -152,6 +155,7 @@ export function Listing({
   saved,
   onCheckBuilding,
   defaultExpanded = false,
+  onExpandedChange,
 }: {
   listing: ListingData;
   selectedSource?: string;
@@ -165,8 +169,17 @@ export function Listing({
   onCheckBuilding?: CheckBuilding;
   /** Opens with its details shown, as on the listing's own page. */
   defaultExpanded?: boolean;
+  /** Told when the details open or close, so a grid can give the open card a whole row. */
+  onExpandedChange?: (expanded: boolean) => void;
 }) {
-  const [expanded, setExpanded] = useState(defaultExpanded);
+  const [expanded, setExpandedState] = useState(defaultExpanded);
+  const setExpanded = (value: boolean) => {
+    setExpandedState(value);
+    onExpandedChange?.(value);
+  };
+  // On a wide screen the open card shows its photo on the left and the details beside it, not one long column.
+  const { width: screenWidth } = useWindowDimensions();
+  const sideBySide = expanded && screenWidth >= 900;
   const [shared, setShared] = useState('');
   const { region, address, unit, city, rent, transitSeconds, drivingSeconds, neighborhood } = listing;
   const regionKey =
@@ -262,64 +275,71 @@ export function Listing({
     ? 'Checked ' + CHECK_TIME.format(new Date(checkedAt ?? ''))
     : 'Check date unavailable';
   return (
-    <View style={styles.rentalCard}>
-      {/* The card itself opens its details, as listing cards do in travel-booking apps; the heart saves. */}
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={'Details for ' + title}
-        accessibilityState={{ expanded }}
-        aria-expanded={expanded}
-        onPress={() => setExpanded(!expanded)}
-        style={({ pressed }) => [{ gap: 10 }, pressed && { opacity: 0.85 }]}
-      >
-        <View style={card.media}>
-          <ListingThumbnail latitude={listing.latitude} longitude={listing.longitude} photo={listing.photo} />
-          {/* One badge on the photo, the most useful thing to know first. */}
-          {photoBadge && (
-            <View style={card.tags}>
-              <Text style={card.tag}>{photoBadge}</Text>
-            </View>
-          )}
-        </View>
-        <View style={{ gap: 1 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
-            <Text accessibilityRole="header" numberOfLines={1} style={[card.title, { flex: 1 }]}>
-              {title}
-            </Text>
-            {grade && (
-              <Text accessibilityLabel={`Building grade ${grade}`} style={card.grade}>
-                Building {grade}
-              </Text>
+    <View style={[styles.rentalCard, sideBySide && card.open]}>
+      <View style={[{ gap: 10 }, sideBySide && card.openSummary]}>
+        {/* The card itself opens its details, as listing cards do in travel-booking apps; the heart saves. */}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={'Details for ' + title}
+          accessibilityState={{ expanded }}
+          aria-expanded={expanded}
+          onPress={() => setExpanded(!expanded)}
+          style={({ pressed }) => [{ gap: 10 }, pressed && { opacity: 0.85 }]}
+        >
+          <View style={card.media}>
+            <ListingThumbnail latitude={listing.latitude} longitude={listing.longitude} photo={listing.photo} />
+            {/* One badge on the photo, the most useful thing to know first. */}
+            {photoBadge && (
+              <View style={card.tags}>
+                <Text style={card.tag}>{photoBadge}</Text>
+              </View>
             )}
           </View>
-          <Text numberOfLines={1} style={card.subtitle}>
-            {place}
-          </Text>
-          <Text numberOfLines={1} style={card.subtitle}>
-            {details}
-          </Text>
-          <Text style={card.priceLine}>
-            <Text style={styles.price}>{presentation.priceKnown ? formatRent(rent) : 'Price unavailable'}</Text>
-            {presentation.priceKnown && ' month'}
-            {(listing.kind === 'snapshot' || listing.priceIncludesFees) &&
-              (listing.kind === 'snapshot' ? ' · Recorded rent' : ' · Total price, fees included')}
-            {badge ? <Text style={card.subtitle}> · {badge}</Text> : null}
-          </Text>
-        </View>
-      </Pressable>
-      {/* The heart is drawn on the photo but is its own button, not inside the card's Details button. */}
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={onRemove ? 'Remove saved apartment' : saved ? 'Apartment saved' : 'Save apartment'}
-        accessibilityState={{ disabled: !onRemove && saved }}
-        disabled={!onRemove && saved}
-        onPress={() => (onRemove ? onRemove(listing) : onSave(listing))}
-        hitSlop={8}
-        style={card.heart}
-      >
-        <HeartIcon size={26} color={saved || onRemove ? colors.green : colors.white} filled={saved || Boolean(onRemove)} fill="#00000066" />
-      </Pressable>
-      <View style={styles.rentalCardBody}>
+          <View style={{ gap: 1 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
+              <Text accessibilityRole="header" numberOfLines={1} style={[card.title, { flex: 1 }]}>
+                {title}
+              </Text>
+              {grade && (
+                <Text accessibilityLabel={`Building grade ${grade}`} style={card.grade}>
+                  Building {grade}
+                </Text>
+              )}
+            </View>
+            <Text numberOfLines={1} style={card.subtitle}>
+              {place}
+            </Text>
+            <Text numberOfLines={1} style={card.subtitle}>
+              {details}
+            </Text>
+            <Text style={card.priceLine}>
+              <Text style={styles.price}>{presentation.priceKnown ? formatRent(rent) : 'Price unavailable'}</Text>
+              {presentation.priceKnown && ' month'}
+              {(listing.kind === 'snapshot' || listing.priceIncludesFees) &&
+                (listing.kind === 'snapshot' ? ' · Recorded rent' : ' · Total price, fees included')}
+              {badge ? <Text style={card.subtitle}> · {badge}</Text> : null}
+            </Text>
+          </View>
+        </Pressable>
+        {/* The heart is drawn on the photo but is its own button, not inside the card's Details button. */}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={onRemove ? 'Remove saved apartment' : saved ? 'Apartment saved' : 'Save apartment'}
+          accessibilityState={{ disabled: !onRemove && saved }}
+          disabled={!onRemove && saved}
+          onPress={() => (onRemove ? onRemove(listing) : onSave(listing))}
+          hitSlop={8}
+          style={card.heart}
+        >
+          <HeartIcon
+            size={26}
+            color={saved || onRemove ? colors.green : colors.white}
+            filled={saved || Boolean(onRemove)}
+            fill="#00000066"
+          />
+        </Pressable>
+      </View>
+      <View style={[styles.rentalCardBody, sideBySide && card.openDetails]}>
         {listing.bestFit && (
           <View style={{ gap: 3 }}>
             <Text style={styles.fieldLabel}>

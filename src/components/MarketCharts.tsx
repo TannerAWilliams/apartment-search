@@ -4,7 +4,7 @@
  * focus; the cards these sit in also give every value as a table.
  */
 import { useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 import Svg, { Circle, Line, Path, Polyline, Rect, Text as SvgText } from 'react-native-svg';
 import { CHART_INK, divergingColor, SERIES_COLORS, textOn } from '../chart-colors.ts';
 import { divergingPosition, niceTicks, type Ranked, type ScatterPoint } from '../market-history.ts';
@@ -66,7 +66,9 @@ export function StatTile({
       <Text style={{ fontSize: 13, color: CHART_INK.secondary }}>{label}</Text>
       <Text style={{ fontSize: 26, fontWeight: '700', color: CHART_INK.primary }}>{value}</Text>
       <Text style={{ fontSize: 13, color: CHART_INK.secondary }}>
-        <Text style={{ fontWeight: '700', color: CHART_INK.primary }}>{delta}</Text> {period}
+        {delta ? <Text style={{ fontWeight: '600', color: CHART_INK.primary }}>{delta}</Text> : null}
+        {delta && period ? ' · ' : ''}
+        {period}
       </Text>
       <Sparkline values={values} />
     </View>
@@ -74,10 +76,10 @@ export function StatTile({
 }
 
 /**
- * Areas ranked: one bar each, the highlighted area in the second color. In change mode the bars grow either
- * way from zero, blue for a fall and red for a rise.
+ * Areas ranked as a plain list: rank, name, the figure and its change from a year earlier. Rents across one
+ * borough differ by a few percent, so bars from zero all look the same length; the numbers say more.
  */
-export function RankedBars({
+export function RankedList({
   rows,
   highlight,
   mode,
@@ -90,60 +92,39 @@ export function RankedBars({
   format: (value: number) => string;
   formatChange: (value: number | null) => string;
 }) {
-  const [width, onLayout] = useWidth();
-  const labelWidth = Math.min(220, Math.max(140, width * 0.42));
-  const valueWidth = 72;
-  const plot = Math.max(1, width - labelWidth - valueWidth);
-  const values = rows.map((row) => (mode === 'value' ? row.value : (row.change ?? 0)));
-  const high = Math.max(0, ...values);
-  const low = Math.min(0, ...values);
-  const scale = (value: number) => (plot * value) / (high - low || 1);
-  const zero = scale(-low);
   return (
-    <View onLayout={onLayout} style={{ gap: 2 }}>
-      {width > 0 &&
-        rows.map((row, index) => {
-          const value = values[index]!;
-          const length = Math.max(2, Math.abs(scale(value)));
-          const chosen = row.id === highlight;
-          const color = mode === 'value' ? (chosen ? SERIES_COLORS[1] : SERIES_COLORS[0]) : divergingColor(value >= 0 ? 0.85 : -0.85);
-          const start = mode === 'value' ? 0 : value >= 0 ? zero : zero - length;
-          // A 4px rounded end on the data side; square where the bar meets its baseline.
-          const r = Math.min(4, length / 2);
-          const d =
-            mode === 'value' || value >= 0
-              ? `M${start},5h${length - r}a${r},${r} 0 0 1 ${r},${r}v${14 - 2 * r}a${r},${r} 0 0 1 -${r},${r}h-${length - r}z`
-              : `M${start + length},5h-${length - r}a${r},${r} 0 0 0 -${r},${r}v${14 - 2 * r}a${r},${r} 0 0 0 ${r},${r}h${length - r}z`;
-          return (
-            <Pressable
-              key={row.id}
-              accessibilityLabel={`${index + 1}. ${row.name}, ${row.borough}: ${format(row.value)}, ${formatChange(row.change)} from a year earlier`}
-              // Long neighborhood names wrap to a second line instead of being cut off.
-              style={{ flexDirection: 'row', alignItems: 'center', minHeight: 26, paddingVertical: 2 }}
-            >
-              <Text
-                numberOfLines={2}
-                style={{
-                  width: labelWidth,
-                  paddingRight: 8,
-                  fontSize: 13,
-                  lineHeight: 16,
-                  color: chosen ? CHART_INK.primary : CHART_INK.secondary,
-                  fontWeight: chosen ? '700' : '400',
-                }}
-              >
-                {index + 1}. {row.name}
-              </Text>
-              <Svg width={plot} height={24}>
-                {mode === 'change' && <Line x1={zero} x2={zero} y1={0} y2={24} stroke={CHART_INK.axis} strokeWidth={1} />}
-                <Path d={d} fill={color} />
-              </Svg>
-              <Text style={[{ width: valueWidth, textAlign: 'right', fontSize: 13, color: CHART_INK.primary }, tabular]}>
-                {mode === 'value' ? format(row.value) : formatChange(row.change)}
-              </Text>
-            </Pressable>
-          );
-        })}
+    <View>
+      {rows.map((row, index) => {
+        const chosen = row.id === highlight;
+        const main = mode === 'value' ? format(row.value) : formatChange(row.change);
+        const other = mode === 'value' ? `${formatChange(row.change)} in a year` : format(row.value);
+        return (
+          <View
+            key={row.id}
+            accessibilityLabel={`${index + 1}. ${row.name}, ${row.borough}: ${format(row.value)}, ${formatChange(row.change)} from a year earlier`}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 12,
+              paddingVertical: 10,
+              paddingHorizontal: 8,
+              borderTopWidth: index > 0 ? 1 : 0,
+              borderTopColor: 'rgba(11,11,11,0.08)',
+              borderRadius: chosen ? 8 : 0,
+              backgroundColor: chosen ? 'rgba(42,120,214,0.08)' : 'transparent',
+            }}
+          >
+            <Text style={[{ width: 28, fontSize: 13, color: CHART_INK.muted }, tabular]}>{index + 1}</Text>
+            <Text style={{ flex: 1, fontSize: 15, lineHeight: 20, color: CHART_INK.primary, fontWeight: chosen ? '700' : '400' }}>
+              {row.name}
+            </Text>
+            <View style={{ alignItems: 'flex-end' }}>
+              <Text style={[{ fontSize: 15, fontWeight: '600', color: CHART_INK.primary }, tabular]}>{main}</Text>
+              <Text style={[{ fontSize: 12, color: CHART_INK.secondary }, tabular]}>{other}</Text>
+            </View>
+          </View>
+        );
+      })}
     </View>
   );
 }

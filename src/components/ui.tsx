@@ -155,7 +155,8 @@ export function Field({
 export function Disclosure({ title, children }: { title: string; children: ReactNode }) {
   const [open, setOpen] = useState(false);
   return (
-    <View style={{ gap: 8 }}>
+    <View style={{ gap: 12 }}>
+      {/* A full-width row, like a settings row: the title, and a chevron that turns when it opens. */}
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={title}
@@ -163,12 +164,24 @@ export function Disclosure({ title, children }: { title: string; children: React
         aria-expanded={open}
         onPress={() => setOpen(!open)}
         style={({ pressed }) => [
-          { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', minHeight: 40 },
+          {
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: 12,
+            minHeight: 48,
+            paddingVertical: 12,
+            borderTopWidth: 1,
+            borderBottomWidth: open ? 0 : 1,
+            borderColor: colors.border,
+          },
           pressed && styles.pressed,
         ]}
       >
-        <Text style={styles.linkText}>{title}</Text>
-        <Text style={[styles.linkText, { fontSize: 16 }]}>{open ? '▴' : '▾'}</Text>
+        <Text style={{ flex: 1, fontSize: 16, lineHeight: 22, fontWeight: '600', color: colors.ink }}>{title}</Text>
+        <Text aria-hidden style={{ fontSize: 18, color: colors.ink, transform: [{ rotate: open ? '-90deg' : '90deg' }] }}>
+          ›
+        </Text>
       </Pressable>
       {open && children}
     </View>
