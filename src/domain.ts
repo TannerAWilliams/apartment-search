@@ -87,6 +87,8 @@ export interface SearchFilters {
   includeCommute?: boolean;
   /** Only official feeds and open data: no listings read from listing sites' own pages. The App Store app sets it. */
   officialOnly?: boolean;
+  /** Only listings in this neighborhood (compared without case or punctuation). */
+  neighborhood?: string;
   /** Only buildings that register rent-stabilized units. */
   stabilizedOnly?: boolean;
   /** Leave out buildings graded C or D from their records. */

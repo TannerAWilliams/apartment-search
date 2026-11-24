@@ -336,6 +336,12 @@ function ApartmentSearch() {
                   draft={draft}
                   setDraft={setDraft}
                   submit={() => submit()}
+                  describe={(changes) => {
+                    const next = { ...draft, ...changes };
+                    setDraft(next);
+                    void submit(next);
+                  }}
+                  loadNeighborhoods={serverState === 'ready' ? loadNeighborhoods : undefined}
                   busy={busy}
                   serverState={serverState}
                   commuteConfigured={commuteConfigured}

@@ -1113,3 +1113,14 @@ test('application kit: the income rule and a ready-written message for a saved a
   await page.getByRole('button', { name: 'Application kit', exact: true }).click();
   await expect(page.getByRole('textbox', { name: 'Full name', exact: true })).toHaveValue('Alex Rivera');
 });
+
+test('plain-English search turns a sentence into filters and searches', async ({ page }) => {
+  const { requests } = await mockApp(page);
+  await page.getByRole('button', { name: 'Filters', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Describe what you want', exact: true }).fill('2 bedroom in Brooklyn under $4k with laundry');
+  await page.getByRole('button', { name: 'Search for this', exact: true }).click();
+  // The sheet closes on a phone once the search runs; the request shows what was understood.
+  await expect
+    .poll(() => requests.filter(({ path }) => path === '/api/search').at(-1)?.body)
+    .toMatchObject({ bedrooms: 2, maxRent: 4000, region: 'brooklyn', laundry: 'in_building' });
+});

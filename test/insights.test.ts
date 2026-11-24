@@ -72,3 +72,15 @@ test('buildings are graded from their records, and listings can be filtered by t
   expect(ids({ belowMarket: true })).toEqual([]);
   expect(parseFilters({ stabilizedOnly: 'yes' }).stabilizedOnly, 'not a flag').toBeUndefined();
 });
+
+test('a neighborhood filter matches its name without case or punctuation', () => {
+  const listings = [
+    testListing({ id: 'w', neighborhood: 'West Village' }),
+    testListing({ id: 'c', neighborhood: 'Chelsea' }),
+    testListing({ id: 'n' }),
+  ];
+  const ids = (neighborhood: string) =>
+    matchListings(listings, parseFilters({ region: 'all', bedrooms: null, maxRent: null, neighborhood }), null).map(({ id }) => id);
+  expect(ids('west-village')).toEqual(['w']);
+  expect(ids('')).toEqual(['w', 'c', 'n']);
+});

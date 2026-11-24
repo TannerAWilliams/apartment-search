@@ -103,6 +103,13 @@ export const SearchFiltersSchema = v.pipe(
     includeMap: flag,
     includeCommute: flag,
     officialOnly: flag,
+    neighborhood: v.optional(
+      v.pipe(
+        text,
+        v.transform((name) => name.slice(0, 60)),
+      ),
+      '',
+    ),
     stabilizedOnly: flag,
     goodBuildings: flag,
     belowMarket: flag,
@@ -137,6 +144,7 @@ export const SearchFiltersSchema = v.pipe(
       sort: input.sort,
       includeCommute: input.includeCommute,
       officialOnly: input.officialOnly,
+      ...(input.neighborhood ? { neighborhood: input.neighborhood } : {}),
       ...(input.stabilizedOnly ? { stabilizedOnly: true } : {}),
       ...(input.goodBuildings ? { goodBuildings: true } : {}),
       ...(input.belowMarket ? { belowMarket: true } : {}),
@@ -222,6 +230,12 @@ export function compareResults(
   return (a[metric] ?? Infinity) - (b[metric] ?? Infinity) || a.rent - b.rent || a.id.localeCompare(b.id);
 }
 
+const placeName = (name: string) =>
+  name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+
 export function matchListings(listings: ListingData[], filters: SearchFilters, workplace: Point | null | undefined) {
   return listings.flatMap((listing) => {
     const region = regionOf(listing);
@@ -237,6 +251,7 @@ export function matchListings(listings: ListingData[], filters: SearchFilters, w
       (filters.zip && listing.zip !== filters.zip) ||
       (filters.bedrooms !== null && listing.bedrooms !== filters.bedrooms) ||
       (filters.maxRent !== null && listing.rent > filters.maxRent) ||
+      (filters.neighborhood && placeName(listing.neighborhood ?? '') !== placeName(filters.neighborhood)) ||
       (filters.stabilizedOnly && listing.building?.stabilized !== true) ||
       (filters.goodBuildings && ['C', 'D'].includes(buildingGrade(listing.building) ?? '')) ||
       (filters.belowMarket && !((listing.insights?.vsMarket ?? 0) <= -0.05))
