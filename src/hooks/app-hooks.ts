@@ -1,3 +1,4 @@
+import { pathForTab, tabForLocation } from '../routes.ts';
 import { useEffect, useRef, useState } from 'react';
 import { AppState, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -85,27 +86,6 @@ export function useAccountSaved(
   }, [saved, synced, account, request]);
 }
 
-/** The tabs the URL hash can name; anything else opens Search. */
-const APP_TABS = [
-  'results',
-  'saved',
-  'more',
-  'sources',
-  'chart',
-  'marketplaces',
-  'affordable',
-  'alerts',
-  'shared',
-  'apply',
-  'neighborhoods',
-  'renewal',
-  'admin',
-  'terms',
-  'privacy',
-  'list',
-  'afford',
-];
-
 /**
  * The current time, updated when the shown live inventory reaches its expiry and whenever the app
  * returns to the foreground, so the UI can mark expired results without polling or searching.
@@ -162,8 +142,8 @@ export function useRetryCooldown() {
 }
 
 /**
- * The open tab, kept in the URL hash on the web so Back and reload return to it. Changing tab
- * collapses any expanded listing; the Saved tab scopes listing actions to saved apartments.
+ * The open screen, kept in the URL path on the web (/market, /search, /profile) so links, Back and reload return
+ * to it. Changing screen collapses any expanded listing; the Saved screen scopes listing actions to saved apartments.
  */
 export function useHashNavigation() {
   const [tab, setTab] = useState('chart');
@@ -172,22 +152,23 @@ export function useHashNavigation() {
   useEffect(() => {
     if (Platform.OS !== 'web') return;
     const restore = () => {
-      const next = window.location.hash.slice(1);
+      const next = tabForLocation(window.location.pathname, window.location.hash);
+      // A link from before paths ("/#saved") moves to the screen's own address.
+      if (window.location.hash) window.history.replaceState(null, '', pathForTab(next) + window.location.search);
       setExpanded('');
       setScope(next === 'saved' ? 'saved' : 'market');
-      // A listing's own page is "listing=" and its ID; any other unknown hash opens Market.
-      setTab(APP_TABS.includes(next) || next.startsWith('listing=') ? next : 'chart');
+      setTab(next);
     };
     restore();
     window.addEventListener('popstate', restore);
-    window.addEventListener('hashchange', restore);
-    return () => {
-      window.removeEventListener('popstate', restore);
-      window.removeEventListener('hashchange', restore);
-    };
+    return () => window.removeEventListener('popstate', restore);
   }, []);
-  const navigateTab = (next: string) => {
-    if (Platform.OS === 'web' && window.location.hash !== '#' + next) window.history.pushState(null, '', '#' + next);
+  /** Opens a screen; `replace` changes the address without adding a Back step (for redirects such as the first visit). */
+  const navigateTab = (next: string, replace = false) => {
+    if (Platform.OS === 'web') {
+      const path = pathForTab(next);
+      if (window.location.pathname !== path) window.history[replace ? 'replaceState' : 'pushState'](null, '', path);
+    }
     setScope(next === 'saved' ? 'saved' : 'market');
     setExpanded('');
     setTab(next);

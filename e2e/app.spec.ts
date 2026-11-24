@@ -231,7 +231,7 @@ async function mockApp(
     await route.fulfill({ json: data });
   });
   if (!options.welcome) await page.addInitScript(() => localStorage.setItem('apartment-search:welcome:v1', 'seen'));
-  await page.goto(options.start ?? '/#results');
+  await page.goto(options.start ?? '/search');
   // Signed out, the app searches only after sign-in.
   if (!options.signIn) await expect.poll(() => requests.filter((r) => r.path === '/api/search').length).toBeGreaterThan(0);
   return { requests, unexpected, listings };
@@ -283,10 +283,10 @@ test('mouse navigation and browser back restore tabs', async ({ page }) => {
   await mockApp(page);
   await page.getByRole('tab', { name: 'Profile', exact: true }).click();
   await page.getByRole('button', { name: 'Sources & sync', exact: true }).click();
-  await expect(page).toHaveURL(/#sources$/);
+  await expect(page).toHaveURL(/\/sources$/);
   await page.getByRole('tab', { name: 'Profile', exact: true }).click();
   await page.getByRole('button', { name: 'Rental platforms', exact: true }).click();
-  await expect(page).toHaveURL(/#marketplaces$/);
+  await expect(page).toHaveURL(/\/marketplaces$/);
   await page.goBack();
   await expect(page.getByRole('tab', { name: 'Profile', exact: true })).toHaveAttribute('aria-selected', 'true');
   await page.goBack();
@@ -336,7 +336,7 @@ test('Sources tab is keyboard operable', async ({ page }) => {
   const sources = page.getByRole('button', { name: 'Sources & sync', exact: true });
   await sources.focus();
   await page.keyboard.press('Enter');
-  await expect(page).toHaveURL(/#sources$/);
+  await expect(page).toHaveURL(/\/sources$/);
   await expect(page.getByRole('button', { name: 'Resync all connected providers' })).toBeVisible();
 });
 
@@ -1328,11 +1328,13 @@ test('categories under the search bar search with one tap, and a save is confirm
 
 test('an apartment has its own page from a shared link, with its details open', async ({ page }) => {
   const { listings } = await mockApp(page, { insights: true });
-  await page.goto('/#listing=' + encodeURIComponent(listings[0]!.id));
+  await page.goto('/listing/' + encodeURIComponent(listings[0]!.id));
   await expect(page.getByRole('button', { name: '← All apartments', exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Highlights', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Share this apartment', exact: true })).toBeVisible();
+  // A link from before paths still opens the apartment's page, at its own address.
   await page.goto('/#listing=missing');
+  await expect(page).toHaveURL(/\/listing\/missing$/);
   await expect(page.getByText('This apartment is no longer listed.', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: '← All apartments', exact: true }).click();
   await expect(page.getByRole('tab', { name: 'Search', exact: true })).toHaveAttribute('aria-selected', 'true');
@@ -1341,6 +1343,9 @@ test('an apartment has its own page from a shared link, with its details open', 
 test('a first visit asks where, how big and what budget, then shows the matches and offers alerts', async ({ page }) => {
   const { requests } = await mockApp(page, { account: 'renter@example.test', welcome: true });
   await expect(page.getByRole('heading', { name: 'Welcome to Walkup', exact: true })).toBeVisible();
+  // Its own page, not a sheet over the app.
+  await expect(page).toHaveURL(/\/welcome$/);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
   await page.getByRole('button', { name: 'Brooklyn', exact: true }).click();
   await page.getByRole('button', { name: '2 bedrooms', exact: true }).click();
   await page.getByRole('textbox', { name: 'Most you’d pay a month', exact: true }).fill('4000');
@@ -1405,4 +1410,25 @@ test('the affordability calculator shows the landlord rule and Dave Ramsey’s 2
   await expect(page.getByText(/^\$1,500 a month$/)).toBeVisible();
   await page.getByRole('button', { name: 'Search up to $1,500 (25% rule)', exact: true }).click();
   await expect.poll(() => requests.filter(({ path }) => path === '/api/search').at(-1)?.body).toMatchObject({ maxRent: 1500 });
+});
+
+test('each screen has its own address that opens it directly, and Back returns', async ({ page }) => {
+  await mockApp(page, { account: 'renter@example.test' });
+  for (const [path, tab] of [
+    ['/profile', 'Profile'],
+    ['/saved', /^Saved/],
+    ['/search', 'Search'],
+    ['/market', 'Market'],
+  ] as const) {
+    await page.goto(path);
+    await expect(page.getByRole('tab', { name: tab, exact: typeof tab === 'string' })).toHaveAttribute('aria-selected', 'true');
+  }
+  await page.getByRole('tab', { name: 'Profile', exact: true }).click();
+  await expect(page).toHaveURL(/\/profile$/);
+  await page.getByRole('button', { name: 'What can I afford?', exact: true }).click();
+  await expect(page).toHaveURL(/\/afford$/);
+  await page.goBack();
+  await expect(page).toHaveURL(/\/profile$/);
+  await page.goto('/afford');
+  await expect(page.getByRole('heading', { name: 'What can I afford?', exact: true })).toBeVisible();
 });

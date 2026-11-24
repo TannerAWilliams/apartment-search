@@ -116,7 +116,7 @@ test('checkout and the billing portal open Stripe’s pages; without settings pa
     mode: 'subscription',
     'line_items[0][price]': 'price_monthly',
     client_reference_id: 'renter@example.test',
-    success_url: 'https://app.test/#more',
+    success_url: 'https://app.test/profile',
   });
   await call({ action: 'checkout', plan: 'pass' });
   expect(sent[1]?.body.get('mode')).toBe('payment');

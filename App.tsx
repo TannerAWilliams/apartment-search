@@ -227,18 +227,17 @@ function ApartmentSearch() {
     showToast('Saved to your list');
   }
 
-  // The first-visit setup, once per device, after signing in.
-  const [welcome, setWelcome] = useState(false);
+  // The first-visit setup, its own page (/welcome), once per device after signing in.
   useEffect(() => {
     if (serverState !== 'ready' || !account) return;
     AsyncStorage.getItem(WELCOME_KEY)
       .then((seen) => {
-        if (!seen) setWelcome(true);
+        if (!seen) navigateTab('welcome', true);
       })
       .catch(() => {});
+    // biome-ignore lint/correctness/useExhaustiveDependencies: once, when the account is known
   }, [serverState, account]);
   function finishWelcome() {
-    setWelcome(false);
     AsyncStorage.setItem(WELCOME_KEY, new Date().toISOString()).catch(() => {});
   }
 
@@ -631,6 +630,23 @@ function ApartmentSearch() {
                   />
                 )}
                 {tab === 'apply' && <ApplyPage saved={saved} onError={setError} />}
+                {tab === 'welcome' && (
+                  <Welcome
+                    onSkip={() => {
+                      finishWelcome();
+                      navigateTab('chart', true);
+                    }}
+                    onDone={(changes, alerts) => {
+                      finishWelcome();
+                      const next = { ...draft, ...changes };
+                      setDraft(next);
+                      navigateTab('results', true);
+                      void submit(next).then(() => {
+                        if (alerts) navigateTab('alerts');
+                      });
+                    }}
+                  />
+                )}
                 {tab.startsWith('listing=') && (
                   <ListingPage
                     id={decodeURIComponent(tab.slice('listing='.length))}
@@ -709,18 +725,6 @@ function ApartmentSearch() {
             </Pressable>
           </View>
         )}
-        <Welcome
-          visible={welcome}
-          onClose={finishWelcome}
-          onDone={(changes, alerts) => {
-            finishWelcome();
-            const next = { ...draft, ...changes };
-            setDraft(next);
-            void submit(next).then(() => {
-              if (alerts) navigateTab('alerts');
-            });
-          }}
-        />
         {toast !== '' && (
           <View pointerEvents="box-none" style={[mobileStyles.floatingRow, { bottom: 150 }]}>
             <View

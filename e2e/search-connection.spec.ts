@@ -46,7 +46,7 @@ for (const initial of ['checking', 'offline'] as const) {
       }
       return route.abort();
     });
-    await page.goto('/#results');
+    await page.goto('/search');
     await page.getByRole('button', { name: 'Filters', exact: true }).click();
     if (initial === 'offline') await expect(page.getByRole('button', { name: 'Retry connection', exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Show apartments', exact: true }).click();

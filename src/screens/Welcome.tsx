@@ -1,9 +1,10 @@
 /**
  * The first-visit setup: three quick questions (where, what size, what budget) and when you move, then the
- * matching apartments, with an offer to get alerts for them. Shown once per device after signing in.
+ * matching apartments, with an offer to get alerts for them. Its own page, /welcome, opened once per device after
+ * signing in.
  */
 import { useState } from 'react';
-import { Modal, Pressable, ScrollView, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import type { SearchFilters } from '../domain.ts';
 import { Button, Chip, Field } from '../components/ui.tsx';
 import { colors, styles } from '../styles.ts';
@@ -28,14 +29,12 @@ const SIZES: [number | null, string][] = [
 const WHEN = ['As soon as possible', 'Within a month', 'In 1–3 months', 'Just looking'];
 
 export function Welcome({
-  visible,
   onDone,
-  onClose,
+  onSkip,
 }: {
-  visible: boolean;
   /** Searches with the answers; `alerts` asks to open the alert form afterwards. */
   onDone: (filters: Partial<SearchFilters>, alerts: boolean) => void;
-  onClose: () => void;
+  onSkip: () => void;
 }) {
   const [region, setRegion] = useState('nyc');
   const [bedrooms, setBedrooms] = useState<number | null>(1);
@@ -44,60 +43,57 @@ export function Welcome({
   const rent = /^\d{3,6}$/.test(budget.trim()) ? Number(budget.trim()) : null;
   const filters: Partial<SearchFilters> = { region, bedrooms, maxRent: rent };
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={{ flex: 1, backgroundColor: '#00000066', justifyContent: 'flex-end' }}>
-        <View style={{ backgroundColor: colors.white, borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '92%' }}>
-          <ScrollView contentContainerStyle={{ padding: 22, gap: 14 }} keyboardShouldPersistTaps="handled">
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Text accessibilityRole="header" style={{ fontSize: 24, fontWeight: '700', color: colors.ink }}>
-                Welcome to Walkup
-              </Text>
-              <Pressable accessibilityRole="button" accessibilityLabel="Skip" onPress={onClose} hitSlop={10}>
-                <Text style={styles.linkText}>Skip</Text>
-              </Pressable>
-            </View>
-            <Text style={styles.bodyText}>Three quick questions, and we’ll show what matches.</Text>
-            <Text style={styles.fieldLabel}>Where do you want to live?</Text>
-            <View style={styles.chipRow}>
-              {AREAS.map(([key, label]) => (
-                <Chip key={key} selected={region === key} onPress={() => setRegion(key)}>
-                  {label}
-                </Chip>
-              ))}
-            </View>
-            <Text style={styles.fieldLabel}>How big?</Text>
-            <View style={styles.chipRow}>
-              {SIZES.map(([count, label]) => (
-                <Chip key={label} selected={bedrooms === count} onPress={() => setBedrooms(count)}>
-                  {label}
-                </Chip>
-              ))}
-            </View>
-            <Field
-              label="Most you’d pay a month"
-              value={budget}
-              onChangeText={(text) => setBudget(text.replace(/[^\d]/g, ''))}
-              keyboardType="number-pad"
-              placeholder="Any budget"
-              maxLength={6}
-            />
-            <Text style={styles.fieldLabel}>When are you moving?</Text>
-            <View style={styles.chipRow}>
-              {WHEN.map((label) => (
-                <Chip key={label} selected={when === label} onPress={() => setWhen(label)}>
-                  {label}
-                </Chip>
-              ))}
-            </View>
-            <Button onPress={() => onDone(filters, false)}>Show my apartments</Button>
-            {when !== 'Just looking' && (
-              <Button secondary onPress={() => onDone(filters, true)}>
-                Show them and get email alerts
-              </Button>
-            )}
-          </ScrollView>
+    // Its own page (/welcome), not a sheet over the app: one column, centered on a wide screen.
+    <View style={{ width: '100%', maxWidth: 640, alignSelf: 'center', gap: 16, paddingVertical: 8 }}>
+      <View style={{ gap: 6 }}>
+        <Text accessibilityRole="header" style={{ fontSize: 30, lineHeight: 36, fontWeight: '700', color: colors.ink }}>
+          Welcome to Walkup
+        </Text>
+        <Text style={styles.bodyText}>Three quick questions, and we’ll show what matches. You can change any of it later.</Text>
+      </View>
+      <View style={[styles.chartCard, { gap: 14 }]}>
+        <Text style={styles.fieldLabel}>Where do you want to live?</Text>
+        <View style={styles.chipRow}>
+          {AREAS.map(([key, label]) => (
+            <Chip key={key} selected={region === key} onPress={() => setRegion(key)}>
+              {label}
+            </Chip>
+          ))}
+        </View>
+        <Text style={styles.fieldLabel}>How big?</Text>
+        <View style={styles.chipRow}>
+          {SIZES.map(([count, label]) => (
+            <Chip key={label} selected={bedrooms === count} onPress={() => setBedrooms(count)}>
+              {label}
+            </Chip>
+          ))}
+        </View>
+        <Field
+          label="Most you’d pay a month"
+          value={budget}
+          onChangeText={(text) => setBudget(text.replace(/[^\d]/g, ''))}
+          keyboardType="number-pad"
+          placeholder="Any budget"
+          maxLength={6}
+        />
+        <Text style={styles.fieldLabel}>When are you moving?</Text>
+        <View style={styles.chipRow}>
+          {WHEN.map((label) => (
+            <Chip key={label} selected={when === label} onPress={() => setWhen(label)}>
+              {label}
+            </Chip>
+          ))}
         </View>
       </View>
-    </Modal>
+      <Button onPress={() => onDone(filters, false)}>Show my apartments</Button>
+      {when !== 'Just looking' && (
+        <Button secondary onPress={() => onDone(filters, true)}>
+          Show them and get email alerts
+        </Button>
+      )}
+      <Pressable accessibilityRole="button" onPress={onSkip} style={{ alignSelf: 'center', paddingVertical: 8 }}>
+        <Text style={styles.linkText}>Skip for now</Text>
+      </Pressable>
+    </View>
   );
 }

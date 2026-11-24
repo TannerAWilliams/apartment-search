@@ -1,4 +1,5 @@
 import type { Metric } from 'web-vitals';
+import { tabForLocation } from './routes.ts';
 
 /**
  * Real-user performance: the Core Web Vitals each visit measures (load, responsiveness, layout shift),
@@ -39,7 +40,7 @@ const browserPage = (): Page | null =>
     ? null
     : {
         automated: navigator.webdriver === true,
-        tab: () => location.hash.slice(1) || 'results',
+        tab: () => tabForLocation(location.pathname, location.hash),
         hidden: () => document.visibilityState === 'hidden',
         on: (event, listener) => (event === 'pagehide' ? window : document).addEventListener(event, listener),
       };

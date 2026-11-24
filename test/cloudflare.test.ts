@@ -75,6 +75,22 @@ test('the web app is served with its security policy, and only fingerprinted fil
   expect(missing.headers.get('Cache-Control'), 'a missing file is never cached long-term').toBe('no-store');
 });
 
+test('the app’s own addresses get the app, and other missing files stay missing', async () => {
+  const { env } = await environment();
+  const onlyIndex = {
+    ...env,
+    ASSETS: {
+      fetch: async (request: Request) =>
+        new URL(request.url).pathname === '/' ? new Response('the app') : new Response('not found', { status: 404 }),
+    },
+  };
+  const screen = await call(onlyIndex, '/profile');
+  expect(await screen.text()).toBe('the app');
+  expect(screen.headers.get('Cache-Control')).toBe('private, no-cache');
+  expect(await (await call(onlyIndex, '/listing/abc')).text()).toBe('the app');
+  expect((await call(onlyIndex, '/nothing-here.png')).status).toBe(404);
+});
+
 test('the private app requires the access token for every request, assets included', async () => {
   const { env } = await environment();
   for (const path of ['/api/config', '/index.html', '/health']) {

@@ -1,4 +1,4 @@
-/** One apartment's own page, opened from a shared link (#listing=ID): the listing with its details open. */
+/** One apartment's own page, opened from a shared link (/listing/ID): the listing with its details open. */
 import { useEffect, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import type { ListingData, SourceLink, Workplace } from '../domain.ts';

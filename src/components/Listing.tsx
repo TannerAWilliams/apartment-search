@@ -88,7 +88,7 @@ function BuildingSummary({ facts }: { facts: BuildingFacts }) {
 /** The address of a listing's own page in this app. */
 export function listingPageUrl(id: string) {
   const origin = Platform.OS === 'web' && typeof window !== 'undefined' ? window.location.origin : 'https://apartments.5thof6.com';
-  return `${origin}/#listing=${encodeURIComponent(id)}`;
+  return `${origin}/listing/${encodeURIComponent(id)}`;
 }
 
 /** Shares a link: the share sheet where there is one, otherwise the clipboard. */

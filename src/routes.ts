@@ -1,0 +1,54 @@
+/**
+ * The app's addresses on the web: each screen has its own path (/market, /search, /profile), so links, Back
+ * and reload work like any website. The Worker serves the app for these paths (server/cloudflare.ts).
+ */
+
+/** Screens whose path is not simply their name. */
+const NAMED: Record<string, string> = { chart: '/market', results: '/search', more: '/profile' };
+/** Screens whose path is their name: /saved, /alerts, /welcome. */
+const PLAIN = [
+  'saved',
+  'welcome',
+  'sources',
+  'marketplaces',
+  'affordable',
+  'alerts',
+  'shared',
+  'apply',
+  'neighborhoods',
+  'renewal',
+  'admin',
+  'terms',
+  'privacy',
+  'list',
+  'afford',
+];
+const BY_PATH = new Map<string, string>([
+  ...Object.entries(NAMED).map(([tab, path]) => [path, tab] as const),
+  ...PLAIN.map((tab) => ['/' + tab, tab] as const),
+  ['/', 'chart'],
+  ['/home', 'chart'],
+]);
+
+/** Every path the app answers, for the Worker; a listing's own page is /listing/ and its ID. */
+export const APP_PATHS = [...BY_PATH.keys()];
+export const isAppPath = (path: string) => BY_PATH.has(path.replace(/\/+$/, '') || '/') || /^\/listing\/[^/]+$/.test(path);
+
+/** The path for a screen; a listing's page is "listing=ID" as a screen, its ID kept URL-encoded. */
+export function pathForTab(tab: string) {
+  if (tab.startsWith('listing=')) return '/listing/' + tab.slice('listing='.length);
+  return NAMED[tab] ?? (PLAIN.includes(tab) ? '/' + tab : '/market');
+}
+
+/**
+ * The screen for an address. Links from before paths ("/#saved", "/#listing=ID") still open their screen;
+ * anything unknown opens Market.
+ */
+export function tabForLocation(pathname: string, hash = '') {
+  const legacy = hash.replace(/^#/, '');
+  if (legacy.startsWith('listing=')) return legacy;
+  if (legacy) return legacy in NAMED || PLAIN.includes(legacy) ? legacy : 'chart';
+  const listing = /^\/listing\/([^/]+)$/.exec(pathname);
+  if (listing) return 'listing=' + listing[1]!;
+  return BY_PATH.get(pathname.replace(/\/+$/, '') || '/') ?? 'chart';
+}

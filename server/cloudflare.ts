@@ -13,6 +13,7 @@ import { type Auth, createAuth, sessionEmail } from './auth.ts';
 import { isAdmin } from './roles.ts';
 import { runScheduled } from './nightly.ts';
 import { log } from './log.ts';
+import { isAppPath } from '../src/routes.ts';
 import { securityHeaders, withCacheControl } from './web-headers.ts';
 import { type ArchiveLoader, DASHBOARD_ARCHIVE_PATH } from './dashboard-snapshot.ts';
 import { SYNC_PROGRESS_KEY, WORKFLOW_SOURCE_IDS } from './sources/source-registry.ts';
@@ -225,7 +226,12 @@ app.post('/api/refresh', async (c, next) => {
 });
 
 app.route('/', api);
-app.all('*', async (c) => withCacheControl(await c.env.ASSETS.fetch(c.req.raw), c.req.path));
+app.all('*', async (c) => {
+  const asset = await c.env.ASSETS.fetch(c.req.raw);
+  // The app's own addresses (/market, /profile, /listing/ID) are one page: the app's index, which opens that screen.
+  if (asset.status !== 404 || !isAppPath(c.req.path)) return withCacheControl(asset, c.req.path);
+  return withCacheControl(await c.env.ASSETS.fetch(new Request(new URL('/', c.req.url), c.req.raw)), '/');
+});
 
 app.onError((cause, c) => {
   log.error('request_failed', cause, { path: c.req.path, method: c.req.method });

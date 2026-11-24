@@ -90,8 +90,8 @@ export async function checkoutUrl(env: AppEnv, email: string, plan: BillingPlan,
     client_reference_id: account,
     'metadata[plan]': plan,
     allow_promotion_codes: 'true',
-    success_url: `${origin}/#more`,
-    cancel_url: `${origin}/#more`,
+    success_url: `${origin}/profile`,
+    cancel_url: `${origin}/profile`,
   });
 }
 
@@ -99,7 +99,7 @@ export async function checkoutUrl(env: AppEnv, email: string, plan: BillingPlan,
 export async function portalUrl(env: AppEnv, bucket: Bucket, email: string, origin: string, fetcher: FetchTransport) {
   const customer = (await readBilling(bucket)).accounts[email.toLowerCase()]?.customer;
   if (!billingAvailable(env) || !customer) throw new SearchInputError('There is no subscription to manage.');
-  return stripe(env, fetcher, 'billing_portal/sessions', { customer, return_url: `${origin}/#more` });
+  return stripe(env, fetcher, 'billing_portal/sessions', { customer, return_url: `${origin}/profile` });
 }
 
 const hex = (bytes: ArrayBuffer) => [...new Uint8Array(bytes)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
