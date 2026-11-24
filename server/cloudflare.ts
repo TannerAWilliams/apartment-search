@@ -1,5 +1,6 @@
 import { type Context, Hono } from 'hono';
 import { stripeWebhook } from './billing.ts';
+import { publicPages } from './public-pages.ts';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import * as v from 'valibot';
 import { api } from './api.ts';
@@ -181,6 +182,10 @@ app.use('/api/*', async (c, next) => {
 });
 
 app.get('/health', (c) => c.text('ok', 200, HEADERS));
+// Public neighborhood pages, the sitemap and robots.txt, for search engines; open without signing in.
+app.on('GET', ['/robots.txt', '/sitemap.xml', '/rents', '/rents/*'], (c) =>
+  publicPages({ ...c.env, BUCKET: createD1Bucket(c.env.APARTMENTS) }, (url, options) => fetch(url, options)).fetch(c.req.raw),
+);
 // The dashboard archive is published with the static files only so the API can read it.
 app.all('/data/*', (c) => fail(c, 404, 'Not found.'));
 

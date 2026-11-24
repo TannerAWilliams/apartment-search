@@ -30,6 +30,8 @@ import {
 import { Filters, WebsiteFilter } from './src/components/Filters.tsx';
 import { Landing } from './src/screens/Landing.tsx';
 import { CategoryBar } from './src/components/CategoryBar.tsx';
+import { WELCOME_KEY, Welcome } from './src/screens/Welcome.tsx';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StreetViewContext } from './src/components/ListingThumbnail.tsx';
 import {
   BrandMark,
@@ -220,6 +222,21 @@ function ApartmentSearch() {
   function saveListing(listing: ListingData) {
     setSaved((current) => mergeListings([...current, { ...listing, buildingLinks: undefined }]));
     showToast('Saved to your list');
+  }
+
+  // The first-visit setup, once per device, after signing in.
+  const [welcome, setWelcome] = useState(false);
+  useEffect(() => {
+    if (serverState !== 'ready' || !account) return;
+    AsyncStorage.getItem(WELCOME_KEY)
+      .then((seen) => {
+        if (!seen) setWelcome(true);
+      })
+      .catch(() => {});
+  }, [serverState, account]);
+  function finishWelcome() {
+    setWelcome(false);
+    AsyncStorage.setItem(WELCOME_KEY, new Date().toISOString()).catch(() => {});
   }
 
   // A short confirmation at the bottom after saving, with a way to the list, as listing apps confirm a save.
@@ -673,6 +690,18 @@ function ApartmentSearch() {
             </Pressable>
           </View>
         )}
+        <Welcome
+          visible={welcome}
+          onClose={finishWelcome}
+          onDone={(changes, alerts) => {
+            finishWelcome();
+            const next = { ...draft, ...changes };
+            setDraft(next);
+            void submit(next).then(() => {
+              if (alerts) navigateTab('alerts');
+            });
+          }}
+        />
         {toast !== '' && (
           <View pointerEvents="box-none" style={[mobileStyles.floatingRow, { bottom: 150 }]}>
             <View

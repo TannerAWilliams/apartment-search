@@ -4,7 +4,7 @@
  */
 import type React from 'react';
 import { useRef, useState } from 'react';
-import { Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native';
+import { Platform, Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native';
 import { BrandMark } from '../components/Icons.tsx';
 import { ListingThumbnail } from '../components/ListingThumbnail.tsx';
 import { SignIn } from '../components/SignIn.tsx';
@@ -289,6 +289,14 @@ export function Landing({ onSignedIn }: { onSignedIn: (token: string) => void })
         ]}
       >
         <Text style={styles.smallMuted}>© {new Date().getFullYear()} Walkup · New York</Text>
+        <Pressable
+          accessibilityRole="link"
+          onPress={() => {
+            if (Platform.OS === 'web') window.location.assign('/rents');
+          }}
+        >
+          <Text style={styles.linkText}>Rents by neighborhood</Text>
+        </Pressable>
         <Pressable accessibilityRole="link" onPress={() => (setPage('terms'), toTop())}>
           <Text style={styles.linkText}>Terms of Service</Text>
         </Pressable>

@@ -56,6 +56,8 @@ async function mockApp(
     plan?: 'free' | 'paid';
     /** The first listing has building facts, a price comparison and a warning. */
     insights?: boolean;
+    /** Show the first-visit setup, as for a new device. */
+    welcome?: boolean;
   } = {},
 ) {
   const requests: MockRequest[] = [];
@@ -228,6 +230,7 @@ async function mockApp(
     }
     await route.fulfill({ json: data });
   });
+  if (!options.welcome) await page.addInitScript(() => localStorage.setItem('apartment-search:welcome:v1', 'seen'));
   await page.goto(options.start ?? '/#results');
   // Signed out, the app searches only after sign-in.
   if (!options.signIn) await expect.poll(() => requests.filter((r) => r.path === '/api/search').length).toBeGreaterThan(0);
@@ -1313,4 +1316,20 @@ test('an apartment has its own page from a shared link, with its details open', 
   await expect(page.getByText('This apartment is no longer listed.', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: '← All apartments', exact: true }).click();
   await expect(page.getByRole('tab', { name: 'Search', exact: true })).toHaveAttribute('aria-selected', 'true');
+});
+
+test('a first visit asks where, how big and what budget, then shows the matches and offers alerts', async ({ page }) => {
+  const { requests } = await mockApp(page, { account: 'renter@example.test', welcome: true });
+  await expect(page.getByRole('heading', { name: 'Welcome to Walkup', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Brooklyn', exact: true }).click();
+  await page.getByRole('button', { name: '2 bedrooms', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Most you’d pay a month', exact: true }).fill('4000');
+  await page.getByRole('button', { name: 'Show them and get email alerts', exact: true }).click();
+  await expect
+    .poll(() => requests.filter(({ path }) => path === '/api/search').at(-1)?.body)
+    .toMatchObject({ region: 'brooklyn', bedrooms: 2, maxRent: 4000 });
+  await expect(page.getByRole('heading', { name: 'Alerts', exact: true })).toBeVisible();
+  // Shown once per device.
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Welcome to Walkup', exact: true })).toHaveCount(0);
 });
