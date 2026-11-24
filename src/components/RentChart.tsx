@@ -250,9 +250,14 @@ export function RentChart({
   if (dataset === 'dashboard')
     return (
       <View style={styles.marketplacePanel}>
-        <Button secondary onPress={() => setDataset('market')}>
-          Back to rent trends
-        </Button>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Back to rent trends"
+          onPress={() => setDataset('market')}
+          style={{ alignSelf: 'flex-start', paddingVertical: 6 }}
+        >
+          <Text style={styles.linkText}>← Back to rent trends</Text>
+        </Pressable>
         <MarketHistory load={loadHistory} initialArea={historyArea} />
       </View>
     );

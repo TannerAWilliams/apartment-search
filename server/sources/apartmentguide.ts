@@ -61,6 +61,23 @@ type Building = {
   floorPlans?: unknown;
 };
 
+/**
+ * A street address and the unit glued onto it, as Apartment Guide's single rentals write them: "524 Timpson Pl
+ * unit #8a studio", "1363 E 40th Street ##2", "220 E 116th Street #2Nd Floor", "2971 Shell Rd unit #616".
+ */
+export function splitStreetUnit(raw: string) {
+  const marker = raw.match(/\s+(?:(?:unit|apt\.?|apartment)\b|#)/i);
+  if (marker?.index === undefined) return { street: raw.trim(), unit: '' };
+  const unit = raw
+    .slice(marker.index + marker[0].length)
+    .replace(/#/g, ' ')
+    .replace(/\bstudio\b/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 40);
+  return { street: raw.slice(0, marker.index).trim(), unit };
+}
+
 const dollars = (text: unknown) => (typeof text === 'string' && /^\$[\d,]+$/.test(text) ? Number(text.slice(1).replaceAll(',', '')) : NaN);
 
 /** The lowest rent of a floor plan available now or within 60 days, or NaN when it shows none. */
@@ -95,13 +112,14 @@ export function parseApartmentGuidePage(html: string, _page: unknown, checkedAt:
       if (!Number.isFinite(rent) || typeof beds !== 'number' || !Number.isInteger(beds) || beds < 0 || beds > 4) continue;
       if (rent < (cheapest.get(beds)?.rent ?? Infinity)) cheapest.set(beds, { rent, plan });
     }
+    const { street, unit } = splitStreetUnit(building.address);
     return [...cheapest].flatMap(([beds, { rent, plan }]) => {
       const listing = normalizeListing(
         {
           id: `${building.id}-${beds}`,
           url,
-          address: building.address,
-          unit: '',
+          address: street,
+          unit,
           city,
           state: 'NY',
           region: 'nyc',

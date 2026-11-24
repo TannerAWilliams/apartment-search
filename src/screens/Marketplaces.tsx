@@ -73,7 +73,8 @@ export function Marketplaces({
             style={({ pressed }) => [styles.marketCard, pressed && styles.pressed]}
           >
             <View style={styles.marketInfo}>
-              <Text style={styles.marketName}>{name}</Text>
+              {/* A long name like AffordableHousing.com may break before its domain ending, never mid-word. */}
+              <Text style={styles.marketName}>{name.replace(/\.(com|org|nyc)$/, '\u200B.$1')}</Text>
               <Text style={styles.smallMuted}>{detail}</Text>
               {status(id) !== '' && <Text style={styles.marketType}>{status(id)}</Text>}
             </View>

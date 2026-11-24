@@ -519,11 +519,15 @@ test('local change checks opt in, seed baseline and show newer observed price ch
   expect(userRefreshes(requests)).toHaveLength(0);
 });
 
-test('NYC building report loads automatically on Details and reuses completed session cache', async ({ page }) => {
+test('NYC building records load when opened in Details and reuse the completed session cache', async ({ page }) => {
   const { requests, unexpected } = await mockApp(page, { nyc: true });
   const details = page.getByRole('button', { name: 'Details for 12 Grove Street', exact: true });
+  const records = page.getByRole('button', { name: 'NYC building records', exact: true });
   expect(requests.filter((item) => item.path === '/api/building-report')).toHaveLength(0);
   await details.click();
+  // Details alone asks for nothing; the records load when opened.
+  expect(requests.filter((item) => item.path === '/api/building-report')).toHaveLength(0);
+  await records.click();
   await expect(page.getByText('Official building report: matched', { exact: true })).toBeVisible();
   await expect(page.getByText('311 service requests on this tax lot in the last 365 days: 5.', { exact: true })).toBeVisible();
   await expect(page.getByText('EXAMPLE PROPERTY LLC · NYC PLUTO tax-lot owner · 26v2', { exact: true })).toBeVisible();
@@ -535,6 +539,7 @@ test('NYC building report loads automatically on Details and reuses completed se
   expect(requests.filter((item) => item.path === '/api/building-report')).toHaveLength(1);
   await details.click();
   await details.click();
+  await records.click();
   await expect(page.getByText('Official building report: matched', { exact: true })).toBeVisible();
   expect(requests.filter((item) => item.path === '/api/building-report')).toHaveLength(1);
   expect(userRefreshes(requests)).toHaveLength(0);

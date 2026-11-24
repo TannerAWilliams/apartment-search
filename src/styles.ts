@@ -123,7 +123,7 @@ export const styles = StyleSheet.create({
   error: { ...small, color: '#822924', backgroundColor: '#fae8e5', borderRadius: 10, padding: 12 },
   empty: { ...panel, padding: 24, alignItems: 'flex-start', gap: 10 },
   listing: { ...panel, paddingHorizontal: 15, paddingVertical: 13, gap: 10 },
-  listingTitle: { fontSize: 17, lineHeight: 22, fontWeight: '800', color: colors.ink },
+  listingTitle: { fontSize: 17, lineHeight: 22, fontWeight: '600', color: colors.ink },
   listingAddress: { fontSize: 17, lineHeight: 24, fontWeight: '800', color: colors.green },
   websiteFilter: { gap: 6 },
   price: { fontSize: 15, lineHeight: 20, color: colors.ink, fontWeight: '600' },

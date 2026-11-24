@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { APARTMENTGUIDE_LIVE, parseApartmentGuidePage } from '../server/sources/apartmentguide.ts';
+import { APARTMENTGUIDE_LIVE, parseApartmentGuidePage, splitStreetUnit } from '../server/sources/apartmentguide.ts';
 import { CRAWLER_USER_AGENT, fetchPublicHtml } from '../server/sources/public-rentals.ts';
 
 const at = '2026-11-24T00:00:00.000Z';
@@ -110,3 +110,29 @@ test('Apartment Guide is read one page at a time as the app, and a rate limit or
   );
   expect(agent).toBeNull();
 }, 20_000);
+
+test('Apartment Guide units glued onto the street address are split off', () => {
+  expect(
+    [
+      '524 Timpson Pl unit #8a studio',
+      '1363 E 40th Street ##2',
+      '220 E 116th Street #2Nd Floor',
+      '2971 Shell Rd unit #616',
+      '70 Howard avenue #',
+      '3180 Fish Ave unit',
+      '78-66 79th Ln unit Lower Unit',
+      '5 Bay St',
+      ' 1 Main St ',
+    ].map(splitStreetUnit),
+  ).toEqual([
+    { street: '524 Timpson Pl', unit: '8a' },
+    { street: '1363 E 40th Street', unit: '2' },
+    { street: '220 E 116th Street', unit: '2Nd Floor' },
+    { street: '2971 Shell Rd', unit: '616' },
+    { street: '70 Howard avenue', unit: '' },
+    { street: '3180 Fish Ave', unit: '' },
+    { street: '78-66 79th Ln', unit: 'Lower Unit' },
+    { street: '5 Bay St', unit: '' },
+    { street: '1 Main St', unit: '' },
+  ]);
+});

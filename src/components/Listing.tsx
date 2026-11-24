@@ -200,7 +200,10 @@ export function Listing({
             </Disclosure>
             {/* NYC's building records cover the five boroughs only; elsewhere there is nothing to check. */}
             {searchBorough(listing) && (
-              <BuildingReport key={listingKey(listing)} listing={listing} onError={onError} onCheckBuilding={onCheckBuilding} />
+              // The report loads when opened: violations, ownership and rent stabilization from NYC's records.
+              <Disclosure title="NYC building records">
+                <BuildingReport key={listingKey(listing)} listing={listing} onError={onError} onCheckBuilding={onCheckBuilding} />
+              </Disclosure>
             )}
           </View>
         )}

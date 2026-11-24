@@ -32,9 +32,11 @@ const GROUPS = [
 function SourceRow({ row, first, disabled, onResync }: { row: Row; first: boolean; disabled: boolean; onResync: () => void }) {
   const [open, setOpen] = useState(false);
   const count = row.status?.listingCount;
+  // A source without listings, such as StreetEasy's market data, shows only its state and time.
+  const listings = count != null && count > 0;
   const summary = [
-    row.state === 'Saved data available' && count != null ? '' : row.state,
-    count != null ? `${count.toLocaleString('en-US')} listings` : '',
+    row.state === 'Saved data available' && listings ? '' : row.state === 'Saved data available' ? 'Up to date' : row.state,
+    listings ? `${count.toLocaleString('en-US')} listings` : '',
     row.status?.updatedAt ? shortTime(row.status.updatedAt) : '',
   ]
     .filter(Boolean)

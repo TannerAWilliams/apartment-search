@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
 import { NYC_SEARCH_DEFAULT } from '../regions.ts';
 import { styles } from '../styles.ts';
-import { Button, Link } from '../components/ui.tsx';
+import { Button, Disclosure, Link } from '../components/ui.tsx';
 
 const SIZE_LABELS = ['Studio', '1 BR', '2 BR', '3 BR', '4+ BR'];
 const HOUSING_PORTAL = 'https://housingconnect.nyc.gov/PublicWeb/';
@@ -70,19 +70,22 @@ export function AffordableHousing({
           </Text>
           {data?.westchester ? (
             <>
-              <Text style={styles.smallMuted}>
-                {data.westchester.opportunities.length} opportunities · Checked {showDate(data.westchester.checkedAt)}
-              </Text>
-              {data.westchester.opportunities.map((opportunity) => {
-                const closed = opportunity.applicationEnd !== null && Date.parse(opportunity.applicationEnd) < now;
-                return (
-                  <View key={opportunity.id} style={styles.listing}>
-                    <Text accessibilityRole="header" style={styles.listingTitle}>
+              {(() => {
+                // Open opportunities first, as rows; ones whose applications closed wait behind a toggle.
+                // Closed: the application deadline has passed, or, with no deadline, the lottery has already been held.
+                const past = (date: string | null) => date !== null && Date.parse(date) < now;
+                const ended = ({ applicationEnd, lottery }: { applicationEnd: string | null; lottery: string | null }) =>
+                  past(applicationEnd) || (applicationEnd === null && past(lottery));
+                const open = data.westchester.opportunities.filter((opportunity) => !ended(opportunity));
+                const closed = data.westchester.opportunities.filter(ended);
+                const row = (opportunity: (typeof open)[number], index: number) => (
+                  <View key={opportunity.id} style={[{ paddingVertical: 12, gap: 3 }, index > 0 && styles.menuDivider]}>
+                    <Text accessibilityRole="header" style={styles.fieldLabel}>
                       {opportunity.name}
                     </Text>
                     <Text style={styles.smallMuted}>{opportunity.location}</Text>
                     <Text style={styles.bodyText}>
-                      {closed
+                      {past(opportunity.applicationEnd)
                         ? 'Applications closed ' + showDate(opportunity.applicationEnd ?? undefined)
                         : opportunity.applicationEnd
                           ? 'Apply by ' + showDate(opportunity.applicationEnd)
@@ -92,7 +95,20 @@ export function AffordableHousing({
                     <Link label="View listing and apply" url={opportunity.url} onError={onError} />
                   </View>
                 );
-              })}
+                return (
+                  <>
+                    <Text style={styles.smallMuted}>
+                      {open.length} open · {closed.length} closed · Checked {showDate(data.westchester.checkedAt)}
+                    </Text>
+                    <View>{open.map(row)}</View>
+                    {closed.length > 0 && (
+                      <Disclosure title={`Closed applications (${closed.length})`}>
+                        <View>{closed.map(row)}</View>
+                      </Disclosure>
+                    )}
+                  </>
+                );
+              })()}
             </>
           ) : (
             <Text style={styles.smallMuted}>Nothing saved yet. Resync to check the county’s list, or open it below.</Text>
