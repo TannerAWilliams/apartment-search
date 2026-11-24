@@ -60,4 +60,5 @@ The code is deployed (`server/billing.ts`); payments stay off, and the upgrade b
 
 ## Every year
 
+- [ ] Each January, update the tax brackets in `src/affordability.ts` (federal, New York, New York City, New Jersey, Connecticut) for the new tax year.
 - [ ] Each June, after the Rent Guidelines Board votes, update `RGB_INCREASES` in `src/renewal.ts` (the renewal check's one- and two-year increases).

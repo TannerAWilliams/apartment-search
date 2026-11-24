@@ -91,7 +91,7 @@ export function RankedBars({
   formatChange: (value: number | null) => string;
 }) {
   const [width, onLayout] = useWidth();
-  const labelWidth = Math.min(190, Math.max(120, width * 0.36));
+  const labelWidth = Math.min(220, Math.max(140, width * 0.42));
   const valueWidth = 72;
   const plot = Math.max(1, width - labelWidth - valueWidth);
   const values = rows.map((row) => (mode === 'value' ? row.value : (row.change ?? 0)));
@@ -118,14 +118,16 @@ export function RankedBars({
             <Pressable
               key={row.id}
               accessibilityLabel={`${index + 1}. ${row.name}, ${row.borough}: ${format(row.value)}, ${formatChange(row.change)} from a year earlier`}
-              style={{ flexDirection: 'row', alignItems: 'center', height: 26 }}
+              // Long neighborhood names wrap to a second line instead of being cut off.
+              style={{ flexDirection: 'row', alignItems: 'center', minHeight: 26, paddingVertical: 2 }}
             >
               <Text
-                numberOfLines={1}
+                numberOfLines={2}
                 style={{
                   width: labelWidth,
                   paddingRight: 8,
                   fontSize: 13,
+                  lineHeight: 16,
                   color: chosen ? CHART_INK.primary : CHART_INK.secondary,
                   fontWeight: chosen ? '700' : '400',
                 }}

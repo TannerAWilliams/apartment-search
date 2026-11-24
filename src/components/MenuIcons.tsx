@@ -32,6 +32,15 @@ const DRAW: Record<string, (color: string) => React.ReactNode> = {
   admin: (c) => <Path d="M4 20V10 M10 20V4 M16 20v-7 M22 20H2" {...line(c)} />,
   sources: (c) => <Path d="M4 12a8 8 0 0 1 13.7-5.6L20 9 M20 4v5h-5 M20 12a8 8 0 0 1-13.7 5.6L4 15 M4 20v-5h5" {...line(c)} />,
   list: (c) => <Path d="M4 11l8-6 8 6 M6 10v10h12V10 M12 13v5 M9.5 15.5h5" {...line(c)} />,
+  afford: (c) => (
+    <>
+      <Circle cx={12} cy={12} r={8.5} {...line(c)} />
+      <Path
+        d="M14.5 9.5c-.5-1-1.4-1.5-2.5-1.5-1.5 0-2.5.8-2.5 2s1 1.7 2.5 2 2.5.8 2.5 2-1 2-2.5 2c-1.2 0-2.1-.6-2.6-1.5 M12 6.5V8 M12 16v1.5"
+        {...line(c)}
+      />
+    </>
+  ),
   terms: (c) => <Rect x={5} y={3} width={14} height={18} rx={2} {...line(c)} />,
 };
 

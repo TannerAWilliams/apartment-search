@@ -10,7 +10,9 @@ import { offlineRentData } from '../offline-rent-data';
 import { NYC_BOROUGHS, searchBorough } from '../regions.ts';
 import { bedroomLabel, formatRent } from '../search.ts';
 import { styles } from '../styles.ts';
-import { Button, Chip, Field, Link, toggleProps } from './ui.tsx';
+import { Button, Chip, Disclosure, Field, Link, toggleProps } from './ui.tsx';
+import { LongTrend } from './LongTrend.tsx';
+import { DASHBOARD_URL } from '../dashboard-data.ts';
 import { MarketHistory } from '../screens/MarketHistory.tsx';
 import { RentTrend } from './RentTrend.tsx';
 import { StatTile } from './MarketCharts.tsx';
@@ -51,54 +53,22 @@ function MedianBars({ area }: { area: RentArea }) {
   );
 }
 
-function RentTable({ areas, selection, choose }: { areas: RentArea[]; selection: string; choose: (id: string) => void }) {
-  return (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator
-      keyboardShouldPersistTaps="handled"
-      accessibilityLabel="Median asking rent table, swipe horizontally for more bedroom sizes"
-    >
-      <View style={styles.chartTable}>
-        <View style={styles.chartTableHeader}>
-          <Text style={[styles.chartTablePlace, styles.fieldLabel]}>Area</Text>
-          {SIZES.map((label) => (
-            <Text key={label} style={[styles.chartCell, styles.fieldLabel]}>
-              {label}
-            </Text>
-          ))}
-        </View>
-        {areas.map((area) => (
-          <Pressable
-            key={area.id}
-            accessibilityRole="button"
-            {...toggleProps(selection === area.id)}
-            accessibilityLabel={`Show chart for ${area.label} ${area.detail}`}
-            onPress={() => choose(area.id)}
-            style={[styles.chartTableRow, selection === area.id && styles.chartTableSelected]}
-          >
-            <View style={styles.chartTablePlace}>
-              <Text style={styles.fieldLabel}>{area.label}</Text>
-              {area.detail !== '' && <Text style={styles.chartCount}>{area.detail}</Text>}
-            </View>
-            {area.sizes.map(({ median, count }, index) => (
-              <View key={SIZES[index]} style={styles.chartCell}>
-                <Text style={styles.chartPrice}>{median === null ? '—' : formatRent(Math.round(median))}</Text>
-                <Text style={styles.chartCount}>{count === 0 ? ' ' : `n = ${count}`}</Text>
-              </View>
-            ))}
-          </Pressable>
-        ))}
-      </View>
-    </ScrollView>
-  );
-}
-
 /** The states the snapshot covers, and the region each one asks the server for. */
 const STATES = [
   ['all', 'All', ''],
   ['nyc', 'New York', ', NY'],
   ['nj', 'New Jersey', ', NJ'],
+  ['ct', 'Connecticut', ', CT'],
+] as const;
+/** The time ranges, in months; the snapshot covers the most recent six, StreetEasy the rest. */
+const SNAPSHOT_RANGE = 6;
+const RANGES = [
+  [6, '6 months'],
+  [12, '1 year'],
+  [36, '3 years'],
+  [60, '5 years'],
+  [120, '10 years'],
+  [0, 'Since 2010'],
 ] as const;
 type State = (typeof STATES)[number][0];
 /** How the chart's area was chosen: the whole state, a borough or city, a neighborhood, or a ZIP code. */
@@ -137,7 +107,7 @@ function ChipLine({ children }: { children: React.ReactNode }) {
 
 /** The StreetEasy area for the chosen one: New York City, a borough or a neighborhood by name; others are named as they are. */
 function historyArea(choice: Choice, state: State, label: string | undefined) {
-  if (choice.level === 'state') return state === 'nj' ? 'New Jersey' : 'NYC';
+  if (choice.level === 'state') return state === 'nj' ? 'New Jersey' : state === 'ct' ? 'Connecticut' : 'NYC';
   return (label ?? '').replace(/, (NY|NJ)$/, '');
 }
 
@@ -188,7 +158,7 @@ export function RentChart({
   const [choice, setChoice] = useState<Choice>(start.choice);
   const [zip, setZip] = useState('');
   const [allNeighborhoods, setAllNeighborhoods] = useState(false);
-  const [view, setView] = useState('trend');
+  const [range, setRange] = useState<number>(SNAPSHOT_RANGE);
   const [bedrooms, setBedrooms] = useState(1);
   const [pinned, setPinned] = useState<string[]>([]);
   const [visible, setVisible] = useState(PAGE_SIZE);
@@ -260,10 +230,8 @@ export function RentChart({
   const busiestNeighborhoods = [...cityNeighborhoods].sort((a, b) => b.count - a.count);
   const selected = byId.get(choice.id);
   const stateLabel = STATES.find(([id]) => id === state)![1];
-  const displayed =
-    selected && choice.level === 'state' ? { ...selected, label: state === 'all' ? 'New York and New Jersey' : stateLabel } : selected;
+  const displayed = selected && choice.level === 'state' ? { ...selected, label: state === 'all' ? 'All areas' : stateLabel } : selected;
   const pinnedAreas = pinned.map((id) => byId.get(id)).filter((area): area is RentArea => Boolean(area));
-  const trend = dataset === 'market' && view === 'trend';
   // The table lists the level below the choice: cities in a state, neighborhoods in a city, ZIP codes for a ZIP.
   const tableAreas =
     choice.level === 'zip'
@@ -271,7 +239,7 @@ export function RentChart({
       : choice.level === 'state'
         ? stateCities
         : cityNeighborhoods;
-  const levelName = state === 'nyc' ? 'Borough' : state === 'nj' ? 'City' : 'Borough or city';
+  const levelName = state === 'nyc' ? 'Borough' : state === 'nj' || state === 'ct' ? 'City or town' : 'Borough or city';
 
   function choose(next: Choice) {
     setChoice(next);
@@ -297,32 +265,28 @@ export function RentChart({
   }
 
   const shownNeighborhoods = allNeighborhoods ? cityNeighborhoods : busiestNeighborhoods.slice(0, CHIP_LIMIT);
+  // The list under the chart: the next level down, by the chosen size's median, highest first.
+  const ranked = [...tableAreas]
+    .filter(({ sizes }) => sizes[bedrooms]?.median !== null && (sizes[bedrooms]?.count ?? 0) > 0)
+    .sort((a, b) => (b.sizes[bedrooms]?.median ?? 0) - (a.sizes[bedrooms]?.median ?? 0));
+  const listTitle =
+    choice.level === 'state'
+      ? state === 'nyc'
+        ? 'Boroughs'
+        : state === 'ct' || state === 'nj'
+          ? 'Cities and towns'
+          : 'Boroughs, cities and towns'
+      : choice.level === 'zip'
+        ? 'ZIP codes'
+        : 'Neighborhoods';
+  const snapshotSource = state === 'ct' ? 'Walkup’s own listings' : 'FirstMover’s monthly snapshot of new listings';
   return (
     <View style={styles.marketplacePanel}>
       <View style={styles.chartIntro}>
         <Text accessibilityRole="header" style={styles.chartTitle}>
-          Market
+          Rent prices
         </Text>
-        <Text style={styles.bodyText}>Rents today and since 2010. Pick an area; everything below follows it.</Text>
-      </View>
-      <View style={styles.chipRow}>
-        {(
-          [
-            ['market', 'All listings'],
-            ['saved', 'My saved apartments'],
-          ] as const
-        ).map(([key, label]) => (
-          <Chip
-            key={key}
-            selected={dataset === key}
-            onPress={() => {
-              setDataset(key);
-              chooseState(state);
-            }}
-          >
-            {label}
-          </Chip>
-        ))}
+        <Text style={styles.bodyText}>What apartments rent for in each area, and how that has changed.</Text>
       </View>
       <View style={styles.chartControls}>
         <Text style={styles.fieldLabel}>State</Text>
@@ -333,29 +297,25 @@ export function RentChart({
             </Chip>
           ))}
         </ChipLine>
-        {state === 'all' ? (
-          <Text style={styles.smallMuted}>Choose New York or New Jersey to pick a borough or city, or select a row in the table.</Text>
-        ) : (
-          stateCities.length > 0 && (
-            <>
-              <Text style={styles.fieldLabel}>{levelName}</Text>
-              <ChipLine>
-                {stateCities.map(({ id, label }) => (
-                  <Chip
-                    key={id}
-                    label={`${levelName} ${label}`}
-                    selected={cityId === id}
-                    onPress={() => {
-                      setAllNeighborhoods(false);
-                      choose({ level: 'city', id });
-                    }}
-                  >
-                    {label.replace(/, (NY|NJ)$/, '')}
-                  </Chip>
-                ))}
-              </ChipLine>
-            </>
-          )
+        {state !== 'all' && stateCities.length > 0 && (
+          <>
+            <Text style={styles.fieldLabel}>{levelName}</Text>
+            <ChipLine>
+              {stateCities.map(({ id, label }) => (
+                <Chip
+                  key={id}
+                  label={`${levelName} ${label}`}
+                  selected={cityId === id}
+                  onPress={() => {
+                    setAllNeighborhoods(false);
+                    choose({ level: 'city', id });
+                  }}
+                >
+                  {label.replace(/, (NY|NJ|CT)$/, '')}
+                </Chip>
+              ))}
+            </ChipLine>
+          </>
         )}
         {cityId !== '' && cityNeighborhoods.length > 0 && (
           <>
@@ -382,91 +342,115 @@ export function RentChart({
         <View style={{ maxWidth: 240 }}>
           <Field label="ZIP code" placeholder="e.g. 11215" value={zip} onChangeText={chooseZip} maxLength={5} keyboardType="number-pad" />
         </View>
+        <Text style={styles.fieldLabel}>Size</Text>
+        <ChipLine>
+          {SIZES.map((label, index) => (
+            <Chip key={label} selected={bedrooms === index} onPress={() => setBedrooms(index)}>
+              {label}
+            </Chip>
+          ))}
+        </ChipLine>
       </View>
-      {displayed && <TodayTiles area={displayed} bedrooms={bedrooms} month={month} history={history} />}
-      <Text accessibilityRole="header" style={styles.sectionHeading}>
-        Rents today
-      </Text>
+      {dataset === 'saved' && (
+        <Text style={styles.bodyText}>
+          Showing your saved apartments.{' '}
+          <Text accessibilityRole="link" style={styles.linkText} onPress={() => (setDataset('market'), chooseState(state))}>
+            Back to all listings
+          </Text>
+        </Text>
+      )}
       {displayed ? (
         <>
-          {dataset === 'market' && (
-            <View style={styles.chipRow}>
-              <Chip selected={trend} onPress={() => setView('trend')}>
-                Over time
+          <TodayTiles area={displayed} bedrooms={bedrooms} month={month} history={history} />
+          <Text accessibilityRole="header" style={styles.sectionHeading}>
+            Median rent over time
+          </Text>
+          <ChipLine>
+            {RANGES.map(([count, label]) => (
+              <Chip key={label} selected={range === count} onPress={() => setRange(count)}>
+                {label}
               </Chip>
-              <Chip selected={!trend} onPress={() => setView('sizes')}>
-                By bedroom
-              </Chip>
-            </View>
-          )}
-          {trend ? (
-            <View style={styles.chartCard}>
-              <Text accessibilityRole="header" style={styles.fieldLabel}>
-                Median asking rent over time: {displayed.label}
+            ))}
+          </ChipLine>
+          <View style={styles.chartCard}>
+            <Text style={styles.fieldLabel}>
+              {SIZES[bedrooms]} · {displayed.label}
+            </Text>
+            {range === SNAPSHOT_RANGE || dataset === 'saved' ? (
+              <>
+                <RentTrend
+                  areas={[displayed, ...pinnedAreas.filter(({ id }) => id !== displayed.id)]}
+                  bedrooms={bedrooms}
+                  month={month}
+                  history={history}
+                />
+                <Text style={styles.smallMuted}>
+                  Source: {dataset === 'saved' ? 'your saved apartments' : snapshotSource}. Monthly medians of asking rents.
+                </Text>
+                <View style={styles.chartCompare}>
+                  <View style={styles.chipRow}>
+                    {!pinned.includes(displayed.id) && pinned.length < 2 && (
+                      <Chip onPress={() => setPinned([...pinned, displayed.id])}>+ Compare {displayed.label}</Chip>
+                    )}
+                    {pinnedAreas.map(({ id, label }) => (
+                      <Chip key={id} selected onPress={() => setPinned(pinned.filter((item) => item !== id))}>
+                        {label} ×
+                      </Chip>
+                    ))}
+                  </View>
+                  {pinned.length > 0 && <Text style={styles.smallMuted}>Now choose another area above to see both.</Text>}
+                </View>
+              </>
+            ) : loadHistory ? (
+              <LongTrend load={loadHistory} area={historyArea(choice, state, displayed.label)} bedrooms={bedrooms} months={range} />
+            ) : (
+              <Text style={styles.smallMuted}>Longer history needs the online server.</Text>
+            )}
+          </View>
+          {ranked.length > 0 && (
+            <>
+              <Text accessibilityRole="header" style={styles.sectionHeading}>
+                {listTitle}, {SIZES[bedrooms]}
               </Text>
-              <View style={styles.chipRow}>
-                {SIZES.map((label, index) => (
-                  <Chip key={label} selected={bedrooms === index} onPress={() => setBedrooms(index)}>
-                    {label}
-                  </Chip>
+              <View style={styles.menu}>
+                {ranked.slice(0, visible).map((area, index) => (
+                  <Pressable
+                    key={area.id}
+                    accessibilityRole="button"
+                    {...toggleProps(choice.id === area.id)}
+                    accessibilityLabel={`Show chart for ${area.label} ${area.detail}`}
+                    onPress={() =>
+                      choose(
+                        choice.level === 'state'
+                          ? { level: 'city', id: area.id }
+                          : choice.level === 'zip'
+                            ? { level: 'zip', id: area.id }
+                            : { level: 'neighborhood', id: area.id },
+                      )
+                    }
+                    style={({ pressed }) => [styles.menuRow, index > 0 && styles.menuDivider, pressed && styles.pressed]}
+                  >
+                    <Text style={[styles.menuLabel, { flex: 1 }]} numberOfLines={2}>
+                      {area.label.replace(/, (NY|NJ|CT)$/, '')}
+                    </Text>
+                    <View style={{ alignItems: 'flex-end' }}>
+                      <Text style={styles.menuLabel}>{formatRent(Math.round(area.sizes[bedrooms]!.median!))}</Text>
+                      <Text style={styles.smallMuted}>{area.sizes[bedrooms]!.count.toLocaleString('en-US')} listed</Text>
+                    </View>
+                  </Pressable>
                 ))}
               </View>
-              <RentTrend
-                areas={[displayed, ...pinnedAreas.filter(({ id }) => id !== displayed.id)]}
-                bedrooms={bedrooms}
-                month={month}
-                history={history}
-              />
-              <View style={styles.chartCompare}>
-                <Text style={styles.smallMuted}>Pin this area, then choose another to compare.</Text>
-                <View style={styles.chipRow}>
-                  {!pinned.includes(displayed.id) && pinned.length < 2 && (
-                    <Chip onPress={() => setPinned([...pinned, displayed.id])}>+ Pin {displayed.label}</Chip>
-                  )}
-                  {pinnedAreas.map(({ id, label }) => (
-                    <Chip key={id} selected onPress={() => setPinned(pinned.filter((item) => item !== id))}>
-                      {label} ×
-                    </Chip>
-                  ))}
-                </View>
-              </View>
-            </View>
-          ) : (
-            <MedianBars area={displayed} />
-          )}
-          {tableAreas.length > 0 && (
-            <>
-              <View style={styles.chartIntro}>
-                <Text accessibilityRole="header" style={styles.fieldLabel}>
-                  {(dataset === 'market' ? formatSnapshotMonth(month) + ' medians' : 'Saved listing medians') +
-                    (choice.level === 'state'
-                      ? ` by ${levelName.toLowerCase()}`
-                      : choice.level === 'zip'
-                        ? ' by ZIP code'
-                        : ' by neighborhood')}
-                </Text>
-                <Text style={styles.smallMuted}>Select a row to chart it. Each median includes its listing count.</Text>
-              </View>
-              <RentTable
-                areas={tableAreas.slice(0, visible)}
-                selection={choice.id}
-                choose={(id) =>
-                  choose(
-                    choice.level === 'state'
-                      ? { level: 'city', id }
-                      : choice.level === 'zip'
-                        ? { level: 'zip', id }
-                        : { level: 'neighborhood', id },
-                  )
-                }
-              />
-              {visible < tableAreas.length && (
-                <Button secondary onPress={() => setVisible(visible + PAGE_SIZE)}>
-                  Show more areas ({visible} of {tableAreas.length})
+              {visible < ranked.length && (
+                <Button secondary onPress={() => setVisible(ranked.length)}>
+                  Show all {ranked.length}
                 </Button>
               )}
             </>
           )}
+          <Text accessibilityRole="header" style={styles.sectionHeading}>
+            Every size in {displayed.label}
+          </Text>
+          <MedianBars area={displayed} />
         </>
       ) : marketState !== 'ready' && dataset === 'market' ? (
         <View style={styles.empty} aria-live="polite">
@@ -484,42 +468,44 @@ export function RentChart({
       ) : (
         <View style={styles.empty}>
           <Text accessibilityRole="header" style={styles.panelTitle}>
-            {choice.level === 'zip' ? `No listings in ${choice.id}` : 'No rent observations here'}
+            {choice.level === 'zip' ? `No listings in ${choice.id}` : 'No rents here yet'}
           </Text>
           <Text style={styles.bodyText}>
             {choice.level === 'zip'
-              ? 'This snapshot has no asking rents in that ZIP code. Try a nearby one, or choose a borough or neighborhood.'
+              ? 'There are no asking rents in that ZIP code right now. Try a nearby one, or choose a borough or neighborhood.'
               : dataset === 'market'
-                ? 'The public snapshot has no observations for this selection.'
-                : 'Save listings in this area to compare their asking rents.'}
+                ? 'There are no listings to measure here right now.'
+                : 'Save apartments in this area to compare their rents.'}
           </Text>
           {dataset === 'saved' && (
             <Button secondary onPress={showSaved}>
-              Open saved listings
+              Open saved apartments
             </Button>
           )}
         </View>
       )}
       {dataset === 'market' && loadHistory && (
-        <>
-          <Text accessibilityRole="header" style={styles.sectionHeading}>
-            Since 2010
-          </Text>
+        <Disclosure title="More market data from StreetEasy: inventory, price cuts, rankings">
           <MarketHistory load={loadHistory} area={historyArea(choice, state, displayed?.label)} />
-        </>
+        </Disclosure>
       )}
       <View style={styles.chartSource}>
-        {dataset === 'market' ? (
-          <>
-            <Text style={styles.fieldLabel}>About this data</Text>
-            <Text style={styles.smallMuted}>
-              Median initial asking rents from FirstMover's monthly snapshot of new listings in the five boroughs and nearby New Jersey
-              cities, starting May 2026. The years before come from StreetEasy's Data Dashboard, which covers New York City only.
-            </Text>
-            <Link label="View source data" url={SNAPSHOT_SOURCE} onError={onError} />
-          </>
-        ) : (
-          <Text style={styles.smallMuted}>Asking rents and dates from the listings you saved on this device.</Text>
+        <Text accessibilityRole="header" style={styles.fieldLabel}>
+          Where these numbers come from
+        </Text>
+        <Text style={styles.smallMuted}>
+          Recent months, New York City and New Jersey: median asking rents of new listings in FirstMover’s monthly snapshot, since May 2026.
+        </Text>
+        <Link label="FirstMover snapshot data" url={SNAPSHOT_SOURCE} onError={onError} />
+        <Text style={styles.smallMuted}>
+          Longer history, New York City only: StreetEasy’s Data Dashboard, monthly since 2010, by borough and neighborhood.
+        </Text>
+        <Link label="StreetEasy Data Dashboard" url={DASHBOARD_URL} onError={onError} />
+        <Text style={styles.smallMuted}>Connecticut: medians of the apartments currently listed on Walkup.</Text>
+        {dataset === 'market' && (
+          <Pressable accessibilityRole="button" onPress={() => (setDataset('saved'), chooseState(state))} style={{ paddingTop: 6 }}>
+            <Text style={styles.linkText}>Compare with your saved apartments</Text>
+          </Pressable>
         )}
       </View>
     </View>

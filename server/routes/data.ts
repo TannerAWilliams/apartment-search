@@ -1,4 +1,6 @@
 /** Reference data: rent charts, affordable housing and official building records. */
+import { offline, search } from '../search.ts';
+import { parseFilters } from '../../src/search.ts';
 import { vValidator } from '@hono/valibot-validator';
 import { rentAreas } from '../../src/market.ts';
 import { parentRegion } from '../../src/regions.ts';
@@ -42,6 +44,11 @@ export const dataRoutes = factory
     const env = c.var.appEnv;
     const { region, grouping } = c.req.valid('query');
     try {
+      // The snapshot covers New York City and nearby New Jersey; Connecticut's figures come from Walkup's own listings.
+      if (parentRegion(region) === 'ct') {
+        const { matches } = await search(parseFilters({ region, bedrooms: null, maxRent: null }), env, offline, true);
+        return c.json({ month: new Date().toISOString().slice(0, 7), areas: rentAreas(matches, { region, grouping }), history: [] }, 200);
+      }
       const market = await storedMarket(env.BUCKET);
       const areas = rentAreas(market.listings, { region, grouping });
       const scoped = parentRegion(region) !== region;

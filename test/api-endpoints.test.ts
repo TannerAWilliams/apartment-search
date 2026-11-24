@@ -222,3 +222,13 @@ test('opening the app fetches nothing, even from a page that still asks for a ch
   expect(started, 'no sync Workflow starts').toBe(0);
   expect(await bucket.get('rentals/refresh.json'), 'no refresh was recorded').toBeNull();
 });
+
+test('Connecticut rents come from Walkup’s own listings, without snapshot history', async () => {
+  const { handleApi: call } = await import('./fixtures/api.ts');
+  const response = await call(new Request('https://app.test/api/market?region=ct&grouping=city'), {});
+  expect(response.status).toBe(200);
+  const market = (await response.json()) as { month: string; areas: { id: string; count: number }[]; history: unknown[] };
+  expect(market.history).toEqual([]);
+  expect(market.month).toMatch(/^\d{4}-\d{2}$/);
+  expect(market.areas.find(({ id }) => id === 'overall')?.count ?? 0).toBeGreaterThanOrEqual(0);
+});

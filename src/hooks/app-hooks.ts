@@ -103,6 +103,7 @@ const APP_TABS = [
   'terms',
   'privacy',
   'list',
+  'afford',
 ];
 
 /**
