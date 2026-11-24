@@ -26,12 +26,12 @@ export function HeartIcon({ color, size = 22, filled = false, fill }: IconProps)
   );
 }
 
-export function MenuIcon({ color, size = 22 }: IconProps) {
+export function ProfileIcon({ color, size = 22 }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" aria-hidden>
-      {[6, 12, 18].map((y) => (
-        <Line key={y} x1={4} y1={y} x2={20} y2={y} stroke={color} strokeWidth={2} strokeLinecap="round" />
-      ))}
+      <Circle cx={12} cy={12} r={9} stroke={color} strokeWidth={2} fill="none" />
+      <Circle cx={12} cy={10} r={3} stroke={color} strokeWidth={2} fill="none" />
+      <Path d="M6.5 18.2a6.5 6.5 0 0 1 11 0" stroke={color} strokeWidth={2} strokeLinecap="round" fill="none" />
     </Svg>
   );
 }

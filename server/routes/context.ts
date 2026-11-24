@@ -72,7 +72,8 @@ export const jsonBodies = (limit: (path: string) => number) =>
     }
   });
 /** The API's limits: 2 MiB for a source import, 4 KB for everything else. */
-export const apiBodies = jsonBodies((path) => (path === '/api/refresh' ? IMPORT_LIMIT : REQUEST_LIMIT));
+// Imports and an account's saved listings can be large; every other request is small.
+export const apiBodies = jsonBodies((path) => (path === '/api/refresh' || path === '/api/saved' ? IMPORT_LIMIT : REQUEST_LIMIT));
 
 /** Routes that need saved storage refuse without it, before reading the request; their handlers get it as `c.var.bucket`. */
 export const needsStorage = (message: string) =>

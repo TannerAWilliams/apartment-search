@@ -1,6 +1,6 @@
 import { searchAvailabilityMessage } from './src/search-availability.ts';
 import { ErrorBoundary } from './src/components/ErrorBoundary.tsx';
-import { useHashNavigation, useInventoryClock, useSavedListings } from './src/hooks/app-hooks.ts';
+import { useAccountSaved, useHashNavigation, useInventoryClock, useSavedListings } from './src/hooks/app-hooks.ts';
 import { inventoryExpired } from './src/inventory-freshness.ts';
 import type { ListingData, SourceLink, SearchResult } from './src/domain.ts';
 
@@ -37,7 +37,7 @@ import {
   HeartIcon,
   ListIcon,
   MapIcon,
-  MenuIcon,
+  ProfileIcon,
   SearchIcon,
   SlidersIcon,
 } from './src/components/Icons.tsx';
@@ -55,6 +55,7 @@ const SourcesPage = lazy(() => import('./src/screens/SourcesPage.tsx').then((mod
 const SavedComparison = lazy(() => import('./src/components/SavedComparison.tsx').then((module) => ({ default: module.SavedComparison })));
 const TourPlanner = lazy(() => import('./src/components/TourPlanner.tsx').then((module) => ({ default: module.TourPlanner })));
 const RentChart = lazy(() => import('./src/components/RentChart.tsx').then((module) => ({ default: module.RentChart })));
+const ProfilePage = lazy(() => import('./src/screens/ProfilePage.tsx').then((module) => ({ default: module.ProfilePage })));
 const AlertsPage = lazy(() => import('./src/screens/AlertsPage.tsx').then((module) => ({ default: module.AlertsPage })));
 
 function ApartmentSearch() {
@@ -99,6 +100,7 @@ function ApartmentSearch() {
     signedIn,
     signOut,
     account,
+    admin,
     configuredSources,
     companies,
     sourceCatalog,
@@ -115,17 +117,15 @@ function ApartmentSearch() {
     loadMarket,
     loadHistory,
     alertRequest,
+    loadNeighborhoods,
+    savedRequest,
+    settingsRequest,
     loadHousing,
     checkBuilding,
   } = useServer({ appliedFilters, searchVersion, submitted, setResult, setError });
+  useAccountSaved(saved, setSaved, account, serverState === 'ready' ? savedRequest : undefined, setError);
   const savedByKey = useMemo(() => new Map(saved.map((listing) => [listingKey(listing), listing])), [saved]);
   const savedResults = useMemo(() => localSearch(saved, SAVED_FILTERS, result.workplace, 'saved'), [saved, result.workplace]);
-
-  const searchSummary = [
-    REGIONS[applied.region as keyof typeof REGIONS]?.label ?? 'All regions',
-    bedroomLabel(applied.bedrooms),
-    applied.maxRent == null ? 'Any price' : 'Up to ' + formatRent(applied.maxRent),
-  ].join(' · ');
 
   async function submit(nextDraft: typeof draft | typeof applied = draft) {
     if (busy) return;
@@ -499,44 +499,15 @@ function ApartmentSearch() {
                   </>
                 )}
                 {tab === 'more' && (
-                  <View style={{ gap: 16, maxWidth: 720, width: '100%', alignSelf: 'center' }}>
-                    <Text accessibilityRole="header" style={styles.panelTitle}>
-                      More
-                    </Text>
-                    <View style={styles.menu}>
-                      {[
-                        ['alerts', 'Alerts', 'Email or notify me about new apartments and price drops'],
-                        ['affordable', 'Affordable housing', 'Open lotteries and income-restricted rentals'],
-                        ['marketplaces', 'Rental platforms', 'Search StreetEasy, Zillow and other sites directly'],
-                        ['sources', 'Sources & sync', 'Where listings come from, and refresh them'],
-                      ].map(([key, label, detail], index) => (
-                        <Pressable
-                          key={key}
-                          accessibilityRole="button"
-                          accessibilityLabel={label}
-                          onPress={() => navigateTab(key!)}
-                          style={({ pressed }) => [styles.menuRow, index > 0 && styles.menuDivider, pressed && styles.pressed]}
-                        >
-                          <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-                            <Text style={styles.menuLabel}>{label}</Text>
-                            <Text style={styles.smallMuted}>{detail}</Text>
-                          </View>
-                          <Text style={styles.menuChevron}>›</Text>
-                        </Pressable>
-                      ))}
-                    </View>
-                    {account && (
-                      <View style={[styles.menu, styles.menuRow]}>
-                        <View style={{ flex: 1, minWidth: 0 }}>
-                          <Text style={styles.menuLabel}>Account</Text>
-                          <Text style={styles.smallMuted}>Signed in as {account}</Text>
-                        </View>
-                        <Button secondary onPress={() => void signOut()}>
-                          Sign out
-                        </Button>
-                      </View>
-                    )}
-                  </View>
+                  <ProfilePage
+                    account={account}
+                    admin={admin}
+                    savedCount={savedResults.total}
+                    onOpen={navigateTab}
+                    onSignOut={() => void signOut()}
+                    settingsRequest={serverState === 'ready' ? settingsRequest : undefined}
+                    onError={setError}
+                  />
                 )}
                 {tab === 'chart' && (
                   <RentChart
@@ -578,7 +549,14 @@ function ApartmentSearch() {
                     onError={setError}
                   />
                 )}
-                {tab === 'alerts' && <AlertsPage request={alertRequest} filters={applied} summary={searchSummary} onError={setError} />}
+                {tab === 'alerts' && (
+                  <AlertsPage
+                    request={alertRequest}
+                    filters={applied}
+                    loadNeighborhoods={serverState === 'ready' ? loadNeighborhoods : undefined}
+                    onError={setError}
+                  />
+                )}
                 {tab === 'affordable' && (
                   <AffordableHousing
                     region={applied.region}
@@ -613,7 +591,7 @@ function ApartmentSearch() {
               ['chart', 'Market', ChartIcon],
               ['results', 'Search', SearchIcon],
               ['saved', `Saved (${savedResults.total})`, HeartIcon],
-              ['more', 'More', MenuIcon],
+              ['more', 'Profile', ProfileIcon],
             ] as const
           ).map(([key, label, Icon]) => {
             const selected = key === 'more' ? !['chart', 'results', 'saved'].includes(tab) : tab === key;

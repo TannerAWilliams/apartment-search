@@ -142,6 +142,11 @@ const coordinate = (min: number, max: number) =>
 export const StreetViewQuerySchema = v.object({ lat: coordinate(-90, 90), lng: coordinate(-180, 180) });
 
 /** POST /api/settings: turn the nightly resync on or off. */
+/** The account's whole list of saved listings, replacing what was stored. */
+export const SavedRequestSchema = v.object(
+  { listings: v.array(v.unknown(), 'Send the saved listings as a list.') },
+  'Send the saved listings as a list.',
+);
 export const SettingsRequestSchema = v.object({ nightlyResync: v.boolean('Say whether the nightly resync is on.') });
 
 export const BuildingAddressSchema = v.object(

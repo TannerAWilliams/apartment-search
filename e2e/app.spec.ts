@@ -50,11 +50,16 @@ async function mockApp(
     /** The server asks for sign-in until the email-code sign-in succeeds. */
     signIn?: boolean;
     start?: string;
+    /** The signed-in account, and whether it is an admin (the app's own token is). */
+    account?: string;
+    admin?: boolean;
   } = {},
 ) {
   const requests: MockRequest[] = [];
   const unexpected: string[] = [];
   let signedIn = false;
+  let settings = { nightlyResync: true, lastNightly: { at: now, state: 'complete', updated: 12, failed: 1, background: true } };
+  let savedOnAccount: unknown[] = [];
   const listings = fixtures(options.listingCount);
   if (options.nyc) Object.assign(listings[0], { city: 'Brooklyn', state: 'NY', county: 'Kings', zip: '11201', region: 'nyc' });
   if (options.commute)
@@ -123,6 +128,8 @@ async function mockApp(
         storageMode: 'persistent',
         dashboardAvailable: options.dashboardAvailable === true,
         streetViewAvailable: options.streetView === true,
+        admin: options.admin ?? true,
+        ...(options.account ? { account: options.account } : {}),
         browserImportAllowed: false,
         commuteConfigured: false,
         sources: [{ id: 'streeteasy', name: 'StreetEasy' }],
@@ -132,7 +139,13 @@ async function mockApp(
         refresh,
       };
     else if (url.pathname === '/api/refresh') data = refresh;
-    else if (url.pathname === '/api/housing' && options.housing) data = options.housing;
+    else if (url.pathname === '/api/settings') {
+      if (body) settings = { ...settings, nightlyResync: body.nightlyResync };
+      data = { ...settings, admin: options.admin ?? true };
+    } else if (url.pathname === '/api/saved' && options.account) {
+      if (body) savedOnAccount = body.listings;
+      data = { listings: savedOnAccount };
+    } else if (url.pathname === '/api/housing' && options.housing) data = options.housing;
     else if (url.pathname === '/api/building-report' && options.nyc)
       data = {
         status: 'matched',
@@ -186,7 +199,7 @@ test('sources exposes blocked refresh honestly and retains cached rentals', asyn
   const { requests } = await mockApp(page, { failed: true });
   await expect(page.getByText('Partial coverage · Some sources unavailable · Details', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Resync all connected providers', exact: true })).toHaveCount(0);
-  await page.getByRole('tab', { name: 'More', exact: true }).click();
+  await page.getByRole('tab', { name: 'Profile', exact: true }).click();
   await page.getByRole('button', { name: 'Sources & sync', exact: true }).click();
   await expect(page.getByText('Last attempt failed', { exact: false })).toBeVisible();
   await expect(page.getByText('StreetEasy returned HTTP 403. Verification required.', { exact: true })).toBeVisible();
@@ -201,7 +214,7 @@ test('sources exposes blocked refresh honestly and retains cached rentals', asyn
 
 test('resync all uses the batch endpoint while browse-only sources stay disabled', async ({ page }) => {
   const { requests } = await mockApp(page);
-  await page.getByRole('tab', { name: 'More', exact: true }).click();
+  await page.getByRole('tab', { name: 'Profile', exact: true }).click();
   await page.getByRole('button', { name: 'Sources & sync', exact: true }).click();
   // Sites the app does not read are listed by name, not offered as disabled resync buttons.
   await expect(page.getByText(/aren’t read by the app; open them from Rental platforms/)).toBeVisible();
@@ -213,14 +226,14 @@ test('resync all uses the batch endpoint while browse-only sources stay disabled
 
 test('mouse navigation and browser back restore tabs', async ({ page }) => {
   await mockApp(page);
-  await page.getByRole('tab', { name: 'More', exact: true }).click();
+  await page.getByRole('tab', { name: 'Profile', exact: true }).click();
   await page.getByRole('button', { name: 'Sources & sync', exact: true }).click();
   await expect(page).toHaveURL(/#sources$/);
-  await page.getByRole('tab', { name: 'More', exact: true }).click();
+  await page.getByRole('tab', { name: 'Profile', exact: true }).click();
   await page.getByRole('button', { name: 'Rental platforms', exact: true }).click();
   await expect(page).toHaveURL(/#marketplaces$/);
   await page.goBack();
-  await expect(page.getByRole('tab', { name: 'More', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('tab', { name: 'Profile', exact: true })).toHaveAttribute('aria-selected', 'true');
   await page.goBack();
   await expect(page.getByRole('heading', { name: 'Sources & sync', exact: true })).toBeVisible();
 });
@@ -264,7 +277,7 @@ test('search shows source coverage notices instead of hiding data caveats', asyn
 
 test('Sources tab is keyboard operable', async ({ page }) => {
   await mockApp(page);
-  await page.getByRole('tab', { name: 'More', exact: true }).click();
+  await page.getByRole('tab', { name: 'Profile', exact: true }).click();
   const sources = page.getByRole('button', { name: 'Sources & sync', exact: true });
   await sources.focus();
   await page.keyboard.press('Enter');
@@ -385,7 +398,7 @@ test('applied filters, expanded results and search scroll survive navigation', a
   await page.getByRole('tab', { name: 'Saved (0)', exact: true }).click();
   await expect(page.getByText('Saved on this device', { exact: true })).toBeVisible();
   await expect(page.getByText('1 bedroom · Up to $5,000', { exact: true })).toHaveCount(0);
-  await page.getByRole('tab', { name: 'More', exact: true }).click();
+  await page.getByRole('tab', { name: 'Profile', exact: true }).click();
   await page.getByRole('tab', { name: 'Search', exact: true }).click();
 
   await expect(page.getByRole('button', { name: /^Details for / })).toHaveCount(20);
@@ -737,7 +750,7 @@ test('iPhone 17 portrait keeps primary controls inside the screen', async ({ pag
   await page.getByRole('button', { name: 'Cancel', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Filters', exact: true })).toBeHidden();
   await checkLayout('filters-dismissed');
-  await page.getByRole('tab', { name: 'More', exact: true }).click();
+  await page.getByRole('tab', { name: 'Profile', exact: true }).click();
   await page.getByRole('button', { name: 'Sources & sync', exact: true }).click();
   await checkLayout('sources');
   const resync = page.getByRole('button', { name: 'Resync all connected providers', exact: true });
@@ -746,7 +759,7 @@ test('iPhone 17 portrait keeps primary controls inside the screen', async ({ pag
   expect(box).not.toBeNull();
   expect(box!.x).toBeGreaterThanOrEqual(0);
   expect(box!.x + box!.width).toBeLessThanOrEqual(402);
-  await page.getByRole('tab', { name: 'More', exact: true }).click();
+  await page.getByRole('tab', { name: 'Profile', exact: true }).click();
   await page.getByRole('button', { name: 'Rental platforms', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Browse rental platforms', exact: true })).toBeVisible();
   await checkLayout('platforms');
@@ -815,7 +828,7 @@ test('Jersey City affordable notices show with official links and stay out of ap
     },
   });
   await expect(page.getByText('Example affordable building', { exact: true })).toHaveCount(0);
-  await page.getByRole('tab', { name: 'More', exact: true }).click();
+  await page.getByRole('tab', { name: 'Profile', exact: true }).click();
   await page.getByRole('button', { name: 'Affordable housing', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Jersey City affordable housing applications' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Example affordable building', exact: true })).toBeVisible();
@@ -835,7 +848,7 @@ for (const width of [320, 375, 390]) {
     await page.setViewportSize({ width, height: 740 });
     await mockApp(page);
     await expect(page.getByRole('tab')).toHaveCount(4);
-    await page.getByRole('tab', { name: 'More', exact: true }).click();
+    await page.getByRole('tab', { name: 'Profile', exact: true }).click();
     const affordable = page.getByRole('button', { name: 'Affordable housing', exact: true });
     await expect(affordable).toBeVisible();
     const measure = await affordable.evaluate((element) => {
@@ -888,9 +901,9 @@ test('an open result expires without a provider request and saved apartments rem
   expect(userRefreshes(requests)).toHaveLength(0);
 });
 
-test('alerts: save one for the current search, send a test, and remove it', async ({ page }) => {
+test('alerts: build one from an area, neighborhoods, bedroom counts and a rent, send a test, and remove it', async ({ page }) => {
   await mockApp(page);
-  const posts: { action: string; rule?: { name: string; filters: Record<string, unknown> } }[] = [];
+  const posts: { action: string; rule?: { name: string; filters: Record<string, unknown>; criteria?: unknown } }[] = [];
   let state = {
     rules: [] as { id: string; name: string; createdAt: string }[],
     devices: [],
@@ -907,20 +920,88 @@ test('alerts: save one for the current search, send a test, and remove it', asyn
     }
     return route.fulfill({ json: state });
   });
-  await page.getByRole('tab', { name: 'More', exact: true }).click();
-  await page.getByRole('button', { name: 'Alerts', exact: true }).click();
+  await page.route('**/api/market?*', (route) =>
+    route.fulfill({
+      json: {
+        month: '2026-11',
+        history: [],
+        areas: [
+          { id: 'Manhattan|West Village', label: 'West Village', detail: 'Manhattan', count: 40, sizes: [] },
+          { id: 'Manhattan|Chelsea', label: 'Chelsea', detail: 'Manhattan', count: 30, sizes: [] },
+          { id: 'Brooklyn|Park Slope', label: 'Park Slope', detail: 'Brooklyn', count: 50, sizes: [] },
+        ],
+      },
+    }),
+  );
+  await page.getByRole('tab', { name: 'Profile', exact: true }).click();
+  await page.getByRole('button', { name: 'Email alerts', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Alerts', exact: true })).toBeVisible();
   await expect(page.getByText('Email: to the address you sign in with.', { exact: true })).toBeVisible();
   await expect(page.getByText('Phone and browser notifications aren’t set up yet.', { exact: true })).toBeVisible();
+  // West Village, two bedrooms, under $5,000.
+  await page.getByRole('button', { name: 'Manhattan', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Park Slope', exact: true }), 'only the borough’s neighborhoods').toHaveCount(0);
+  await page.getByRole('button', { name: 'West Village', exact: true }).click();
+  await page.getByRole('button', { name: '2 BR', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Max rent per month', exact: true }).fill('5000');
   const name = page.getByRole('textbox', { name: 'Alert name', exact: true });
-  await expect(name).toHaveValue('All regions · Any beds · Any price');
+  await expect(name).toHaveAttribute('placeholder', 'West Village · 2 BR · under $5,000');
+  await page.getByRole('button', { name: 'Save alert', exact: true }).click();
+  await expect(page.getByText(/Alert saved: West Village · 2 BR · under \$5,000/)).toBeVisible();
+  expect(posts[0]).toMatchObject({
+    action: 'add-rule',
+    rule: {
+      name: 'West Village · 2 BR · under $5,000',
+      filters: { region: 'manhattan', maxRent: 5000, bedrooms: null },
+      criteria: { bedrooms: [2], neighborhoods: ['West Village'] },
+    },
+  });
+  // All of Brooklyn, one to three bedrooms, under $2,500, with a name of its own.
+  await page.getByRole('button', { name: 'Brooklyn', exact: true }).click();
+  await page.getByRole('button', { name: '2 BR', exact: true }).click();
+  for (const beds of ['1 BR', '2 BR', '3 BR']) await page.getByRole('button', { name: beds, exact: true }).click();
+  await page.getByRole('textbox', { name: 'Max rent per month', exact: true }).fill('2500');
+  await expect(name).toHaveAttribute('placeholder', 'Brooklyn · 1, 2, 3 BR · under $2,500');
   await name.fill('Everything');
   await page.getByRole('button', { name: 'Save alert', exact: true }).click();
-  await expect(page.getByText('Alert saved. It will report changes from now on.', { exact: true })).toBeVisible();
-  expect(posts[0]).toMatchObject({ action: 'add-rule', rule: { name: 'Everything', filters: { region: 'all' } } });
+  expect(posts[1]).toMatchObject({
+    rule: { name: 'Everything', filters: { region: 'brooklyn', maxRent: 2500 }, criteria: { bedrooms: [1, 2, 3], neighborhoods: [] } },
+  });
   await page.getByRole('button', { name: 'Send a test alert', exact: true }).click();
   await expect(page.getByText('Test alert sent.', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Remove Everything', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Remove Everything', exact: true })).toHaveCount(0);
-  expect(posts.map(({ action }) => action)).toEqual(['add-rule', 'test', 'delete-rule']);
+  expect(posts.map(({ action }) => action)).toEqual(['add-rule', 'add-rule', 'test', 'delete-rule']);
+});
+
+test('profile: an admin sees their role, the nightly resync switch and the sources page', async ({ page }) => {
+  const { requests } = await mockApp(page, { account: 'owner@example.test', admin: true });
+  await page.getByRole('tab', { name: 'Profile', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Profile', exact: true })).toBeVisible();
+  await expect(page.getByText('owner@example.test', { exact: true })).toBeVisible();
+  await expect(page.getByText('Admin account', { exact: true })).toBeVisible();
+  await expect(page.getByText(/Last run .*: 12 sources updated, 1 failed; the slower sources continued/)).toBeVisible();
+  const nightly = page.getByRole('switch', { name: 'Nightly resync' });
+  await expect(nightly).toBeChecked();
+  await nightly.click();
+  await expect(nightly).not.toBeChecked();
+  expect(requests.find(({ path, method }) => path === '/api/settings' && method === 'POST')?.body).toEqual({ nightlyResync: false });
+  await expect(page.getByRole('button', { name: 'Sources & sync', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Saved listings (0)', exact: true })).toBeVisible();
+});
+
+test('profile: a member’s saved listings are kept on the account', async ({ page }) => {
+  const { requests } = await mockApp(page, { account: 'renter@example.test', admin: false });
+  await page.getByRole('button', { name: 'Save apartment', exact: true }).first().click();
+  await expect.poll(() => requests.filter(({ path, method }) => path === '/api/saved' && method === 'POST').length).toBeGreaterThan(0);
+  const stored = requests.filter(({ path, method }) => path === '/api/saved' && method === 'POST').at(-1)?.body as {
+    listings: { address: string }[];
+  };
+  expect(stored.listings.map(({ address }) => address)).toEqual(['12 Grove Street']);
+  await page.getByRole('tab', { name: 'Profile', exact: true }).click();
+  await expect(page.getByText('Member account', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Saved listings (1)', exact: true })).toBeVisible();
+  await expect(page.getByRole('switch', { name: 'Nightly resync' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Sources & sync', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Email alerts', exact: true })).toBeVisible();
 });

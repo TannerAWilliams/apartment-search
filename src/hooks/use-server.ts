@@ -9,6 +9,7 @@ import type { ApiConfig, ConfigSource, RefreshInfo } from '../api-client.ts';
 import { API_ORIGIN, CHECK_TIME, SEARCH_DEFAULTS, api, failureInfo, finishSourceCheck } from '../app-shared.ts';
 import type { AffordableHousing } from '../screens/AffordableHousing.tsx';
 import type { AlertState } from '../screens/AlertsPage.tsx';
+import type { PlatformSettings } from '../screens/ProfilePage.tsx';
 import type { ListingData, SearchFilters, SearchResult } from '../domain.ts';
 import type { Listing } from '../components/Listing.tsx';
 import type { RentChart } from '../components/RentChart.tsx';
@@ -46,6 +47,7 @@ export function useServer({ appliedFilters, searchVersion, submitted, setResult,
   const [dashboardAvailable, setDashboardAvailable] = useState(false);
   const [streetViewAvailable, setStreetViewAvailable] = useState(false);
   const [account, setAccount] = useState<string | null>(null);
+  const [admin, setAdmin] = useState(false);
 
   const failedSources = refresh?.sources.filter(({ status }) => status === 'failed') ?? [];
   const freshness = refreshing
@@ -68,6 +70,7 @@ export function useServer({ appliedFilters, searchVersion, submitted, setResult,
     setDashboardAvailable(config.dashboardAvailable === true);
     setStreetViewAvailable(config.streetViewAvailable === true);
     setAccount(config.account ?? null);
+    setAdmin(config.admin === true);
     setCompanies(config.companies ?? {});
     setRefresh(config.refresh ?? null);
     setRefreshClock(Date.now());
@@ -221,6 +224,27 @@ export function useServer({ appliedFilters, searchVersion, submitted, setResult,
     (body?: unknown) => api<AlertState>('alerts', body ? { body, token: activeToken } : { token: activeToken }),
     [activeToken],
   );
+  /** New York City's neighborhoods with listings, for choosing an alert's neighborhoods. */
+  const loadNeighborhoods = useCallback(
+    (signal: AbortSignal) =>
+      api<{ areas?: { id: string; label: string; detail: string; count: number }[] }>(
+        'market?' + new URLSearchParams({ region: 'nyc', grouping: 'neighborhood' }),
+        { token: activeToken, signal },
+      ),
+    [activeToken],
+  );
+  /** The signed-in account's saved listings: read them, or replace them with this list. */
+  const savedRequest = useCallback(
+    async (listings?: ListingData[]) =>
+      (await api<{ listings: ListingData[] }>('saved', listings ? { body: { listings }, token: activeToken } : { token: activeToken }))
+        .listings,
+    [activeToken],
+  );
+  /** Platform settings: anyone can read them; only an admin can change them. */
+  const settingsRequest = useCallback(
+    (body?: { nightlyResync: boolean }) => api<PlatformSettings>('settings', body ? { body, token: activeToken } : { token: activeToken }),
+    [activeToken],
+  );
   const loadHousing = useCallback(
     (signal?: AbortSignal) =>
       api<Awaited<ReturnType<NonNullable<React.ComponentProps<typeof AffordableHousing>['loadHousing']>>>>('housing', {
@@ -275,6 +299,7 @@ export function useServer({ appliedFilters, searchVersion, submitted, setResult,
     signedIn,
     signOut,
     account,
+    admin,
     configuredSources,
     companies,
     sourceCatalog,
@@ -291,6 +316,9 @@ export function useServer({ appliedFilters, searchVersion, submitted, setResult,
     loadMarket,
     loadHistory,
     alertRequest,
+    loadNeighborhoods,
+    savedRequest,
+    settingsRequest,
     loadHousing,
     checkBuilding,
   };

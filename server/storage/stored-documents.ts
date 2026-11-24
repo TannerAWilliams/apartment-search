@@ -97,13 +97,26 @@ export const AlertRulesSchema = v.array(
     name: text,
     filters: v.custom<ReturnType<typeof parseFilters>>((value) => typeof value === 'object' && value !== null),
     createdAt: text,
+    /** The account the alert belongs to; rules made before accounts have none and go to every allowed address. */
+    owner: v.optional(text),
+    /** Bedroom counts (any of them) and neighborhoods (any of them); empty lists mean any. */
+    criteria: v.optional(v.object({ bedrooms: v.array(v.number()), neighborhoods: v.array(text) })),
   }),
 );
 /** A device that turned on notifications. */
 export const AlertDevicesSchema = v.array(
-  v.object({ endpoint: text, keys: v.object({ p256dh: text, auth: text }), label: text, createdAt: text }),
+  v.object({ endpoint: text, keys: v.object({ p256dh: text, auth: text }), label: text, createdAt: text, owner: v.optional(text) }),
 );
 /** The most recent alerts sent. */
 export const RecentAlertsSchema = v.array(
-  v.object({ id: text, at: text, ruleId: text, title: text, lines: v.array(text), newCount: v.number(), dropCount: v.number() }),
+  v.object({
+    id: text,
+    at: text,
+    ruleId: text,
+    title: text,
+    lines: v.array(text),
+    newCount: v.number(),
+    dropCount: v.number(),
+    owner: v.optional(text),
+  }),
 );

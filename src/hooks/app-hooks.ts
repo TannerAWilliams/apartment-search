@@ -45,6 +45,46 @@ export function useSavedListings(onError: (message: string) => void) {
   return [saved, setSaved] as const;
 }
 
+/**
+ * Keeps the saved listings on the signed-in account as well as on this device. When an account signs in, its list
+ * and this device's are merged; after that every change is sent to the account, a moment after the last one.
+ */
+export function useAccountSaved(
+  saved: ListingData[],
+  setSaved: (update: (current: ListingData[]) => ListingData[]) => void,
+  account: string | null,
+  request: ((listings?: ListingData[]) => Promise<ListingData[]>) | undefined,
+  onError: (message: string) => void,
+) {
+  const [synced, setSynced] = useState<string | null>(null);
+  const reportError = useRef(onError);
+  reportError.current = onError;
+  useEffect(() => {
+    setSynced(null);
+    if (!account || !request) return;
+    let active = true;
+    request()
+      .then((stored) => {
+        if (!active) return;
+        setSaved((current) => mergeListings([...stored, ...current]));
+        setSynced(account);
+      })
+      .catch(() => {
+        if (active) reportError.current('Your saved listings could not be loaded from your account.');
+      });
+    return () => {
+      active = false;
+    };
+  }, [account, request, setSaved]);
+  useEffect(() => {
+    if (!synced || synced !== account || !request) return;
+    const timer = setTimeout(() => {
+      request(saved).catch(() => reportError.current('Your saved listings could not be saved to your account.'));
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [saved, synced, account, request]);
+}
+
 /** The tabs the URL hash can name; anything else opens Search. */
 const APP_TABS = ['results', 'saved', 'more', 'sources', 'chart', 'marketplaces', 'affordable', 'alerts'];
 

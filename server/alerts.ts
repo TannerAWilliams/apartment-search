@@ -23,9 +23,28 @@ const MAX_DEVICES = 10;
 const MAX_RECENT = 30;
 const SHOWN_UNITS = 4;
 
-type AlertRule = { id: string; name: string; filters: ReturnType<typeof parseFilters>; createdAt: string };
-type AlertDevice = PushSubscriptionJson & { label: string; createdAt: string };
-export type Alert = { id: string; at: string; ruleId: string; title: string; lines: string[]; newCount: number; dropCount: number };
+/** Any of these bedroom counts (studio = 0) and any of these neighborhoods; an empty list means any. */
+export type AlertCriteria = { bedrooms: number[]; neighborhoods: string[] };
+type AlertRule = {
+  id: string;
+  name: string;
+  filters: ReturnType<typeof parseFilters>;
+  createdAt: string;
+  /** The account the alert belongs to; its email is the only one the alert goes to. */
+  owner?: string;
+  criteria?: AlertCriteria;
+};
+type AlertDevice = PushSubscriptionJson & { label: string; createdAt: string; owner?: string };
+export type Alert = {
+  id: string;
+  at: string;
+  ruleId: string;
+  title: string;
+  lines: string[];
+  newCount: number;
+  dropCount: number;
+  owner?: string;
+};
 export type AlertChannels = {
   email?: { send(message: { from: string; to: string[]; subject: string; text: string; html: string }): Promise<unknown> } | null;
   from?: string;
@@ -58,20 +77,71 @@ export const readRecent = (bucket: Bucket): Promise<Alert[]> => read(bucket, REC
 
 /** Checks a new rule: a name, and filters a stored search can run without routing or geocoding. */
 const NAMED = 'Give the alert a name of up to 60 characters.';
-/** A new rule as sent: a name, and filters checked by parseFilters. */
+const BEDS = 'Choose bedroom counts from studio to 4.';
+const NEIGHBORHOODS = 'Choose up to 20 neighborhoods.';
+/** A new rule as sent: a name, filters checked by parseFilters, and optional bedroom counts and neighborhoods. */
 const NewRuleSchema = v.object(
   {
     name: v.pipe(v.string(NAMED), v.trim(), v.minLength(1, NAMED), v.maxLength(60, NAMED)),
     filters: v.nullish(v.unknown(), {}),
+    criteria: v.optional(
+      v.object({
+        bedrooms: v.optional(
+          v.pipe(v.array(v.pipe(v.number(BEDS), v.integer(BEDS), v.minValue(0, BEDS), v.maxValue(4, BEDS)), BEDS), v.maxLength(5, BEDS)),
+          [],
+        ),
+        neighborhoods: v.optional(
+          v.pipe(
+            v.array(
+              v.pipe(v.string(NEIGHBORHOODS), v.trim(), v.minLength(1, NEIGHBORHOODS), v.maxLength(60, NEIGHBORHOODS)),
+              NEIGHBORHOODS,
+            ),
+            v.maxLength(20, NEIGHBORHOODS),
+          ),
+          [],
+        ),
+      }),
+    ),
   },
   NAMED,
 );
 
-export function validateRule(raw: unknown, now = new Date()): AlertRule {
+/** A neighborhood name compared without case or punctuation: "West Village" and "west-village" are one. */
+const placeKey = (name: string) =>
+  name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+
+/**
+ * The listings an alert's bedroom counts and neighborhoods allow. A listing with no neighborhood counts as in one
+ * when its ZIP code is one where other listings in that neighborhood are.
+ */
+export function matchesCriteria(listings: ListingData[], criteria: AlertCriteria | undefined) {
+  if (!criteria) return listings;
+  const beds = new Set(criteria.bedrooms);
+  const wanted = new Set(criteria.neighborhoods.map(placeKey));
+  const zips = new Set(listings.filter(({ neighborhood }) => neighborhood && wanted.has(placeKey(neighborhood))).map(({ zip }) => zip));
+  return listings.filter(
+    (listing) =>
+      (!beds.size || beds.has(listing.bedrooms)) &&
+      (!wanted.size || (listing.neighborhood ? wanted.has(placeKey(listing.neighborhood)) : zips.has(listing.zip))),
+  );
+}
+
+export function validateRule(raw: unknown, now = new Date(), owner?: string): AlertRule {
   const input = v.safeParse(NewRuleSchema, raw);
   if (!input.success) throw new SearchInputError(input.issues[0].message);
-  const { name, filters: rawFilters } = input.output;
-  const filters = parseFilters(rawFilters);
+  const { name, filters: rawFilters, criteria: rawCriteria } = input.output;
+  const criteria = rawCriteria && {
+    bedrooms: [...new Set(rawCriteria.bedrooms)].sort((a, b) => a - b),
+    neighborhoods: rawCriteria.neighborhoods.filter(
+      (name, index, all) => all.findIndex((other) => placeKey(other) === placeKey(name)) === index,
+    ),
+  };
+  const parsed = parseFilters(rawFilters);
+  // Several bedroom counts are matched after the search, so the search itself takes any.
+  const filters = criteria?.bedrooms.length ? { ...parsed, bedrooms: null } : parsed;
   if (needsCommute(filters))
     throw new SearchInputError(
       'Alerts cannot use commute-time limits or sorts, which need routing for every check. Remove them and try again.',
@@ -82,6 +152,8 @@ export function validateRule(raw: unknown, now = new Date()): AlertRule {
     name,
     filters: { ...filters, offset: 0, includeMap: false, includeCommute: false },
     createdAt: now.toISOString(),
+    ...(owner ? { owner } : {}),
+    ...(criteria && (criteria.bedrooms.length || criteria.neighborhoods.length) ? { criteria } : {}),
   };
 }
 
@@ -91,11 +163,13 @@ export async function addRule(
   raw: unknown,
   loadMatches: (filters: AlertRule['filters']) => Promise<ListingData[]>,
   now = new Date(),
+  owner?: string,
 ) {
-  const rule = validateRule(raw, now);
+  const rule = validateRule(raw, now, owner);
   const rules = await readRules(bucket);
-  if (rules.length >= MAX_RULES) throw new SearchInputError(`You can keep up to ${MAX_RULES} alerts. Remove one first.`);
-  const matches = await loadMatches(rule.filters);
+  if (rules.filter((item) => item.owner === owner).length >= MAX_RULES)
+    throw new SearchInputError(`You can keep up to ${MAX_RULES} alerts. Remove one first.`);
+  const matches = matchesCriteria(await loadMatches(rule.filters), rule.criteria);
   if (matches.length > MAX_BASELINE_UNITS)
     throw new SearchInputError(
       `This search matches more than ${MAX_BASELINE_UNITS.toLocaleString('en-US')} apartments. Narrow it before setting an alert.`,
@@ -105,13 +179,14 @@ export async function addRule(
   return [...rules, rule];
 }
 
-export async function deleteRule(bucket: Bucket, id: unknown) {
-  const rules = (await readRules(bucket)).filter((rule) => rule.id !== id);
+/** Removes one of this account's alerts; another account's alert is left alone. */
+export async function deleteRule(bucket: Bucket, id: unknown, owner?: string) {
+  const rules = (await readRules(bucket)).filter((rule) => !(rule.id === id && rule.owner === owner));
   await write(bucket, RULES_KEY, rules);
   return rules;
 }
 
-export async function addDevice(bucket: Bucket, raw: unknown, label: unknown, now = new Date()) {
+export async function addDevice(bucket: Bucket, raw: unknown, label: unknown, now = new Date(), owner?: string) {
   if (!validSubscription(raw)) throw new SearchInputError('This browser returned a notification subscription the app cannot use.');
   const devices = (await readDevices(bucket)).filter(({ endpoint }) => endpoint !== raw.endpoint);
   const device = {
@@ -119,14 +194,15 @@ export async function addDevice(bucket: Bucket, raw: unknown, label: unknown, no
     keys: { p256dh: raw.keys.p256dh, auth: raw.keys.auth },
     label: typeof label === 'string' && label.trim() ? label.trim().slice(0, 60) : 'This device',
     createdAt: now.toISOString(),
+    ...(owner ? { owner } : {}),
   };
   const next = [...devices, device].slice(-MAX_DEVICES);
   await write(bucket, DEVICES_KEY, next);
   return next;
 }
 
-export async function removeDevice(bucket: Bucket, endpoint: unknown) {
-  const devices = (await readDevices(bucket)).filter((device) => device.endpoint !== endpoint);
+export async function removeDevice(bucket: Bucket, endpoint: unknown, owner?: string) {
+  const devices = (await readDevices(bucket)).filter((device) => !(device.endpoint === endpoint && device.owner === owner));
   await write(bucket, DEVICES_KEY, devices);
   return devices;
 }
@@ -155,62 +231,88 @@ export function composeAlert(rule: AlertRule, changes: ObservedChange[], now: Da
     lines: hidden > 0 ? [...lines.slice(0, SHOWN_UNITS), `and ${hidden} more`] : lines,
     newCount: added.length,
     dropCount: drops.length,
+    ...(rule.owner ? { owner: rule.owner } : {}),
   };
 }
 
 const escapeHtml = (text: string) => text.replace(/[&<>"']/g, (char) => `&#${char.charCodeAt(0)};`);
 
-/** Sends the alerts by email (one message) and to each device (one notification per alert). */
+/**
+ * Sends the alerts by email (one message per account, to that account's address only) and to each device of the
+ * account the alert belongs to (one notification per alert). Alerts made before accounts had their own go to every
+ * allowed address and to devices added the same way.
+ */
 export async function deliver(bucket: Bucket, alerts: Alert[], channels: AlertChannels, origin: string) {
   const delivered = { email: false, devices: 0 };
   if (!alerts.length) return delivered;
-  if (channels.email && channels.from && channels.to?.length) {
-    const subject = alerts.length === 1 ? alerts[0].title : `${alerts.length} apartment alerts`;
-    const text =
-      alerts.map((alert) => [alert.title, ...alert.lines.map((line) => '• ' + line)].join('\n')).join('\n\n') +
-      `\n\nOpen Walkup: ${origin}/`;
-    const html =
-      alerts
-        .map((alert) => `<h3>${escapeHtml(alert.title)}</h3><ul>${alert.lines.map((line) => `<li>${escapeHtml(line)}</li>`).join('')}</ul>`)
-        .join('') + `<p><a href="${escapeHtml(origin)}/">Open Walkup</a></p>`;
-    try {
-      await channels.email.send({ from: channels.from, to: channels.to, subject, text, html });
+  const owners = [...new Set(alerts.map(({ owner }) => owner))];
+  for (const owner of owners) {
+    const to = owner ? [owner] : (channels.to ?? []);
+    if (
+      await sendEmail(
+        alerts.filter((alert) => alert.owner === owner),
+        channels,
+        to,
+        origin,
+      )
+    )
       delivered.email = true;
-    } catch (cause) {
-      log.error('alert_email_failed', cause);
-    }
   }
-  if (channels.vapid) {
-    const devices = await readDevices(bucket);
-    const gone = new Set<string>();
-    for (const device of devices) {
-      for (const alert of alerts) {
-        try {
-          const result = await sendPush(
-            device,
-            { title: alert.title, body: alert.lines.join('\n'), tag: alert.ruleId, url: '/' },
-            channels.vapid,
-            { fetcher: channels.pushFetcher },
-          );
-          if (result.gone) {
-            gone.add(device.endpoint);
-            break;
-          }
-          if (result.ok) delivered.devices++;
-          else log.warn('alert_push_failed', { status: result.status, device: device.label });
-        } catch (cause) {
-          log.error('alert_push_failed', cause, { device: device.label });
+  if (channels.vapid) delivered.devices = await sendPushes(bucket, alerts, channels.vapid, channels.pushFetcher);
+  return delivered;
+}
+
+async function sendEmail(alerts: Alert[], channels: AlertChannels, to: string[], origin: string) {
+  if (!channels.email || !channels.from || !to.length) return false;
+  const subject = alerts.length === 1 ? alerts[0].title : `${alerts.length} apartment alerts`;
+  const text =
+    alerts.map((alert) => [alert.title, ...alert.lines.map((line) => '• ' + line)].join('\n')).join('\n\n') + `\n\nOpen Walkup: ${origin}/`;
+  const html =
+    alerts
+      .map((alert) => `<h3>${escapeHtml(alert.title)}</h3><ul>${alert.lines.map((line) => `<li>${escapeHtml(line)}</li>`).join('')}</ul>`)
+      .join('') + `<p><a href="${escapeHtml(origin)}/">Open Walkup</a></p>`;
+  try {
+    await channels.email.send({ from: channels.from, to, subject, text, html });
+    return true;
+  } catch (cause) {
+    log.error('alert_email_failed', cause);
+    return false;
+  }
+}
+
+async function sendPushes(
+  bucket: Bucket,
+  alerts: Alert[],
+  vapid: NonNullable<AlertChannels['vapid']>,
+  fetcher: AlertChannels['pushFetcher'],
+) {
+  let sent = 0;
+  const devices = await readDevices(bucket);
+  const gone = new Set<string>();
+  for (const device of devices) {
+    for (const alert of alerts.filter(({ owner }) => owner === device.owner)) {
+      try {
+        const result = await sendPush(device, { title: alert.title, body: alert.lines.join('\n'), tag: alert.ruleId, url: '/' }, vapid, {
+          fetcher,
+        });
+        if (result.gone) {
+          gone.add(device.endpoint);
+          break;
         }
+        if (result.ok) sent++;
+        else log.warn('alert_push_failed', { status: result.status, device: device.label });
+      } catch (cause) {
+        log.error('alert_push_failed', cause, { device: device.label });
       }
     }
-    if (gone.size)
-      await write(
-        bucket,
-        DEVICES_KEY,
-        devices.filter(({ endpoint }) => !gone.has(endpoint)),
-      );
   }
-  return delivered;
+  if (gone.size)
+    await write(
+      bucket,
+      DEVICES_KEY,
+      devices.filter(({ endpoint }) => !gone.has(endpoint)),
+    );
+  return sent;
 }
 
 /**
@@ -226,7 +328,7 @@ export async function checkAlerts(
   const alerts: Alert[] = [];
   for (const rule of await readRules(bucket)) {
     try {
-      const matches = await loadMatches(rule.filters);
+      const matches = matchesCriteria(await loadMatches(rule.filters), rule.criteria);
       if (matches.length > MAX_BASELINE_UNITS) {
         log.warn('alert_rule_too_broad', { rule: rule.id, matches: matches.length });
         continue;
@@ -256,7 +358,8 @@ export function alertChannels(env: AppEnv): AlertChannels {
     .map((email) => email.trim())
     .filter(Boolean);
   return {
-    email: env.ALERT_EMAIL && env.ALERT_EMAIL_FROM && to.length ? env.ALERT_EMAIL : null,
+    // Each account's alerts go to its own address, so email works once the binding and sender are set.
+    email: env.ALERT_EMAIL && env.ALERT_EMAIL_FROM ? env.ALERT_EMAIL : null,
     from: env.ALERT_EMAIL_FROM,
     to,
     vapid:
@@ -275,10 +378,16 @@ export async function runAlerts(env: AppEnv, origin = env.APP_ORIGIN ?? '') {
   return checkAlerts(env.BUCKET, alertMatches(env), alertChannels(env), { origin });
 }
 
-/** What the Alerts page shows: rules, recent alerts, devices (without their push addresses) and the channels set up. */
-export async function alertState(env: AppEnv & { BUCKET: Bucket }) {
+/**
+ * What the Alerts page shows one account: its rules, recent alerts and devices (without their push addresses),
+ * and the channels set up.
+ */
+export async function alertState(env: AppEnv & { BUCKET: Bucket }, owner?: string) {
   const channels = alertChannels(env);
-  const [rules, devices, recent] = await Promise.all([readRules(env.BUCKET), readDevices(env.BUCKET), readRecent(env.BUCKET)]);
+  const mine = <T extends { owner?: string }>(items: T[]) => items.filter((item) => item.owner === owner);
+  const [rules, devices, recent] = await Promise.all([readRules(env.BUCKET), readDevices(env.BUCKET), readRecent(env.BUCKET)]).then(
+    ([rules, devices, recent]) => [mine(rules), mine(devices), mine(recent)] as const,
+  );
   return {
     rules,
     recent,

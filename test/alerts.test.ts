@@ -10,6 +10,7 @@ import {
   readRules,
   removeDevice,
   validateRule,
+  matchesCriteria,
   MAX_RULES,
 } from '../server/alerts.ts';
 import { handleApi } from './fixtures/api.ts';
@@ -316,4 +317,96 @@ test('a resync that saved listings is followed by an alert check after the respo
   await Promise.all(waits);
   expect(waits.length, 'the refresh, then the alert check').toBe(2);
   expect(events.filter((event) => event.startsWith('alert'))).toStrictEqual([]);
+});
+
+test('an alert can ask for several bedroom counts and named neighborhoods', () => {
+  const made = validateRule({
+    name: 'West Village 2BR',
+    filters: { region: 'manhattan', bedrooms: 2, maxRent: 5000 },
+    criteria: { bedrooms: [3, 1, 3], neighborhoods: ['West Village', 'west-village', ' Chelsea '] },
+  });
+  expect(made.criteria).toStrictEqual({ bedrooms: [1, 3], neighborhoods: ['West Village', 'Chelsea'] });
+  expect(made.filters.bedrooms, 'the search takes any bedroom count; the alert picks them').toBeNull();
+  expect(made.filters.maxRent).toBe(5000);
+  expect(validateRule({ ...rule, criteria: {} }).criteria, 'empty criteria are dropped').toBeUndefined();
+  expect(validateRule({ ...rule, criteria: { neighborhoods: ['Chelsea'] } }).filters.bedrooms, 'one bedroom filter is kept').toBe(1);
+  expect(validateRule(rule, new Date(), 'me@example.com').owner).toBe('me@example.com');
+  expect(() => validateRule({ ...rule, criteria: { bedrooms: [5] } })).toThrow(/studio to 4/);
+  expect(() => validateRule({ ...rule, criteria: { bedrooms: [1.5] } })).toThrow(/studio to 4/);
+  expect(() => validateRule({ ...rule, criteria: { neighborhoods: Array.from({ length: 21 }, (_, i) => 'N' + i) } })).toThrow(
+    /20 neighborhoods/,
+  );
+
+  const place = (id: string, bedrooms: number, neighborhood: string | undefined, zip: string) =>
+    testListing({ id, bedrooms, neighborhood, zip });
+  const listings = [
+    place('a', 2, 'West Village', '10014'),
+    place('b', 1, 'west village', '10014'),
+    place('c', 2, 'Chelsea', '10011'),
+    // No neighborhood: in the West Village by ZIP code, or not.
+    place('d', 2, undefined, '10014'),
+    place('e', 2, undefined, '10003'),
+    place('f', 4, 'West Village', '10014'),
+  ];
+  const ids = (criteria: Parameters<typeof matchesCriteria>[1]) => matchesCriteria(listings, criteria).map(({ id }) => id);
+  expect(ids(undefined)).toStrictEqual(['a', 'b', 'c', 'd', 'e', 'f']);
+  expect(ids({ bedrooms: [2], neighborhoods: ['West Village'] })).toStrictEqual(['a', 'd']);
+  expect(ids({ bedrooms: [1, 2], neighborhoods: [] })).toStrictEqual(['a', 'b', 'c', 'd', 'e']);
+  expect(ids({ bedrooms: [], neighborhoods: ['Chelsea'] })).toStrictEqual(['c']);
+});
+
+test('each account sees and gets only its own alerts; older shared alerts go to every allowed address', async () => {
+  const bucket = createMemoryBucket();
+  let inventory = [unit('40', 2400, '2026-11-20T00:00:00Z')];
+  const load = async () => inventory;
+  await addRule(bucket, { ...rule, criteria: { bedrooms: [1, 2, 3] } }, load, new Date(), 'renter@example.com');
+  await addRule(bucket, rule, load, new Date(), 'other@example.com');
+  await addRule(bucket, rule, load);
+  const [mine, theirs] = await readRules(bucket);
+  await deleteRule(bucket, theirs.id, 'renter@example.com');
+  expect((await readRules(bucket)).length, 'another account’s alert is not removed').toBe(3);
+  const [renterPhone, sharedPhone] = [await device(), await device()];
+  await addDevice(bucket, renterPhone, 'Renter', new Date(), 'renter@example.com');
+  await addDevice(bucket, sharedPhone, 'Shared');
+  await removeDevice(bucket, renterPhone.endpoint, 'other@example.com');
+  expect((await readDevices(bucket)).length).toBe(2);
+
+  inventory = [...inventory, unit('42', 2450, '2026-11-22T00:00:00Z')];
+  const sent: { to: string[]; subject: string }[] = [];
+  const pushed: string[] = [];
+  const { generateVapidKeys } = await import('../server/web-push.ts');
+  const result = await checkAlerts(
+    bucket,
+    load,
+    {
+      email: {
+        send: async (message: { to: string[]; subject: string }) => {
+          sent.push(message);
+        },
+      },
+      from: 'alerts@example.com',
+      to: ['first@example.com', 'second@example.com'],
+      vapid: { ...(await generateVapidKeys()), subject: 'https://apartments.example' },
+      pushFetcher: async (url) => {
+        pushed.push(url);
+        return new Response(null, { status: 201 });
+      },
+    },
+    { origin: '' },
+  );
+  expect(result.alerts.map(({ owner }) => owner)).toStrictEqual(['renter@example.com', 'other@example.com', undefined]);
+  expect(sent.map(({ to }) => to)).toStrictEqual([
+    ['renter@example.com'],
+    ['other@example.com'],
+    ['first@example.com', 'second@example.com'],
+  ]);
+  expect(pushed, 'each device gets its own account’s alert').toStrictEqual([renterPhone.endpoint, sharedPhone.endpoint]);
+  expect(mine.owner).toBe('renter@example.com');
+
+  const env = { BUCKET: bucket, ALERT_EMAIL_FROM: 'alerts@example.com', ALERT_EMAIL: { send: async () => undefined } };
+  const state = await readJson<AlertState>(handleApi(new Request('https://app.test/api/alerts'), env, { account: 'Renter@Example.com' }));
+  expect(state.rules.map(({ id }) => id)).toStrictEqual([mine.id]);
+  expect(state.recent.length).toBe(1);
+  expect(state.devices.map(({ label }) => label)).toStrictEqual(['Renter']);
+  expect(state.channels.email, 'email works without a list of allowed addresses').toBe(true);
 });
