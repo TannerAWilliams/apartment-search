@@ -167,7 +167,7 @@ export function RentTrend({
             {bedroomLabel(bedrooms).toUpperCase()} · {formatSnapshotMonth(selected.month).toUpperCase()}
           </Text>
           <Text accessibilityRole="header" style={styles.trendPrice}>
-            {selected.median === null ? 'No observations' : formatRent(selected.median)}
+            {selected.median === null ? 'No observations' : formatRent(Math.round(selected.median))}
           </Text>
           <Text style={styles.smallMuted}>
             {primary.label}
@@ -199,7 +199,7 @@ export function RentTrend({
                 {label}
                 {detail ? ' · ' + detail : ''}
               </Text>
-              <Text style={styles.chartPrice}>{point.median === null ? '—' : formatRent(point.median)}</Text>
+              <Text style={styles.chartPrice}>{point.median === null ? '—' : formatRent(Math.round(point.median))}</Text>
               <Text style={styles.chartCount}>n = {point.count.toLocaleString('en-US')}</Text>
             </View>
           );

@@ -30,7 +30,7 @@ function MedianBars({ area }: { area: RentArea }) {
         <View
           key={SIZES[index]}
           style={styles.barRow}
-          accessibilityLabel={`${bedroomLabel(index)}, ${median === null ? 'no observations' : formatRent(median) + ' median asking rent, ' + count + ' listings'}`}
+          accessibilityLabel={`${bedroomLabel(index)}, ${median === null ? 'no observations' : formatRent(Math.round(median)) + ' median asking rent, ' + count + ' listings'}`}
         >
           <Text style={styles.barLabel}>{SIZES[index]}</Text>
           <View style={styles.barTrack}>
@@ -39,7 +39,7 @@ function MedianBars({ area }: { area: RentArea }) {
             )}
           </View>
           <View style={styles.barValue}>
-            <Text style={styles.chartPrice}>{median === null ? '—' : formatRent(median)}</Text>
+            <Text style={styles.chartPrice}>{median === null ? '—' : formatRent(Math.round(median))}</Text>
             <Text style={styles.chartCount}>{count === 0 ? 'No data' : `n = ${count}`}</Text>
           </View>
         </View>
@@ -80,7 +80,7 @@ function RentTable({ areas, selection, choose }: { areas: RentArea[]; selection:
             </View>
             {area.sizes.map(({ median, count }, index) => (
               <View key={SIZES[index]} style={styles.chartCell}>
-                <Text style={styles.chartPrice}>{median === null ? '—' : formatRent(median)}</Text>
+                <Text style={styles.chartPrice}>{median === null ? '—' : formatRent(Math.round(median))}</Text>
                 <Text style={styles.chartCount}>{count === 0 ? ' ' : `n = ${count}`}</Text>
               </View>
             ))}
@@ -102,7 +102,7 @@ type State = (typeof STATES)[number][0];
 type Level = 'state' | 'city' | 'neighborhood' | 'zip';
 type Choice = { level: Level; id: string };
 const STATE_CHOICE: Choice = { level: 'state', id: 'overall' };
-const CHIP_LIMIT = 12;
+const CHIP_LIMIT = 8;
 
 /** The borough key a search region names, as the snapshot labels it ("Staten Island, NY"). */
 const BOROUGH_LABELS: Record<string, string> = Object.fromEntries(
@@ -207,6 +207,8 @@ export function RentChart({
   const stateCities = (ready(cities)?.areas ?? []).filter(({ id }) => id !== 'overall');
   const cityId = choice.level === 'city' ? choice.id : choice.level === 'neighborhood' ? (choice.id.split('|')[0] ?? '') : '';
   const cityNeighborhoods = (ready(neighborhoods)?.areas ?? []).filter(({ id }) => id.startsWith(cityId + '|'));
+  // The chips put the neighborhoods with the most listings first; the table below keeps them alphabetical.
+  const busiestNeighborhoods = [...cityNeighborhoods].sort((a, b) => b.count - a.count);
   const selected = byId.get(choice.id);
   const stateLabel = STATES.find(([id]) => id === state)![1];
   const displayed =
@@ -255,7 +257,7 @@ export function RentChart({
       </View>
     );
 
-  const shownNeighborhoods = allNeighborhoods ? cityNeighborhoods : cityNeighborhoods.slice(0, CHIP_LIMIT);
+  const shownNeighborhoods = allNeighborhoods ? cityNeighborhoods : busiestNeighborhoods.slice(0, CHIP_LIMIT);
   return (
     <View style={styles.marketplacePanel}>
       <View style={styles.chartIntro}>
@@ -303,25 +305,29 @@ export function RentChart({
             </Chip>
           ))}
         </View>
-        {stateCities.length > 0 && (
-          <>
-            <Text style={styles.fieldLabel}>{levelName}</Text>
-            <View style={styles.chipRow}>
-              {stateCities.map(({ id, label }) => (
-                <Chip
-                  key={id}
-                  label={`${levelName} ${label}`}
-                  selected={cityId === id}
-                  onPress={() => {
-                    setAllNeighborhoods(false);
-                    choose({ level: 'city', id });
-                  }}
-                >
-                  {state === 'all' ? label : label.replace(/, (NY|NJ)$/, '')}
-                </Chip>
-              ))}
-            </View>
-          </>
+        {state === 'all' ? (
+          <Text style={styles.smallMuted}>Choose New York or New Jersey to pick a borough or city, or select a row in the table.</Text>
+        ) : (
+          stateCities.length > 0 && (
+            <>
+              <Text style={styles.fieldLabel}>{levelName}</Text>
+              <View style={styles.chipRow}>
+                {stateCities.map(({ id, label }) => (
+                  <Chip
+                    key={id}
+                    label={`${levelName} ${label}`}
+                    selected={cityId === id}
+                    onPress={() => {
+                      setAllNeighborhoods(false);
+                      choose({ level: 'city', id });
+                    }}
+                  >
+                    {label.replace(/, (NY|NJ)$/, '')}
+                  </Chip>
+                ))}
+              </View>
+            </>
+          )
         )}
         {cityId !== '' && cityNeighborhoods.length > 0 && (
           <>

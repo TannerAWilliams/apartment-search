@@ -21,6 +21,14 @@ const DOT: Record<string, string> = {
 
 type Row = ReturnType<typeof sourceRows>[number];
 
+/** Sources grouped by state, the ones that need a look first. */
+const GROUPS = [
+  ['Last attempt failed', 'Needs attention'],
+  ['Saved data available', 'Working'],
+  ['Not fetched yet', 'Not fetched yet'],
+  ['Sync paused', 'Paused'],
+] as const;
+
 function SourceRow({ row, first, disabled, onResync }: { row: Row; first: boolean; disabled: boolean; onResync: () => void }) {
   const [open, setOpen] = useState(false);
   const count = row.status?.listingCount;
@@ -97,6 +105,12 @@ export function SourcesPage({
       <Text style={styles.bodyText}>
         Where listings come from. Resync checks each site again; if one fails, its last good listings are kept.
       </Text>
+      <Text style={styles.fieldLabel}>
+        {GROUPS.map(([state, title]) => [title, connected.filter((row) => row.state === state).length] as const)
+          .filter(([, count]) => count > 0)
+          .map(([title, count]) => `${count} ${title.toLowerCase()}`)
+          .join(' · ')}
+      </Text>
       {refresh?.checking && !refreshing && (
         <Text style={styles.smallMuted}>A check may still be running. Resync checks its status without starting a second one.</Text>
       )}
@@ -107,11 +121,22 @@ export function SourcesPage({
             ? `Resync available in ${cooldownSeconds}s`
             : 'Resync all connected providers'}
       </Button>
-      <View style={styles.menu}>
-        {connected.map((row, index) => (
-          <SourceRow key={row.id} row={row} first={index === 0} disabled={!refresh || busy} onResync={() => onResync(row.id)} />
-        ))}
-      </View>
+      {GROUPS.map(([state, title]) => {
+        const group = connected.filter((row) => row.state === state);
+        if (!group.length) return null;
+        return (
+          <View key={state} style={{ gap: 6 }}>
+            <Text accessibilityRole="header" style={styles.menuLabel}>
+              {title} ({group.length})
+            </Text>
+            <View style={styles.menu}>
+              {group.map((row, index) => (
+                <SourceRow key={row.id} row={row} first={index === 0} disabled={!refresh || busy} onResync={() => onResync(row.id)} />
+              ))}
+            </View>
+          </View>
+        );
+      })}
       {browseOnly.length > 0 && (
         <Text style={styles.smallMuted}>
           {browseOnly.length} more sites, such as{' '}

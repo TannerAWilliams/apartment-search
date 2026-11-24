@@ -191,8 +191,18 @@ export function ListingMap({
   return (
     <section aria-label="Map of matching apartments" style={{ border: '1px solid #d7e0ec', background: '#fff' }}>
       <div ref={container} style={{ height: 'clamp(350px, 66vh, 800px)', background: '#edf1f4' }} />
-      <div role="status" style={{ padding: '8px 12px', fontSize: 13, color: '#35445a' }}>
+      <div
+        role="status"
+        style={{
+          padding: '8px 12px',
+          fontSize: 13,
+          color: '#35445a',
+          // The same system font as the rest of the app (React Native Web's default for text).
+          fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
+        }}
+      >
         {`${points.length.toLocaleString()} mapped${total > points.length ? ` · ${total - points.length} without coordinates` : ''}`}
+        {points.length > 0 && onSave && ' · Tap a pin to see and save listings'}
         {unavailable && ' · Some street tiles could not load'}
       </div>
     </section>
