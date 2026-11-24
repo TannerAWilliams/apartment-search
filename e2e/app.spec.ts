@@ -714,7 +714,7 @@ test('market history charts one area, compares another, and says when figures ca
   // One page: pick an area and a size once; the chart, its time range and the area list follow.
   await page.getByRole('tab', { name: 'Market', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Rent prices', exact: true })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Median rent over time', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Median rent', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Connecticut', exact: true })).toBeVisible();
 
   // State, then borough, then neighborhood.
@@ -726,7 +726,7 @@ test('market history charts one area, compares another, and says when figures ca
   await expect.poll(() => marketRequests).toContain('nyc|neighborhood');
   await page.getByRole('button', { name: 'Neighborhood Park Slope', exact: true }).click();
   await expect(page.getByText('1 BR · Park Slope', { exact: true })).toBeVisible();
-  await expect(page.getByText(/Median 1 BR · Park Slope/)).toBeVisible();
+  await expect(page.getByRole('button', { name: /^Median rent: \$3,500\. 1 BR/ })).toBeVisible();
   await expect(page.getByText(/^Source: FirstMover’s monthly snapshot/)).toBeVisible();
 
   // Longer ranges come from StreetEasy's history for the same area and size.
@@ -737,25 +737,24 @@ test('market history charts one area, compares another, and says when figures ca
   await expect(page.getByText(/^Source: StreetEasy Data Dashboard/)).toBeVisible();
 
   // The list ranks the neighborhoods by the chosen size; a row charts it.
-  await expect(page.getByRole('heading', { name: 'Neighborhoods, 1 BR', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: /^Cheapest neighborhood: / }).click();
+  await expect(page.getByRole('heading', { name: 'Cheapest neighborhood', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Show chart for DUMBO Brooklyn, NY', exact: true }).click();
   await expect(page.getByText('1 BR · DUMBO', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Neighborhood Park Slope', exact: true }).click();
 
-  // StreetEasy's deep dive is one tap away and follows the same area.
-  const tablesBefore = await page.getByRole('button', { name: 'Show table', exact: true }).count();
-  await page.getByRole('button', { name: /^More market data from StreetEasy/ }).click();
-  await expect(page.getByText('$3,550', { exact: true }).first()).toBeVisible();
-  // One chart at a time: rankings, then back to the trend.
-  await page.getByRole('button', { name: 'Rankings', exact: true }).click();
+  // StreetEasy's answers sit beside the page's own, for the same area; each card opens its chart.
+  await expect(page.getByRole('button', { name: /^Rent change in a year: \+/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /^Cheapest month: January/ })).toBeVisible();
+  await page.getByRole('button', { name: /^Rank in Brooklyn: #2 of 2/ }).click();
   await expect(page.getByText('Park Slope is number 2 of 2 in Brooklyn, highlighted.', { exact: true })).toBeVisible();
   await expect(page.getByText(/^Year-over-year change/)).toHaveCount(0);
-  await page.getByRole('button', { name: 'Over time', exact: true }).click();
+  await page.getByRole('button', { name: /^Listings with a price cut: / }).click();
   await page.getByPlaceholder('Neighborhood or borough').first().fill('dumbo');
   await page.getByRole('button', { name: 'DUMBO · Brooklyn', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Stop comparing DUMBO', exact: true })).toBeVisible();
   // A month StreetEasy left blank reads as such, never as zero.
-  await page.getByRole('button', { name: 'Show table', exact: true }).nth(tablesBefore).click();
+  await page.getByRole('button', { name: 'Show table', exact: true }).first().click();
   await expect(page.getByText('Mar 2026', { exact: true }).first()).toBeVisible();
   await page.getByRole('button', { name: 'Stop comparing DUMBO', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Stop comparing DUMBO', exact: true })).toHaveCount(0);
@@ -837,7 +836,7 @@ test('without dashboard access the Market page shows recent months only, without
   const { requests } = await mockApp(page);
   await page.getByRole('tab', { name: 'Market', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Rent prices', exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: /^More market data from StreetEasy/ })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /^Listings with a price cut/ })).toHaveCount(0);
   expect(requests.filter((request) => request.path.startsWith('/api/history'))).toHaveLength(0);
 });
 

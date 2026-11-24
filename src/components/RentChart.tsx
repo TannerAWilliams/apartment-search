@@ -15,11 +15,18 @@ import { LongTrend } from './LongTrend.tsx';
 import { DASHBOARD_URL } from '../dashboard-data.ts';
 import { MarketHistory } from '../screens/MarketHistory.tsx';
 import { RentTrend } from './RentTrend.tsx';
-import { StatTile } from './MarketCharts.tsx';
+import { type Insight, InsightCards } from './InsightCards.tsx';
 import { rentSeries } from '../rent-history.ts';
 
 const SIZES = ['Studio', '1 BR', '2 BR', '3 BR', '4 BR'];
 const PAGE_SIZE = 5;
+/** The areas card's question, by the level the list shows. */
+const CHEAPEST: Record<string, string> = {
+  Boroughs: 'Cheapest borough',
+  'Cities and towns': 'Cheapest city or town',
+  'ZIP codes': 'Cheapest ZIP code',
+  Neighborhoods: 'Cheapest neighborhood',
+};
 
 /** The states the snapshot covers, and the region each one asks the server for. */
 const STATES = [
@@ -79,32 +86,6 @@ function historyArea(choice: Choice, state: State, label: string | undefined) {
   return (label ?? '').replace(/, (NY|NJ)$/, '');
 }
 
-/** The chosen area's median for the chosen size, its change since last month, and how many listings it has. */
-function TodayTiles({ area, bedrooms, month, history }: { area: RentArea; bedrooms: number; month: string; history: RentHistory }) {
-  const points = rentSeries(area, bedrooms, month, history);
-  const current = points.at(-1)?.median ?? null;
-  const before = points.at(-2)?.median ?? null;
-  const delta = current !== null && before ? (current - before) / before : null;
-  return (
-    <View style={[styles.chipRow, { alignItems: 'stretch' }]}>
-      <StatTile
-        label={`Median ${SIZES[bedrooms]} · ${area.label}`}
-        value={current === null ? 'No listings' : formatRent(current)}
-        delta={delta === null ? '' : `${delta >= 0 ? '+' : '−'}${Math.abs(delta * 100).toFixed(1)}% vs last month`}
-        period={formatSnapshotMonth(month)}
-        values={points.map(({ median }) => median)}
-      />
-      <StatTile
-        label="Listed now"
-        value={area.count.toLocaleString('en-US')}
-        delta={`${(area.sizes[bedrooms]?.count ?? 0).toLocaleString('en-US')} of them ${SIZES[bedrooms]}`}
-        period={formatSnapshotMonth(month)}
-        values={points.map(({ count }) => count)}
-      />
-    </View>
-  );
-}
-
 export function RentChart({
   initialRegion,
   saved,
@@ -127,6 +108,8 @@ export function RentChart({
   const [zip, setZip] = useState('');
   const [allNeighborhoods, setAllNeighborhoods] = useState(false);
   const [range, setRange] = useState<number>(SNAPSHOT_RANGE);
+  // The open answer card; its chart shows under the cards.
+  const [insight, setInsight] = useState('rent');
   const [bedrooms, setBedrooms] = useState(1);
   const [pinned, setPinned] = useState<string[]>([]);
   const [visible, setVisible] = useState(PAGE_SIZE);
@@ -248,6 +231,145 @@ export function RentChart({
         ? 'ZIP codes'
         : 'Neighborhoods';
   const snapshotSource = state === 'ct' ? 'Walkup’s own listings' : 'FirstMover’s monthly snapshot of new listings';
+
+  // The page's own answer cards: the median for the size, how many are listed, and the areas within.
+  const points = displayed ? rentSeries(displayed, bedrooms, month, history) : [];
+  const latestMedian = points.at(-1)?.median ?? null;
+  const before = points.at(-2)?.median ?? null;
+  const monthly = latestMedian !== null && before ? ((latestMedian - before) / before) * 100 : null;
+  const cheapest = ranked.at(-1);
+  const priciest = ranked[0];
+  const medianOf = (area: RentArea) => formatRent(Math.round(area.sizes[bedrooms]?.median ?? 0));
+  const leadInsights: Insight[] = displayed
+    ? [
+        {
+          key: 'rent',
+          question: 'Median rent',
+          answer: latestMedian === null ? 'No listings' : formatRent(Math.round(latestMedian)),
+          context: `${SIZES[bedrooms]} · ${formatSnapshotMonth(month)}${monthly === null ? '' : ` · ${monthly >= 0 ? '+' : '−'}${Math.abs(monthly).toFixed(1)}% vs last month`}`,
+        },
+        {
+          key: 'listed',
+          question: 'Listed now',
+          answer: displayed.count.toLocaleString('en-US'),
+          context: `${(displayed.sizes[bedrooms]?.count ?? 0).toLocaleString('en-US')} of them ${SIZES[bedrooms]}`,
+        },
+        ...(cheapest && priciest && ranked.length > 1
+          ? [
+              {
+                key: 'areas',
+                question: CHEAPEST[listTitle] ?? 'Cheapest area',
+                answer: medianOf(cheapest),
+                context: `${cheapest.label.replace(/, (NY|NJ|CT)$/, '')} · priciest ${medianOf(priciest)}`,
+              },
+            ]
+          : []),
+      ]
+    : [];
+  const leadDetail = !displayed ? null : insight === 'listed' ? (
+    // Every size here: how many are listed and their median; a row picks that size.
+    <View style={styles.menu}>
+      {displayed.sizes.map(({ median, count }, index) => (
+        <Pressable
+          key={SIZES[index]}
+          accessibilityRole="button"
+          {...toggleProps(bedrooms === index)}
+          accessibilityLabel={`${SIZES[index]}: ${count} listed${median === null ? '' : `, median ${formatRent(Math.round(median))}`}`}
+          onPress={() => setBedrooms(index)}
+          style={({ pressed }) => [styles.menuRow, index > 0 && styles.menuDivider, pressed && styles.pressed]}
+        >
+          <Text style={[styles.menuLabel, { flex: 1 }, bedrooms === index && { fontWeight: '700' }]}>{SIZES[index]}</Text>
+          <View style={{ alignItems: 'flex-end' }}>
+            <Text style={styles.menuLabel}>{count.toLocaleString('en-US')} listed</Text>
+            <Text style={styles.smallMuted}>{median === null ? 'No median' : `Median ${formatRent(Math.round(median))}`}</Text>
+          </View>
+        </Pressable>
+      ))}
+    </View>
+  ) : insight === 'areas' ? (
+    <>
+      <View style={styles.menu}>
+        {ranked.slice(0, visible).map((area, index) => (
+          <Pressable
+            key={area.id}
+            accessibilityRole="button"
+            {...toggleProps(choice.id === area.id)}
+            accessibilityLabel={`Show chart for ${area.label} ${area.detail}`}
+            onPress={() => {
+              setInsight('rent');
+              choose(
+                choice.level === 'state'
+                  ? { level: 'city', id: area.id }
+                  : choice.level === 'zip'
+                    ? { level: 'zip', id: area.id }
+                    : { level: 'neighborhood', id: area.id },
+              );
+            }}
+            style={({ pressed }) => [styles.menuRow, index > 0 && styles.menuDivider, pressed && styles.pressed]}
+          >
+            <Text style={[styles.menuLabel, { flex: 1 }]} numberOfLines={2}>
+              {area.label.replace(/, (NY|NJ|CT)$/, '')}
+            </Text>
+            <View style={{ alignItems: 'flex-end' }}>
+              <Text style={styles.menuLabel}>{formatRent(Math.round(area.sizes[bedrooms]!.median!))}</Text>
+              <Text style={styles.smallMuted}>{area.sizes[bedrooms]!.count.toLocaleString('en-US')} listed</Text>
+            </View>
+          </Pressable>
+        ))}
+      </View>
+      {visible < ranked.length && (
+        <Button secondary onPress={() => setVisible(ranked.length)}>
+          Show all {ranked.length}
+        </Button>
+      )}
+    </>
+  ) : (
+    <>
+      <ChipLine>
+        {RANGES.map(([count, label]) => (
+          <Chip key={label} selected={range === count} onPress={() => setRange(count)}>
+            {label}
+          </Chip>
+        ))}
+      </ChipLine>
+      <View style={styles.chartCard}>
+        <Text style={styles.fieldLabel}>
+          {SIZES[bedrooms]} · {displayed.label}
+        </Text>
+        {range === SNAPSHOT_RANGE || dataset === 'saved' ? (
+          <>
+            <RentTrend
+              areas={[displayed, ...pinnedAreas.filter(({ id }) => id !== displayed.id)]}
+              bedrooms={bedrooms}
+              month={month}
+              history={history}
+              compact
+            />
+            <Text style={styles.smallMuted}>
+              Source: {dataset === 'saved' ? 'your saved apartments' : snapshotSource}. Monthly medians of asking rents.
+            </Text>
+            <View style={styles.chartCompare}>
+              <View style={styles.chipRow}>
+                {!pinned.includes(displayed.id) && pinned.length < 2 && (
+                  <Chip onPress={() => setPinned([...pinned, displayed.id])}>+ Compare {displayed.label}</Chip>
+                )}
+                {pinnedAreas.map(({ id, label }) => (
+                  <Chip key={id} selected onPress={() => setPinned(pinned.filter((item) => item !== id))}>
+                    {label} ×
+                  </Chip>
+                ))}
+              </View>
+              {pinned.length > 0 && <Text style={styles.smallMuted}>Now choose another area above to see both.</Text>}
+            </View>
+          </>
+        ) : loadHistory ? (
+          <LongTrend load={loadHistory} area={historyArea(choice, state, displayed.label)} bedrooms={bedrooms} months={range} />
+        ) : (
+          <Text style={styles.smallMuted}>Longer history needs the online server.</Text>
+        )}
+      </View>
+    </>
+  );
   return (
     <View style={styles.marketplacePanel}>
       <View style={styles.chartIntro}>
@@ -332,95 +454,25 @@ export function RentChart({
         </Text>
       )}
       {displayed ? (
-        <>
-          <TodayTiles area={displayed} bedrooms={bedrooms} month={month} history={history} />
-          <Text accessibilityRole="header" style={styles.sectionHeading}>
-            Median rent over time
-          </Text>
-          <ChipLine>
-            {RANGES.map(([count, label]) => (
-              <Chip key={label} selected={range === count} onPress={() => setRange(count)}>
-                {label}
-              </Chip>
-            ))}
-          </ChipLine>
-          <View style={styles.chartCard}>
-            <Text style={styles.fieldLabel}>
-              {SIZES[bedrooms]} · {displayed.label}
-            </Text>
-            {range === SNAPSHOT_RANGE || dataset === 'saved' ? (
-              <>
-                <RentTrend
-                  areas={[displayed, ...pinnedAreas.filter(({ id }) => id !== displayed.id)]}
-                  bedrooms={bedrooms}
-                  month={month}
-                  history={history}
-                  compact
-                />
-                <Text style={styles.smallMuted}>
-                  Source: {dataset === 'saved' ? 'your saved apartments' : snapshotSource}. Monthly medians of asking rents.
-                </Text>
-                <View style={styles.chartCompare}>
-                  <View style={styles.chipRow}>
-                    {!pinned.includes(displayed.id) && pinned.length < 2 && (
-                      <Chip onPress={() => setPinned([...pinned, displayed.id])}>+ Compare {displayed.label}</Chip>
-                    )}
-                    {pinnedAreas.map(({ id, label }) => (
-                      <Chip key={id} selected onPress={() => setPinned(pinned.filter((item) => item !== id))}>
-                        {label} ×
-                      </Chip>
-                    ))}
-                  </View>
-                  {pinned.length > 0 && <Text style={styles.smallMuted}>Now choose another area above to see both.</Text>}
-                </View>
-              </>
-            ) : loadHistory ? (
-              <LongTrend load={loadHistory} area={historyArea(choice, state, displayed.label)} bedrooms={bedrooms} months={range} />
-            ) : (
-              <Text style={styles.smallMuted}>Longer history needs the online server.</Text>
-            )}
-          </View>
-          {ranked.length > 0 && (
-            <>
-              <Text accessibilityRole="header" style={styles.sectionHeading}>
-                {listTitle}, {SIZES[bedrooms]}
-              </Text>
-              <View style={styles.menu}>
-                {ranked.slice(0, visible).map((area, index) => (
-                  <Pressable
-                    key={area.id}
-                    accessibilityRole="button"
-                    {...toggleProps(choice.id === area.id)}
-                    accessibilityLabel={`Show chart for ${area.label} ${area.detail}`}
-                    onPress={() =>
-                      choose(
-                        choice.level === 'state'
-                          ? { level: 'city', id: area.id }
-                          : choice.level === 'zip'
-                            ? { level: 'zip', id: area.id }
-                            : { level: 'neighborhood', id: area.id },
-                      )
-                    }
-                    style={({ pressed }) => [styles.menuRow, index > 0 && styles.menuDivider, pressed && styles.pressed]}
-                  >
-                    <Text style={[styles.menuLabel, { flex: 1 }]} numberOfLines={2}>
-                      {area.label.replace(/, (NY|NJ|CT)$/, '')}
-                    </Text>
-                    <View style={{ alignItems: 'flex-end' }}>
-                      <Text style={styles.menuLabel}>{formatRent(Math.round(area.sizes[bedrooms]!.median!))}</Text>
-                      <Text style={styles.smallMuted}>{area.sizes[bedrooms]!.count.toLocaleString('en-US')} listed</Text>
-                    </View>
-                  </Pressable>
-                ))}
-              </View>
-              {visible < ranked.length && (
-                <Button secondary onPress={() => setVisible(ranked.length)}>
-                  Show all {ranked.length}
-                </Button>
-              )}
-            </>
-          )}
-        </>
+        dataset === 'market' && loadHistory ? (
+          <MarketHistory
+            load={loadHistory}
+            area={historyArea(choice, state, displayed.label)}
+            bedrooms={bedrooms}
+            lead={leadInsights}
+            leadDetail={leadDetail}
+            selected={insight}
+            onSelect={setInsight}
+          />
+        ) : (
+          <InsightCards
+            insights={leadInsights}
+            selected={leadInsights.some(({ key }) => key === insight) ? insight : 'rent'}
+            onSelect={setInsight}
+          >
+            {leadDetail}
+          </InsightCards>
+        )
       ) : marketState !== 'ready' && dataset === 'market' ? (
         <View style={styles.empty} aria-live="polite">
           <Text accessibilityRole="header" style={styles.panelTitle}>
@@ -452,11 +504,6 @@ export function RentChart({
             </Button>
           )}
         </View>
-      )}
-      {dataset === 'market' && loadHistory && (
-        <Disclosure title="More market data from StreetEasy: inventory, price cuts, rankings">
-          <MarketHistory load={loadHistory} area={historyArea(choice, state, displayed?.label)} />
-        </Disclosure>
       )}
       <Disclosure title="Where these numbers come from">
         <View style={styles.chartSource}>
