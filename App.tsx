@@ -11,7 +11,7 @@ import { bedroomLabel, formatRent, localWorkplace, needsCommute, parseFilters } 
 import { mobileStyles } from './src/mobileStyles.ts';
 import { colors, styles } from './src/styles.ts';
 import { localSearch } from './src/market.ts';
-import { listingKey, mergeListings, mergeSourceLinks } from './src/listings.ts';
+import { listingKey, mapListing, mergeListings, mergeSourceLinks } from './src/listings.ts';
 import { Button, Chip } from './src/components/ui.tsx';
 import { startVitals } from './src/web-vitals-report.ts';
 import { SavedSearches } from './src/components/SavedSearches.tsx';
@@ -184,6 +184,8 @@ function ApartmentSearch() {
     setDraft((current) => ({ ...current, sort }));
     submit({ ...applied, sort });
   }
+
+  const savedKeys = useMemo(() => new Set(saved.map(listingKey)), [saved]);
 
   function saveListing(listing: ListingData) {
     setSaved((current) => mergeListings([...current, { ...listing, buildingLinks: undefined }]));
@@ -451,7 +453,13 @@ function ApartmentSearch() {
                       {WEB_MAP && mapView && (
                         <View style={[styles.mapPanel, split && styles.mapPanelWide]}>
                           <Suspense fallback={<Text style={styles.smallMuted}>Loading map…</Text>}>
-                            <ListingMap points={points} total={displayed.total} visible />
+                            <ListingMap
+                              points={points}
+                              total={displayed.total}
+                              visible
+                              onSave={(point) => saveListing(mapListing(point, displayed.matches))}
+                              isSaved={(point) => savedKeys.has(listingKey(mapListing(point, displayed.matches)))}
+                            />
                           </Suspense>
                         </View>
                       )}

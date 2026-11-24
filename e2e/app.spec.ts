@@ -272,6 +272,23 @@ test('the map view loads its tiles under the Content Security Policy', async ({ 
   await page.getByRole('button', { name: 'Map', exact: true }).click();
   await expect(page.getByRole('region', { name: 'Map of matching apartments', exact: true })).toBeVisible();
   await expect.poll(() => tiles.length).toBeGreaterThan(0);
+  // A pin's pop-up saves its listing, and its links open in a new tab.
+  await page.locator('.leaflet-marker-icon').first().click();
+  const popup = page.locator('.leaflet-popup-content');
+  await expect(popup.getByRole('link').first()).toHaveAttribute('target', '_blank');
+  await popup
+    .getByRole('button', { name: /^Save / })
+    .first()
+    .click();
+  await expect(popup.getByRole('button', { name: /^Saved: / }).first()).toBeDisabled();
+  await expect(page.getByRole('tab', { name: 'Saved (1)', exact: true })).toBeVisible();
+});
+
+test('listing links open the listing site in a new tab', async ({ page }) => {
+  await mockApp(page);
+  const link = page.getByRole('link', { name: /^Open on / }).first();
+  await expect(link).toHaveAttribute('target', '_blank');
+  await expect(link).toHaveAttribute('rel', 'noopener noreferrer');
 });
 
 test('portrait keeps first listing visible and filter cancellation does not search', async ({ page }, testInfo) => {

@@ -64,7 +64,7 @@ export function Button({
   );
 }
 
-const WebLink = View as ComponentType<ViewProps & { href: string }>;
+const WebLink = View as ComponentType<ViewProps & { href: string; hrefAttrs?: { target?: string; rel?: string } }>;
 
 export function ExternalLink({
   url,
@@ -80,9 +80,16 @@ export function ExternalLink({
   accessibilityLabel?: string;
 }) {
   if (Platform.OS === 'web') {
-    // Embedded browsers may ignore new tabs. Let the anchor navigate this tab.
+    // Listings and other sites open in a new tab, so the app stays where it was. A real anchor, so a browser that
+    // refuses new tabs still follows it.
     return (
-      <WebLink accessibilityRole="link" {...props} href={url} style={typeof style === 'function' ? style({ pressed: false }) : style}>
+      <WebLink
+        accessibilityRole="link"
+        {...props}
+        href={url}
+        hrefAttrs={{ target: '_blank', rel: 'noopener noreferrer' }}
+        style={typeof style === 'function' ? style({ pressed: false }) : style}
+      >
         {children}
       </WebLink>
     );

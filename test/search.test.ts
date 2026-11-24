@@ -4,7 +4,7 @@ import { parseFilters, DEFAULT_FILTERS, localWorkplace, directionsLink } from '.
 import type { SearchFilters } from '../src/domain.ts';
 import { MARKETS, NYC_SEARCH_DEFAULT, REGIONS, marketsForSearch, regionOf, searchBorough } from '../src/regions.ts';
 import { marketplaceAddressSearches, marketplaceIdForUrl, marketplaceLinks } from '../src/marketplaces.ts';
-import { listingKey, mergeListings, normalizeListing, sourceLink } from '../src/listings.ts';
+import { listingKey, mapListing, mergeListings, normalizeListing, sourceLink } from '../src/listings.ts';
 import { localSearch, median, rentAreas, SNAPSHOT_MONTH } from '../src/market.ts';
 import { marketSnapshot } from '../src/bundled-market.ts';
 import { handleApi } from './fixtures/api.ts';
@@ -452,4 +452,18 @@ test('every selectable region supplies a marketplace without undefined dereferen
   }
   expect(marketsForSearch({ region: 'all' })).toStrictEqual(MARKETS);
   expect(marketsForSearch({ region: 'nj' }).every((market) => market.state === 'NJ')).toBeTruthy();
+});
+
+test('a map pin can be saved: as its full listing when loaded, otherwise rebuilt from the pin', () => {
+  const filters = parseFilters({ ...DEFAULT_FILTERS, includeMap: true });
+  const listing = required(normalize({ ...sample, listingUrl: 'https://www.zillow.com/homedetails/example/' }));
+  const result = localSearch([listing], filters, localWorkplace(filters), 'live');
+  const pin = required(result.mapPoints?.[0]);
+  expect(mapListing(pin, result.matches)).toBe(result.matches[0]);
+  const rebuilt = mapListing(pin);
+  expect(rebuilt).toMatchObject({ id: listing.id, address: listing.address, zip: listing.zip, rent: listing.rent, kind: listing.kind });
+  expect(rebuilt.sources).toEqual(listing.sources);
+  // The rebuilt listing is the same apartment, so saving it twice keeps one.
+  expect(listingKey(rebuilt)).toBe(listingKey(listing));
+  expect(mergeListings([listing, rebuilt])).toHaveLength(1);
 });

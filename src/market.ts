@@ -106,6 +106,15 @@ export function formatSearch(
     ? matches.filter(isPoint).map((listing) => {
         const [original, ...additionalLinks] = orderedListingLinks(listing.sources, filters.source);
         return {
+          // What saving from the map needs: the listing's identity, address and every link.
+          id: listing.id,
+          address: listing.address,
+          unit: listing.unit,
+          city: listing.city,
+          state: listing.state,
+          zip: listing.zip,
+          region: listing.region,
+          sources: listing.sources,
           latitude: listing.latitude,
           longitude: listing.longitude,
           rent: listing.rent,

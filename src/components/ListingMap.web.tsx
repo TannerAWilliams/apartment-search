@@ -40,14 +40,49 @@ function popupLink(url: unknown, label: string) {
   if (!href) return null;
   const link = document.createElement('a');
   link.href = href;
+  // Listings open in a new tab, so the map stays where it was.
+  link.target = '_blank';
+  link.rel = 'noopener noreferrer';
   link.textContent = label;
   return link;
 }
 
-function popupContent(listings: MapPoint[]) {
+type SaveActions = { save?: (point: MapPoint) => void; isSaved?: (point: MapPoint) => boolean };
+
+/** A Save button for one listing in a pop-up; it reads "Saved" once the listing is saved. */
+function saveButton(point: MapPoint, { save, isSaved }: SaveActions) {
+  if (!save) return null;
+  const button = document.createElement('button');
+  button.type = 'button';
+  const show = (saved: boolean) => {
+    button.textContent = saved ? '♥ Saved' : '♡ Save';
+    button.disabled = saved;
+    button.setAttribute('aria-label', (saved ? 'Saved: ' : 'Save ') + point.title);
+    Object.assign(button.style, {
+      marginTop: '6px',
+      padding: '5px 12px',
+      borderRadius: '999px',
+      border: '1px solid #0645c2',
+      background: saved ? '#eaf1fd' : '#0645c2',
+      color: saved ? '#0645c2' : '#fff',
+      font: '600 13px system-ui, sans-serif',
+      cursor: saved ? 'default' : 'pointer',
+    });
+  };
+  show(isSaved?.(point) ?? false);
+  button.addEventListener('click', (event) => {
+    event.stopPropagation();
+    save(point);
+    show(true);
+  });
+  return button;
+}
+
+function popupContent(listings: MapPoint[], actions: SaveActions) {
   const content = document.createElement('div');
   Object.assign(content.style, { maxHeight: '260px', overflowY: 'auto', minWidth: '160px' });
-  for (const { title, rent, bedrooms, kind, url, name, linkKind, additionalLinks = [], transitSeconds, drivingSeconds } of listings) {
+  for (const point of listings) {
+    const { title, rent, bedrooms, kind, url, name, linkKind, additionalLinks = [], transitSeconds, drivingSeconds } = point;
     const row = document.createElement('div');
     row.style.padding = '7px 2px';
     const heading = document.createElement('strong');
@@ -66,6 +101,8 @@ function popupContent(listings: MapPoint[]) {
       .filter(Boolean)
       .join(' · ');
     row.append(heading, detail);
+    const save = saveButton(point, actions);
+    if (save) row.append(save);
     for (const source of [{ url, name, kind: linkKind }, ...additionalLinks]) {
       const link = popupLink(source.url, listingLinkLabel({ name: source.name ?? 'Website', kind: source.kind ?? kind }) + ' ↗');
       if (!link) continue;
@@ -77,8 +114,23 @@ function popupContent(listings: MapPoint[]) {
   return content;
 }
 
-export function ListingMap({ points, total, visible }: { points: MapPoint[]; total: number; visible: boolean }) {
+export function ListingMap({
+  points,
+  total,
+  visible,
+  onSave,
+  isSaved,
+}: {
+  points: MapPoint[];
+  total: number;
+  visible: boolean;
+  onSave?: (point: MapPoint) => void;
+  isSaved?: (point: MapPoint) => boolean;
+}) {
   const container = useRef<HTMLDivElement | null>(null);
+  // Pop-ups are built when opened, so they read the latest save state through this ref.
+  const actions = useRef<SaveActions>({});
+  actions.current = { save: onSave, isSaved };
   const instance = useRef<{ map: L.Map; clusters: L.MarkerClusterGroup } | null>(null);
   const [unavailable, setUnavailable] = useState(false);
   const locations = useMemo(() => {
@@ -127,7 +179,7 @@ export function ListingMap({ points, total, visible }: { points: MapPoint[]; tot
       const title = listings.length === 1 ? listings[0].title : listings.length + ' listings at this location';
       pins.push(
         L.marker(coordinate, { icon: pinIcon(listings.length), title, alt: title, listingCount: listings.length }).bindPopup(
-          () => popupContent(listings),
+          () => popupContent(listings, actions.current),
           { maxWidth: 260 },
         ),
       );

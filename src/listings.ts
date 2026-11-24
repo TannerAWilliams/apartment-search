@@ -1,4 +1,4 @@
-import type { ListingData, SourceLink } from './domain.ts';
+import type { ListingData, MapPoint, SourceLink } from './domain.ts';
 import { discoveryFacts, mergeDiscoveryFacts } from './discovery.ts';
 import { MARKETPLACE_NAMES, marketplaceIdForUrl, safeListingUrl } from './marketplaces.ts';
 import { regionOf } from './regions.ts';
@@ -230,5 +230,29 @@ export function listingPresentation(listing: {
         ? 'Studio'
         : `${listing.bedrooms} ${listing.bedrooms === 1 ? 'bedroom' : 'bedrooms'}`,
     notices,
+  };
+}
+
+/**
+ * The listing a map pin stands for, to save it: the full listing when it is on the loaded page, otherwise one built
+ * from what the pin carries (address, rent, bedrooms, position and links).
+ */
+export function mapListing(point: MapPoint, loaded: readonly ListingData[] = []): ListingData {
+  const full = loaded.find(({ id }) => id === point.id);
+  if (full) return full;
+  return {
+    id: point.id,
+    address: point.address,
+    unit: point.unit,
+    city: point.city,
+    state: point.state,
+    zip: point.zip,
+    region: point.region,
+    rent: point.rent,
+    bedrooms: point.bedrooms,
+    latitude: point.latitude,
+    longitude: point.longitude,
+    kind: point.kind,
+    sources: point.sources,
   };
 }
