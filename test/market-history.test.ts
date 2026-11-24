@@ -110,6 +110,20 @@ test("a new area in StreetEasy's files gets its own number, and the earlier area
   expect((await marketValues(d1, [RENT], [183], '2026-10', '2026-10')).values[RENT]!['183']).toEqual([1000]);
 }, 60_000);
 
+test('a download that drops once is retried, so one network hiccup does not fail the dashboard', async () => {
+  const { d1 } = await fakeD1();
+  let dropped = false;
+  const flaky = await streetEasy((name, zip) => {
+    if (name === RENT && !dropped) {
+      dropped = true;
+      throw new TypeError('Network connection lost.');
+    }
+    return zip;
+  });
+  expect(await refreshMarketHistory(d1, flaky.fetcher)).toMatchObject({ changed: 45, files: 45 });
+  expect(flaky.requested.filter((url) => url.endsWith('/medianAskingRent_All.zip'))).toHaveLength(2);
+}, 60_000);
+
 test('files StreetEasy cannot serve are reported, and the saved figures are kept', async () => {
   const { d1 } = await fakeD1();
   await ensureMarketSeries(d1, [RENT], archive);

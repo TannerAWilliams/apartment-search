@@ -89,12 +89,22 @@ export async function refreshMarketHistory(database: D1Database, fetcher: Source
   let changed = 0;
   let values = 0;
   const failed: string[] = [];
-  for (const { name } of DASHBOARD_CATALOG) {
+  // One retry per file: a single dropped download should not mark the whole dashboard as failed.
+  const download = async (name: string, attempt = 1): Promise<Uint8Array<ArrayBuffer>> => {
     try {
       const response = await fetcher(dashboardFileUrl(name), { redirect: 'manual', signal: AbortSignal.timeout(20_000) });
       if (!response.ok)
         throw Object.assign(new Error(`StreetEasy returned HTTP ${response.status} for ${name}.`), { httpStatus: response.status });
-      const zip = new Uint8Array(await response.arrayBuffer());
+      return new Uint8Array(await response.arrayBuffer());
+    } catch (cause) {
+      if (attempt > 1) throw cause;
+      log.warn('market_series_download_retry', { series: name, error: cause instanceof Error ? cause.message : String(cause) });
+      return download(name, attempt + 1);
+    }
+  };
+  for (const { name } of DASHBOARD_CATALOG) {
+    try {
+      const zip = await download(name);
       if (zip.byteLength > 8 * 1024 * 1024) throw new Error(`StreetEasy's ${name} download is larger than expected.`);
       const sha256 = await sha256Hex(zip);
       if (loaded.get(seriesId(name))?.archive_sha256 === sha256) continue;
