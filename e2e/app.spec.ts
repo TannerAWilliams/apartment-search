@@ -87,7 +87,13 @@ async function mockApp(
   if (options.insights)
     Object.assign(listings[0], {
       building: { stabilized: true, openViolations: 0, complaints: 1, bedbugs: false, flood: false, checkedAt: now },
-      insights: { marketMedian: 2400, comparedWith: 12, vsMarket: -0.25, warnings: ['This unit is also listed at $2,100.'] },
+      insights: {
+        marketMedian: 2400,
+        comparedWith: 12,
+        vsMarket: -0.25,
+        warnings: ['This unit is also listed at $2,100.'],
+        subway: [{ station: 'Bedford Av', routes: ['L'], minutes: 3 }],
+      },
     });
   if (options.discovery) Object.assign(listings[0], { bathrooms: 1.5, squareFeet: 900, petsAllowed: true, laundry: 'in_unit' });
   if (options.priceHistory)
@@ -1046,6 +1052,7 @@ test('cards show the building’s grade, rent stabilization, the price against s
   await mockApp(page, { insights: true });
   await expect(page.getByText('Rent-stabilized building', { exact: true }).first()).toBeVisible();
   await expect(page.getByText('Building A', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('3 min to L', { exact: true }).first()).toBeVisible();
   await expect(page.getByText(/25% below similar · median \$2,400 for 12 nearby/).first()).toBeVisible();
   await expect(page.getByText('⚠ This unit is also listed at $2,100.', { exact: true }).first()).toBeVisible();
   await page

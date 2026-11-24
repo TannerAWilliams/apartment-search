@@ -4,6 +4,7 @@ import { LAUNDRY_OPTIONS, matchesDiscovery } from './discovery.ts';
 import { companyMatches } from './companies.ts';
 import { REGIONS, WORKPLACES, matchesRegion, regionOf } from './regions.ts';
 import { buildingGrade } from './insights.ts';
+import { nearbyLines, SUBWAY_LINES } from './subway.ts';
 
 export const DEFAULT_FILTERS: SearchFilters = {
   region: 'all',
@@ -110,6 +111,8 @@ export const SearchFiltersSchema = v.pipe(
       ),
       '',
     ),
+    subwayLines: v.fallback(v.pipe(v.array(v.picklist(SUBWAY_LINES)), v.maxLength(SUBWAY_LINES.length)), []),
+    nearSubway: flag,
     stabilizedOnly: flag,
     goodBuildings: flag,
     belowMarket: flag,
@@ -145,6 +148,8 @@ export const SearchFiltersSchema = v.pipe(
       includeCommute: input.includeCommute,
       officialOnly: input.officialOnly,
       ...(input.neighborhood ? { neighborhood: input.neighborhood } : {}),
+      ...(input.subwayLines.length ? { subwayLines: [...new Set(input.subwayLines)] } : {}),
+      ...(input.nearSubway ? { nearSubway: true } : {}),
       ...(input.stabilizedOnly ? { stabilizedOnly: true } : {}),
       ...(input.goodBuildings ? { goodBuildings: true } : {}),
       ...(input.belowMarket ? { belowMarket: true } : {}),
@@ -252,6 +257,8 @@ export function matchListings(listings: ListingData[], filters: SearchFilters, w
       (filters.bedrooms !== null && listing.bedrooms !== filters.bedrooms) ||
       (filters.maxRent !== null && listing.rent > filters.maxRent) ||
       (filters.neighborhood && placeName(listing.neighborhood ?? '') !== placeName(filters.neighborhood)) ||
+      (filters.nearSubway && !listing.insights?.subway?.length) ||
+      (filters.subwayLines?.length && !nearbyLines(listing.insights?.subway).some((line) => filters.subwayLines!.includes(line))) ||
       (filters.stabilizedOnly && listing.building?.stabilized !== true) ||
       (filters.goodBuildings && ['C', 'D'].includes(buildingGrade(listing.building) ?? '')) ||
       (filters.belowMarket && !((listing.insights?.vsMarket ?? 0) <= -0.05))

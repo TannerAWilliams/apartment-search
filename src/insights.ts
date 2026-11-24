@@ -8,6 +8,7 @@
  */
 import type { ListingData } from './domain.ts';
 import { buildingKey } from './listings.ts';
+import { type NearbySubway, type Station, stationIndex } from './subway.ts';
 
 export type BuildingFacts = {
   /** Registers rent-stabilized units with the state (DHCR); null when that could not be checked. */
@@ -26,6 +27,8 @@ export type ListingInsights = {
   /** This rent against that median: −0.12 is 12% below. */
   vsMarket?: number;
   warnings: string[];
+  /** Subway stations within a ten-minute walk, the closest first. */
+  subway?: NearbySubway[];
 };
 
 /** Similar apartments needed before a median is shown. */
@@ -83,8 +86,13 @@ const unitOf = (listing: ListingData) => {
  * Each listing with its insights, and its building's facts where they are known. Benchmarks come from the whole
  * inventory given, so pass every listing, not one page of results.
  */
-export function withInsights<T extends ListingData>(listings: T[], buildings: Record<string, BuildingFacts> = {}) {
+export function withInsights<T extends ListingData>(
+  listings: T[],
+  buildings: Record<string, BuildingFacts> = {},
+  { registry = {}, stations = [] }: { registry?: Record<string, number>; stations?: Station[] } = {},
+) {
   const benchmarks = rentBenchmarks(listings);
+  const near = stationIndex(stations);
   const rentsByUnit = new Map<string, Set<number>>();
   for (const listing of listings) {
     const unit = unitOf(listing);
@@ -110,10 +118,20 @@ export function withInsights<T extends ListingData>(listings: T[], buildings: Re
           .join(' and ')}.`,
       );
     const key = buildingKey(listing);
-    const building = key ? buildings[key] : undefined;
+    const checked = key ? buildings[key] : undefined;
+    // The state's registry says a building is rent-stabilized even before its other records are checked.
+    const registered = key !== null && key in registry;
+    const building: BuildingFacts | undefined = registered
+      ? {
+          ...(checked ?? { openViolations: null, complaints: null, bedbugs: null, flood: null, checkedAt: new Date().toISOString() }),
+          stabilized: true,
+        }
+      : checked;
+    const subway = listing.region === 'nyc' ? near(listing.latitude, listing.longitude) : [];
     const insights: ListingInsights = {
       ...(compared ? { marketMedian: compared.median, comparedWith: compared.count, vsMarket } : {}),
       warnings,
+      ...(subway.length ? { subway } : {}),
     };
     return { ...listing, insights, ...(building ? { building } : {}) };
   });

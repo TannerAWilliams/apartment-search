@@ -6,6 +6,7 @@ import { refreshSources } from './refresh.ts';
 import { log } from './log.ts';
 import { runAlerts } from './alerts.ts';
 import { fillBuildingFactsFromInventory } from './building-facts.ts';
+import { refreshOpenData } from './open-data.ts';
 
 /** Batches of 40 building checks after a full nightly run: about 200 buildings a night. */
 const BUILDING_BATCHES = 5;
@@ -17,8 +18,14 @@ type RefreshParameters = { delay: boolean; sources?: string[] };
 
 const NAMES: Record<string, string> = Object.fromEntries(WORKFLOW_SOURCE_IDS.map((id) => [id, workflowSync(id)!.name]));
 
-/** Checks listed buildings' records in batches of 40, one durable step each: about 200 buildings a night. */
-export async function checkBuildings(step: Pick<WorkflowStep, 'do'>, env: AppEnv & { BUCKET: Bucket }) {
+/**
+ * After a full (nightly) run: the rent-stabilized registry and subway stations when a month old, then listed
+ * buildings' records in batches of 40, one durable step each: about 200 buildings a night.
+ */
+export async function afterFullRun(step: Pick<WorkflowStep, 'do'>, env: AppEnv & { BUCKET: Bucket }) {
+  await step.do('Refresh rent registrations and subway stations', { retries: { limit: 1, delay: '1 minute' }, timeout: '10 minutes' }, () =>
+    refreshOpenData(env.BUCKET, (url, options) => fetch(url, options)),
+  );
   let checked = 0;
   for (let batch = 1; batch <= BUILDING_BATCHES; batch++) {
     checked += await step.do(
@@ -50,8 +57,8 @@ export class CityRealtySync extends WorkflowEntrypoint<Environment, RefreshParam
         alerts: (await runAlerts({ ...this.env, BUCKET: bucket }))?.alerts.length ?? 0,
       }));
     }
-    // A full run (the nightly one) also checks the records of a few more listed buildings.
-    if (!event.payload.sources) await checkBuildings(step, { ...this.env, BUCKET: bucket });
+    // A full run (the nightly one) also refreshes the open data and checks a few more listed buildings.
+    if (!event.payload.sources) await afterFullRun(step, { ...this.env, BUCKET: bucket });
     const failed = Object.entries(outcomes).filter(([, outcome]) => outcome.error);
     for (const [id, outcome] of failed) log.warn('complete_sync_failed', { source: id, error: outcome.error, instance: event.instanceId });
     if (failed.length) throw new Error(failed.map(([id, outcome]) => NAMES[id] + ': ' + outcome.error).join(' '));

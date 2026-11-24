@@ -132,6 +132,7 @@ export function Listing({
   const presentation = listingPresentation(listing);
   const grade = buildingGrade(listing.building);
   const badge = marketBadge(listing.insights);
+  const nearest = listing.insights?.subway?.[0];
   const facts = discoveryFacts(listing);
   // Only what the listing says; unknown details are simply not listed.
   const knownFacts = [
@@ -161,6 +162,11 @@ export function Listing({
             <Text style={card.tag}>{presentation.bedsLabel}</Text>
             {commute && transitSeconds != null && <Text style={card.tag}>{Math.ceil(transitSeconds / 60)} min transit</Text>}
             {commute && drivingSeconds != null && <Text style={card.tag}>{Math.ceil(drivingSeconds / 60)} min drive</Text>}
+            {nearest && (
+              <Text style={card.tag}>
+                {nearest.minutes} min to {nearest.routes.join(' ')}
+              </Text>
+            )}
             {listing.building?.stabilized && <Text style={card.tag}>Rent-stabilized building</Text>}
             {grade && <Text style={card.tag}>Building {grade}</Text>}
           </View>
@@ -250,6 +256,14 @@ export function Listing({
             {saved && <SavedNotes key={listingKey(listing)} identity={listingKey(listing)} />}
             {knownFacts.length > 0 && <Text style={styles.smallMuted}>Source-reported details: {knownFacts.join(' · ')}</Text>}
             {listing.building && <BuildingSummary facts={listing.building} />}
+            {(listing.insights?.subway?.length ?? 0) > 0 && (
+              <Text style={styles.smallMuted}>
+                Subway within a 10-minute walk:{' '}
+                {listing
+                  .insights!.subway!.map(({ station, routes, minutes }) => `${station} (${routes.join(' ')}), ${minutes} min`)
+                  .join(' · ')}
+              </Text>
+            )}
             <CommuteDetails listing={listing} />
             <PriceHistory value={listing.priceHistory} />
             <TypicalCost listing={listing} />

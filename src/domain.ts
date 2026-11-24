@@ -89,6 +89,10 @@ export interface SearchFilters {
   officialOnly?: boolean;
   /** Only listings in this neighborhood (compared without case or punctuation). */
   neighborhood?: string;
+  /** Only listings within a ten-minute walk of one of these subway lines. */
+  subwayLines?: string[];
+  /** Only listings within a ten-minute walk of a subway station. */
+  nearSubway?: boolean;
   /** Only buildings that register rent-stabilized units. */
   stabilizedOnly?: boolean;
   /** Leave out buildings graded C or D from their records. */

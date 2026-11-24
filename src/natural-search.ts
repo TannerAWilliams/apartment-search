@@ -5,6 +5,7 @@
  */
 import type { SearchFilters } from './domain.ts';
 import { formatRent } from './search.ts';
+import { SUBWAY_LINES } from './subway.ts';
 
 export type Understood = { changes: Partial<SearchFilters>; understood: string[] };
 
@@ -89,6 +90,21 @@ export function understand(text: string, neighborhoods: { name: string; borough:
     }
   }
 
+  // Subway lines: "near the L", "on the 4/5/6", "by the A, C or E", "G train".
+  const lines =
+    text.match(
+      /\b(?:near|on|by|off|along) the ((?:[1-7a-gjlmnqrswz])(?:\s*(?:\/|,|&|and|or)\s*[1-7a-gjlmnqrswz])*)\b(?:\s+(?:train|trains|line|lines))?/i,
+    ) ?? text.match(/\b((?:[1-7a-gjlmnqrswz])(?:\s*(?:\/|,|&|and|or)\s*[1-7a-gjlmnqrswz])*)\s+(?:train|trains|line|lines)\b/i);
+  if (lines) {
+    const picked = [...new Set(lines[1].toUpperCase().split(/\s*(?:\/|,|&|AND|OR)\s*/))].filter((line) => SUBWAY_LINES.includes(line));
+    if (picked.length) {
+      changes.subwayLines = picked;
+      understood.push(`near the ${picked.join('/')}`);
+    }
+  } else if (/\b(?:near|close to|by) (?:the |a )?(?:subway|train|station)\b/.test(said)) {
+    changes.nearSubway = true;
+    understood.push('near the subway');
+  }
   if (/\b(?:pets?|dogs?|cats?|pet friendly)\b/.test(said)) {
     changes.petsRequired = true;
     understood.push('pets allowed');

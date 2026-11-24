@@ -1,5 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { understand } from '../natural-search.ts';
+import { SUBWAY_LINES } from '../subway.ts';
 import { type ConfigSource } from '../api-client.ts';
 import type { SearchFilters, SearchResult } from '../domain.ts';
 
@@ -184,9 +185,32 @@ export function Filters({
               Hide buildings graded C or D
             </Chip>
           </View>
+          <Text style={styles.fieldLabel}>Subway</Text>
+          <View style={styles.chipRow}>
+            <Chip selected={draft.nearSubway === true} onPress={() => set('nearSubway')(!draft.nearSubway)}>
+              Within a 10-minute walk
+            </Chip>
+            {SUBWAY_LINES.map((line) => (
+              <Chip
+                key={line}
+                label={`${line} train`}
+                selected={draft.subwayLines?.includes(line) === true}
+                onPress={() =>
+                  set('subwayLines')(
+                    draft.subwayLines?.includes(line)
+                      ? draft.subwayLines.filter((item) => item !== line)
+                      : [...(draft.subwayLines ?? []), line],
+                  )
+                }
+              >
+                {line}
+              </Chip>
+            ))}
+          </View>
           {(draft.stabilizedOnly || draft.goodBuildings) && (
             <Text style={styles.smallMuted}>
-              Building facts come from city and state records and are known for buildings checked so far; more are checked every night.
+              Rent stabilization comes from the state’s list of registered buildings; grades come from city records for buildings checked so
+              far, and more are checked every night.
             </Text>
           )}
           <Pressable accessibilityRole="button" accessibilityState={{ expanded: moreFilters }} onPress={() => setMoreFilters(!moreFilters)}>

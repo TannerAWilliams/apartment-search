@@ -177,13 +177,23 @@ test('an Openigloo save that loses a race to another write reports that failure'
 });
 
 test('the nightly run checks listed buildings in five steps', async () => {
-  const { checkBuildings } = await import('../server/sync-workflow.ts');
+  const { afterFullRun } = await import('../server/sync-workflow.ts');
   globalThis.fetch = (async () => {
     throw new Error('city records unreachable');
   }) as unknown as typeof fetch;
   const { bucket } = await workflow();
   const { step, names } = steps();
   // The bundled sample inventory has New York City buildings; each batch takes the next 40.
-  expect(await checkBuildings(step as never, { BUCKET: bucket })).toBe(200);
-  expect(names).toStrictEqual([1, 2, 3, 4, 5].map((batch) => `Check building records (${batch} of 5)`));
+  await expect(afterFullRun(step as never, { BUCKET: bucket }), 'open data unreachable').rejects.toThrow(/unreachable/);
+  const skipping = {
+    do: async (name: string, _config: unknown, callback: () => Promise<unknown>) => (
+      names.push(name), name.startsWith('Refresh') ? [] : callback()
+    ),
+  };
+  expect(await afterFullRun(skipping as never, { BUCKET: bucket })).toBe(200);
+  expect(names).toStrictEqual([
+    'Refresh rent registrations and subway stations',
+    'Refresh rent registrations and subway stations',
+    ...[1, 2, 3, 4, 5].map((batch) => `Check building records (${batch} of 5)`),
+  ]);
 });
