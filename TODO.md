@@ -9,9 +9,7 @@ The code is deployed (`server/billing.ts`); payments stay off, and the upgrade b
   - [ ] $15 per month, recurring
   - [ ] $35, one time (the three-month pass)
 - [ ] Copy both price IDs (`price_…`).
-- [ ] Add a webhook endpoint at `https://apartment-search.tannerwilliams412.workers.dev/api/billing/webhook` for these events. Not
-  `apartments.5thof6.com`: that domain is behind a Cloudflare Access login, which Stripe cannot pass. (Or add an Access bypass
-  policy for the path `/api/billing/webhook` and use the custom domain.)
+- [ ] Add a webhook endpoint at `https://apartments.5thof6.com/api/billing/webhook` for these events:
   - [ ] `checkout.session.completed`
   - [ ] `invoice.paid`
   - [ ] `customer.subscription.deleted`
