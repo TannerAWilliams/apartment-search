@@ -1,4 +1,5 @@
 import type { ListingData, SourceLink, Workplace } from '../domain.ts';
+import { buildingGrade, marketBadge, type BuildingFacts } from '../insights.ts';
 import type { CheckBuilding } from './BuildingReport.tsx';
 import { BuildingReport } from './BuildingReport.tsx';
 import { discoveryFacts, LAUNDRY_LABELS } from '../discovery.ts';
@@ -26,6 +27,29 @@ const CHECK_TIME = new Intl.DateTimeFormat('en-US', {
   minute: '2-digit',
   timeZoneName: 'short',
 });
+/** A building's grade and the records behind it, as of its last check. */
+function BuildingSummary({ facts }: { facts: BuildingFacts }) {
+  const grade = buildingGrade(facts);
+  const known = (value: number | boolean | null, text: string) => (value === null ? null : text);
+  const lines = [
+    facts.stabilized === null
+      ? null
+      : facts.stabilized
+        ? 'Registers rent-stabilized units with the state'
+        : 'No rent-stabilized units registered',
+    known(facts.openViolations, `${facts.openViolations} open HPD violations`),
+    known(facts.complaints, `${facts.complaints} complaints in the last year`),
+    known(facts.bedbugs, facts.bedbugs ? 'Bedbugs reported in its last filing' : 'No bedbugs in its last filing'),
+    known(facts.flood, facts.flood ? 'In the 100-year flood zone' : 'Outside the 100-year flood zone'),
+  ].filter(Boolean);
+  return (
+    <Text style={styles.smallMuted}>
+      {grade ? `Building grade ${grade}: ` : 'Building: '}
+      {lines.join(' · ') || 'no city record found'} (checked {new Date(facts.checkedAt).toLocaleDateString('en-US')}).
+    </Text>
+  );
+}
+
 const card = StyleSheet.create({
   media: { height: 190, borderRadius: 14, overflow: 'hidden', backgroundColor: colors.light },
   tags: { position: 'absolute', top: 12, left: 12, right: 64, flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
@@ -81,6 +105,8 @@ export function Listing({
   const subtitle = [neighborhood === city ? '' : neighborhood, `${city}, ${state} ${zip}`].filter(Boolean).join(' · ');
   const [original] = orderedListingLinks(listing.sources, selectedSource);
   const presentation = listingPresentation(listing);
+  const grade = buildingGrade(listing.building);
+  const badge = marketBadge(listing.insights);
   const facts = discoveryFacts(listing);
   // Only what the listing says; unknown details are simply not listed.
   const knownFacts = [
@@ -110,6 +136,8 @@ export function Listing({
             <Text style={card.tag}>{presentation.bedsLabel}</Text>
             {commute && transitSeconds != null && <Text style={card.tag}>{Math.ceil(transitSeconds / 60)} min transit</Text>}
             {commute && drivingSeconds != null && <Text style={card.tag}>{Math.ceil(drivingSeconds / 60)} min drive</Text>}
+            {listing.building?.stabilized && <Text style={card.tag}>Rent-stabilized building</Text>}
+            {grade && <Text style={card.tag}>Building {grade}</Text>}
           </View>
           <Pressable
             accessibilityRole="button"
@@ -139,6 +167,11 @@ export function Listing({
             {(listing.kind === 'snapshot' || listing.priceIncludesFees) &&
               (listing.kind === 'snapshot' ? ' · Recorded rent' : ' · Total price, fees included')}
           </Text>
+          {badge && (
+            <Text style={[card.subtitle, listing.insights!.vsMarket! < 0 && { color: colors.ink, fontWeight: '600' }]}>
+              {badge} · median {formatRent(listing.insights!.marketMedian!)} for {listing.insights!.comparedWith} nearby
+            </Text>
+          )}
         </View>
       </Pressable>
       <View style={styles.rentalCardBody}>
@@ -162,6 +195,11 @@ export function Listing({
             </Text>
           </View>
         )}
+        {(listing.insights?.warnings ?? []).map((warning) => (
+          <Text key={warning} accessibilityRole="alert" style={card.notice}>
+            ⚠ {warning}
+          </Text>
+        ))}
         {presentation.notices.map((notice) => (
           <Text key={notice} style={card.notice}>
             {notice}
@@ -186,6 +224,7 @@ export function Listing({
             <ListingSources listing={listing} onSaveLink={onSaveLink} onError={onError} />
             {saved && <SavedNotes key={listingKey(listing)} identity={listingKey(listing)} />}
             {knownFacts.length > 0 && <Text style={styles.smallMuted}>Source-reported details: {knownFacts.join(' · ')}</Text>}
+            {listing.building && <BuildingSummary facts={listing.building} />}
             <CommuteDetails listing={listing} />
             <PriceHistory value={listing.priceHistory} />
             <Disclosure title="Estimate the full cost of renting">

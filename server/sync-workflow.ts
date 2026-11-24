@@ -1,10 +1,14 @@
 import { WorkflowEntrypoint, type WorkflowEvent, type WorkflowStep } from 'cloudflare:workers';
-import type { AppEnv } from './contracts.ts';
+import type { AppEnv, Bucket } from './contracts.ts';
 import { createD1Bucket, type D1Database } from './storage/d1-bucket.ts';
 import { crawlOpeniglooCell, finishOpeniglooRun, OPENIGLOO_CELL_COUNT } from './sources/openigloo-sync.ts';
 import { refreshSources } from './refresh.ts';
 import { log } from './log.ts';
 import { runAlerts } from './alerts.ts';
+import { fillBuildingFactsFromInventory } from './building-facts.ts';
+
+/** Batches of 40 building checks after a full nightly run: about 200 buildings a night. */
+const BUILDING_BATCHES = 5;
 import { SYNC_PROGRESS_KEY, WORKFLOW_SOURCE_IDS, workflowSync } from './sources/source-registry.ts';
 
 type Environment = AppEnv & { APARTMENTS: D1Database };
@@ -12,6 +16,19 @@ type Environment = AppEnv & { APARTMENTS: D1Database };
 type RefreshParameters = { delay: boolean; sources?: string[] };
 
 const NAMES: Record<string, string> = Object.fromEntries(WORKFLOW_SOURCE_IDS.map((id) => [id, workflowSync(id)!.name]));
+
+/** Checks listed buildings' records in batches of 40, one durable step each: about 200 buildings a night. */
+export async function checkBuildings(step: Pick<WorkflowStep, 'do'>, env: AppEnv & { BUCKET: Bucket }) {
+  let checked = 0;
+  for (let batch = 1; batch <= BUILDING_BATCHES; batch++) {
+    checked += await step.do(
+      `Check building records (${batch} of ${BUILDING_BATCHES})`,
+      { retries: { limit: 1, delay: '30 seconds' }, timeout: '10 minutes' },
+      () => fillBuildingFactsFromInventory(env, (url, options) => fetch(url, options)),
+    );
+  }
+  return checked;
+}
 
 /** Runs the syncs that are too long for an API request: slow samples, then complete inventories. The class keeps its original name, which the deployed Workflow uses. */
 export class CityRealtySync extends WorkflowEntrypoint<Environment, RefreshParameters> {
@@ -33,6 +50,8 @@ export class CityRealtySync extends WorkflowEntrypoint<Environment, RefreshParam
         alerts: (await runAlerts({ ...this.env, BUCKET: bucket }))?.alerts.length ?? 0,
       }));
     }
+    // A full run (the nightly one) also checks the records of a few more listed buildings.
+    if (!event.payload.sources) await checkBuildings(step, { ...this.env, BUCKET: bucket });
     const failed = Object.entries(outcomes).filter(([, outcome]) => outcome.error);
     for (const [id, outcome] of failed) log.warn('complete_sync_failed', { source: id, error: outcome.error, instance: event.instanceId });
     if (failed.length) throw new Error(failed.map(([id, outcome]) => NAMES[id] + ': ' + outcome.error).join(' '));

@@ -57,6 +57,10 @@ export interface ListingData {
   buildingLinks?: { name: string; url: string }[];
   commuteEstimate?: { provider: string; arrivalPeriod: string; checkedAt: string; destination: Workplace };
   bestFit?: ReturnType<typeof import('./best-fit.ts').bestFit>;
+  /** Comparison with similar apartments and warnings (src/insights.ts), added by the server's search. */
+  insights?: import('./insights.ts').ListingInsights;
+  /** Official records of the building, where they have been checked (src/insights.ts). */
+  building?: import('./insights.ts').BuildingFacts;
 }
 export interface SearchFilters {
   region: string;
@@ -83,6 +87,12 @@ export interface SearchFilters {
   includeCommute?: boolean;
   /** Only official feeds and open data: no listings read from listing sites' own pages. The App Store app sets it. */
   officialOnly?: boolean;
+  /** Only buildings that register rent-stabilized units. */
+  stabilizedOnly?: boolean;
+  /** Leave out buildings graded C or D from their records. */
+  goodBuildings?: boolean;
+  /** Only rents at least 5% below similar apartments. */
+  belowMarket?: boolean;
 }
 export type { SourceStatus } from './source-status.ts';
 export type SearchResult = ReturnType<typeof import('./market.ts').formatSearch> & {

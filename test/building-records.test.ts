@@ -334,3 +334,62 @@ test('a building whose block or lot is missing is matched without a tax lot', as
   const report = await retrieveBuildingRecords(address, source({ buildings: [{ ...building, block: '' }] }), now);
   expect(report.identity?.bbl ?? null).toBeNull();
 });
+
+test('a building opened in Details is kept as short facts, and the nightly step checks the next listed buildings', async () => {
+  const { createMemoryBucket } = await import('./fixtures/memory-bucket.ts');
+  const { fillBuildingFacts, readBuildingFacts, summarizeReport } = await import('../server/building-facts.ts');
+  const { buildingKey } = await import('../src/listings.ts');
+  const bucket = createMemoryBucket();
+  const response = await handleApi(
+    new Request('https://app.test/api/building-report', {
+      method: 'POST',
+      body: JSON.stringify(address),
+      headers: { 'Content-Type': 'application/json' },
+    }),
+    { BUCKET: bucket },
+    { fetcher: source() },
+  );
+  expect(response.status).toBe(200);
+  const key = buildingKey(address)!;
+  expect((await readBuildingFacts(bucket))[key]).toMatchObject({ stabilized: true, openViolations: 2, complaints: 2, bedbugs: true });
+  expect(summarizeReport({ ...(await retrieveBuildingRecords({ address: 'x' }, source(), now)) })).toBeNull();
+
+  // Nightly: NYC buildings without fresh facts, one check each; the one just recorded is skipped.
+  const listing = (id: string, street: string, region = 'nyc') => ({
+    id,
+    address: street,
+    city: 'Brooklyn',
+    state: 'NY',
+    zip: '11201',
+    region,
+    rent: 3000,
+    bedrooms: 1,
+    kind: 'feed',
+    sources: [],
+  });
+  const listings = [
+    listing('a', '123 Main Street'),
+    listing('b', '9 Other Street'),
+    listing('c', '9 Other Street'),
+    listing('d', '1 Far Road', 'nj'),
+  ];
+  let requests = 0;
+  const counting = async (url: string, options?: RequestInit) => {
+    requests++;
+    return source({ buildings: [] })(url, options);
+  };
+  expect(await fillBuildingFacts(bucket, listings, counting, { now })).toBe(1);
+  expect(requests, 'one identity lookup for the one unknown NYC building').toBe(1);
+  const facts = await readBuildingFacts(bucket);
+  expect(facts[buildingKey({ address: '9 Other Street', state: 'NY', zip: '11201' })!]).toMatchObject({ stabilized: null });
+  expect(await fillBuildingFacts(bucket, listings, counting, { now }), 'nothing left to check').toBe(0);
+  const later = new Date(now.getTime() + 100 * 86_400_000);
+  expect(
+    await fillBuildingFacts(bucket, listings, counting, { now: later, limit: 1 }),
+    'old facts are checked again, up to the limit',
+  ).toBe(1);
+  const broken = async () => {
+    throw new Error('down');
+  };
+  expect(await fillBuildingFacts(createMemoryBucket(), listings, broken as never, { now }), 'an unreachable city still counts').toBe(2);
+});

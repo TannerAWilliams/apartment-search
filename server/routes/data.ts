@@ -4,6 +4,7 @@ import { rentAreas } from '../../src/market.ts';
 import { parentRegion } from '../../src/regions.ts';
 import type { RentHistory } from '../../src/rent-history.ts';
 import { retrieveBuildingRecords } from '../building-records.ts';
+import { recordBuildingReport } from '../building-facts.ts';
 import { log } from '../log.ts';
 import { storedJerseyAffordable } from '../sources/jersey-affordable.ts';
 import { storedHomeSeeker } from '../sources/westchester-homeseeker.ts';
@@ -75,8 +76,15 @@ export const dataRoutes = factory
   })
   .post('/building-report', apiBodies, vValidator('json', BuildingAddressSchema, refuse), async (c) => {
     const { fetcher } = c.var.services;
-    return c.json(
-      await retrieveBuildingRecords(c.req.valid('json'), (url, options) => fetcher(url, options), new Date(), c.req.raw.signal),
-      200,
-    );
+    const address = c.req.valid('json');
+    const report = await retrieveBuildingRecords(address, (url, options) => fetcher(url, options), new Date(), c.req.raw.signal);
+    // Kept so the building's cards show its grade from now on; a failure to keep it does not fail the report.
+    const bucket = c.var.appEnv.BUCKET;
+    if (bucket)
+      await recordBuildingReport(
+        bucket,
+        { address: address.address ?? '', state: address.state ?? 'NY', zip: address.zip ?? '' },
+        report,
+      ).catch((cause) => log.error('building_facts_write_failed', cause));
+    return c.json(report, 200);
   });

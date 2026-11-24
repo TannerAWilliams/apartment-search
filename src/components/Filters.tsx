@@ -121,6 +121,23 @@ export function Filters({
       )}
       {panel === 'more' && (
         <>
+          <Text style={styles.fieldLabel}>Value and building</Text>
+          <View style={styles.chipRow}>
+            <Chip selected={draft.belowMarket === true} onPress={() => set('belowMarket')(!draft.belowMarket)}>
+              Below similar apartments
+            </Chip>
+            <Chip selected={draft.stabilizedOnly === true} onPress={() => set('stabilizedOnly')(!draft.stabilizedOnly)}>
+              Rent-stabilized buildings
+            </Chip>
+            <Chip selected={draft.goodBuildings === true} onPress={() => set('goodBuildings')(!draft.goodBuildings)}>
+              Hide buildings graded C or D
+            </Chip>
+          </View>
+          {(draft.stabilizedOnly || draft.goodBuildings) && (
+            <Text style={styles.smallMuted}>
+              Building facts come from city and state records and are known for buildings checked so far; more are checked every night.
+            </Text>
+          )}
           <Pressable accessibilityRole="button" accessibilityState={{ expanded: moreFilters }} onPress={() => setMoreFilters(!moreFilters)}>
             <Text style={styles.linkText}>{moreFilters ? 'Fewer filters ▴' : 'More filters: bathrooms, size, pets, laundry ▾'}</Text>
           </Pressable>

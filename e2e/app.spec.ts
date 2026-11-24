@@ -54,12 +54,18 @@ async function mockApp(
     account?: string;
     admin?: boolean;
     plan?: 'free' | 'paid';
+    /** The first listing has building facts, a price comparison and a warning. */
+    insights?: boolean;
   } = {},
 ) {
   const requests: MockRequest[] = [];
   const unexpected: string[] = [];
   let signedIn = false;
-  let settings = { nightlyResync: true, daytimeChecks: true, lastNightly: { at: now, state: 'complete', updated: 12, failed: 1, background: true } };
+  let settings = {
+    nightlyResync: true,
+    daytimeChecks: true,
+    lastNightly: { at: now, state: 'complete', updated: 12, failed: 1, background: true },
+  };
   let savedOnAccount: unknown[] = [];
   let members = [
     { email: 'owner@example.test', admin: true, paid: true },
@@ -77,6 +83,11 @@ async function mockApp(
         checkedAt: now,
         destination: { label: 'Synthetic test workplace', latitude: 40.75, longitude: -73.98 },
       },
+    });
+  if (options.insights)
+    Object.assign(listings[0], {
+      building: { stabilized: true, openViolations: 0, complaints: 1, bedbugs: false, flood: false, checkedAt: now },
+      insights: { marketMedian: 2400, comparedWith: 12, vsMarket: -0.25, warnings: ['This unit is also listed at $2,100.'] },
     });
   if (options.discovery) Object.assign(listings[0], { bathrooms: 1.5, squareFeet: 900, petsAllowed: true, laundry: 'in_unit' });
   if (options.priceHistory)
@@ -1029,4 +1040,19 @@ test('profile: a free member’s saved listings are kept on the account, and ale
   await page.getByRole('button', { name: 'Email alerts', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Alerts are part of the paid plan', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Save alert', exact: true })).toHaveCount(0);
+});
+
+test('cards show the building’s grade, rent stabilization, the price against similar apartments and warnings', async ({ page }) => {
+  await mockApp(page, { insights: true });
+  await expect(page.getByText('Rent-stabilized building', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('Building A', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText(/25% below similar · median \$2,400 for 12 nearby/).first()).toBeVisible();
+  await expect(page.getByText('⚠ This unit is also listed at $2,100.', { exact: true }).first()).toBeVisible();
+  await page
+    .getByRole('button', { name: /^Details for 12 Grove Street/ })
+    .first()
+    .click();
+  await expect(
+    page.getByText(/Building grade A: Registers rent-stabilized units with the state · 0 open HPD violations/).first(),
+  ).toBeVisible();
 });

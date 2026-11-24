@@ -175,3 +175,15 @@ test('an Openigloo save that loses a race to another write reports that failure'
     sync.run({ payload: { delay: false, sources: ['openigloo'] }, instanceId: 'run-9', timestamp: new Date() }, steps().step as never),
   ).rejects.toThrow(/^Openigloo: The Openigloo inventory could not be refreshed/);
 });
+
+test('the nightly run checks listed buildings in five steps', async () => {
+  const { checkBuildings } = await import('../server/sync-workflow.ts');
+  globalThis.fetch = (async () => {
+    throw new Error('city records unreachable');
+  }) as unknown as typeof fetch;
+  const { bucket } = await workflow();
+  const { step, names } = steps();
+  // The bundled sample inventory has New York City buildings; each batch takes the next 40.
+  expect(await checkBuildings(step as never, { BUCKET: bucket })).toBe(200);
+  expect(names).toStrictEqual([1, 2, 3, 4, 5].map((batch) => `Check building records (${batch} of 5)`));
+});

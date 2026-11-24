@@ -3,6 +3,7 @@ import { isRecord, type ListingData, type Loose, type Point, type SearchFilters 
 import { LAUNDRY_OPTIONS, matchesDiscovery } from './discovery.ts';
 import { companyMatches } from './companies.ts';
 import { REGIONS, WORKPLACES, matchesRegion, regionOf } from './regions.ts';
+import { buildingGrade } from './insights.ts';
 
 export const DEFAULT_FILTERS: SearchFilters = {
   region: 'all',
@@ -102,6 +103,9 @@ export const SearchFiltersSchema = v.pipe(
     includeMap: flag,
     includeCommute: flag,
     officialOnly: flag,
+    stabilizedOnly: flag,
+    goodBuildings: flag,
+    belowMarket: flag,
     company: v.optional(
       v.pipe(
         text,
@@ -133,6 +137,9 @@ export const SearchFiltersSchema = v.pipe(
       sort: input.sort,
       includeCommute: input.includeCommute,
       officialOnly: input.officialOnly,
+      ...(input.stabilizedOnly ? { stabilizedOnly: true } : {}),
+      ...(input.goodBuildings ? { goodBuildings: true } : {}),
+      ...(input.belowMarket ? { belowMarket: true } : {}),
       company: input.company,
       bedrooms: input.bedrooms,
       maxRent: input.maxRent,
@@ -229,7 +236,10 @@ export function matchListings(listings: ListingData[], filters: SearchFilters, w
       !matchesRegion(listing, filters.region, region) ||
       (filters.zip && listing.zip !== filters.zip) ||
       (filters.bedrooms !== null && listing.bedrooms !== filters.bedrooms) ||
-      (filters.maxRent !== null && listing.rent > filters.maxRent)
+      (filters.maxRent !== null && listing.rent > filters.maxRent) ||
+      (filters.stabilizedOnly && listing.building?.stabilized !== true) ||
+      (filters.goodBuildings && ['C', 'D'].includes(buildingGrade(listing.building) ?? '')) ||
+      (filters.belowMarket && !((listing.insights?.vsMarket ?? 0) <= -0.05))
     )
       return [];
 
