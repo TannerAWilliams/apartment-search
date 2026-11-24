@@ -19,7 +19,7 @@ function pinIcon(count: number) {
   const badge = document.createElement('span');
   const size = count > 1 ? 34 : 15;
   Object.assign(badge.style, {
-    background: '#0645c2',
+    background: '#222222',
     color: '#fff',
     border: '2px solid white',
     borderRadius: '50%',
@@ -62,9 +62,9 @@ function saveButton(point: MapPoint, { save, isSaved }: SaveActions) {
       marginTop: '6px',
       padding: '5px 12px',
       borderRadius: '999px',
-      border: '1px solid #0645c2',
-      background: saved ? '#eaf1fd' : '#0645c2',
-      color: saved ? '#0645c2' : '#fff',
+      border: '1px solid #d62a52',
+      background: saved ? '#f7f7f7' : '#d62a52',
+      color: saved ? '#d62a52' : '#fff',
       font: '600 13px system-ui, sans-serif',
       cursor: saved ? 'default' : 'pointer',
     });

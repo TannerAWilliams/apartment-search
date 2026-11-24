@@ -269,12 +269,20 @@ test('the map view loads its tiles under the Content Security Policy', async ({ 
     if (request.url().startsWith('https://tile.openstreetmap.org/')) tiles.push(request.url());
   });
   await mockApp(page);
+  // Listing cards show a map tile each; the map then asks for its own.
+  await expect(page.getByText('12 Grove Street', { exact: true })).toBeVisible();
+  await expect.poll(() => tiles.length).toBeGreaterThan(0);
+  const before = tiles.length;
   await page.getByRole('button', { name: 'Map', exact: true }).click();
   await expect(page.getByRole('region', { name: 'Map of matching apartments', exact: true })).toBeVisible();
-  await expect.poll(() => tiles.length).toBeGreaterThan(0);
+  await expect.poll(() => tiles.length).toBeGreaterThan(before);
   // A pin's pop-up saves its listing, and its links open in a new tab.
-  await page.locator('.leaflet-marker-icon').first().click();
   const popup = page.locator('.leaflet-popup-content');
+  // The map may still be settling on its pins; click until the pop-up stays open.
+  await expect(async () => {
+    if (!(await popup.isVisible())) await page.locator('.leaflet-marker-icon').first().click();
+    await expect(popup).toBeVisible({ timeout: 1000 });
+  }).toPass();
   await expect(popup.getByRole('link').first()).toHaveAttribute('target', '_blank');
   await popup
     .getByRole('button', { name: /^Save / })

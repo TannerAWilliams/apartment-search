@@ -16,6 +16,7 @@ import { SavedNotes } from './SavedNotes.tsx';
 import { listingKey } from '../listings.ts';
 import { HousingCost } from './HousingCost.tsx';
 import { HeartIcon } from './Icons.tsx';
+import { ListingThumbnail } from './ListingThumbnail.tsx';
 
 const CHECK_TIME = new Intl.DateTimeFormat('en-US', {
   timeZone: 'America/New_York',
@@ -26,24 +27,37 @@ const CHECK_TIME = new Intl.DateTimeFormat('en-US', {
   timeZoneName: 'short',
 });
 const card = StyleSheet.create({
-  headline: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
-  primary: { flex: 1, minWidth: 0, gap: 2 },
-  priceRow: { flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap', columnGap: 8, rowGap: 4 },
-  per: { fontSize: 14, color: colors.muted, fontWeight: '600' },
+  media: { height: 190, borderRadius: 14, overflow: 'hidden', backgroundColor: colors.light },
+  tags: { position: 'absolute', top: 12, left: 12, right: 64, flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  tag: {
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '600',
+    color: colors.ink,
+    backgroundColor: '#ffffffee',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    overflow: 'hidden',
+  },
   heart: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
     width: 44,
     height: 44,
     borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: colors.border,
+    backgroundColor: '#ffffffee',
   },
-  title: { fontSize: 16, lineHeight: 22, fontWeight: '700', color: colors.ink },
+  title: { fontSize: 15, lineHeight: 20, fontWeight: '600', color: colors.ink },
+  subtitle: { fontSize: 15, lineHeight: 20, color: colors.muted },
+  priceLine: { fontSize: 15, lineHeight: 20, color: colors.ink, marginTop: 4 },
   action: { minHeight: 40, justifyContent: 'center', paddingHorizontal: 4 },
   actions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   notice: { fontSize: 13, lineHeight: 18, color: '#805213' },
-  details: { borderTopWidth: 1, borderColor: colors.border, paddingTop: 10, gap: 8 },
+  details: { borderTopWidth: 1, borderColor: '#ebebeb', paddingTop: 12, gap: 8 },
 });
 
 export function Listing({
@@ -92,38 +106,37 @@ export function Listing({
     : 'Check date unavailable';
   return (
     <View style={styles.rentalCard}>
-      <View style={styles.rentalCardBody}>
-        <View style={card.headline}>
-          <View style={card.primary}>
-            <View style={card.priceRow}>
-              <Text style={styles.price}>
-                {presentation.priceKnown ? formatRent(rent) : 'Price unavailable'}
-                {presentation.priceKnown && <Text style={card.per}> /mo</Text>}
-              </Text>
-              <Text style={styles.cardStat}>{presentation.bedsLabel}</Text>
-              {commute && transitSeconds != null && <Text style={styles.cardStat}>{Math.ceil(transitSeconds / 60)} min transit</Text>}
-              {commute && drivingSeconds != null && <Text style={styles.cardStat}>{Math.ceil(drivingSeconds / 60)} min drive</Text>}
-            </View>
-            {(listing.kind === 'snapshot' || listing.priceIncludesFees) && (
-              <Text style={styles.smallMuted}>{listing.kind === 'snapshot' ? 'Recorded rent' : 'Total price, fees included'}</Text>
-            )}
-          </View>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={onRemove ? 'Remove saved apartment' : saved ? 'Apartment saved' : 'Save apartment'}
-            accessibilityState={{ disabled: !onRemove && saved }}
-            disabled={!onRemove && saved}
-            onPress={() => (onRemove ? onRemove(listing) : onSave(listing))}
-            style={[card.heart, (saved || onRemove) && { backgroundColor: colors.light, borderColor: colors.light }]}
-          >
-            <HeartIcon color={colors.green} filled={saved || Boolean(onRemove)} />
-          </Pressable>
+      {/* The image area: the listing's block on the map (or a plain tile), with its tags and the save heart on it. */}
+      <View style={card.media}>
+        <ListingThumbnail latitude={listing.latitude} longitude={listing.longitude} />
+        <View style={card.tags}>
+          <Text style={card.tag}>{presentation.bedsLabel}</Text>
+          {commute && transitSeconds != null && <Text style={card.tag}>{Math.ceil(transitSeconds / 60)} min transit</Text>}
+          {commute && drivingSeconds != null && <Text style={card.tag}>{Math.ceil(drivingSeconds / 60)} min drive</Text>}
         </View>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={onRemove ? 'Remove saved apartment' : saved ? 'Apartment saved' : 'Save apartment'}
+          accessibilityState={{ disabled: !onRemove && saved }}
+          disabled={!onRemove && saved}
+          onPress={() => (onRemove ? onRemove(listing) : onSave(listing))}
+          style={card.heart}
+        >
+          <HeartIcon color={saved || onRemove ? colors.green : colors.ink} filled={saved || Boolean(onRemove)} />
+        </Pressable>
+      </View>
+      <View style={styles.rentalCardBody}>
         <View style={{ gap: 2 }}>
           <Text accessibilityRole="header" style={card.title}>
             {title}
           </Text>
-          <Text style={styles.smallMuted}>{[subtitle, regionInfo?.label].filter(Boolean).join(' · ')}</Text>
+          <Text style={card.subtitle}>{[subtitle, regionInfo?.label].filter(Boolean).join(' · ')}</Text>
+          <Text style={card.priceLine}>
+            <Text style={styles.price}>{presentation.priceKnown ? formatRent(rent) : 'Price unavailable'}</Text>
+            {presentation.priceKnown && ' month'}
+            {(listing.kind === 'snapshot' || listing.priceIncludesFees) &&
+              (listing.kind === 'snapshot' ? ' · Recorded rent' : ' · Total price, fees included')}
+          </Text>
         </View>
         {listing.bestFit && (
           <View style={{ gap: 3 }}>

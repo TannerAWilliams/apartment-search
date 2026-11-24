@@ -218,7 +218,7 @@ function ApartmentSearch() {
 
   const topBar = (
     <>
-      <StatusBar barStyle="light-content" {...{ backgroundColor: colors.navy }} />
+      <StatusBar barStyle="dark-content" {...{ backgroundColor: colors.navy }} />
       <View style={styles.topBar}>
         <Pressable
           accessibilityRole="link"
@@ -256,16 +256,28 @@ function ApartmentSearch() {
       {topBar}
       {(tab === 'results' || tab === 'saved') && (
         <View style={mobileStyles.searchBar}>
-          <View style={mobileStyles.summary}>
-            <Text numberOfLines={1} style={mobileStyles.summaryTitle}>
-              {tab === 'saved' ? 'Your saved apartments' : marketArea}
-            </Text>
-            <Text numberOfLines={1} style={mobileStyles.destinationText}>
-              {tab === 'saved'
-                ? 'Saved on this device'
-                : bedroomLabel(applied.bedrooms) + ' · ' + (applied.maxRent == null ? 'Any price' : 'Up to ' + formatRent(applied.maxRent))}
-            </Text>
-          </View>
+          {/* The search pill: where, and for what. On Search it opens the filters. */}
+          <Pressable
+            accessibilityRole={tab === 'results' ? 'button' : undefined}
+            accessibilityLabel={tab === 'results' ? 'Edit search: ' + marketArea : undefined}
+            disabled={tab !== 'results'}
+            onPress={() => toggleFilter('more')}
+            style={mobileStyles.summary}
+          >
+            {tab === 'results' ? <SearchIcon color={colors.ink} size={18} /> : <HeartIcon color={colors.green} size={18} filled />}
+            <View style={mobileStyles.summaryCopy}>
+              <Text numberOfLines={1} style={mobileStyles.summaryTitle}>
+                {tab === 'saved' ? 'Your saved apartments' : marketArea}
+              </Text>
+              <Text numberOfLines={1} style={mobileStyles.destinationText}>
+                {tab === 'saved'
+                  ? 'Saved on this device'
+                  : bedroomLabel(applied.bedrooms) +
+                    ' · ' +
+                    (applied.maxRent == null ? 'Any price' : 'Up to ' + formatRent(applied.maxRent))}
+              </Text>
+            </View>
+          </Pressable>
           {tab === 'results' && (
             <Button secondary onPress={() => toggleFilter('more')}>
               Filters
