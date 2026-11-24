@@ -46,6 +46,8 @@ export type AlertState = {
   recent: { id: string; at: string; title: string; lines: string[] }[];
   channels: { email: boolean; push: { publicKey: string } | null };
   delivered?: { email: boolean; devices: number };
+  /** Email alerts are for paid accounts; a free one sees what it set up before and can remove it. */
+  plan?: 'free' | 'paid';
 };
 
 const WHEN = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
@@ -167,6 +169,24 @@ export function AlertsPage({
       </View>
       {!state ? (
         <Text style={styles.smallMuted}>{busy === 'load' ? 'Loading alerts…' : 'Alerts are unavailable.'}</Text>
+      ) : state.plan === 'free' ? (
+        <View style={styles.chartCard}>
+          <Text accessibilityRole="header" style={styles.fieldLabel}>
+            Alerts are part of the paid plan
+          </Text>
+          <Text style={styles.bodyText}>
+            On the paid plan, Walkup emails you when a new apartment matches what you want, like a West Village 2 BR under $5,000, or 1 to 3
+            bedrooms anywhere in Brooklyn under $2,500. Ask an admin to upgrade your account.
+          </Text>
+          {state.rules.map((rule) => (
+            <View key={rule.id} style={styles.chipRow}>
+              <Text style={styles.bodyText}>{rule.name} (paused)</Text>
+              <Button secondary disabled={busy !== ''} onPress={() => act('rule', { action: 'delete-rule', id: rule.id })}>
+                {'Remove ' + rule.name}
+              </Button>
+            </View>
+          ))}
+        </View>
       ) : (
         <>
           <View style={styles.chartCard}>

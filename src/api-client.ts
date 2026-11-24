@@ -23,6 +23,8 @@ export type ApiConfig = {
   dashboardAvailable?: boolean;
   /** Whether the signed-in person can resync and change platform settings (server/roles.ts). */
   admin?: boolean;
+  /** The signed-in account's plan: email alerts are for paid accounts. */
+  plan?: 'free' | 'paid';
   /** Whether listing cards can show Street View images (server/street-view.ts). */
   streetViewAvailable?: boolean;
   storageMode?: string;

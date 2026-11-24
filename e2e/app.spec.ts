@@ -53,6 +53,7 @@ async function mockApp(
     /** The signed-in account, and whether it is an admin (the app's own token is). */
     account?: string;
     admin?: boolean;
+    plan?: 'free' | 'paid';
   } = {},
 ) {
   const requests: MockRequest[] = [];
@@ -60,6 +61,10 @@ async function mockApp(
   let signedIn = false;
   let settings = { nightlyResync: true, lastNightly: { at: now, state: 'complete', updated: 12, failed: 1, background: true } };
   let savedOnAccount: unknown[] = [];
+  let members = [
+    { email: 'owner@example.test', admin: true, paid: true },
+    { email: 'renter@example.test', admin: false, paid: false },
+  ];
   const listings = fixtures(options.listingCount);
   if (options.nyc) Object.assign(listings[0], { city: 'Brooklyn', state: 'NY', county: 'Kings', zip: '11201', region: 'nyc' });
   if (options.commute)
@@ -129,7 +134,7 @@ async function mockApp(
         dashboardAvailable: options.dashboardAvailable === true,
         streetViewAvailable: options.streetView === true,
         admin: options.admin ?? true,
-        ...(options.account ? { account: options.account } : {}),
+        ...(options.account ? { account: options.account, plan: options.plan ?? 'paid' } : {}),
         browserImportAllowed: false,
         commuteConfigured: false,
         sources: [{ id: 'streeteasy', name: 'StreetEasy' }],
@@ -142,6 +147,11 @@ async function mockApp(
     else if (url.pathname === '/api/settings') {
       if (body) settings = { ...settings, nightlyResync: body.nightlyResync };
       data = { ...settings, admin: options.admin ?? true };
+    } else if (url.pathname === '/api/members' && options.admin) {
+      if (body) members = members.map((member) => (member.email === body.email ? { ...member, paid: body.paid } : member));
+      data = { members };
+    } else if (url.pathname === '/api/alerts' && options.plan === 'free') {
+      data = { rules: [], recent: [], devices: [], channels: { email: true, push: null }, plan: 'free' };
     } else if (url.pathname === '/api/saved' && options.account) {
       if (body) savedOnAccount = body.listings;
       data = { listings: savedOnAccount };
@@ -978,7 +988,7 @@ test('profile: an admin sees their role, the nightly resync switch and the sourc
   const { requests } = await mockApp(page, { account: 'owner@example.test', admin: true });
   await page.getByRole('tab', { name: 'Profile', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Profile', exact: true })).toBeVisible();
-  await expect(page.getByText('owner@example.test', { exact: true })).toBeVisible();
+  await expect(page.getByText('owner@example.test', { exact: true }).first()).toBeVisible();
   await expect(page.getByText('Admin account', { exact: true })).toBeVisible();
   await expect(page.getByText(/Last run .*: 12 sources updated, 1 failed; the slower sources continued/)).toBeVisible();
   const nightly = page.getByRole('switch', { name: 'Nightly resync' });
@@ -988,10 +998,20 @@ test('profile: an admin sees their role, the nightly resync switch and the sourc
   expect(requests.find(({ path, method }) => path === '/api/settings' && method === 'POST')?.body).toEqual({ nightlyResync: false });
   await expect(page.getByRole('button', { name: 'Sources & sync', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Saved listings (0)', exact: true })).toBeVisible();
+  // Accounts and plans: the admin is always paid; a member is upgraded.
+  await expect(page.getByRole('switch', { name: 'Paid plan for owner@example.test' })).toBeDisabled();
+  const renter = page.getByRole('switch', { name: 'Paid plan for renter@example.test' });
+  await expect(renter).not.toBeChecked();
+  await renter.click();
+  await expect(renter).toBeChecked();
+  expect(requests.find(({ path, method }) => path === '/api/members' && method === 'POST')?.body).toEqual({
+    email: 'renter@example.test',
+    paid: true,
+  });
 });
 
-test('profile: a member’s saved listings are kept on the account', async ({ page }) => {
-  const { requests } = await mockApp(page, { account: 'renter@example.test', admin: false });
+test('profile: a free member’s saved listings are kept on the account, and alerts need the paid plan', async ({ page }) => {
+  const { requests } = await mockApp(page, { account: 'renter@example.test', admin: false, plan: 'free' });
   await page.getByRole('button', { name: 'Save apartment', exact: true }).first().click();
   await expect.poll(() => requests.filter(({ path, method }) => path === '/api/saved' && method === 'POST').length).toBeGreaterThan(0);
   const stored = requests.filter(({ path, method }) => path === '/api/saved' && method === 'POST').at(-1)?.body as {
@@ -999,9 +1019,14 @@ test('profile: a member’s saved listings are kept on the account', async ({ pa
   };
   expect(stored.listings.map(({ address }) => address)).toEqual(['12 Grove Street']);
   await page.getByRole('tab', { name: 'Profile', exact: true }).click();
-  await expect(page.getByText('Member account', { exact: true })).toBeVisible();
+  await expect(page.getByText('Free plan', { exact: true })).toBeVisible();
+  await expect(page.getByText('Part of the paid plan', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Saved listings (1)', exact: true })).toBeVisible();
   await expect(page.getByRole('switch', { name: 'Nightly resync' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Sources & sync', exact: true })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Email alerts', exact: true })).toBeVisible();
+  await expect(page.getByRole('switch', { name: /^Paid plan for/ })).toHaveCount(0);
+  // A free account sees what the paid plan adds instead of the alert form.
+  await page.getByRole('button', { name: 'Email alerts', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Alerts are part of the paid plan', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Save alert', exact: true })).toHaveCount(0);
 });

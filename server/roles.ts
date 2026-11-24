@@ -6,7 +6,7 @@
  */
 import type { AppEnv } from './contracts.ts';
 
-const addresses = (value: string | undefined) =>
+export const addresses = (value: string | undefined) =>
   (value ?? '')
     .split(',')
     .map((address) => address.trim().toLowerCase())

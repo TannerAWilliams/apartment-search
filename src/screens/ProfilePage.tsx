@@ -32,7 +32,60 @@ export function lastNightlyText(last: PlatformSettings['lastNightly']) {
   return `Last run ${when}: ${updated}${failed}${background}.`;
 }
 
+export type Member = { email: string; admin: boolean; paid: boolean };
+
 type Row = [key: string, label: string, detail: string];
+
+/** Accounts and their plans; an admin switches each between free and paid. Admins are always paid. */
+function Members({
+  request,
+  onError,
+}: {
+  request: (body?: { email: string; paid: boolean }) => Promise<{ members: Member[] }>;
+  onError: (message: string) => void;
+}) {
+  const [members, setMembers] = useState<Member[] | null>(null);
+  const [busy, setBusy] = useState('');
+  useEffect(() => {
+    request()
+      .then(({ members }) => setMembers(members))
+      .catch((error) => onError(error instanceof Error ? error.message : 'Accounts could not be loaded.'));
+  }, [request, onError]);
+  async function change(email: string, paid: boolean) {
+    setBusy(email);
+    try {
+      setMembers((await request({ email, paid })).members);
+    } catch (error) {
+      onError(error instanceof Error ? error.message : 'The plan could not be changed.');
+    } finally {
+      setBusy('');
+    }
+  }
+  if (!members) return <Text style={styles.smallMuted}>Loading accounts…</Text>;
+  return (
+    <View style={styles.menu}>
+      {members.map(({ email, admin, paid }, index) => (
+        <View key={email} style={[styles.menuRow, index > 0 && styles.menuDivider]}>
+          <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+            <Text style={styles.menuLabel} numberOfLines={1}>
+              {email}
+            </Text>
+            <Text style={styles.smallMuted}>{admin ? 'Admin · always paid' : paid ? 'Paid plan' : 'Free plan'}</Text>
+          </View>
+          <Switch
+            accessibilityLabel={`Paid plan for ${email}`}
+            aria-label={`Paid plan for ${email}`}
+            value={paid}
+            disabled={admin || busy !== ''}
+            onValueChange={(value) => void change(email, value)}
+            trackColor={{ false: colors.border, true: colors.ink }}
+            thumbColor={colors.white}
+          />
+        </View>
+      ))}
+    </View>
+  );
+}
 
 function Menu({ rows, onOpen }: { rows: Row[]; onOpen: (key: string) => void }) {
   return (
@@ -59,6 +112,8 @@ function Menu({ rows, onOpen }: { rows: Row[]; onOpen: (key: string) => void }) 
 export function ProfilePage({
   account,
   admin,
+  plan,
+  membersRequest,
   savedCount,
   onOpen,
   onSignOut,
@@ -67,6 +122,8 @@ export function ProfilePage({
 }: {
   account: string | null;
   admin: boolean;
+  plan: 'free' | 'paid';
+  membersRequest?: (body?: { email: string; paid: boolean }) => Promise<{ members: Member[] }>;
   savedCount: number;
   onOpen: (tab: string) => void;
   onSignOut: () => void;
@@ -123,7 +180,7 @@ export function ProfilePage({
             <Text style={styles.menuLabel} numberOfLines={1}>
               {account}
             </Text>
-            <Text style={styles.smallMuted}>{admin ? 'Admin account' : 'Member account'}</Text>
+            <Text style={styles.smallMuted}>{admin ? 'Admin account' : plan === 'paid' ? 'Paid plan' : 'Free plan'}</Text>
           </View>
           <Button secondary onPress={onSignOut}>
             Sign out
@@ -141,7 +198,11 @@ export function ProfilePage({
             `Saved listings (${savedCount})`,
             account ? 'Kept on your account, on every device you sign in on' : 'Kept on this device',
           ],
-          ['alerts', 'Email alerts', 'Hear about new apartments that match, like West Village 2 BR under $5,000'],
+          [
+            'alerts',
+            'Email alerts',
+            plan === 'paid' ? 'Hear about new apartments that match, like West Village 2 BR under $5,000' : 'Part of the paid plan',
+          ],
         ]}
       />
       <Text accessibilityRole="header" style={styles.fieldLabel}>
@@ -180,6 +241,14 @@ export function ProfilePage({
             </View>
           </View>
           <Menu onOpen={onOpen} rows={[['sources', 'Sources & sync', 'Where listings come from, and resync them now']]} />
+          {account && membersRequest && (
+            <>
+              <Text accessibilityRole="header" style={styles.fieldLabel}>
+                Accounts and plans
+              </Text>
+              <Members request={membersRequest} onError={onError} />
+            </>
+          )}
         </>
       )}
     </View>

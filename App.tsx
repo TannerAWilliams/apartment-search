@@ -101,6 +101,8 @@ function ApartmentSearch() {
     signOut,
     account,
     admin,
+    plan,
+    membersRequest,
     configuredSources,
     companies,
     sourceCatalog,
@@ -502,6 +504,8 @@ function ApartmentSearch() {
                   <ProfilePage
                     account={account}
                     admin={admin}
+                    plan={plan}
+                    membersRequest={serverState === 'ready' ? membersRequest : undefined}
                     savedCount={savedResults.total}
                     onOpen={navigateTab}
                     onSignOut={() => void signOut()}

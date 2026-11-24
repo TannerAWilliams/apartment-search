@@ -4,6 +4,7 @@ import type * as v from 'valibot';
 import type { AppEnv, Bucket } from '../contracts.ts';
 import { addDevice, addRule, alertChannels, alertMatches, alertState, deleteRule, deliver, removeDevice } from '../alerts.ts';
 import { log } from '../log.ts';
+import { type Plan, planFor } from '../plans.ts';
 import { apiBodies, factory, fail, needsStorage, refuse } from './context.ts';
 import { AlertRequestSchema } from './inputs.ts';
 
@@ -44,12 +45,17 @@ async function alertAction(
 const STORAGE = 'Alerts need saved storage.';
 /** The signed-in account an alert belongs to, in lower case; none for the app's own token or a public app. */
 const ownerOf = (account: string | null | undefined) => (account ? account.toLowerCase() : undefined);
+const PAID_ONLY = 'Email alerts are part of the paid plan. Ask an admin to upgrade your account.';
+/** Actions a free account may still take: removing what it set up before. */
+const FREE_ACTIONS = new Set(['delete-rule', 'remove-device']);
 
 export const alertRoutes = factory
   .createApp()
   .get('/alerts', needsStorage(STORAGE), async (c) => {
     try {
-      return c.json(await alertState({ ...c.var.appEnv, BUCKET: c.var.bucket }, ownerOf(c.var.services.account)), 200);
+      const env = { ...c.var.appEnv, BUCKET: c.var.bucket };
+      const plan: Plan = await planFor(env, c.var.bucket, c.var.services.account, c.var.services.admin);
+      return c.json({ ...(await alertState(env, ownerOf(c.var.services.account))), plan }, 200);
     } catch (cause) {
       log.error('storage_read_failed', cause, { path: c.req.path });
       return fail(c, 503, 'Alerts could not be read. Try again shortly.');
@@ -58,5 +64,8 @@ export const alertRoutes = factory
   .post('/alerts', needsStorage(STORAGE), apiBodies, vValidator('json', AlertRequestSchema, refuse), async (c) => {
     const env = { ...c.var.appEnv, BUCKET: c.var.bucket };
     const origin = env.APP_ORIGIN ?? new URL(c.req.url).origin;
-    return c.json(await alertAction(c.req.valid('json'), env, origin, ownerOf(c.var.services.account)), 200);
+    const body = c.req.valid('json');
+    const plan = await planFor(env, c.var.bucket, c.var.services.account, c.var.services.admin);
+    if (plan === 'free' && !FREE_ACTIONS.has(body.action)) return fail(c, 402, PAID_ONLY);
+    return c.json({ ...(await alertAction(body, env, origin, ownerOf(c.var.services.account))), plan }, 200);
   });

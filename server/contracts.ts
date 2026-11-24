@@ -57,6 +57,8 @@ export type AppEnv = {
   ACCESS_ALLOWED_EMAILS?: string;
   /** Who may resync and change platform settings (server/roles.ts); the first allowed address when unset. */
   ADMIN_EMAILS?: string;
+  /** Accounts on the paid plan besides those an admin marks paid (server/plans.ts). */
+  PAID_EMAILS?: string;
   /** The app's address, for links in alerts. */
   APP_ORIGIN?: string;
   /** Cloudflare Email Service binding and the sender on an Email Routing domain. */

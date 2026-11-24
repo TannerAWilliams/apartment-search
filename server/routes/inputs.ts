@@ -147,6 +147,12 @@ export const SavedRequestSchema = v.object(
   { listings: v.array(v.unknown(), 'Send the saved listings as a list.') },
   'Send the saved listings as a list.',
 );
+const EMAIL = 'Give an email address.';
+/** An admin putting an account on the paid plan or back on the free one. */
+export const PlanRequestSchema = v.object({
+  email: v.pipe(v.string(EMAIL), v.trim(), v.email(EMAIL), v.maxLength(254, EMAIL)),
+  paid: v.boolean('Say whether the account is paid.'),
+});
 export const SettingsRequestSchema = v.object({ nightlyResync: v.boolean('Say whether the nightly resync is on.') });
 
 export const BuildingAddressSchema = v.object(

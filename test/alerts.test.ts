@@ -257,7 +257,7 @@ test('the alerts API lists, adds and removes rules and devices, and sends a test
       env,
     );
   const empty = await readJson<AlertState>(call());
-  expect(empty).toStrictEqual({ rules: [], recent: [], devices: [], channels: { email: true, push: null } });
+  expect(empty).toStrictEqual({ rules: [], recent: [], devices: [], channels: { email: true, push: null }, plan: 'paid' });
   const added = await readJson<AlertState>(call({ action: 'add-rule', rule }));
   expect(added.rules[0].name).toBe('Brooklyn 1BR');
   const phone = await device();

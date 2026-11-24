@@ -1,4 +1,5 @@
 import type { ListingData } from '../src/domain.ts';
+import { paidEmails } from './plans.ts';
 import { checkObservedChanges, MAX_BASELINE_UNITS, parseChangeBaseline, type ObservedChange } from '../src/observed-changes.ts';
 import { localWorkplace, needsCommute, parseFilters, SearchInputError } from '../src/search.ts';
 import type { AppEnv, Bucket } from './contracts.ts';
@@ -323,10 +324,20 @@ export async function checkAlerts(
   bucket: Bucket,
   loadMatches: (filters: AlertRule['filters']) => Promise<ListingData[]>,
   channels: AlertChannels,
-  { origin, now = new Date() }: { origin: string; now?: Date },
+  {
+    origin,
+    now = new Date(),
+    paid,
+  }: {
+    origin: string;
+    now?: Date;
+    /** Accounts on the paid plan; another account's alerts are skipped. Alerts made before accounts always run. */
+    paid?: Set<string>;
+  },
 ) {
   const alerts: Alert[] = [];
   for (const rule of await readRules(bucket)) {
+    if (paid && rule.owner && !paid.has(rule.owner)) continue;
     try {
       const matches = matchesCriteria(await loadMatches(rule.filters), rule.criteria);
       if (matches.length > MAX_BASELINE_UNITS) {
@@ -375,7 +386,8 @@ export const alertMatches = (env: AppEnv) => async (filters: AlertRule['filters'
 /** Checks every saved alert against the saved inventory; runs after refreshes, never on a schedule. */
 export async function runAlerts(env: AppEnv, origin = env.APP_ORIGIN ?? '') {
   if (!env.BUCKET) return null;
-  return checkAlerts(env.BUCKET, alertMatches(env), alertChannels(env), { origin });
+  const paid = env.PUBLIC_APP === 'true' ? undefined : await paidEmails(env, env.BUCKET);
+  return checkAlerts(env.BUCKET, alertMatches(env), alertChannels(env), { origin, paid });
 }
 
 /**

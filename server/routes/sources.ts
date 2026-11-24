@@ -1,4 +1,5 @@
 /** The app's configuration and the listing sources: their saved status, and resyncs you start. */
+import { planFor } from '../plans.ts';
 import { vValidator } from '@hono/valibot-validator';
 import { decodeSourceImport } from '../../src/source-import.ts';
 import { runAlerts } from '../alerts.ts';
@@ -33,7 +34,8 @@ export const sourceRoutes = factory
     const account = email ? { account: email, admin: admin === true } : {};
     if (!env.BUCKET) return c.json({ ...config, ...account }, 200);
     try {
-      return c.json({ ...(await savedAppConfig({ ...env, BUCKET: env.BUCKET }, config)), ...account }, 200);
+      const plan = email ? { plan: await planFor(env, env.BUCKET, email, admin) } : {};
+      return c.json({ ...(await savedAppConfig({ ...env, BUCKET: env.BUCKET }, config)), ...account, ...plan }, 200);
     } catch (cause) {
       log.error('storage_read_failed', cause, { path: c.req.path });
       return fail(c, 503, 'Saved source data could not be read. Try again shortly.');

@@ -9,7 +9,7 @@ import type { ApiConfig, ConfigSource, RefreshInfo } from '../api-client.ts';
 import { API_ORIGIN, CHECK_TIME, SEARCH_DEFAULTS, api, failureInfo, finishSourceCheck } from '../app-shared.ts';
 import type { AffordableHousing } from '../screens/AffordableHousing.tsx';
 import type { AlertState } from '../screens/AlertsPage.tsx';
-import type { PlatformSettings } from '../screens/ProfilePage.tsx';
+import type { Member, PlatformSettings } from '../screens/ProfilePage.tsx';
 import type { ListingData, SearchFilters, SearchResult } from '../domain.ts';
 import type { Listing } from '../components/Listing.tsx';
 import type { RentChart } from '../components/RentChart.tsx';
@@ -48,6 +48,7 @@ export function useServer({ appliedFilters, searchVersion, submitted, setResult,
   const [streetViewAvailable, setStreetViewAvailable] = useState(false);
   const [account, setAccount] = useState<string | null>(null);
   const [admin, setAdmin] = useState(false);
+  const [plan, setPlan] = useState<'free' | 'paid'>('paid');
 
   const failedSources = refresh?.sources.filter(({ status }) => status === 'failed') ?? [];
   const freshness = refreshing
@@ -71,6 +72,7 @@ export function useServer({ appliedFilters, searchVersion, submitted, setResult,
     setStreetViewAvailable(config.streetViewAvailable === true);
     setAccount(config.account ?? null);
     setAdmin(config.admin === true);
+    setPlan(config.plan === 'free' ? 'free' : 'paid');
     setCompanies(config.companies ?? {});
     setRefresh(config.refresh ?? null);
     setRefreshClock(Date.now());
@@ -245,6 +247,12 @@ export function useServer({ appliedFilters, searchVersion, submitted, setResult,
     (body?: { nightlyResync: boolean }) => api<PlatformSettings>('settings', body ? { body, token: activeToken } : { token: activeToken }),
     [activeToken],
   );
+  /** Accounts and their plans, for an admin: read them, or put one on the paid plan or the free one. */
+  const membersRequest = useCallback(
+    (body?: { email: string; paid: boolean }) =>
+      api<{ members: Member[] }>('members', body ? { body, token: activeToken } : { token: activeToken }),
+    [activeToken],
+  );
   const loadHousing = useCallback(
     (signal?: AbortSignal) =>
       api<Awaited<ReturnType<NonNullable<React.ComponentProps<typeof AffordableHousing>['loadHousing']>>>>('housing', {
@@ -300,6 +308,8 @@ export function useServer({ appliedFilters, searchVersion, submitted, setResult,
     signOut,
     account,
     admin,
+    plan,
+    membersRequest,
     configuredSources,
     companies,
     sourceCatalog,
