@@ -5,15 +5,15 @@ import { crawlOpeniglooCell, finishOpeniglooRun, OPENIGLOO_CELL_COUNT } from './
 import { refreshSources } from './refresh.ts';
 import { log } from './log.ts';
 import { runAlerts } from './alerts.ts';
-import { completeSync, SYNC_PROGRESS_KEY, WORKFLOW_SOURCE_IDS } from './sources/source-registry.ts';
+import { SYNC_PROGRESS_KEY, WORKFLOW_SOURCE_IDS, workflowSync } from './sources/source-registry.ts';
 
 type Environment = AppEnv & { APARTMENTS: D1Database };
 /** sources: which complete syncs to run, in order; all of them when omitted. */
 type RefreshParameters = { delay: boolean; sources?: string[] };
 
-const NAMES: Record<string, string> = Object.fromEntries(WORKFLOW_SOURCE_IDS.map((id) => [id, completeSync(id)!.name]));
+const NAMES: Record<string, string> = Object.fromEntries(WORKFLOW_SOURCE_IDS.map((id) => [id, workflowSync(id)!.name]));
 
-/** Runs the complete-inventory syncs that are too long for an API request. The class keeps its original name, which the deployed Workflow uses. */
+/** Runs the syncs that are too long for an API request: slow samples, then complete inventories. The class keeps its original name, which the deployed Workflow uses. */
 export class CityRealtySync extends WorkflowEntrypoint<Environment, RefreshParameters> {
   async run(event: WorkflowEvent<RefreshParameters>, step: WorkflowStep) {
     if (event.payload.delay) await step.sleep('Give other sources time to start', '3 seconds');
@@ -44,7 +44,7 @@ export class CityRealtySync extends WorkflowEntrypoint<Environment, RefreshParam
     for (let attempt = 0; attempt < 6; attempt++) {
       const result = await step.do(
         `Verify and save ${NAMES[sourceId]} inventory (attempt ${attempt + 1})`,
-        { timeout: completeSync(sourceId)?.stepTimeout ?? '13 minutes', retries: { limit: 0, delay: '1 second' } },
+        { timeout: workflowSync(sourceId)?.stepTimeout ?? '13 minutes', retries: { limit: 0, delay: '1 second' } },
         () =>
           refreshSources(
             { ...this.env, BUCKET: bucket },

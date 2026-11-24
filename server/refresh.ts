@@ -28,7 +28,7 @@ import {
   readState,
 } from './refresh/status.ts';
 import { configuredFeeds } from './sources/listings.ts';
-import { WORKFLOW_SOURCE_IDS, completeSync } from './sources/source-registry.ts';
+import { WORKFLOW_SOURCE_IDS, workflowSync } from './sources/source-registry.ts';
 import { requestForRefresh } from './sources/source-requests.ts';
 import { STREETEASY_LIVE } from './sources/streeteasy.ts';
 
@@ -95,7 +95,7 @@ export async function refreshSources(
   /** Whether a source can be checked now: not waiting out a retry, and not paused or left to the Workflow. */
   const ready = (id: string) => {
     const prior = previousById.get(id);
-    if (completeSync(id) && excludeWorkflowSources) return false;
+    if (workflowSync(id) && excludeWorkflowSources) return false;
     if (id !== STREETEASY_LIVE.id) return !coolingDown(prior, now);
     if (env.STREETEASY_SYNC_ENABLED === 'false') return false;
     // A different way of reading StreetEasy is tried even while the previous one waits out a retry.
@@ -166,7 +166,7 @@ export async function refreshSources(
     imported,
     liveData: <T>(id: string, load: (fetcher: SourceFetch, now: Date) => T): T =>
       onDemand
-        ? load(completeSync(id) ? requestForRefresh(fetcher, AbortSignal.timeout(completeSync(id)!.timeoutMs)) : sourceFetch, now)
+        ? load(workflowSync(id) ? requestForRefresh(fetcher, AbortSignal.timeout(workflowSync(id)!.timeoutMs)) : sourceFetch, now)
         : (imported<T>(id) as T),
     streetEasyPartner,
     streetEasyTransport,

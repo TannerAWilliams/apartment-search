@@ -19,7 +19,7 @@ type CompleteSync = {
   /** Upper bound for one sync, which also bounds the refresh lock it holds. */
   timeoutMs: number;
   /** Timeout of the Workflow step that runs the sync (Openigloo runs in several steps). */
-  stepTimeout: '13 minutes' | '25 minutes' | '30 minutes';
+  stepTimeout: '6 minutes' | '13 minutes' | '25 minutes' | '30 minutes';
 };
 
 export const COMPLETE_SYNCS: readonly CompleteSync[] = [
@@ -49,7 +49,30 @@ export const COMPLETE_SYNCS: readonly CompleteSync[] = [
   },
 ];
 
-export const WORKFLOW_SOURCE_IDS = COMPLETE_SYNCS.map(({ id }) => id);
+/**
+ * Sources that read a sample, but slowly: sites that are read one page at a time with a pause, so a check takes
+ * longer than an API request allows (about 25 seconds for all sources together). They run in the sync Workflow too,
+ * one after another and before the long complete syncs, and each keeps the ordinary two-hour sample lifetime.
+ */
+type BackgroundSync = { id: string; name: string; timeoutMs: number; stepTimeout: '6 minutes' };
+const background = (id: string, name: string): BackgroundSync => ({ id, name, timeoutMs: 5 * 60_000, stepTimeout: '6 minutes' });
+export const BACKGROUND_SYNCS: readonly BackgroundSync[] = [
+  background('apartmentguide-live', 'Apartment Guide'),
+  background('nestseekers-live', 'Nest Seekers'),
+  background('elliman-live', 'Douglas Elliman'),
+  background('corcoran-live', 'Corcoran'),
+  background('bozzuto-live', 'Bozzuto'),
+  background('avalonbay-live', 'AvalonBay'),
+  background('greystar-live', 'Greystar'),
+  background('nooklyn-live', 'Nooklyn'),
+  background('bondny-live', 'Bond New York'),
+];
+
+/** Every source the sync Workflow runs, in its order: the quick background syncs first, then the complete ones. */
+export const WORKFLOW_SOURCE_IDS = [...BACKGROUND_SYNCS, ...COMPLETE_SYNCS].map(({ id }) => id);
+/** How a source the Workflow runs is timed and named; undefined for sources checked within a request. */
+export const workflowSync = (id: string | null | undefined): BackgroundSync | CompleteSync | undefined =>
+  completeSync(id) ?? BACKGROUND_SYNCS.find((source) => source.id === id);
 export const COMPLETE_SYNC_LIFETIME = 24 * 60 * 60_000;
 /** Which complete sync the Workflow is on, so status can name it between steps that hold no refresh lock. */
 export const SYNC_PROGRESS_KEY = 'rentals/sync-progress.json';

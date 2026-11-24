@@ -5,7 +5,7 @@
 import type { Bucket } from '../contracts.ts';
 import { DIRECT_RENTAL_SOURCES } from '../sources/direct-rentals.ts';
 import { STREETEASY_EXPORT_FORMAT, STREETEASY_EXPORT_MAX_AGE } from '../sources/listings.ts';
-import { COMPLETE_SYNC_LIFETIME, completeSync, fullInventory } from '../sources/source-registry.ts';
+import { COMPLETE_SYNC_LIFETIME, fullInventory, workflowSync } from '../sources/source-registry.ts';
 import { STREETEASY_LIVE, STREETEASY_PUBLIC_TRANSPORT } from '../sources/streeteasy.ts';
 import { RefreshStateSchema, checkedDocument } from '../storage/stored-documents.ts';
 
@@ -65,7 +65,7 @@ export async function readState(bucket: Bucket | undefined): Promise<{ value: Re
 }
 
 export function checkInProgress(state: RefreshState, now: Date) {
-  const sync = completeSync(state.activeSource);
+  const sync = workflowSync(state.activeSource);
   return state.running && now.getTime() - Date.parse(state.startedAt ?? '') < (sync ? sync.timeoutMs + 30_000 : LOCK_TIMEOUT);
 }
 

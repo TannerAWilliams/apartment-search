@@ -168,7 +168,7 @@ test('status names the source the Workflow recorded, and nothing once jobs finis
   expect((await readJson<RefreshInfo>(call(env, '/api/refresh'))).activeSource).toBe('zumper-live');
   await createD1Bucket(env.APARTMENTS).put(SYNC_PROGRESS_KEY, JSON.stringify({ source: 'unknown-source' }));
   expect((await readJson<RefreshInfo>(call(env, '/api/refresh'))).activeSource, 'a full run falls back to its first source').toBe(
-    'cityrealty-live',
+    'apartmentguide-live',
   );
   for (const instance of instances.values()) instance.status = 'complete';
   expect(!(await readJson<RefreshInfo>(call(env, '/api/refresh'))).checking).toBeTruthy();
