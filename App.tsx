@@ -579,6 +579,9 @@ function ApartmentSearch() {
                   <SharedListPage
                     request={serverState === 'ready' && account ? householdRequest : undefined}
                     saved={saved}
+                    lookUp={
+                      serverState === 'ready' ? (place) => api('geocode', { body: { address: place }, token: activeToken }) : undefined
+                    }
                     onError={setError}
                   />
                 )}

@@ -50,6 +50,18 @@ test('two people share one list: invite, accept, add, vote, note, remove and lea
   const removed = await readJson<Reply>(call(env, 'ana@example.test', { action: 'remove', id: 'a' }));
   expect(removed.household).toMatchObject({ listings: [], votes: {}, notes: {} });
 
+  // Each sets where they commute; removing it leaves the other's.
+  const place = { label: 'Rockefeller Center', latitude: 40.7587, longitude: -73.9787 };
+  await call(env, 'ana@example.test', { action: 'workplace', workplace: place });
+  await call(env, 'ben@example.test', { action: 'workplace', workplace: { ...place, label: 'Penn Station' } });
+  const commutes = await readJson<Reply & { household: { workplaces: object } }>(
+    call(env, 'ana@example.test', { action: 'workplace', workplace: null }),
+  );
+  expect(commutes.household?.workplaces).toEqual({ 'ben@example.test': { ...place, label: 'Penn Station' } });
+  expect((await call(env, 'ana@example.test', { action: 'workplace', workplace: { label: 'x', latitude: 99, longitude: 0 } })).status).toBe(
+    422,
+  );
+
   // Ben leaves; Ana keeps the list.
   expect((await readJson<Reply>(call(env, 'ben@example.test', { action: 'leave' }))).household).toBeNull();
   expect(await findHousehold(bucket, 'ben@example.test')).toBeNull();

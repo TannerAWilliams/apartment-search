@@ -162,6 +162,19 @@ export const HouseholdRequestSchema = v.variant(
   [
     v.object({ action: v.literal('invite'), email: v.pipe(v.string(EMAIL), v.trim(), v.email(EMAIL), v.maxLength(254, EMAIL)) }),
     v.object({ action: v.literal('accept') }),
+    v.object({
+      action: v.literal('workplace'),
+      workplace: v.nullable(
+        v.object(
+          {
+            label: v.pipe(v.string(), v.trim(), v.minLength(1), v.maxLength(160)),
+            latitude: v.pipe(v.number(), v.minValue(-90), v.maxValue(90)),
+            longitude: v.pipe(v.number(), v.minValue(-180), v.maxValue(180)),
+          },
+          'Give a place with its coordinates.',
+        ),
+      ),
+    }),
     v.object({ action: v.literal('leave') }),
     v.object({ action: v.literal('add'), listing: v.unknown() }),
     v.object({ action: v.literal('remove'), id: listingIdSchema }),

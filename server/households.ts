@@ -21,6 +21,8 @@ const HouseholdSchema = v.object({
   listings: v.array(v.unknown()),
   votes: v.record(v.string(), v.record(v.string(), v.picklist(['yes', 'no']))),
   notes: v.record(v.string(), v.array(v.object({ by: v.string(), text: v.string(), at: v.string() }))),
+  /** Where each member commutes to, so every shared apartment shows each person's trip. */
+  workplaces: v.optional(v.record(v.string(), v.object({ label: v.string(), latitude: v.number(), longitude: v.number() })), {}),
 });
 export type Household = Omit<v.InferOutput<typeof HouseholdSchema>, 'listings'> & { listings: ListingData[] };
 const PointerSchema = v.object({ id: v.string() });
@@ -61,7 +63,8 @@ export type HouseholdAction =
   | { action: 'add'; listing: unknown }
   | { action: 'remove'; id: string }
   | { action: 'vote'; id: string; vote: 'yes' | 'no' | null }
-  | { action: 'note'; id: string; text: string };
+  | { action: 'note'; id: string; text: string }
+  | { action: 'workplace'; workplace: { label: string; latitude: number; longitude: number } | null };
 
 /** Applies one change for this account and returns the shared list as it now is (null after leaving). */
 export async function changeHousehold(bucket: Bucket, email: string, change: HouseholdAction, now = new Date()) {
@@ -73,7 +76,15 @@ export async function changeHousehold(bucket: Bucket, email: string, change: Hou
     const other = await findHousehold(bucket, partner);
     if (other && other.id !== current?.id) throw new SearchInputError('That person is already in another shared list.');
     if (current && !current.members.includes(me)) throw new SearchInputError('Accept or leave the invitation you have first.');
-    const household: Household = current ?? { id: crypto.randomUUID(), members: [me], invited: [], listings: [], votes: {}, notes: {} };
+    const household: Household = current ?? {
+      id: crypto.randomUUID(),
+      members: [me],
+      invited: [],
+      listings: [],
+      votes: {},
+      notes: {},
+      workplaces: {},
+    };
     if (household.members.length + household.invited.length >= MAX_MEMBERS && !household.invited.includes(partner))
       throw new SearchInputError(`A shared list can have up to ${MAX_MEMBERS} people.`);
     if (!household.members.includes(partner) && !household.invited.includes(partner)) household.invited.push(partner);
@@ -102,6 +113,10 @@ export async function changeHousehold(bucket: Bucket, email: string, change: Hou
     return current;
   }
   if (!current.members.includes(me)) throw new SearchInputError('Accept the invitation first.');
+  if (change.action === 'workplace') {
+    const { [me]: _previous, ...others } = current.workplaces;
+    return writeHousehold(bucket, { ...current, workplaces: change.workplace ? { ...others, [me]: change.workplace } : others });
+  }
   if (change.action === 'add') {
     const id = listingId(change.listing);
     if (!id) throw new SearchInputError('That apartment cannot be shared.');

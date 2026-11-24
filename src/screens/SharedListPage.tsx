@@ -6,7 +6,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
 import type { ListingData } from '../domain.ts';
 import { listingLinkLabel, orderedListingLinks } from '../listings.ts';
-import { formatRent, bedroomLabel } from '../search.ts';
+import { bedroomLabel, directionsLink, distanceMiles, formatRent } from '../search.ts';
 import { styles } from '../styles.ts';
 import { Button, Field, Link } from '../components/ui.tsx';
 
@@ -17,7 +17,9 @@ export type Household = {
   listings: ListingData[];
   votes: Record<string, Record<string, 'yes' | 'no'>>;
   notes: Record<string, { by: string; text: string; at: string }[]>;
+  workplaces?: Record<string, Place>;
 };
+type Place = { label: string; latitude: number; longitude: number };
 export type HouseholdReply = { household: Household | null; me: string };
 export type HouseholdRequest = (body?: Record<string, unknown>) => Promise<HouseholdReply>;
 
@@ -27,12 +29,16 @@ const title = (listing: ListingData) => (listing.unit ? `${listing.address}, Uni
 export function SharedListPage({
   request,
   saved,
+  lookUp,
   onError,
 }: {
   request?: HouseholdRequest;
   saved: ListingData[];
+  /** Finds a typed place: the same OpenStreetMap lookup as the commute destination. */
+  lookUp?: (place: string) => Promise<Place>;
   onError: (message: string) => void;
 }) {
+  const [work, setWork] = useState('');
   const [reply, setReply] = useState<HouseholdReply | null>(null);
   const [busy, setBusy] = useState(false);
   const [email, setEmail] = useState('');
@@ -122,6 +128,26 @@ export function SharedListPage({
       </View>
     );
   const shared = new Set(household.listings.map(({ id }) => id));
+  const workplaces = household.workplaces ?? {};
+  const commutes = Object.entries(workplaces).filter(([who]) => household.members.includes(who));
+  async function setWorkplace() {
+    if (!lookUp) return;
+    setBusy(true);
+    try {
+      const place = await lookUp(work.trim());
+      if (
+        await act({
+          action: 'workplace',
+          workplace: { label: place.label.slice(0, 160), latitude: place.latitude, longitude: place.longitude },
+        })
+      )
+        setWork('');
+    } catch (error) {
+      onError(error instanceof Error ? error.message : 'That place could not be found.');
+    } finally {
+      setBusy(false);
+    }
+  }
   const addable = saved.filter(({ id }) => !shared.has(id));
   return (
     <View style={styles.marketplacePanel}>
@@ -149,6 +175,17 @@ export function SharedListPage({
               {formatRent(listing.rent)} · {bedroomLabel(listing.bedrooms)} · {listing.city}
             </Text>
             {original?.url ? <Link label={listingLinkLabel(original)} url={original.url} onError={onError} /> : null}
+            {commutes.map(([who, place]) => {
+              const miles = distanceMiles(listing, place);
+              return (
+                <View key={who} style={styles.chipRow}>
+                  <Text style={styles.smallMuted}>
+                    {name(who)} to {place.label.split(',')[0]}: {miles === null ? 'distance unknown' : `${miles.toFixed(1)} mi`}
+                  </Text>
+                  <Link label={`${name(who)}’s transit directions`} url={directionsLink(listing, place)} onError={onError} />
+                </View>
+              );
+            })}
             <Text style={styles.bodyText}>
               {Object.keys(votes).length
                 ? Object.entries(votes)
@@ -216,6 +253,31 @@ export function SharedListPage({
           ))}
         </View>
       )}
+      <View style={styles.chartCard}>
+        <Text accessibilityRole="header" style={styles.fieldLabel}>
+          Where each of you commutes
+        </Text>
+        {commutes.length ? (
+          commutes.map(([who, place]) => (
+            <Text key={who} style={styles.smallMuted}>
+              {name(who)}: {place.label}
+            </Text>
+          ))
+        ) : (
+          <Text style={styles.smallMuted}>Add your work or school, and each apartment shows everyone’s trip.</Text>
+        )}
+        <Field label="Your work or school" value={work} onChangeText={setWork} placeholder="Rockefeller Center" maxLength={160} />
+        <View style={styles.chipRow}>
+          <Button secondary disabled={busy || !lookUp || work.trim().length < 3} onPress={() => void setWorkplace()}>
+            Set my commute
+          </Button>
+          {workplaces[me] && (
+            <Button secondary disabled={busy} onPress={() => act({ action: 'workplace', workplace: null })}>
+              Remove my commute
+            </Button>
+          )}
+        </View>
+      </View>
       {inviteForm}
       <Button secondary disabled={busy} onPress={() => act({ action: 'leave' })}>
         Leave the shared list

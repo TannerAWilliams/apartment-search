@@ -1082,6 +1082,7 @@ test('shared list: accept an invitation, share a saved apartment, vote and leave
       if (body.action === 'accept') household = { ...household, members: [...household.members, 'ben@example.test'], invited: [] };
       if (body.action === 'add') household = { ...household, listings: [body.listing] };
       if (body.action === 'vote') household = { ...household, votes: { [body.id]: { 'ben@example.test': body.vote } } };
+      if (body.action === 'workplace') household = { ...household, workplaces: { 'ben@example.test': body.workplace } } as typeof household;
       if (body.action === 'note')
         household = { ...household, notes: { [body.id]: [{ by: 'ben@example.test', text: body.text, at: now }] } };
     }
@@ -1098,7 +1099,14 @@ test('shared list: accept an invitation, share a saved apartment, vote and leave
   await page.getByRole('textbox', { name: 'Note on 12 Grove Street', exact: true }).fill('Great light');
   await page.getByRole('button', { name: 'Add note', exact: true }).click();
   await expect(page.getByText('ben: Great light', { exact: true })).toBeVisible();
-  expect(posts.map(({ action }) => action)).toEqual(['accept', 'add', 'vote', 'note']);
+  // Ben's commute shows on each shared apartment.
+  await page.route('**/api/geocode', (route) =>
+    route.fulfill({ json: { label: 'Penn Station, New York', latitude: 40.7506, longitude: -73.9935 } }),
+  );
+  await page.getByRole('textbox', { name: 'Your work or school', exact: true }).fill('Penn Station');
+  await page.getByRole('button', { name: 'Set my commute', exact: true }).click();
+  await expect(page.getByRole('link', { name: /ben’s transit directions/ })).toBeVisible();
+  expect(posts.map(({ action }) => action)).toEqual(['accept', 'add', 'vote', 'note', 'workplace']);
 });
 
 test('application kit: the income rule and a ready-written message for a saved apartment, kept on the device', async ({ page }) => {
