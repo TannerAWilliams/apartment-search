@@ -57,7 +57,7 @@
   // Stack traces in Workers Logs then point at the TypeScript source (server/log.ts writes them).
   "upload_source_maps": true
   // Secrets, set with `wrangler secret put`: ACCESS_ALLOWED_EMAILS (required for sign-in; comma-separated),
-  // BETTER_AUTH_SECRET (turns on email-code sign-in; `openssl rand -base64 32`), 
+  // BETTER_AUTH_SECRET (turns on email-code sign-in; `openssl rand -base64 32`),
   // APP_ACCESS_TOKEN (for scripts) and VAPID_PRIVATE_KEY (alert notifications). Optional: TRAVELTIME_APP_ID, TRAVELTIME_API_KEY,
   // FREE_PARTNER_FEEDS_JSON. Local values go in deploy/cloudflare/.dev.vars (see .dev.vars.example).
 }
