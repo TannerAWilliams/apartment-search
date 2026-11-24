@@ -11,7 +11,7 @@ import type { AffordableHousing } from '../screens/AffordableHousing.tsx';
 import type { AlertState } from '../screens/AlertsPage.tsx';
 import type { HouseholdReply } from '../screens/SharedListPage.tsx';
 import type { NeighborhoodReport } from '../screens/NeighborhoodsPage.tsx';
-import type { Member, PlatformSettings, SettingsChange } from '../screens/ProfilePage.tsx';
+import type { BillingState, Member, PlatformSettings, SettingsChange } from '../screens/ProfilePage.tsx';
 import type { ListingData, SearchFilters, SearchResult } from '../domain.ts';
 import type { Listing } from '../components/Listing.tsx';
 import type { RentChart } from '../components/RentChart.tsx';
@@ -265,6 +265,12 @@ export function useServer({ appliedFilters, searchVersion, submitted, setResult,
     (name: string) => api<NeighborhoodReport>('neighborhood?' + new URLSearchParams({ name }), { token: activeToken }),
     [activeToken, lastCheckedAt],
   );
+  /** The account's payments: read them, or open Stripe Checkout or the billing portal. */
+  const billingRequest = useCallback(
+    (body?: { action: 'checkout'; plan: 'monthly' | 'pass' } | { action: 'portal' }) =>
+      api<BillingState & { url?: string }>('billing', body ? { body, token: activeToken } : { token: activeToken }),
+    [activeToken],
+  );
   const loadHousing = useCallback(
     (signal?: AbortSignal) =>
       api<Awaited<ReturnType<NonNullable<React.ComponentProps<typeof AffordableHousing>['loadHousing']>>>>('housing', {
@@ -323,6 +329,7 @@ export function useServer({ appliedFilters, searchVersion, submitted, setResult,
     plan,
     membersRequest,
     householdRequest,
+    billingRequest,
     loadNeighborhoodReport,
     configuredSources,
     companies,

@@ -45,7 +45,7 @@ async function alertAction(
 const STORAGE = 'Alerts need saved storage.';
 /** The signed-in account an alert belongs to, in lower case; none for the app's own token or a public app. */
 const ownerOf = (account: string | null | undefined) => (account ? account.toLowerCase() : undefined);
-const PAID_ONLY = 'Email alerts are part of the paid plan. Ask an admin to upgrade your account.';
+const PAID_ONLY = 'Email alerts are part of the paid plan. Upgrade on your Profile page.';
 /** Actions a free account may still take: removing what it set up before. */
 const FREE_ACTIONS = new Set(['delete-rule', 'remove-device']);
 

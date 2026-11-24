@@ -176,7 +176,7 @@ export function AlertsPage({
           </Text>
           <Text style={styles.bodyText}>
             On the paid plan, Walkup emails you when a new apartment matches what you want, like a West Village 2 BR under $5,000, or 1 to 3
-            bedrooms anywhere in Brooklyn under $2,500. Ask an admin to upgrade your account.
+            bedrooms anywhere in Brooklyn under $2,500. Upgrade on your Profile page.
           </Text>
           {state.rules.map((rule) => (
             <View key={rule.id} style={styles.chipRow}>

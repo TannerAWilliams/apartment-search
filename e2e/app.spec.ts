@@ -169,6 +169,10 @@ async function mockApp(
       data = { members };
     } else if (url.pathname === '/api/alerts' && options.plan === 'free') {
       data = { rules: [], recent: [], devices: [], channels: { email: true, push: null }, plan: 'free' };
+    } else if (url.pathname === '/api/billing' && options.account) {
+      data = body
+        ? { url: 'https://checkout.stripe.test/session' }
+        : { available: true, plans: { monthly: '$15 a month', pass: '$35 for 3 months' } };
     } else if (url.pathname === '/api/saved' && options.account) {
       if (body) savedOnAccount = body.listings;
       data = { listings: savedOnAccount };
@@ -1038,6 +1042,8 @@ test('profile: a free member’s saved listings are kept on the account, and ale
   await page.getByRole('tab', { name: 'Profile', exact: true }).click();
   await expect(page.getByText('Free plan', { exact: true })).toBeVisible();
   await expect(page.getByText('Part of the paid plan', { exact: true })).toBeVisible();
+  await expect(page.getByText('Upgrade for email alerts', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '$35 for 3 months', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Saved listings (1)', exact: true })).toBeVisible();
   await expect(page.getByRole('switch', { name: 'Nightly resync' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Sources & sync', exact: true })).toHaveCount(0);
@@ -1203,4 +1209,13 @@ test('renewal check compares the rent with similar apartments, or the Rent Guide
   ).toBeVisible();
   await page.getByRole('button', { name: 'My apartment is rent-stabilized', exact: true }).click();
   await expect(page.getByText(/3% for a one-year lease \(\$5,150\)/)).toBeVisible();
+});
+
+test('profile: a free member upgrades through Stripe Checkout', async ({ page }) => {
+  const { requests } = await mockApp(page, { account: 'renter@example.test', admin: false, plan: 'free' });
+  await page.getByRole('tab', { name: 'Profile', exact: true }).click();
+  await page.getByRole('button', { name: '$15 a month', exact: true }).click();
+  await expect
+    .poll(() => requests.find(({ path, method }) => path === '/api/billing' && method === 'POST')?.body)
+    .toEqual({ action: 'checkout', plan: 'monthly' });
 });

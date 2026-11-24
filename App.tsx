@@ -110,6 +110,7 @@ function ApartmentSearch() {
     plan,
     membersRequest,
     householdRequest,
+    billingRequest,
     loadNeighborhoodReport,
     configuredSources,
     companies,
@@ -519,6 +520,7 @@ function ApartmentSearch() {
                     account={account}
                     admin={admin}
                     plan={plan}
+                    billingRequest={serverState === 'ready' && account ? billingRequest : undefined}
                     membersRequest={serverState === 'ready' ? membersRequest : undefined}
                     savedCount={savedResults.total}
                     onOpen={navigateTab}

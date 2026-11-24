@@ -7,6 +7,7 @@ import * as v from 'valibot';
 import type { AppEnv, Bucket } from './contracts.ts';
 import { addresses, adminEmails } from './roles.ts';
 import { checkedDocument } from './storage/stored-documents.ts';
+import { billedEmails } from './billing.ts';
 
 export type Plan = 'free' | 'paid';
 const PLANS_KEY = 'settings/plans.json';
@@ -17,9 +18,14 @@ export async function readPaidList(bucket: Bucket): Promise<string[]> {
   return (object && checkedDocument(PlansSchema, await object.json().catch(() => null), PLANS_KEY)?.paid) ?? [];
 }
 
-/** Every address on the paid plan: admins, PAID_EMAILS and the accounts an admin marked paid. */
-export async function paidEmails(env: AppEnv, bucket: Bucket) {
-  return new Set([...adminEmails(env), ...addresses(env.PAID_EMAILS), ...(await readPaidList(bucket))]);
+/** Every address on the paid plan: admins, PAID_EMAILS, accounts an admin marked paid, and paid-up subscribers. */
+export async function paidEmails(env: AppEnv, bucket: Bucket, now = new Date()) {
+  return new Set([
+    ...adminEmails(env),
+    ...addresses(env.PAID_EMAILS),
+    ...(await readPaidList(bucket)),
+    ...(await billedEmails(bucket, now)),
+  ]);
 }
 
 /** The caller's plan. No account means the app's own token or a public app, which have every feature. */

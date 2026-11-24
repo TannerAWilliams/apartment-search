@@ -59,6 +59,11 @@ export type AppEnv = {
   ADMIN_EMAILS?: string;
   /** Accounts on the paid plan besides those an admin marks paid (server/plans.ts). */
   PAID_EMAILS?: string;
+  /** Stripe payments (server/billing.ts). */
+  STRIPE_SECRET_KEY?: string;
+  STRIPE_WEBHOOK_SECRET?: string;
+  STRIPE_PRICE_MONTHLY?: string;
+  STRIPE_PRICE_PASS?: string;
   /** The app's address, for links in alerts. */
   APP_ORIGIN?: string;
   /** Cloudflare Email Service binding and the sender on an Email Routing domain. */

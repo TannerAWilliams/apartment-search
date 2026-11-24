@@ -3,7 +3,7 @@
  * the platform's settings: the nightly resync switch and the sources page.
  */
 import { useCallback, useEffect, useState } from 'react';
-import { Pressable, Switch, Text, View } from 'react-native';
+import { Linking, Platform, Pressable, Switch, Text, View } from 'react-native';
 import { Button } from '../components/ui.tsx';
 import { colors, styles } from '../styles.ts';
 
@@ -33,6 +33,79 @@ export function lastNightlyText(last: Run | undefined) {
   const failed = last.failed ? `, ${last.failed} failed` : '';
   const background = last.background ? '; the slower sources continued in the background' : '';
   return `Last run ${when}: ${updated}${failed}${background}.`;
+}
+
+export type BillingState = {
+  available: boolean;
+  plans: { monthly: string; pass: string };
+  plan?: 'monthly' | 'pass';
+  until?: string;
+  manage?: boolean;
+};
+type BillingRequest = (
+  body?: { action: 'checkout'; plan: 'monthly' | 'pass' } | { action: 'portal' },
+) => Promise<BillingState & { url?: string }>;
+
+/** Opens Stripe's page: in this tab on the web, in the browser in the app. */
+function openPage(url: string) {
+  if (Platform.OS === 'web') window.location.assign(url);
+  else void Linking.openURL(url);
+}
+
+/** The plan: upgrade through Stripe, or when paid, until when and a link to manage the subscription. */
+function PlanCard({ plan, request, onError }: { plan: 'free' | 'paid'; request: BillingRequest; onError: (message: string) => void }) {
+  const [billing, setBilling] = useState<BillingState | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    request()
+      .then(setBilling)
+      .catch(() => setBilling(null));
+  }, [request]);
+  async function go(body: Parameters<BillingRequest>[0]) {
+    setBusy(true);
+    try {
+      const { url } = await request(body);
+      if (url) openPage(url);
+    } catch (error) {
+      onError(error instanceof Error ? error.message : 'Payments are unavailable right now.');
+    } finally {
+      setBusy(false);
+    }
+  }
+  if (!billing) return null;
+  if (billing.until)
+    return (
+      <View style={[styles.menu, styles.menuRow]}>
+        <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+          <Text style={styles.menuLabel}>{billing.plan === 'monthly' ? 'Paid monthly' : 'Three-month pass'}</Text>
+          <Text style={styles.smallMuted}>
+            {billing.plan === 'monthly' ? 'Renews' : 'Paid'} until {new Date(billing.until).toLocaleDateString('en-US')}
+          </Text>
+        </View>
+        {billing.manage && (
+          <Button secondary disabled={busy} onPress={() => void go({ action: 'portal' })}>
+            Manage billing
+          </Button>
+        )}
+      </View>
+    );
+  if (plan === 'paid' || !billing.available) return null;
+  return (
+    <View style={[styles.menu, { padding: 16, gap: 10 }]}>
+      <Text style={styles.menuLabel}>Upgrade for email alerts</Text>
+      <Text style={styles.smallMuted}>
+        Hear about new apartments that match within a couple of hours, checked all day. Cancel anytime; payments are handled by Stripe.
+      </Text>
+      <View style={styles.chipRow}>
+        <Button disabled={busy} onPress={() => void go({ action: 'checkout', plan: 'monthly' })}>
+          {billing.plans.monthly}
+        </Button>
+        <Button secondary disabled={busy} onPress={() => void go({ action: 'checkout', plan: 'pass' })}>
+          {billing.plans.pass}
+        </Button>
+      </View>
+    </View>
+  );
 }
 
 export type SettingsChange = { nightlyResync?: boolean; daytimeChecks?: boolean };
@@ -117,6 +190,7 @@ export function ProfilePage({
   account,
   admin,
   plan,
+  billingRequest,
   membersRequest,
   savedCount,
   onOpen,
@@ -127,6 +201,7 @@ export function ProfilePage({
   account: string | null;
   admin: boolean;
   plan: 'free' | 'paid';
+  billingRequest?: BillingRequest;
   membersRequest?: (body?: { email: string; paid: boolean }) => Promise<{ members: Member[] }>;
   savedCount: number;
   onOpen: (tab: string) => void;
@@ -191,6 +266,7 @@ export function ProfilePage({
           </Button>
         </View>
       )}
+      {account && billingRequest && !admin && <PlanCard plan={plan} request={billingRequest} onError={onError} />}
       <Text accessibilityRole="header" style={styles.fieldLabel}>
         Your apartments
       </Text>

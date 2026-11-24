@@ -272,3 +272,10 @@ test('a broken nightly run is logged, not thrown', async () => {
   };
   await worker.scheduled({}, broken as unknown as Parameters<typeof worker.scheduled>[1], { waitUntil: () => {} });
 });
+
+test('Stripe reaches its webhook without signing in, and nothing else does', async () => {
+  const { env } = await environment();
+  const response = await call({ ...env, STRIPE_WEBHOOK_SECRET: 'whsec_x' }, '/api/billing/webhook', { method: 'POST', body: '{}' }, null);
+  expect(response.status, 'unsigned').toBe(400);
+  expect((await call(env, '/api/billing', {}, null)).status).toBe(401);
+});

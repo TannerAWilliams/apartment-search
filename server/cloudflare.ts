@@ -1,4 +1,5 @@
 import { type Context, Hono } from 'hono';
+import { stripeWebhook } from './billing.ts';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import * as v from 'valibot';
 import { api } from './api.ts';
@@ -130,6 +131,9 @@ app.on(['GET', 'POST'], '/api/auth/*', async (c): Promise<Response> => {
   const auth = authFor(c.env);
   return auth ? auth.handler(c.req.raw) : fail(c, 404, 'Not found.');
 });
+
+// Stripe reports payments here (server/billing.ts). It cannot sign in, so its signature is checked instead.
+app.post('/api/billing/webhook', (c) => stripeWebhook(c.env, createD1Bucket(c.env.APARTMENTS), c.req.raw));
 
 // The deployed app is private. People sign in with an email code (Better Auth, server/auth.ts); scripts such
 // as the StreetEasy home sync send the app access token instead. The app's own pages load signed out, so they
