@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
 import { formatRent } from '../search.ts';
-import { styles } from '../styles.ts';
+import { colors, styles } from '../styles.ts';
 
 type Run = { at: string; updated: number; failed: number } | null;
 type Loaded = { checkedAt: string | null; count: number };
@@ -13,6 +13,7 @@ export type AdminStats = {
   data: { stabilizedBuildings: Loaded; subwayStations: Loaded; buildingsChecked: number };
   sources: { total: number; failed: string[]; lastCheckedAt: string | null };
   runs: { nightly: Run; daytime: Run };
+  funnel?: { days: number; signups: number; search: number; save: number; alert: number; checkout: number; paid: number };
 };
 
 const when = (value: string | null | undefined) => (value ? new Date(value).toLocaleString('en-US') : 'never');
@@ -63,6 +64,30 @@ export function AdminPage({ load, onError }: { load?: () => Promise<AdminStats>;
             />
             <Tile label="Notification devices" value={count(stats.alerts.devices)} />
           </View>
+          {stats.funnel && (
+            <View style={styles.chartCard}>
+              <Text accessibilityRole="header" style={styles.fieldLabel}>
+                Last {stats.funnel.days} days
+              </Text>
+              <View style={[styles.chipRow, { alignItems: 'stretch' }]}>
+                {(
+                  [
+                    ['Sign-ups', stats.funnel.signups],
+                    ['Searches', stats.funnel.search],
+                    ['Saves', stats.funnel.save],
+                    ['Alerts set', stats.funnel.alert],
+                    ['Checkouts started', stats.funnel.checkout],
+                    ['Payments', stats.funnel.paid],
+                  ] as const
+                ).map(([label, value]) => (
+                  <View key={label} style={{ flexGrow: 1, flexBasis: 100, gap: 2 }}>
+                    <Text style={styles.smallMuted}>{label}</Text>
+                    <Text style={{ fontSize: 22, fontWeight: '600', color: colors.ink }}>{count(value)}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          )}
           <View style={styles.chartCard}>
             <Text accessibilityRole="header" style={styles.fieldLabel}>
               Sources and runs

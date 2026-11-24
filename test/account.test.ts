@@ -105,7 +105,7 @@ test('a running subscription must be cancelled before deleting the account', asy
 });
 
 test('the admin dashboard counts members, payments, alerts, data and runs', async () => {
-  const { bucket, env } = await setUp();
+  const { bucket, d1, env } = await setUp();
   await applyStripeEvent(bucket, {
     id: 'e1',
     type: 'checkout.session.completed',
@@ -119,7 +119,11 @@ test('the admin dashboard counts members, payments, alerts, data and runs', asyn
   await bucket.put('buildings/stabilized.json', JSON.stringify({ checkedAt: '2026-11-01T00:00:00Z', buildings: { a: 1, b: 2 } }));
   await bucket.put('transit/stations.json', 'not json');
   const stats = await readJson<Record<string, Record<string, unknown>>>(
-    handleApi(request('admin/stats'), { ...env, ACCESS_ALLOWED_EMAILS: `owner@example.test,${ME},free@example.test` }, { admin: true }),
+    handleApi(
+      request('admin/stats'),
+      { ...env, ACCESS_ALLOWED_EMAILS: `owner@example.test,${ME},free@example.test` },
+      { admin: true, database: d1 },
+    ),
   );
   expect(stats.members).toEqual({ total: 5, paid: 4, free: 1 });
   expect(stats.payments).toEqual({ monthly: 1, passes: 1, estimatedMonthlyRevenue: 27 });
@@ -131,6 +135,7 @@ test('the admin dashboard counts members, payments, alerts, data and runs', asyn
   });
   expect(stats.sources).toMatchObject({ total: 0, failed: [] });
   expect(stats.runs).toEqual({ nightly: null, daytime: null });
+  expect(stats.funnel).toMatchObject({ days: 30, signups: 2 });
   expect((await handleApi(request('admin/stats'), env, { admin: false })).status).toBe(403);
 });
 

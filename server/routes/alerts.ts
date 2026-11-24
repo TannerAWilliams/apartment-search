@@ -1,4 +1,5 @@
 /** GET and POST /api/alerts: saved alerts, the devices that get notifications, and a test alert. */
+import { recordEvent } from '../ops.ts';
 import { vValidator } from '@hono/valibot-validator';
 import type * as v from 'valibot';
 import type { AppEnv, Bucket } from '../contracts.ts';
@@ -15,8 +16,10 @@ async function alertAction(
   owner: string | undefined,
 ) {
   const bucket = env.BUCKET;
-  if (body.action === 'add-rule') await addRule(bucket, body.rule, alertMatches(env), new Date(), owner);
-  else if (body.action === 'delete-rule') await deleteRule(bucket, body.id, owner);
+  if (body.action === 'add-rule') {
+    await addRule(bucket, body.rule, alertMatches(env), new Date(), owner);
+    await recordEvent(bucket, 'alert');
+  } else if (body.action === 'delete-rule') await deleteRule(bucket, body.id, owner);
   else if (body.action === 'add-device') await addDevice(bucket, body.subscription, body.label, new Date(), owner);
   else if (body.action === 'remove-device') await removeDevice(bucket, body.endpoint, owner);
   else {

@@ -12,6 +12,8 @@ import type { AppEnv, Bucket, SourceFetch } from './contracts.ts';
 import { log } from './log.ts';
 import { refreshSources } from './refresh.ts';
 import { runAlerts } from './alerts.ts';
+import { warnAboutFailures } from './ops.ts';
+import { isDigestHour, runDigest } from './digest.ts';
 import type { SyncJob } from './routes/context.ts';
 import { checkedDocument } from './storage/stored-documents.ts';
 
@@ -61,6 +63,7 @@ export async function runScheduled(env: AppEnv & { BUCKET: Bucket }, deps: Sched
   const now = deps.now ?? new Date();
   if (isNightlyHour(now)) return runNightly(env, { ...deps, now });
   if (isDaytimeHour(now)) return runDaytime(env, { fetcher: deps.fetcher, now });
+  if (isDigestHour(now)) return `digest:${await runDigest(env, { now })}`;
   return 'idle';
 }
 
@@ -96,6 +99,12 @@ export async function runNightly(
   const checked = result.sources.filter(({ checkedAt }) => checkedAt === now.toISOString());
   const updated = checked.filter(({ status }) => status === 'updated' || status === 'current').length;
   const failed = checked.filter(({ status }) => status === 'failed').length;
+  // Admins hear about sources that were working and now fail.
+  await warnAboutFailures(
+    env,
+    result.sources.filter(({ status }) => status === 'failed').map(({ name }) => name),
+    now,
+  );
   let background = false;
   if (syncJob) {
     try {

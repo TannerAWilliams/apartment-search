@@ -1,4 +1,5 @@
 /** GET and POST /api/billing: the account's plan and payments, Stripe Checkout and the billing portal (server/billing.ts). */
+import { recordEvent } from '../ops.ts';
 import { vValidator } from '@hono/valibot-validator';
 import { billingFor, checkoutUrl, portalUrl } from '../billing.ts';
 import { apiBodies, factory, fail, needsStorage, refuse } from './context.ts';
@@ -20,6 +21,7 @@ export const billingRoutes = factory
     const env = c.var.appEnv;
     const origin = env.APP_ORIGIN ?? new URL(c.req.url).origin;
     const body = c.req.valid('json');
+    if (body.action === 'checkout') await recordEvent(c.var.bucket, 'checkout');
     const url =
       body.action === 'checkout'
         ? await checkoutUrl(env, account, body.plan, origin, c.var.services.fetcher)

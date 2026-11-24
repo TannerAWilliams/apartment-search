@@ -7,6 +7,7 @@
  * Settings: STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET (secrets), STRIPE_PRICE_MONTHLY and STRIPE_PRICE_PASS (the
  * two Stripe price IDs). Without them, payments are off and an admin upgrades accounts by hand.
  */
+import { recordEvent } from './ops.ts';
 import * as v from 'valibot';
 import { isRecord } from '../src/domain.ts';
 import type { FetchTransport } from '../src/fetch-type.ts';
@@ -176,6 +177,7 @@ export async function stripeWebhook(env: AppEnv, bucket: Bucket, request: Reques
   )
     return new Response('Invalid signature.', { status: 400 });
   const result = await applyStripeEvent(bucket, JSON.parse(body), now);
+  if (result === 'paid') await recordEvent(bucket, 'paid', now);
   log.info('stripe_event', { result });
   return Response.json({ received: true, result });
 }

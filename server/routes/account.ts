@@ -26,5 +26,5 @@ export const accountRoutes = factory
   })
   .get('/admin/stats', needsStorage(STORAGE), async (c) => {
     if (!c.var.services.admin) return fail(c, 403, 'Only an admin can see the dashboard.');
-    return c.json(await adminStats({ ...c.var.appEnv, BUCKET: c.var.bucket }), 200);
+    return c.json(await adminStats({ ...c.var.appEnv, BUCKET: c.var.bucket }, new Date(), c.var.services.database), 200);
   });

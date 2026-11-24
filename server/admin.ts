@@ -3,6 +3,8 @@
  * plans, what payments bring in each month (estimated from the plan prices), alerts, the public data loaded, and
  * the sources and scheduled runs.
  */
+import { funnel } from './ops.ts';
+import type { D1Database } from './storage/d1-bucket.ts';
 import { readRecent, readRules, readDevices } from './alerts.ts';
 import { readBilling } from './billing.ts';
 import { readBuildingFacts } from './building-facts.ts';
@@ -26,7 +28,15 @@ async function documentDate(bucket: Bucket, key: string) {
   };
 }
 
-export async function adminStats(env: AppEnv & { BUCKET: Bucket }, now = new Date()) {
+/** Accounts created in the last 30 days, from the sign-in database. */
+async function recentSignups(database: D1Database | undefined, now: Date) {
+  if (!database) return 0;
+  const since = new Date(now.getTime() - 30 * 86_400_000).toISOString();
+  const row = await database.prepare('SELECT count(*) AS count FROM "user" WHERE "createdAt" >= ?1').bind(since).first<{ count: number }>();
+  return Number(row?.count ?? 0);
+}
+
+export async function adminStats(env: AppEnv & { BUCKET: Bucket }, now = new Date(), database?: D1Database) {
   const bucket = env.BUCKET;
   const [paid, billing, rules, devices, recent, settings, status, facts, registry, stations] = await Promise.all([
     paidEmails(env, bucket, now),
@@ -62,5 +72,6 @@ export async function adminStats(env: AppEnv & { BUCKET: Bucket }, now = new Dat
       lastCheckedAt: status.lastCheckedAt,
     },
     runs: { nightly: settings.lastNightly ?? null, daytime: settings.lastDaytime ?? null },
+    funnel: await funnel(bucket, 30, now, await recentSignups(database, now)),
   };
 }

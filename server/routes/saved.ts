@@ -1,4 +1,5 @@
 /** GET and POST /api/saved: the signed-in account's saved listings. Without an account they stay on the device. */
+import { recordEvent } from '../ops.ts';
 import { vValidator } from '@hono/valibot-validator';
 import { readSaved, writeSaved } from '../saved.ts';
 import { apiBodies, factory, fail, needsStorage, refuse } from './context.ts';
@@ -17,5 +18,8 @@ export const savedRoutes = factory
   .post('/saved', needsStorage(STORAGE), apiBodies, vValidator('json', SavedRequestSchema, refuse), async (c) => {
     const account = c.var.services.account;
     if (!account) return fail(c, 404, NO_ACCOUNT);
-    return c.json({ listings: await writeSaved(c.var.bucket, account, c.req.valid('json').listings) }, 200);
+    const before = (await readSaved(c.var.bucket, account)).length;
+    const listings = await writeSaved(c.var.bucket, account, c.req.valid('json').listings);
+    if (listings.length > before) await recordEvent(c.var.bucket, 'save');
+    return c.json({ listings }, 200);
   });
