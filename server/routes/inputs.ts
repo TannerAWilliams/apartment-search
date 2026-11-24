@@ -154,6 +154,31 @@ export const PlanRequestSchema = v.object({
   paid: v.boolean('Say whether the account is paid.'),
 });
 const SETTING = 'Say whether the nightly resync or the daytime checks are on.';
+const ID = 'Name the apartment.';
+const listingIdSchema = v.pipe(v.string(ID), v.minLength(1, ID), v.maxLength(300, ID));
+/** A change to the signed-in account's shared list (server/households.ts). */
+export const HouseholdRequestSchema = v.variant(
+  'action',
+  [
+    v.object({ action: v.literal('invite'), email: v.pipe(v.string(EMAIL), v.trim(), v.email(EMAIL), v.maxLength(254, EMAIL)) }),
+    v.object({ action: v.literal('accept') }),
+    v.object({ action: v.literal('leave') }),
+    v.object({ action: v.literal('add'), listing: v.unknown() }),
+    v.object({ action: v.literal('remove'), id: listingIdSchema }),
+    v.object({ action: v.literal('vote'), id: listingIdSchema, vote: v.nullable(v.picklist(['yes', 'no'], 'Vote yes or no.')) }),
+    v.object({
+      action: v.literal('note'),
+      id: listingIdSchema,
+      text: v.pipe(
+        v.string('Write a note.'),
+        v.trim(),
+        v.minLength(1, 'Write a note.'),
+        v.maxLength(500, 'Keep notes under 500 characters.'),
+      ),
+    }),
+  ],
+  'Choose a shared-list action.',
+);
 export const SettingsRequestSchema = v.pipe(
   v.object({ nightlyResync: v.optional(v.boolean(SETTING)), daytimeChecks: v.optional(v.boolean(SETTING)) }, SETTING),
   v.check((change) => change.nightlyResync !== undefined || change.daytimeChecks !== undefined, SETTING),

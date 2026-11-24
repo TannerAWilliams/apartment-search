@@ -1056,3 +1056,60 @@ test('cards show the building’s grade, rent stabilization, the price against s
     page.getByText(/Building grade A: Registers rent-stabilized units with the state · 0 open HPD violations/).first(),
   ).toBeVisible();
 });
+
+test('shared list: accept an invitation, share a saved apartment, vote and leave a note', async ({ page }) => {
+  await mockApp(page, { account: 'ben@example.test', admin: false });
+  let household = {
+    id: 'h1',
+    members: ['ana@example.test'],
+    invited: ['ben@example.test'],
+    listings: [] as { id: string }[],
+    votes: {} as Record<string, Record<string, string>>,
+    notes: {} as Record<string, { by: string; text: string; at: string }[]>,
+  };
+  const posts: Record<string, unknown>[] = [];
+  await page.route('**/api/household', async (route) => {
+    const body = route.request().postDataJSON();
+    if (body) {
+      posts.push(body);
+      if (body.action === 'accept') household = { ...household, members: [...household.members, 'ben@example.test'], invited: [] };
+      if (body.action === 'add') household = { ...household, listings: [body.listing] };
+      if (body.action === 'vote') household = { ...household, votes: { [body.id]: { 'ben@example.test': body.vote } } };
+      if (body.action === 'note')
+        household = { ...household, notes: { [body.id]: [{ by: 'ben@example.test', text: body.text, at: now }] } };
+    }
+    return route.fulfill({ json: { household, me: 'ben@example.test' } });
+  });
+  await page.getByRole('button', { name: 'Save apartment', exact: true }).first().click();
+  await page.getByRole('tab', { name: 'Profile', exact: true }).click();
+  await page.getByRole('button', { name: 'Shared list', exact: true }).click();
+  await expect(page.getByText('ana invited you to their shared list.', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Join the shared list', exact: true }).click();
+  await page.getByRole('button', { name: 'Share 12 Grove Street', exact: true }).click();
+  await page.getByRole('button', { name: 'Yes to 12 Grove Street', exact: true }).click();
+  await expect(page.getByText('ben: yes', { exact: true })).toBeVisible();
+  await page.getByRole('textbox', { name: 'Note on 12 Grove Street', exact: true }).fill('Great light');
+  await page.getByRole('button', { name: 'Add note', exact: true }).click();
+  await expect(page.getByText('ben: Great light', { exact: true })).toBeVisible();
+  expect(posts.map(({ action }) => action)).toEqual(['accept', 'add', 'vote', 'note']);
+});
+
+test('application kit: the income rule and a ready-written message for a saved apartment, kept on the device', async ({ page }) => {
+  await mockApp(page);
+  await page.getByRole('button', { name: 'Save apartment', exact: true }).first().click();
+  await page.getByRole('tab', { name: 'Profile', exact: true }).click();
+  await page.getByRole('button', { name: 'Application kit', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Full name', exact: true }).fill('Alex Rivera');
+  await page.getByRole('textbox', { name: 'Annual income before tax', exact: true }).fill('120000');
+  await expect(page.getByText(/yours fits rents up to \$3,000/)).toBeVisible();
+  await page.getByRole('button', { name: 'Photo ID (driver’s license or passport)', exact: true }).click();
+  await expect(page.getByText('Documents to have ready (1 of 7)', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '12 Grove Street', exact: true }).click();
+  await expect(page.getByText(/I'm interested in 12 Grove Street/)).toBeVisible();
+  await expect(page.getByText(/Your income meets the usual rule/)).toBeVisible();
+  // Kept on this device.
+  await page.reload();
+  await page.getByRole('tab', { name: 'Profile', exact: true }).click();
+  await page.getByRole('button', { name: 'Application kit', exact: true }).click();
+  await expect(page.getByRole('textbox', { name: 'Full name', exact: true })).toHaveValue('Alex Rivera');
+});

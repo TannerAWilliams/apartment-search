@@ -56,6 +56,8 @@ const SavedComparison = lazy(() => import('./src/components/SavedComparison.tsx'
 const TourPlanner = lazy(() => import('./src/components/TourPlanner.tsx').then((module) => ({ default: module.TourPlanner })));
 const RentChart = lazy(() => import('./src/components/RentChart.tsx').then((module) => ({ default: module.RentChart })));
 const ProfilePage = lazy(() => import('./src/screens/ProfilePage.tsx').then((module) => ({ default: module.ProfilePage })));
+const SharedListPage = lazy(() => import('./src/screens/SharedListPage.tsx').then((module) => ({ default: module.SharedListPage })));
+const ApplyPage = lazy(() => import('./src/screens/ApplyPage.tsx').then((module) => ({ default: module.ApplyPage })));
 const AlertsPage = lazy(() => import('./src/screens/AlertsPage.tsx').then((module) => ({ default: module.AlertsPage })));
 
 function ApartmentSearch() {
@@ -103,6 +105,7 @@ function ApartmentSearch() {
     admin,
     plan,
     membersRequest,
+    householdRequest,
     configuredSources,
     companies,
     sourceCatalog,
@@ -561,6 +564,14 @@ function ApartmentSearch() {
                     onError={setError}
                   />
                 )}
+                {tab === 'shared' && (
+                  <SharedListPage
+                    request={serverState === 'ready' && account ? householdRequest : undefined}
+                    saved={saved}
+                    onError={setError}
+                  />
+                )}
+                {tab === 'apply' && <ApplyPage saved={saved} onError={setError} />}
                 {tab === 'affordable' && (
                   <AffordableHousing
                     region={applied.region}

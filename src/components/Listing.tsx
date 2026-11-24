@@ -1,4 +1,5 @@
 import type { ListingData, SourceLink, Workplace } from '../domain.ts';
+import { typicalCosts } from '../move-in.ts';
 import { buildingGrade, marketBadge, type BuildingFacts } from '../insights.ts';
 import type { CheckBuilding } from './BuildingReport.tsx';
 import { BuildingReport } from './BuildingReport.tsx';
@@ -27,6 +28,30 @@ const CHECK_TIME = new Intl.DateTimeFormat('en-US', {
   minute: '2-digit',
   timeZoneName: 'short',
 });
+/** About what the apartment costs each month and to move in, from typical amounts and the state's rules. */
+function TypicalCost({ listing }: { listing: ListingData }) {
+  if (!(listing.rent > 0)) return null;
+  const cost = typicalCosts(listing);
+  return (
+    <View style={{ gap: 4 }}>
+      <Text style={styles.fieldLabel}>
+        About {formatRent(cost.monthly)} a month all in · {formatRent(cost.moveIn + cost.possibleBrokerFee)} to move in
+      </Text>
+      <Text style={styles.smallMuted}>
+        Monthly: rent {formatRent(cost.parts.rent)}, electricity and gas about {formatRent(cost.parts.utilities)}, internet{' '}
+        {formatRent(cost.parts.internet)}, renter’s insurance {formatRent(cost.parts.insurance)}. Move-in: first month, a{' '}
+        {formatRent(cost.moveInParts.deposit)} deposit and a {formatRent(cost.moveInParts.applicationFee)} application fee
+        {cost.possibleBrokerFee ? `, and possibly a ${formatRent(cost.possibleBrokerFee)} broker fee` : ''}.
+      </Text>
+      {cost.notes.map((note) => (
+        <Text key={note} style={styles.smallMuted}>
+          {note}
+        </Text>
+      ))}
+    </View>
+  );
+}
+
 /** A building's grade and the records behind it, as of its last check. */
 function BuildingSummary({ facts }: { facts: BuildingFacts }) {
   const grade = buildingGrade(facts);
@@ -227,6 +252,7 @@ export function Listing({
             {listing.building && <BuildingSummary facts={listing.building} />}
             <CommuteDetails listing={listing} />
             <PriceHistory value={listing.priceHistory} />
+            <TypicalCost listing={listing} />
             <Disclosure title="Estimate the full cost of renting">
               <HousingCost />
             </Disclosure>

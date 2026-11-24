@@ -86,7 +86,7 @@ export function useAccountSaved(
 }
 
 /** The tabs the URL hash can name; anything else opens Search. */
-const APP_TABS = ['results', 'saved', 'more', 'sources', 'chart', 'marketplaces', 'affordable', 'alerts'];
+const APP_TABS = ['results', 'saved', 'more', 'sources', 'chart', 'marketplaces', 'affordable', 'alerts', 'shared', 'apply'];
 
 /**
  * The current time, updated when the shown live inventory reaches its expiry and whenever the app

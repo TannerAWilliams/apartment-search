@@ -11,6 +11,7 @@ import {
   TOUR_CHECKLIST,
   parseTours,
   validateTours,
+  walkingPlan,
   localTourStart,
   moveTour,
   chronologicalTours,
@@ -146,6 +147,14 @@ export function TourPlanner({ listings, open: shown }: { listings: ListingData[]
   const routeTours = toursOnDay(tours, selectedDay);
   const overlaps = overlappingTourIds(tours),
     route = tourRoute(routeTours);
+  const places = new Map(
+    listings.flatMap((listing) =>
+      typeof listing.latitude === 'number' && typeof listing.longitude === 'number'
+        ? [[listingKey(listing), { latitude: listing.latitude, longitude: listing.longitude }] as const]
+        : [],
+    ),
+  );
+  const walk = walkingPlan(chronologicalTours(routeTours), places);
   // Controlled and closed: render nothing, so the parent's spacing does not leave a gap.
   if (shown === false) return null;
   return (
@@ -284,6 +293,18 @@ export function TourPlanner({ listings, open: shown }: { listings: ListingData[]
                     {selectedDay}: {routeTours.length} stops. Day selection changes only the route, not your saved appointments or calendar
                     export.
                   </Text>
+                  {walk.legs.map((leg) => (
+                    <Text key={leg.from + leg.to} style={leg.tight ? styles.noticeLine : styles.smallMuted}>
+                      {leg.from} → {leg.to}: about {leg.minutes} min walk
+                      {leg.tight ? ' — not enough time between these tours' : ''}
+                    </Text>
+                  ))}
+                  {walk.legs.length > 0 && <Text style={styles.smallMuted}>About {walk.totalMinutes} minutes of walking in all.</Text>}
+                  {walk.suggestion && (
+                    <Text style={styles.bodyText}>
+                      A shorter order saves about {walk.suggestion.saves} minutes: {walk.suggestion.order.join(' → ')}.
+                    </Text>
+                  )}
                   {route ? (
                     <Link label="Open walking route in Google Maps" url={route} onError={setError} />
                   ) : (

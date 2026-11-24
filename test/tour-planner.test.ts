@@ -105,3 +105,39 @@ test('route day selection preserves plan and order without deleting other days',
   expect(plan.length).toBe(3);
   expect(toursOnDay(plan, '2026-12-09')).toEqual([]);
 });
+
+test('a tour day shows the walk between stops, tours too close together, and a shorter order', async () => {
+  const { walkingPlan } = await import('../src/tour-planner.ts');
+  const tour = (id: string, at: string, minutes = 30) => ({
+    id,
+    listingKey: id,
+    address: id + ' Street',
+    startsAt: at,
+    minutes,
+    notes: '',
+    checked: [],
+  });
+  // A and C are near each other; B is about a mile north.
+  const places = new Map([
+    ['a', { latitude: 40.73, longitude: -74.0 }],
+    ['b', { latitude: 40.745, longitude: -74.0 }],
+    ['c', { latitude: 40.731, longitude: -74.0 }],
+  ]);
+  const plan = walkingPlan(
+    [
+      tour('a', '2026-12-01T15:00:00Z'),
+      tour('b', '2026-12-01T15:35:00Z'),
+      tour('c', '2026-12-01T17:00:00Z'),
+      tour('x', '2026-12-01T18:00:00Z'),
+    ],
+    places,
+  );
+  expect(plan.unlocated).toBe(1);
+  expect(plan.legs.map(({ minutes, tight }) => ({ minutes, tight }))).toEqual([
+    { minutes: 27, tight: true },
+    { minutes: 25, tight: false },
+  ]);
+  expect(plan.totalMinutes).toBe(52);
+  expect(plan.suggestion).toEqual({ order: ['a Street', 'c Street', 'b Street'], saves: 25 });
+  expect(walkingPlan([tour('a', '2026-12-01T15:00:00Z')], places)).toEqual({ legs: [], totalMinutes: 0, unlocated: 0, suggestion: null });
+});

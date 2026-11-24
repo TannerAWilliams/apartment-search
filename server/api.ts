@@ -18,6 +18,7 @@ import { vitalsRoutes } from './routes/vitals.ts';
 import { settingsRoutes } from './routes/settings.ts';
 import { savedRoutes } from './routes/saved.ts';
 import { planRoutes } from './routes/plans.ts';
+import { householdRoutes } from './routes/households.ts';
 
 export const api = factory
   .createApp()
@@ -35,6 +36,7 @@ export const api = factory
   .route('/', settingsRoutes)
   .route('/', savedRoutes)
   .route('/', planRoutes)
+  .route('/', householdRoutes)
   .route('/', vitalsRoutes);
 
 /** The routes and the shape of each reply, for the app's API client. */

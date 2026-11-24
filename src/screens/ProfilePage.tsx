@@ -202,6 +202,8 @@ export function ProfilePage({
             `Saved listings (${savedCount})`,
             account ? 'Kept on your account, on every device you sign in on' : 'Kept on this device',
           ],
+          ['apply', 'Application kit', 'Your renter profile, the income rule, documents and a ready-written message'],
+          ['shared', 'Shared list', 'Search with a partner or roommates: share apartments, vote and leave notes'],
           [
             'alerts',
             'Email alerts',

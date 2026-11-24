@@ -9,6 +9,7 @@ import type { ApiConfig, ConfigSource, RefreshInfo } from '../api-client.ts';
 import { API_ORIGIN, CHECK_TIME, SEARCH_DEFAULTS, api, failureInfo, finishSourceCheck } from '../app-shared.ts';
 import type { AffordableHousing } from '../screens/AffordableHousing.tsx';
 import type { AlertState } from '../screens/AlertsPage.tsx';
+import type { HouseholdReply } from '../screens/SharedListPage.tsx';
 import type { Member, PlatformSettings, SettingsChange } from '../screens/ProfilePage.tsx';
 import type { ListingData, SearchFilters, SearchResult } from '../domain.ts';
 import type { Listing } from '../components/Listing.tsx';
@@ -253,6 +254,11 @@ export function useServer({ appliedFilters, searchVersion, submitted, setResult,
       api<{ members: Member[] }>('members', body ? { body, token: activeToken } : { token: activeToken }),
     [activeToken],
   );
+  /** The signed-in account's shared list: read it, or change it. */
+  const householdRequest = useCallback(
+    (body?: Record<string, unknown>) => api<HouseholdReply>('household', body ? { body, token: activeToken } : { token: activeToken }),
+    [activeToken],
+  );
   const loadHousing = useCallback(
     (signal?: AbortSignal) =>
       api<Awaited<ReturnType<NonNullable<React.ComponentProps<typeof AffordableHousing>['loadHousing']>>>>('housing', {
@@ -310,6 +316,7 @@ export function useServer({ appliedFilters, searchVersion, submitted, setResult,
     admin,
     plan,
     membersRequest,
+    householdRequest,
     configuredSources,
     companies,
     sourceCatalog,
