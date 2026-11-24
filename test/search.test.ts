@@ -186,6 +186,29 @@ test('marketplace browse links carry exact studio, ZIP and rent where supported'
   const streetEasy = new URL(required(fourBedrooms.find(({ id }) => id === 'streeteasy')).url);
   expect(decodeURIComponent(streetEasy.pathname)).toBe('/for-rent/nyc/beds:4|price:-4500');
   expect(required(fourBedrooms.find(({ id }) => id === 'trulia')).url).toBe('https://www.trulia.com/for_rent/New_York,NY/');
+  // Craigslist: all of NYC, each borough's own section, and a typed ZIP searches around it.
+  expect(required(fourBedrooms.find(({ id }) => id === 'craigslist')).url).toBe(
+    'https://newyork.craigslist.org/search/apa?sort=priceasc&min_bedrooms=4&max_bedrooms=4&max_price=4500',
+  );
+  for (const [borough, section] of [
+    ['Manhattan', 'mnh'],
+    ['Brooklyn', 'brk'],
+    ['Queens', 'que'],
+    ['Bronx', 'brx'],
+    ['Staten Island', 'stn'],
+  ] as const) {
+    const market = MARKETS.find(({ city }) => city === borough);
+    if (!market) continue;
+    const link = required(marketplaceLinks(market, parseFilters({})).find(({ id }) => id === 'craigslist'));
+    expect(link.url).toBe(`https://newyork.craigslist.org/search/${section}/apa?sort=priceasc`);
+    expect(link.detail).toMatch(new RegExp(borough));
+  }
+  const manhattan = required(MARKETS.find(({ city }) => city === 'Manhattan'));
+  expect(
+    new URL(
+      required(marketplaceLinks(manhattan, parseFilters({ zip: '10001' })).find(({ id }) => id === 'craigslist')).url,
+    ).searchParams.get('postal'),
+  ).toBe('10001');
 });
 
 test('links from different sites are merged only for the same confirmed unit', () => {

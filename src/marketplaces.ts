@@ -25,6 +25,14 @@ export const MARKETPLACE_NAMES: Record<string, string> = {
   affordablehousing: 'AffordableHousing.com',
 };
 
+/** Craigslist New York's borough sections. */
+const CRAIGSLIST_BOROUGHS: Record<string, string> = {
+  Manhattan: 'mnh',
+  Brooklyn: 'brk',
+  Queens: 'que',
+  Bronx: 'brx',
+  'Staten Island': 'stn',
+};
 const STATES: Record<string, string> = { NY: 'New-York', NJ: 'New-Jersey', CT: 'Connecticut', PA: 'Pennsylvania' };
 const STREETEASY_AREAS: Record<string, string> = {
   'New York': 'nyc',
@@ -70,7 +78,13 @@ export function marketplaceLinks(
               ? 'cnj'
               : 'newjersey'
             : 'newyork';
-  const craigslist = new URLSearchParams({ postal: zip, search_distance: '12', sort: 'priceasc' });
+  // Craigslist's New York site has a section per borough; the whole city is its main apartment search. A
+  // ZIP you typed still searches around that ZIP.
+  const craigslistBorough = filters.zip ? undefined : CRAIGSLIST_BOROUGHS[city];
+  const craigslistCitywide = !filters.zip && region === 'nyc' && city === 'New York';
+  const craigslist = new URLSearchParams(
+    craigslistBorough || craigslistCitywide ? { sort: 'priceasc' } : { postal: zip, search_distance: '12', sort: 'priceasc' },
+  );
   if (beds !== null) {
     craigslist.set('min_bedrooms', String(beds));
     craigslist.set('max_bedrooms', String(beds));
@@ -97,7 +111,15 @@ export function marketplaceLinks(
       `https://www.renthop.com/${city === 'New York' ? 'new-york-ny/apartments-for-rent' : 'apartments-for-rent/' + slug}`,
       'City search',
     ],
-    ['craigslist', `https://${craigslistZone}.craigslist.org/search/apa?${craigslist}`, 'ZIP radius + filters where selected'],
+    [
+      'craigslist',
+      `https://${craigslistZone}.craigslist.org/search/${craigslistBorough ? craigslistBorough + '/' : ''}apa?${craigslist}`,
+      craigslistBorough
+        ? `${city} apartments + filters where selected`
+        : craigslistCitywide
+          ? 'All NYC apartments + filters where selected'
+          : 'ZIP radius + filters where selected',
+    ],
     ['facebook', 'https://www.facebook.com/marketplace/category/propertyrentals/', 'Set your area in Marketplace'],
     ['affordablehousing', `https://www.affordablehousing.com/${slug}/`, 'Browse rentals and voucher listings'],
     ['openigloo', 'https://www.openigloo.com/apartments', 'NYC rentals and building reviews'],
