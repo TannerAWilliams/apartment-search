@@ -29,6 +29,7 @@ import {
 } from './src/app-shared.ts';
 import { Filters, WebsiteFilter } from './src/components/Filters.tsx';
 import { Landing } from './src/screens/Landing.tsx';
+import { CategoryBar } from './src/components/CategoryBar.tsx';
 import { StreetViewContext } from './src/components/ListingThumbnail.tsx';
 import {
   BrandMark,
@@ -216,6 +217,16 @@ function ApartmentSearch() {
 
   function saveListing(listing: ListingData) {
     setSaved((current) => mergeListings([...current, { ...listing, buildingLinks: undefined }]));
+    showToast('Saved to your list');
+  }
+
+  // A short confirmation at the bottom after saving, with a way to the list, as listing apps confirm a save.
+  const [toast, setToast] = useState('');
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  function showToast(message: string) {
+    setToast(message);
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(''), 3500);
   }
 
   function saveLink(listing: ListingData, link: SourceLink) {
@@ -308,6 +319,18 @@ function ApartmentSearch() {
                 <SlidersIcon color={colors.ink} />
               </Pressable>
             )}
+          </View>
+        )}
+        {tab === 'results' && (
+          <View style={{ paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+            <CategoryBar
+              applied={applied}
+              onChoose={(changes) => {
+                const next = { ...draft, ...changes };
+                setDraft(next);
+                void submit(next);
+              }}
+            />
           </View>
         )}
         <Modal visible={Boolean(expanded)} transparent animationType="slide" onRequestClose={() => setExpanded('')}>
@@ -634,6 +657,25 @@ function ApartmentSearch() {
               <Text style={mobileStyles.floatingText}>{mapView ? 'Show list' : 'Show map'}</Text>
               {mapView ? <ListIcon color={colors.white} /> : <MapIcon color={colors.white} />}
             </Pressable>
+          </View>
+        )}
+        {toast !== '' && (
+          <View pointerEvents="box-none" style={[mobileStyles.floatingRow, { bottom: 150 }]}>
+            <View
+              accessibilityRole="alert"
+              style={[mobileStyles.floatingPill, { backgroundColor: colors.white, borderWidth: 1, borderColor: colors.border, gap: 16 }]}
+            >
+              <Text style={{ color: colors.ink, fontWeight: '600' }}>{toast}</Text>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => {
+                  setToast('');
+                  showSaved();
+                }}
+              >
+                <Text style={[styles.linkText, { fontWeight: '600' }]}>View</Text>
+              </Pressable>
+            </View>
           </View>
         )}
         <View style={mobileStyles.bottomNav} accessibilityRole="tablist">

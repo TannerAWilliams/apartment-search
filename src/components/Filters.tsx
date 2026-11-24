@@ -7,10 +7,36 @@ import type { SearchFilters, SearchResult } from '../domain.ts';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { REGIONS, WORKPLACES, marketsForSearch } from '../regions.ts';
 import { marketplaceLinks } from '../marketplaces.ts';
-import { styles } from '../styles.ts';
+import { colors, styles } from '../styles.ts';
 import { Button, Chip, Field, Link } from './ui.tsx';
 import { LAUNDRY_LABELS } from '../discovery.ts';
 import { type DraftFilters, SEARCH_DEFAULTS, BEDROOMS, AREA_GROUPS, formDefaults } from '../app-shared.ts';
+
+/** A filter section's heading, with a divider above it. */
+const FILTER_HEADING = {
+  fontSize: 18,
+  lineHeight: 24,
+  fontWeight: '600',
+  color: colors.ink,
+  borderTopWidth: 1,
+  borderTopColor: colors.border,
+  paddingTop: 20,
+  marginTop: 8,
+} as const;
+
+/** The MTA's bullet colors for each line, and the text color that reads on it. */
+function lineColors(line: string): [string, string] {
+  if ('123'.includes(line)) return ['#EE352E', '#ffffff'];
+  if ('456'.includes(line)) return ['#00933C', '#ffffff'];
+  if (line === '7') return ['#B933AD', '#ffffff'];
+  if ('ACE'.includes(line)) return ['#0039A6', '#ffffff'];
+  if ('BDFM'.includes(line)) return ['#FF6319', '#ffffff'];
+  if (line === 'G') return ['#6CBE45', '#ffffff'];
+  if ('JZ'.includes(line)) return ['#996633', '#ffffff'];
+  if (line === 'L') return ['#A7A9AC', '#ffffff'];
+  if ('NQRW'.includes(line)) return ['#FCCC0A', '#222222'];
+  return ['#808183', '#ffffff'];
+}
 
 export function Filters({
   draft,
@@ -97,7 +123,9 @@ export function Filters({
       ) : null}
       {(panel === 'more' || panel === 'beds') && (
         <>
-          <Text style={styles.fieldLabel}>Bedrooms</Text>
+          <Text accessibilityRole="header" style={FILTER_HEADING}>
+            Bedrooms
+          </Text>
           <View style={styles.chipRow}>
             {BEDROOMS.map((beds) => (
               <Chip key={String(beds)} selected={draft.bedrooms === beds} onPress={() => set('bedrooms')(beds)}>
@@ -109,7 +137,9 @@ export function Filters({
       )}
       {(panel === 'more' || panel === 'area') && (
         <>
-          <Text style={styles.fieldLabel}>Area</Text>
+          <Text accessibilityRole="header" style={FILTER_HEADING}>
+            Area
+          </Text>
           <View style={styles.chipRow}>
             <Chip selected={draft.region === 'all'} onPress={() => set('region')('all')}>
               {REGIONS.all.label}
@@ -173,7 +203,9 @@ export function Filters({
       )}
       {panel === 'more' && (
         <>
-          <Text style={styles.fieldLabel}>Value and building</Text>
+          <Text accessibilityRole="header" style={FILTER_HEADING}>
+            Value and building
+          </Text>
           <View style={styles.chipRow}>
             <Chip selected={draft.belowMarket === true} onPress={() => set('belowMarket')(!draft.belowMarket)}>
               Below similar apartments
@@ -185,7 +217,9 @@ export function Filters({
               Hide buildings graded C or D
             </Chip>
           </View>
-          <Text style={styles.fieldLabel}>New on Walkup</Text>
+          <Text accessibilityRole="header" style={FILTER_HEADING}>
+            New on Walkup
+          </Text>
           <View style={styles.chipRow}>
             {([null, 1, 3, 7, 14] as const).map((days) => (
               <Chip
@@ -197,7 +231,9 @@ export function Filters({
               </Chip>
             ))}
           </View>
-          <Text style={styles.fieldLabel}>Subway</Text>
+          <Text accessibilityRole="header" style={FILTER_HEADING}>
+            Subway
+          </Text>
           <View style={styles.chipRow}>
             <Chip selected={draft.nearSubway === true} onPress={() => set('nearSubway')(!draft.nearSubway)}>
               Within a 10-minute walk
@@ -205,22 +241,39 @@ export function Filters({
             <Chip selected={draft.accessibleSubway === true} onPress={() => set('accessibleSubway')(!draft.accessibleSubway)}>
               Accessible station (elevators)
             </Chip>
-            {SUBWAY_LINES.map((line) => (
-              <Chip
-                key={line}
-                label={`${line} train`}
-                selected={draft.subwayLines?.includes(line) === true}
-                onPress={() =>
-                  set('subwayLines')(
-                    draft.subwayLines?.includes(line)
-                      ? draft.subwayLines.filter((item) => item !== line)
-                      : [...(draft.subwayLines ?? []), line],
-                  )
-                }
-              >
-                {line}
-              </Chip>
-            ))}
+          </View>
+          <View style={styles.chipRow}>
+            {SUBWAY_LINES.map((line) => {
+              const on = draft.subwayLines?.includes(line) === true;
+              const [background, text] = lineColors(line);
+              return (
+                <Pressable
+                  key={line}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${line} train`}
+                  aria-pressed={on}
+                  accessibilityState={{ selected: on }}
+                  onPress={() =>
+                    set('subwayLines')(
+                      on ? (draft.subwayLines ?? []).filter((item) => item !== line) : [...(draft.subwayLines ?? []), line],
+                    )
+                  }
+                  style={({ pressed }) => ({
+                    width: 36,
+                    height: 36,
+                    borderRadius: 18,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: background,
+                    opacity: on ? 1 : pressed ? 0.7 : 0.4,
+                    borderWidth: on ? 3 : 0,
+                    borderColor: colors.ink,
+                  })}
+                >
+                  <Text style={{ color: text, fontWeight: '700', fontSize: 15 }}>{line}</Text>
+                </Pressable>
+              );
+            })}
           </View>
           {(draft.stabilizedOnly || draft.goodBuildings) && (
             <Text style={styles.smallMuted}>

@@ -522,7 +522,7 @@ test('feature filters require reported facts rather than matching unknown detail
   await page.getByRole('textbox', { name: 'Minimum bathrooms', exact: true }).fill('1.5');
   await page.getByRole('textbox', { name: 'Minimum square feet', exact: true }).fill('900');
   await page.getByRole('button', { name: 'Require pets allowed', exact: true }).click();
-  await page.getByRole('button', { name: 'In-unit laundry', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'In-unit laundry', exact: true }).click();
   await page.getByRole('button', { name: 'Show apartments', exact: true }).click();
   await expect(page.getByText('12 Grove Street', { exact: true })).toBeVisible();
   await expect(page.getByText('13 Grove Street', { exact: true })).toHaveCount(0);
@@ -532,7 +532,7 @@ test('feature filters require reported facts rather than matching unknown detail
   expect(search.body?.petsRequired).toBe(true);
   expect(search.body?.laundry).toBe('in_unit');
   await page.getByRole('button', { name: 'Details for 12 Grove Street', exact: true }).click();
-  await expect(page.getByText(/Source-reported details: 1.5 baths · 900 sq ft/)).toBeVisible();
+  await expect(page.getByText(/1.5 baths · 900 sq ft/)).toBeVisible();
 });
 
 test('saved comparison caps four, enables replacements and clears without removing saved apartments', async ({ page }) => {
@@ -1058,17 +1058,22 @@ test('profile: a free member’s saved listings are kept on the account, and ale
 
 test('cards show the building’s grade, rent stabilization, the price against similar apartments and warnings', async ({ page }) => {
   await mockApp(page, { insights: true });
-  await expect(page.getByText('Rent-stabilized building', { exact: true }).first()).toBeVisible();
-  await expect(page.getByText('Building A', { exact: true }).first()).toBeVisible();
-  await expect(page.getByText('3 min to L', { exact: true }).first()).toBeVisible();
+  // One badge on the photo; the grade where a rating would be; the rest in short grey lines.
   await expect(page.getByText('New today', { exact: true }).first()).toBeVisible();
-  await expect(page.getByText('Price cut $150', { exact: true }).first()).toBeVisible();
-  await expect(page.getByText(/25% below similar · median \$2,400 for 12 nearby/).first()).toBeVisible();
+  await expect(page.getByText('Building A', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText(/· 3 min to L$/).first()).toBeVisible();
+  await expect(page.getByText(/1 bedroom · Rent-stabilized · Price cut \$150/).first()).toBeVisible();
+  await expect(page.getByText(/· 25% below similar/).first()).toBeVisible();
   await expect(page.getByText('⚠ This unit is also listed at $2,100.', { exact: true }).first()).toBeVisible();
   await page
     .getByRole('button', { name: /^Details for 12 Grove Street/ })
     .first()
     .click();
+  // Details lead with highlights, in sections.
+  await expect(page.getByRole('heading', { name: 'Highlights', exact: true })).toBeVisible();
+  await expect(page.getByText('Median $2,400 for 12 similar apartments nearby', { exact: true })).toBeVisible();
+  await expect(page.getByText('Rent-stabilized building', { exact: true })).toBeVisible();
+  await expect(page.getByText('3 min walk · accessible station', { exact: true })).toBeVisible();
   await expect(
     page.getByText(/Building grade A: Registers rent-stabilized units with the state · 0 open HPD violations/).first(),
   ).toBeVisible();
@@ -1276,4 +1281,20 @@ test('signed out, the landing page explains Walkup, shows the plans, and opens t
   await page.getByRole('button', { name: '← Back', exact: true }).click();
   await page.getByRole('button', { name: 'Start searching', exact: true }).click();
   await expect(page.getByLabel('Email', { exact: true })).toBeInViewport();
+});
+
+test('categories under the search bar search with one tap, and a save is confirmed', async ({ page }) => {
+  const { requests } = await mockApp(page);
+  await page.getByRole('button', { name: 'Deals', exact: true }).click();
+  await expect.poll(() => requests.filter(({ path }) => path === '/api/search').at(-1)?.body).toMatchObject({ belowMarket: true });
+  await expect(page.getByRole('button', { name: 'Deals', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'Near subway', exact: true }).click();
+  await expect.poll(() => requests.filter(({ path }) => path === '/api/search').at(-1)?.body).toMatchObject({ nearSubway: true });
+  expect(requests.filter(({ path }) => path === '/api/search').at(-1)?.body).not.toHaveProperty('belowMarket', true);
+  await page.getByRole('button', { name: 'All', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'All', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'Save apartment', exact: true }).first().click();
+  await expect(page.getByText('Saved to your list', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'View', exact: true }).click();
+  await expect(page.getByRole('tab', { name: 'Saved (1)', exact: true })).toHaveAttribute('aria-selected', 'true');
 });

@@ -6,7 +6,7 @@ import { Pressable, Text, View } from 'react-native';
 import { REGIONS } from '../regions.ts';
 import { MARKETPLACE_NAMES } from '../marketplaces.ts';
 import { RESULT_SORTS, bedroomLabel, formatRent, needsCommute } from '../search.ts';
-import { styles } from '../styles.ts';
+import { colors, styles } from '../styles.ts';
 import { listingKey, mergeSourceLinks } from '../listings.ts';
 import { Button, Chip } from '../components/ui.tsx';
 import { Listing } from '../components/Listing.tsx';
@@ -116,7 +116,7 @@ export function Results({
       {!(savedView && matches.length === 0) && (
         <View style={styles.resultHeading}>
           <View style={styles.headingCopy}>
-            <Text accessibilityRole="header" style={styles.panelTitle}>
+            <Text accessibilityRole="header" style={{ fontSize: 17, lineHeight: 22, fontWeight: '600', color: colors.ink }}>
               {!savedView && checkingInventory && result.total === 0
                 ? 'Checking availability…'
                 : unavailable
