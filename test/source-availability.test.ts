@@ -36,12 +36,28 @@ const row = (id: number, unit: string, rent = 2500) =>
     source,
   )!;
 
-test('every implemented rental provider is visible and resyncable before its first fetch', async () => {
+test('every implemented rental provider is visible, and resyncable unless its site refuses automated requests', async () => {
   const result = await readJson<ApiConfig>(handleApi(new Request('https://app.test/api/config'), { BUCKET: createMemoryBucket() }));
-  for (const id of ['zillow', 'compass', 'renthop', 'realtor', 'redfin', 'apartmentlist', 'cityrealty']) {
+  for (const id of ['apartmentlist', 'cityrealty', 'serhant', 'avalonbay']) {
     expect(result.sources.some((source) => source.id === id)).toBeTruthy();
     expect(result.sourceCatalog?.find((source) => source.id === id + '-live')?.resyncable).toBe(true);
   }
+  for (const id of ['zillow', 'compass', 'renthop', 'realtor', 'redfin', 'apartments', 'hotpads']) {
+    const entry = result.sourceCatalog?.find((source) => source.id === id + '-live');
+    expect(entry?.resyncable, id).toBe(false);
+    expect(entry?.coverage).toMatch(/refuses|answers automated requests/);
+    expect(entry?.coverage).toMatch(/Open it from Rental platforms/);
+  }
+  // Resyncing a blocked site on its own is refused before anything is fetched.
+  const refused = await handleApi(
+    new Request('https://app.test/api/refresh', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ check: 'now', source: 'zillow-live' }),
+    }),
+    { BUCKET: createMemoryBucket() },
+  );
+  expect(refused.status).toBe(422);
 });
 
 test('new sources show that they need a feed and a paused StreetEasy cannot be refreshed', async () => {

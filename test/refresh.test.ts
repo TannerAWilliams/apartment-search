@@ -410,8 +410,9 @@ test('a manual refresh fetches new source data even within the same hour', async
       ({ city, state }) => '/apartments-for-rent/' + city.toLowerCase().replaceAll(' ', '-') + '-' + state.toLowerCase(),
     ).sort(),
   );
-  for (const domain of ['zillow', 'compass', 'renthop', 'realtor']) {
-    expect(requests.some((url) => new URL(url).hostname === `www.${domain}.com`)).toBeTruthy();
+  // Sites that refuse automated requests are not asked at all.
+  for (const domain of ['zillow', 'compass', 'renthop', 'realtor', 'redfin', 'apartments', 'hotpads']) {
+    expect(requests.some((url) => new URL(url).hostname === `www.${domain}.com`)).toBe(false);
   }
 });
 
@@ -650,13 +651,18 @@ test('a resync reads StreetEasy v6 each time and checks Apartments.com in both b
     );
   };
   const result = await refreshSources(env, { onDemand: true, fetcher });
-  for (const source of [STREETEASY_LIVE, APARTMENTS_LIVE]) {
-    const status = result.sources.find(({ id }: { id: string }) => id === source.id);
-    expect(required(status).status, source.name).toBe('updated');
-    expect(required(status).pages).toBe(source === STREETEASY_LIVE ? 2 : 8);
-    expect(required(status).listingCount).toBe(source === STREETEASY_LIVE ? 501 : 8);
-  }
+  const status = required(result.sources.find(({ id }: { id: string }) => id === STREETEASY_LIVE.id));
+  expect(status.status).toBe('updated');
+  expect(status.pages).toBe(2);
+  expect(status.listingCount).toBe(501);
+  // Apartments.com refuses automated requests, so a resync leaves it out; its reader still works on its pages,
+  // and the result can be saved for it, as an authorized upload would be.
+  expect(requested.some((url) => url.includes('apartments.com'))).toBe(false);
+  const apartments = await APARTMENTS_LIVE.load(fetcher, new Date());
+  expect(apartments.pages).toBe(8);
+  expect(apartments.listings).toHaveLength(8);
   expect(new Set(requested).size).toBe(9);
+  await refreshSources(env, { sourceId: APARTMENTS_LIVE.id, imports: { [APARTMENTS_LIVE.id]: apartments } });
   expect(required(result.sources.find(({ id }: { id: string }) => id === STREETEASY_LIVE.id)).total).toBe(501);
   const v6Requests = () => requested.filter((url) => url === 'https://api-v6.streeteasy.com/').length;
   expect(v6Requests()).toBe(2);

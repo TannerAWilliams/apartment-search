@@ -100,3 +100,19 @@ export const isCompleteSnapshot = (id: string, transport: string | undefined) =>
 
 /** Whether catalog coverage text describes a complete sync. */
 export const isCompleteCoverage = (coverage: string | undefined) => COMPLETE_SYNCS.some((source) => source.coverage === coverage);
+
+/**
+ * Sites that refuse automated requests, as the weekly source check (scripts/check-sources.ts) last found from
+ * cloud networks. They are not asked during a resync, so every source that is asked can answer; they stay links
+ * under Rental platforms. The weekly check still reads them, so a site that starts answering is noticed: take it
+ * off this list to sync it again. The app never tries to get around a refusal.
+ */
+export const BLOCKED_SOURCES: Readonly<Record<string, string>> = {
+  'zillow-live': 'Zillow answers automated requests with HTTP 403.',
+  'apartments-live': 'Apartments.com answers automated requests with HTTP 403.',
+  'hotpads-live': 'HotPads answers automated requests with HTTP 403.',
+  'redfin-live': 'Redfin answers automated requests with HTTP 403.',
+  'realtor-live': 'Realtor.com answers automated requests with HTTP 429.',
+  'renthop-live': 'RentHop answers automated requests with a bot challenge.',
+  'compass-live': 'Compass answers automated requests with a bot challenge.',
+};

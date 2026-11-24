@@ -26,7 +26,7 @@ import {
   OPENIGLOO_TRANSPORT,
   loadOpenigloo,
 } from '../sources/openigloo.ts';
-import { fullInventory, isCompleteSnapshot } from '../sources/source-registry.ts';
+import { BLOCKED_SOURCES, fullInventory, isCompleteSnapshot } from '../sources/source-registry.ts';
 import { retrySchedule } from '../sources/source-requests.ts';
 import {
   STREETEASY_LIVE,
@@ -339,20 +339,23 @@ function directSource(source: (typeof DIRECT_RENTAL_SOURCES)[number]): RefreshSo
     catalog(env) {
       const partner = configuredFeeds(env).find(({ id }) => id === STREETEASY_LIVE.marketplace);
       const paused = streetEasy && env.STREETEASY_SYNC_ENABLED === 'false';
+      const blocked = BLOCKED_SOURCES[source.id];
       return {
         id: source.id,
         name: source.name,
         marketplace: source.marketplace,
-        coverage: !streetEasy
-          ? source.coverage
-          : partner?.format === STREETEASY_EXPORT_FORMAT
-            ? STREETEASY_EXPORT_COVERAGE
-            : partner
-              ? 'Configured StreetEasy partner feed'
-              : env.STREETEASY_PUBLIC_SEARCH === 'true'
-                ? STREETEASY_PUBLIC_COVERAGE
-                : source.coverage,
-        resyncable: !paused,
+        coverage: blocked
+          ? blocked + ' Open it from Rental platforms.'
+          : !streetEasy
+            ? source.coverage
+            : partner?.format === STREETEASY_EXPORT_FORMAT
+              ? STREETEASY_EXPORT_COVERAGE
+              : partner
+                ? 'Configured StreetEasy partner feed'
+                : env.STREETEASY_PUBLIC_SEARCH === 'true'
+                  ? STREETEASY_PUBLIC_COVERAGE
+                  : source.coverage,
+        resyncable: !paused && !blocked,
         ...(paused ? { paused: true } : {}),
       };
     },

@@ -28,7 +28,7 @@ import {
   readState,
 } from './refresh/status.ts';
 import { configuredFeeds } from './sources/listings.ts';
-import { WORKFLOW_SOURCE_IDS, workflowSync } from './sources/source-registry.ts';
+import { BLOCKED_SOURCES, WORKFLOW_SOURCE_IDS, workflowSync } from './sources/source-registry.ts';
 import { requestForRefresh } from './sources/source-requests.ts';
 import { STREETEASY_LIVE } from './sources/streeteasy.ts';
 
@@ -77,7 +77,9 @@ export async function refreshSources(
   }: RefreshOptions = {},
 ) {
   const selected = sourceId ?? (onlyStreetEasy ? STREETEASY_LIVE.id : null);
-  if (selected && !refreshCatalog(env).some((source) => source.id === selected && source.resyncable))
+  // A blocked site is never fetched, but data uploaded for it (an authorized feed) can still be saved.
+  const uploadForBlocked = Boolean(imports) && selected !== null && Object.hasOwn(BLOCKED_SOURCES, selected);
+  if (selected && !uploadForBlocked && !refreshCatalog(env).some((source) => source.id === selected && source.resyncable))
     throw new Error('Unknown or disconnected refresh source.');
   const bucket = env.BUCKET;
   if (!bucket) throw new Error('Source storage is unavailable.');
@@ -96,6 +98,9 @@ export async function refreshSources(
   const ready = (id: string) => {
     const prior = previousById.get(id);
     if (workflowSync(id) && excludeWorkflowSources) return false;
+    // A resync of every source leaves out sites that refuse automated requests (see BLOCKED_SOURCES). The API refuses
+    // to resync one on its own, since the catalog marks it as not resyncable.
+    if (!sourceId && Object.hasOwn(BLOCKED_SOURCES, id)) return false;
     if (id !== STREETEASY_LIVE.id) return !coolingDown(prior, now);
     if (env.STREETEASY_SYNC_ENABLED === 'false') return false;
     // A different way of reading StreetEasy is tried even while the previous one waits out a retry.
