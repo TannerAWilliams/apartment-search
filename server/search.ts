@@ -9,6 +9,7 @@ import { formatSearch } from '../src/market.ts';
 import { withInsights } from '../src/insights.ts';
 import { readBuildingFacts } from './building-facts.ts';
 import { openData } from './open-data.ts';
+import { directListings } from './direct-listings.ts';
 import { parentRegion } from '../src/regions.ts';
 import { buildingKey, listingWithVerifiedLinks, mergeListings } from '../src/listings.ts';
 import { isCompleteSnapshot } from './sources/source-registry.ts';
@@ -114,7 +115,11 @@ export async function search(filters: SearchFilters, env: AppEnv, fetcher: Sourc
     // Every listing gets its comparison with similar apartments and its building's facts before filtering.
     const buildings = bucket ? await readBuildingFacts(bucket).catch(() => ({})) : {};
     const lists = bucket ? await openData(bucket) : undefined;
-    const matched = matchListings(withInsights(listings, buildings, lists), filters, workplace).map(listingWithVerifiedLinks);
+    // Owners' own no-fee listings join every search.
+    const direct = bucket ? await directListings(bucket).catch(() => []) : [];
+    const matched = matchListings(withInsights([...listings, ...direct], buildings, lists), filters, workplace).map(
+      listingWithVerifiedLinks,
+    );
     let routed = matched;
     const commute: { commute?: boolean; commuteNotice?: string } = {};
     if (credentials && (requireCommute || filters.includeCommute)) {

@@ -6,7 +6,7 @@
  */
 import { isRecord } from '../../src/domain.ts';
 import type { FetchTransport } from '../../src/fetch-type.ts';
-import { normalizeListing } from '../../src/listings.ts';
+import { normalizeListing, safePhoto } from '../../src/listings.ts';
 import { nycBorough } from './firstmover.ts';
 import { publicListingUrl } from './public-rentals.ts';
 
@@ -77,7 +77,11 @@ export function parseTfcFeed(feed: unknown, checkedAt: string) {
       },
       SOURCE,
     );
-    return listing && Number.isInteger(listing.bedrooms) && listing.bedrooms <= 4 ? [listing] : [];
+    if (!listing || !Number.isInteger(listing.bedrooms) || listing.bedrooms > 4) return [];
+    // The building's first marketing photo, from TF Cornerstone's own image server.
+    const images = Array.isArray(building.Images) ? building.Images.filter(isRecord) : [];
+    const photo = safePhoto(images[0]?.FullUrl);
+    return [photo ? { ...listing, photo } : listing];
   });
 }
 

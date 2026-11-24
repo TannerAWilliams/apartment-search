@@ -12,6 +12,7 @@ import type { AlertState } from '../screens/AlertsPage.tsx';
 import type { HouseholdReply } from '../screens/SharedListPage.tsx';
 import type { NeighborhoodReport } from '../screens/NeighborhoodsPage.tsx';
 import type { AdminStats } from '../screens/AdminPage.tsx';
+import type { DirectReply } from '../screens/DirectPage.tsx';
 import type { BillingState, Member, PlatformSettings, SettingsChange } from '../screens/ProfilePage.tsx';
 import type { ListingData, SearchFilters, SearchResult } from '../domain.ts';
 import type { Listing } from '../components/Listing.tsx';
@@ -280,6 +281,11 @@ export function useServer({ appliedFilters, searchVersion, submitted, setResult,
       api<Record<string, unknown>>('account', body ? { body, token: activeToken } : { token: activeToken }),
     [activeToken],
   );
+  /** The account's own no-fee listings, and for an admin those waiting for review; or a change to one. */
+  const directRequest = useCallback(
+    (body?: Record<string, unknown>) => api<DirectReply>('direct', body ? { body, token: activeToken } : { token: activeToken }),
+    [activeToken],
+  );
   /** One listing from saved inventory, for its own page. */
   const loadListing = useCallback(
     (id: string) => api<{ listing: ListingData }>('listing?' + new URLSearchParams({ id }), { token: activeToken }),
@@ -345,6 +351,7 @@ export function useServer({ appliedFilters, searchVersion, submitted, setResult,
     householdRequest,
     billingRequest,
     loadListing,
+    directRequest,
     loadAdminStats,
     accountRequest,
     loadNeighborhoodReport,

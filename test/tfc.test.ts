@@ -75,3 +75,16 @@ test('TF Cornerstone reads one file, and says when it is refused, too large or e
   await expect(loadTfc(answer(new Response(' '.repeat(12 * 1024 * 1024 + 1))), new Date(at))).rejects.toThrow(/too large/);
   await expect(loadTfc(answer(Response.json(feed([unit({ IsListed: false })]))), new Date(at))).rejects.toThrow(/no supported apartment/);
 });
+
+test('a TF Cornerstone listing shows its building’s photo from TF Cornerstone’s image server only', async () => {
+  const { safePhoto } = await import('../src/listings.ts');
+  const photo = 'https://cdn.tfc.com/marketing/files/building_images/abc.jpg';
+  const [withPhoto] = parseTfcFeed(feed([unit()], [{ ...building, Images: [{ FullUrl: photo }, 'x'] }]), at);
+  expect(withPhoto?.photo).toBe(photo);
+  const [elsewhere] = parseTfcFeed(feed([unit()], [{ ...building, Images: [{ FullUrl: 'https://evil.example/a.jpg' }] }]), at);
+  expect(elsewhere?.photo).toBeUndefined();
+  expect(safePhoto('http://cdn.tfc.com/a.jpg'), 'not https').toBeNull();
+  expect(safePhoto('https://cdn.tfc.com/a.html'), 'not an image').toBeNull();
+  expect(safePhoto('not a url')).toBeNull();
+  expect(safePhoto(7)).toBeNull();
+});

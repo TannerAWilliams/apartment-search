@@ -33,7 +33,7 @@ function lineColors(line: string): [string, string] {
   if ('BDFM'.includes(line)) return ['#FF6319', '#ffffff'];
   if (line === 'G') return ['#6CBE45', '#ffffff'];
   if ('JZ'.includes(line)) return ['#996633', '#ffffff'];
-  if (line === 'L') return ['#A7A9AC', '#ffffff'];
+  if (line === 'L') return ['#A7A9AC', '#222222'];
   if ('NQRW'.includes(line)) return ['#FCCC0A', '#222222'];
   return ['#808183', '#ffffff'];
 }

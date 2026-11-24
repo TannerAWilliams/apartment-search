@@ -181,13 +181,15 @@ export function Listing({
   const listed = listedLabel(listing.insights?.firstSeen);
   const isNew = listed?.startsWith('New') ?? false;
   const priceCut = listing.insights?.priceCut;
-  const photoBadge = isNew
-    ? listed
-    : priceCut
-      ? `Price cut ${formatRent(priceCut)}`
-      : listing.building?.stabilized
-        ? 'Rent-stabilized'
-        : null;
+  const photoBadge = listing.noFee
+    ? 'No fee · Owner'
+    : isNew
+      ? listed
+      : priceCut
+        ? `Price cut ${formatRent(priceCut)}`
+        : listing.building?.stabilized
+          ? 'Rent-stabilized'
+          : null;
   const longListed = !isNew && listed && Date.now() - Date.parse(listing.insights!.firstSeen!) >= 21 * 86_400_000;
   // Where, then what: the place and the nearest train; then size, and what the badge did not already say.
   const place = [
@@ -233,6 +235,20 @@ export function Listing({
         [`${station} · ${routes.join(' ')}`, `${minutes} min walk${accessible ? ' · accessible station' : ''}`] as [string, string],
     ),
     ...(priceCut ? [[`Price cut ${formatRent(priceCut)}`, 'Its last price change was a cut.'] as [string, string]] : []),
+    ...(listing.contact
+      ? [
+          [
+            'Listed by the owner, no broker fee',
+            [
+              listing.contact.available ? `Available ${listing.contact.available}.` : '',
+              listing.contact.phone ? `Call ${listing.contact.phone}.` : '',
+              listing.contact.description ?? '',
+            ]
+              .filter(Boolean)
+              .join(' ') || `Email ${listing.contact.email}.`,
+          ] as [string, string],
+        ]
+      : []),
   ];
   // Only what the listing says; unknown details are simply not listed.
   const knownFacts = [
@@ -257,29 +273,13 @@ export function Listing({
         style={({ pressed }) => [{ gap: 10 }, pressed && { opacity: 0.85 }]}
       >
         <View style={card.media}>
-          <ListingThumbnail latitude={listing.latitude} longitude={listing.longitude} />
+          <ListingThumbnail latitude={listing.latitude} longitude={listing.longitude} photo={listing.photo} />
           {/* One badge on the photo, the most useful thing to know first. */}
           {photoBadge && (
             <View style={card.tags}>
               <Text style={card.tag}>{photoBadge}</Text>
             </View>
           )}
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={onRemove ? 'Remove saved apartment' : saved ? 'Apartment saved' : 'Save apartment'}
-            accessibilityState={{ disabled: !onRemove && saved }}
-            disabled={!onRemove && saved}
-            onPress={() => (onRemove ? onRemove(listing) : onSave(listing))}
-            hitSlop={8}
-            style={card.heart}
-          >
-            <HeartIcon
-              size={26}
-              color={saved || onRemove ? colors.green : colors.white}
-              filled={saved || Boolean(onRemove)}
-              fill="#00000066"
-            />
-          </Pressable>
         </View>
         <View style={{ gap: 1 }}>
           <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
@@ -306,6 +306,18 @@ export function Listing({
             {badge ? <Text style={card.subtitle}> · {badge}</Text> : null}
           </Text>
         </View>
+      </Pressable>
+      {/* The heart is drawn on the photo but is its own button, not inside the card's Details button. */}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={onRemove ? 'Remove saved apartment' : saved ? 'Apartment saved' : 'Save apartment'}
+        accessibilityState={{ disabled: !onRemove && saved }}
+        disabled={!onRemove && saved}
+        onPress={() => (onRemove ? onRemove(listing) : onSave(listing))}
+        hitSlop={8}
+        style={card.heart}
+      >
+        <HeartIcon size={26} color={saved || onRemove ? colors.green : colors.white} filled={saved || Boolean(onRemove)} fill="#00000066" />
       </Pressable>
       <View style={styles.rentalCardBody}>
         {listing.bestFit && (

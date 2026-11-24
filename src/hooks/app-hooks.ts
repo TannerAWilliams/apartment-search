@@ -102,6 +102,7 @@ const APP_TABS = [
   'admin',
   'terms',
   'privacy',
+  'list',
 ];
 
 /**

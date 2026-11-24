@@ -22,6 +22,7 @@ import { householdRoutes } from './routes/households.ts';
 import { billingRoutes } from './routes/billing.ts';
 import { accountRoutes } from './routes/account.ts';
 import { listingRoutes } from './routes/listing.ts';
+import { directRoutes } from './routes/direct.ts';
 
 export const api = factory
   .createApp()
@@ -43,6 +44,7 @@ export const api = factory
   .route('/', billingRoutes)
   .route('/', accountRoutes)
   .route('/', listingRoutes)
+  .route('/', directRoutes)
   .route('/', vitalsRoutes);
 
 /** The routes and the shape of each reply, for the app's API client. */

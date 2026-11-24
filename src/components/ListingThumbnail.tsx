@@ -50,12 +50,28 @@ const thumbnail = StyleSheet.create({
   },
 });
 
-export function ListingThumbnail({ latitude, longitude }: { latitude?: number | null; longitude?: number | null }) {
+export function ListingThumbnail({
+  latitude,
+  longitude,
+  photo,
+}: {
+  latitude?: number | null;
+  longitude?: number | null;
+  /** The landlord's photo of the building, shown first when there is one. */
+  photo?: string;
+}) {
+  const [photoFailed, setPhotoFailed] = useState(false);
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [failed, setFailed] = useState(false);
   const streetView = useContext(StreetViewContext);
   // Street View first, when the server has it; no image there, or the month's free images used up, shows the map.
   const [streetViewFailed, setStreetViewFailed] = useState(false);
+  if (photo && !photoFailed)
+    return (
+      <View style={StyleSheet.absoluteFill} aria-hidden>
+        <Image source={{ uri: photo }} onError={() => setPhotoFailed(true)} resizeMode="cover" style={StyleSheet.absoluteFill} />
+      </View>
+    );
   const located = typeof latitude === 'number' && typeof longitude === 'number' && Number.isFinite(latitude) && Number.isFinite(longitude);
   if (!located || failed)
     return (

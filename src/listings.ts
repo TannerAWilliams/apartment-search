@@ -74,7 +74,8 @@ export function orderedListingLinks(sources: readonly SourceLink[], selectedSour
     .sort((first, second) => priority(first) - priority(second));
 }
 
-export function listingLinkLabel({ name, kind }: Pick<SourceLink, 'name' | 'kind'>) {
+export function listingLinkLabel({ id, name, kind }: Pick<SourceLink, 'name' | 'kind'> & { id?: string }) {
+  if (id === 'walkup-direct') return 'Email the owner';
   if (kind === 'snapshot' || kind === 'cached') return 'View original on ' + name;
   return 'Open on ' + name;
 }
@@ -255,4 +256,21 @@ export function mapListing(point: MapPoint, loaded: readonly ListingData[] = [])
     kind: point.kind,
     sources: point.sources,
   };
+}
+
+/**
+ * Image hosts whose photos cards may show: landlords' own image servers for their own buildings. The web app's
+ * security policy allows exactly these (server/web-headers.ts).
+ */
+export const PHOTO_HOSTS = ['cdn.tfc.com'];
+
+/** The photo address when it is an https image on an allowed host, otherwise null. */
+export function safePhoto(value: unknown) {
+  if (typeof value !== 'string' || value.length > 500) return null;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && PHOTO_HOSTS.includes(url.hostname) && /\.(jpe?g|png|webp)$/i.test(url.pathname) ? url.href : null;
+  } catch {
+    return null;
+  }
 }

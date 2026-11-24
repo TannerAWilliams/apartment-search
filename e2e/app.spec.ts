@@ -1333,3 +1333,42 @@ test('a first visit asks where, how big and what budget, then shows the matches 
   await page.reload();
   await expect(page.getByRole('heading', { name: 'Welcome to Walkup', exact: true })).toHaveCount(0);
 });
+
+test('an owner lists a no-fee apartment for review', async ({ page }) => {
+  const { requests } = await mockApp(page, { account: 'landlord@example.test', admin: false });
+  let mine: unknown[] = [];
+  await page.route('**/api/direct', async (route) => {
+    const body = route.request().postDataJSON();
+    if (body?.action === 'submit')
+      mine = [{ id: 'd1', owner: 'landlord@example.test', status: 'pending', submittedAt: now, input: body.listing }];
+    return route.fulfill({ json: { mine, pending: [] } });
+  });
+  await page.getByRole('tab', { name: 'Profile', exact: true }).click();
+  await page.getByRole('button', { name: 'List your apartment', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Street address', exact: true }).fill('214 Bedford Avenue');
+  await page.getByRole('textbox', { name: 'ZIP code', exact: true }).fill('11249');
+  await page.getByRole('textbox', { name: 'Monthly rent', exact: true }).fill('3200');
+  await page.getByRole('textbox', { name: 'Email for renters', exact: true }).fill('owner@example.test');
+  await page.getByRole('button', { name: 'Submit for review', exact: true }).click();
+  await expect(page.getByText('Sent for review. We’ll approve it shortly.', { exact: true })).toBeVisible();
+  await expect(page.getByText('Waiting for review', { exact: true })).toBeVisible();
+  void requests;
+});
+
+test('main screens have no serious accessibility problems (axe)', async ({ page }) => {
+  const { default: AxeBuilder } = await import('@axe-core/playwright');
+  await mockApp(page, { insights: true, account: 'owner@example.test', admin: true });
+  const check = async (screen: string) => {
+    await page.waitForTimeout(400);
+    const { violations } = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze();
+    const serious = violations
+      .filter(({ impact }) => impact === 'serious' || impact === 'critical')
+      .map(({ id, nodes }) => `${screen}: ${id} (${nodes.length}) ${nodes[0]?.target.join(' ')}`);
+    expect(serious).toEqual([]);
+  };
+  await check('search');
+  await page.getByRole('tab', { name: 'Market', exact: true }).click();
+  await check('market');
+  await page.getByRole('tab', { name: 'Profile', exact: true }).click();
+  await check('profile');
+});

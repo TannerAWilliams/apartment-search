@@ -1,4 +1,5 @@
 /** Security and caching headers, set with Hono's secure-headers middleware. */
+import { PHOTO_HOSTS } from '../src/listings.ts';
 import { secureHeaders } from 'hono/secure-headers';
 
 /**
@@ -12,7 +13,7 @@ export const securityHeaders = secureHeaders({
     defaultSrc: ["'self'"],
     scriptSrc: ["'self'"],
     styleSrc: ["'self'", "'unsafe-inline'"],
-    imgSrc: ["'self'", 'data:', 'https://tile.openstreetmap.org'],
+    imgSrc: ["'self'", 'data:', 'https://tile.openstreetmap.org', ...PHOTO_HOSTS.map((host) => 'https://' + host)],
     connectSrc: [
       "'self'",
       'https://api.github.com',

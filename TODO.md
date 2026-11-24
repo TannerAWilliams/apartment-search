@@ -43,6 +43,16 @@ The code is deployed (`server/billing.ts`); payments stay off, and the upgrade b
 - [ ] Ask Claude to move the app to it: the Worker's custom domain, `APP_ORIGIN`, the sender address for codes and alerts, and a redirect from `apartments.5thof6.com`.
 - [ ] Move the Stripe webhook to the new domain once it is live.
 
+## App Store
+
+- [ ] Join the Apple Developer Program ($99 a year) and create the app in App Store Connect.
+- [ ] From the repo: `bunx eas build --platform ios` (uses `eas.json`), then `bunx eas submit --platform ios`.
+- [ ] Fill in the App Store listing: screenshots, description, the privacy policy link (the Privacy Policy page) and the privacy questionnaire (email address and usage data, not used for tracking). Account deletion is in Profile → Your data, as Apple requires.
+
+## Walkup direct
+
+- [ ] Review submitted owner listings: Profile → List your apartment shows admins what is waiting; approve or reject each.
+
 ## Optional
 
 - [ ] Street View photos on cards: add a Google Maps API key as the `GOOGLE_MAPS_API_KEY` Worker secret (free up to about 9,000 images a month; the app stops at that cap).

@@ -385,6 +385,7 @@ export function ProfilePage({
       <Menu
         onOpen={onOpen}
         rows={[
+          ['list', 'List your apartment', 'Owners and managers: list a no-fee apartment, renters email you directly'],
           ['neighborhoods', 'Neighborhoods', 'Rents by size, buildings and 311 complaints for any NYC neighborhood'],
           ['renewal', 'Renewal check', 'What your apartment would rent for today, before you renew'],
           ['affordable', 'Affordable housing', 'Open lotteries and income-restricted rentals'],

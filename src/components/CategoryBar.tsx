@@ -84,12 +84,7 @@ export function CategoryBar({ applied, onChoose }: { applied: SearchFilters; onC
     ...CATEGORIES.map(([key, label, set]) => [key, label, set] as [string, string, Partial<SearchFilters>]),
   ];
   return (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={{ gap: 26, paddingHorizontal: 4 }}
-      accessibilityRole="tablist"
-    >
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 26, paddingHorizontal: 4 }}>
       {items.map(([key, label, set]) => {
         const selected = key === 'all' ? chosen.length === 0 : chosen.includes(key);
         const color = selected ? colors.ink : colors.muted;

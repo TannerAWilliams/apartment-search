@@ -59,6 +59,12 @@ export interface ListingData {
   bestFit?: ReturnType<typeof import('./best-fit.ts').bestFit>;
   /** Comparison with similar apartments and warnings (src/insights.ts), added by the server's search. */
   insights?: import('./insights.ts').ListingInsights;
+  /** Listed on Walkup by its owner, who pays any broker; renters pay no fee (server/direct-listings.ts). */
+  noFee?: boolean;
+  /** How to reach the owner of a Walkup direct listing, with when it is free and their description. */
+  contact?: { email: string; phone?: string; available?: string; description?: string };
+  /** A photo of the building from the landlord that listed it, from an allowed image host (src/listings.ts). */
+  photo?: string;
   /** Official records of the building, where they have been checked (src/insights.ts). */
   building?: import('./insights.ts').BuildingFacts;
 }

@@ -68,6 +68,7 @@ const RenewalPage = lazy(() => import('./src/screens/NeighborhoodsPage.tsx').the
 const AdminPage = lazy(() => import('./src/screens/AdminPage.tsx').then((module) => ({ default: module.AdminPage })));
 const LegalPage = lazy(() => import('./src/screens/LegalPage.tsx').then((module) => ({ default: module.LegalPage })));
 const ListingPage = lazy(() => import('./src/screens/ListingPage.tsx').then((module) => ({ default: module.ListingPage })));
+const DirectPage = lazy(() => import('./src/screens/DirectPage.tsx').then((module) => ({ default: module.DirectPage })));
 const AlertsPage = lazy(() => import('./src/screens/AlertsPage.tsx').then((module) => ({ default: module.AlertsPage })));
 
 function ApartmentSearch() {
@@ -118,6 +119,7 @@ function ApartmentSearch() {
     householdRequest,
     billingRequest,
     loadListing,
+    directRequest,
     loadAdminStats,
     accountRequest,
     loadNeighborhoodReport,
@@ -641,6 +643,13 @@ function ApartmentSearch() {
                   />
                 )}
                 {tab === 'admin' && <AdminPage load={serverState === 'ready' && admin ? loadAdminStats : undefined} onError={setError} />}
+                {tab === 'list' && (
+                  <DirectPage
+                    request={serverState === 'ready' && account ? directRequest : undefined}
+                    account={account}
+                    onError={setError}
+                  />
+                )}
                 {tab === 'terms' && <LegalPage kind="terms" />}
                 {tab === 'privacy' && <LegalPage kind="privacy" />}
                 {tab === 'neighborhoods' && (
