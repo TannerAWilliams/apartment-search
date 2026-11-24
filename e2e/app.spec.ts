@@ -1124,3 +1124,68 @@ test('plain-English search turns a sentence into filters and searches', async ({
     .poll(() => requests.filter(({ path }) => path === '/api/search').at(-1)?.body)
     .toMatchObject({ bedrooms: 2, maxRent: 4000, region: 'brooklyn', laundry: 'in_building' });
 });
+
+const neighborhoodMocks = async (page: Page) => {
+  await page.route('**/api/market?*', (route) =>
+    route.fulfill({
+      json: {
+        month: '2026-11',
+        history: [],
+        areas: [
+          { id: 'Manhattan|West Village', label: 'West Village', detail: 'Manhattan', count: 40, sizes: [] },
+          { id: 'Brooklyn|Park Slope', label: 'Park Slope', detail: 'Brooklyn', count: 50, sizes: [] },
+        ],
+      },
+    }),
+  );
+  await page.route('**/api/neighborhood?*', (route) =>
+    route.fulfill({
+      json: {
+        name: 'West Village',
+        listings: 40,
+        borough: 'Manhattan',
+        zips: ['10014'],
+        sizes: [
+          { bedrooms: 0, count: 5, median: 3100 },
+          { bedrooms: 1, count: 20, median: 4200 },
+          { bedrooms: 2, count: 10, median: 6000 },
+          { bedrooms: 3, count: 0, median: null },
+          { bedrooms: 4, count: 0, median: null },
+        ],
+        buildings: { known: 6, stabilized: 2, grades: { A: 3, B: 2, C: 1, D: 0 } },
+        complaints: { zip: '10014', counts: { Noise: 900, 'Heat and hot water': 120, Rodents: 40, 'Building conditions': 60 } },
+      },
+    }),
+  );
+};
+
+test('neighborhoods: rents by size, buildings and 311 complaints, then its apartments', async ({ page }) => {
+  const { requests } = await mockApp(page);
+  await neighborhoodMocks(page);
+  await page.getByRole('tab', { name: 'Profile', exact: true }).click();
+  await page.getByRole('button', { name: 'Neighborhoods', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Park Slope', exact: true }), 'Manhattan is shown first').toHaveCount(0);
+  await page.getByRole('button', { name: 'West Village', exact: true }).click();
+  await expect(page.getByText('1 BR: median $4,200 (20 listed)', { exact: true })).toBeVisible();
+  await expect(page.getByText(/Buildings checked: 6; 2 register rent-stabilized units; grades A 3, B 2, C 1/)).toBeVisible();
+  await expect(page.getByText(/311 complaints in the last year, ZIP 10014: noise 900/)).toBeVisible();
+  await page.getByRole('button', { name: 'Show apartments in West Village', exact: true }).click();
+  await expect
+    .poll(() => requests.filter(({ path }) => path === '/api/search').at(-1)?.body)
+    .toMatchObject({ neighborhood: 'West Village', region: 'manhattan' });
+});
+
+test('renewal check compares the rent with similar apartments, or the Rent Guidelines Board', async ({ page }) => {
+  await mockApp(page);
+  await neighborhoodMocks(page);
+  await page.getByRole('tab', { name: 'Profile', exact: true }).click();
+  await page.getByRole('button', { name: 'Renewal check', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Find a neighborhood', exact: true }).fill('west');
+  await page.getByRole('button', { name: 'West Village', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Your rent now', exact: true }).fill('5000');
+  await expect(
+    page.getByText('You pay 19% more than the $4,200 median of 20 similar apartments listed now.', { exact: true }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'My apartment is rent-stabilized', exact: true }).click();
+  await expect(page.getByText(/3% for a one-year lease \(\$5,150\)/)).toBeVisible();
+});

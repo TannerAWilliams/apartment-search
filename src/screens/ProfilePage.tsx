@@ -217,6 +217,8 @@ export function ProfilePage({
       <Menu
         onOpen={onOpen}
         rows={[
+          ['neighborhoods', 'Neighborhoods', 'Rents by size, buildings and 311 complaints for any NYC neighborhood'],
+          ['renewal', 'Renewal check', 'What your apartment would rent for today, before you renew'],
           ['affordable', 'Affordable housing', 'Open lotteries and income-restricted rentals'],
           ['marketplaces', 'Rental platforms', 'Search StreetEasy, Zillow and other sites directly'],
         ]}

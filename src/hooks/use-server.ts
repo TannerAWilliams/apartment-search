@@ -10,6 +10,7 @@ import { API_ORIGIN, CHECK_TIME, SEARCH_DEFAULTS, api, failureInfo, finishSource
 import type { AffordableHousing } from '../screens/AffordableHousing.tsx';
 import type { AlertState } from '../screens/AlertsPage.tsx';
 import type { HouseholdReply } from '../screens/SharedListPage.tsx';
+import type { NeighborhoodReport } from '../screens/NeighborhoodsPage.tsx';
 import type { Member, PlatformSettings, SettingsChange } from '../screens/ProfilePage.tsx';
 import type { ListingData, SearchFilters, SearchResult } from '../domain.ts';
 import type { Listing } from '../components/Listing.tsx';
@@ -259,6 +260,11 @@ export function useServer({ appliedFilters, searchVersion, submitted, setResult,
     (body?: Record<string, unknown>) => api<HouseholdReply>('household', body ? { body, token: activeToken } : { token: activeToken }),
     [activeToken],
   );
+  /** One neighborhood's report: rents by size, buildings and 311 complaints. */
+  const loadNeighborhoodReport = useCallback(
+    (name: string) => api<NeighborhoodReport>('neighborhood?' + new URLSearchParams({ name }), { token: activeToken }),
+    [activeToken, lastCheckedAt],
+  );
   const loadHousing = useCallback(
     (signal?: AbortSignal) =>
       api<Awaited<ReturnType<NonNullable<React.ComponentProps<typeof AffordableHousing>['loadHousing']>>>>('housing', {
@@ -317,6 +323,7 @@ export function useServer({ appliedFilters, searchVersion, submitted, setResult,
     plan,
     membersRequest,
     householdRequest,
+    loadNeighborhoodReport,
     configuredSources,
     companies,
     sourceCatalog,

@@ -179,6 +179,8 @@ export const HouseholdRequestSchema = v.variant(
   ],
   'Choose a shared-list action.',
 );
+const NAME = 'Name a neighborhood.';
+export const NeighborhoodQuerySchema = v.object({ name: v.pipe(v.string(NAME), v.trim(), v.minLength(2, NAME), v.maxLength(60, NAME)) });
 export const SettingsRequestSchema = v.pipe(
   v.object({ nightlyResync: v.optional(v.boolean(SETTING)), daytimeChecks: v.optional(v.boolean(SETTING)) }, SETTING),
   v.check((change) => change.nightlyResync !== undefined || change.daytimeChecks !== undefined, SETTING),

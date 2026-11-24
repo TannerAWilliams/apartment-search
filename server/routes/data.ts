@@ -11,7 +11,8 @@ import { storedHomeSeeker } from '../sources/westchester-homeseeker.ts';
 import { storedHdcRerentals, storedHousing } from '../refresh/snapshots.ts';
 import { storedMarket, storedRentHistory } from '../refresh/market.ts';
 import { apiBodies, factory, fail, refuse } from './context.ts';
-import { BuildingAddressSchema, MarketQuerySchema, StreetViewQuerySchema } from './inputs.ts';
+import { BuildingAddressSchema, MarketQuerySchema, NeighborhoodQuerySchema, StreetViewQuerySchema } from './inputs.ts';
+import { neighborhoodReport } from '../neighborhoods.ts';
 import { streetViewImage, streetViewLimit } from '../street-view.ts';
 
 export const dataRoutes = factory
@@ -73,6 +74,10 @@ export const dataRoutes = factory
       log.error('storage_read_failed', cause, { path: c.req.path });
       return fail(c, 503, 'The Housing Connect data could not be read.');
     }
+  })
+  .get('/neighborhood', vValidator('query', NeighborhoodQuerySchema, refuse), async (c) => {
+    const { fetcher } = c.var.services;
+    return c.json(await neighborhoodReport(c.var.appEnv, c.req.valid('query').name, (url, options) => fetcher(url, options)), 200);
   })
   .post('/building-report', apiBodies, vValidator('json', BuildingAddressSchema, refuse), async (c) => {
     const { fetcher } = c.var.services;

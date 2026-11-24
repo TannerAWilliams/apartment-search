@@ -6,7 +6,7 @@ import type { ListingData, SourceLink, SearchResult } from './src/domain.ts';
 
 import { Modal, Platform, Pressable, ScrollView, StatusBar, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
-import { REGIONS } from './src/regions.ts';
+import { REGIONS, boroughKey } from './src/regions.ts';
 import { bedroomLabel, formatRent, localWorkplace, needsCommute, parseFilters } from './src/search.ts';
 import { mobileStyles } from './src/mobileStyles.ts';
 import { colors, styles } from './src/styles.ts';
@@ -58,6 +58,10 @@ const RentChart = lazy(() => import('./src/components/RentChart.tsx').then((modu
 const ProfilePage = lazy(() => import('./src/screens/ProfilePage.tsx').then((module) => ({ default: module.ProfilePage })));
 const SharedListPage = lazy(() => import('./src/screens/SharedListPage.tsx').then((module) => ({ default: module.SharedListPage })));
 const ApplyPage = lazy(() => import('./src/screens/ApplyPage.tsx').then((module) => ({ default: module.ApplyPage })));
+const NeighborhoodsPage = lazy(() =>
+  import('./src/screens/NeighborhoodsPage.tsx').then((module) => ({ default: module.NeighborhoodsPage })),
+);
+const RenewalPage = lazy(() => import('./src/screens/NeighborhoodsPage.tsx').then((module) => ({ default: module.RenewalPage })));
 const AlertsPage = lazy(() => import('./src/screens/AlertsPage.tsx').then((module) => ({ default: module.AlertsPage })));
 
 function ApartmentSearch() {
@@ -106,6 +110,7 @@ function ApartmentSearch() {
     plan,
     membersRequest,
     householdRequest,
+    loadNeighborhoodReport,
     configuredSources,
     companies,
     sourceCatalog,
@@ -578,6 +583,25 @@ function ApartmentSearch() {
                   />
                 )}
                 {tab === 'apply' && <ApplyPage saved={saved} onError={setError} />}
+                {tab === 'neighborhoods' && (
+                  <NeighborhoodsPage
+                    loadNeighborhoods={serverState === 'ready' ? loadNeighborhoods : undefined}
+                    loadReport={serverState === 'ready' ? loadNeighborhoodReport : undefined}
+                    onError={setError}
+                    onShow={(neighborhood, borough) => {
+                      const next = { ...draft, neighborhood, region: (borough && boroughKey(borough)) || 'nyc', zip: '' };
+                      setDraft(next);
+                      void submit(next);
+                    }}
+                  />
+                )}
+                {tab === 'renewal' && (
+                  <RenewalPage
+                    loadNeighborhoods={serverState === 'ready' ? loadNeighborhoods : undefined}
+                    loadReport={serverState === 'ready' ? loadNeighborhoodReport : undefined}
+                    onError={setError}
+                  />
+                )}
                 {tab === 'affordable' && (
                   <AffordableHousing
                     region={applied.region}
