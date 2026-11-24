@@ -115,8 +115,11 @@ function AreaPicker({
   );
 }
 
-/** `initialArea` opens the page on that neighborhood or borough by name, when StreetEasy reports it. */
-export function MarketHistory({ load, initialArea }: { load?: LoadHistory; initialArea?: string }) {
+/**
+ * `area` is the neighborhood or borough by name, chosen by the Market page's one area picker; StreetEasy's own
+ * picker is then hidden. Without it, the section has its own picker (`initialArea` opens it on an area).
+ */
+export function MarketHistory({ load, initialArea, area: chosenArea }: { load?: LoadHistory; initialArea?: string; area?: string }) {
   const catalog = useHistory<HistoryCatalog>(load, 'history');
   const [market, setMarket] = useState<Market>('Rentals');
   const [segment, setSegment] = useState('All');
@@ -131,13 +134,17 @@ export function MarketHistory({ load, initialArea }: { load?: LoadHistory; initi
 
   const data = catalog.data;
   const areas = data?.areas ?? [];
+  const controlled = chosenArea !== undefined;
   useEffect(() => {
-    const wanted = initialArea?.trim().toLowerCase();
+    const wanted = (chosenArea ?? initialArea)?.trim().toLowerCase();
     const match = wanted ? areas.find(({ name }) => name.toLowerCase() === wanted) : undefined;
+    // An area StreetEasy does not report (New Jersey, a ZIP code) shows New York City.
     if (match) setAreaId(match.id);
-    // Only when the catalog first arrives; later choices on the page are the person's own.
+    else if (controlled) setAreaId(1);
+    setRankBorough(null);
+    // When the catalog arrives, and whenever the page's picker changes; otherwise choices here are the person's own.
     // biome-ignore lint/correctness/useExhaustiveDependencies: see above
-  }, [data]);
+  }, [data, chosenArea]);
   const area = areas.find(({ id }) => id === areaId);
   const latestMonth = data?.latestMonth ?? '2026-10';
   const config = MARKETS[market];
@@ -227,17 +234,27 @@ export function MarketHistory({ load, initialArea }: { load?: LoadHistory; initi
 
   return (
     <View style={{ gap: 14 }}>
-      <View style={styles.chartIntro}>
-        <Text style={styles.chartKicker}>STREETEASY DATA DASHBOARD · 2010–{latestMonth.slice(0, 4)}</Text>
-        <Text accessibilityRole="header" style={styles.chartTitle}>
-          Market history
+      {controlled ? (
+        <Text style={styles.smallMuted}>
+          {area?.name ?? 'New York City'}
+          {chosenArea && area?.name.toLowerCase() !== chosenArea.trim().toLowerCase()
+            ? ` (StreetEasy has no history for ${chosenArea})`
+            : ''}
+          , through {monthLabel(latestMonth)}. Market-wide StreetEasy figures; blank months are unknown, never zero.
         </Text>
-        <Text style={styles.bodyText}>
-          Citywide, borough and neighborhood rents, inventory and price cuts. Market-wide figures, not individual listings.
-        </Text>
-        <Text style={styles.smallMuted}>Through {monthLabel(latestMonth)}. Blank months are unknown, never zero.</Text>
-        <Link label="StreetEasy Data Dashboard (source and methodology)" url={DASHBOARD_URL} />
-      </View>
+      ) : (
+        <View style={styles.chartIntro}>
+          <Text style={styles.chartKicker}>STREETEASY DATA DASHBOARD · 2010–{latestMonth.slice(0, 4)}</Text>
+          <Text accessibilityRole="header" style={styles.chartTitle}>
+            Market history
+          </Text>
+          <Text style={styles.bodyText}>
+            Citywide, borough and neighborhood rents, inventory and price cuts. Market-wide figures, not individual listings.
+          </Text>
+          <Text style={styles.smallMuted}>Through {monthLabel(latestMonth)}. Blank months are unknown, never zero.</Text>
+          <Link label="StreetEasy Data Dashboard (source and methodology)" url={DASHBOARD_URL} />
+        </View>
+      )}
       {catalog.error && (
         <Text accessibilityRole="alert" style={styles.error}>
           The market history catalog could not be loaded. Try again shortly.
@@ -262,16 +279,18 @@ export function MarketHistory({ load, initialArea }: { load?: LoadHistory; initi
             ))}
           </View>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
-            <AreaPicker
-              label={`Area: ${area?.name ?? 'NYC'}${area?.type === 'neighborhood' ? ` (${area.borough})` : ''}`}
-              areas={areas}
-              exclude={[areaId]}
-              onPick={(picked) => {
-                setAreaId(picked.id);
-                setCompare((current) => current.filter((id) => id !== picked.id));
-                setRankBorough(null);
-              }}
-            />
+            {!controlled && (
+              <AreaPicker
+                label={`Area: ${area?.name ?? 'NYC'}${area?.type === 'neighborhood' ? ` (${area.borough})` : ''}`}
+                areas={areas}
+                exclude={[areaId]}
+                onPick={(picked) => {
+                  setAreaId(picked.id);
+                  setCompare((current) => current.filter((id) => id !== picked.id));
+                  setRankBorough(null);
+                }}
+              />
+            )}
             {compare.length < 3 && (
               <AreaPicker
                 label="Compare with"

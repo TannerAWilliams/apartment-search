@@ -20,7 +20,8 @@ async function post(path: string, body: object) {
 }
 
 /** Calls onSignedIn with the session token the native app sends from now on (the web app gets a cookie and an empty token). */
-export function SignIn({ onSignedIn }: { onSignedIn: (token: string) => void }) {
+/** `primary` draws the first button as the page's main action, as on the landing page. */
+export function SignIn({ onSignedIn, primary = false }: { onSignedIn: (token: string) => void; primary?: boolean }) {
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [sentTo, setSentTo] = useState('');
@@ -67,7 +68,7 @@ export function SignIn({ onSignedIn }: { onSignedIn: (token: string) => void }) 
             keyboardType="email-address"
             maxLength={254}
           />
-          <Button secondary onPress={sendCode} disabled={busy}>
+          <Button secondary={!primary} onPress={sendCode} disabled={busy}>
             {busy ? 'Sending…' : 'Email me a sign-in code'}
           </Button>
         </>

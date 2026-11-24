@@ -177,3 +177,13 @@ test('accessible stations are marked, filtered and understood', async () => {
   expect(understand('new listings in New Jersey').changes).toEqual({ region: 'nj', neighborhood: '', newWithinDays: 3 });
   expect(understand('studio in new york city').changes).toEqual({ bedrooms: 0, region: 'nyc', neighborhood: '' });
 });
+
+test('searches carry on without the lists when storage cannot be read', async () => {
+  const broken = {
+    ...createMemoryBucket(),
+    get: async () => {
+      throw new Error('storage down');
+    },
+  };
+  expect(await openData(broken, 1)).toMatchObject({ registry: {}, stations: [] });
+});

@@ -28,7 +28,7 @@ import {
   api,
 } from './src/app-shared.ts';
 import { Filters, WebsiteFilter } from './src/components/Filters.tsx';
-import { SignIn } from './src/components/SignIn.tsx';
+import { Landing } from './src/screens/Landing.tsx';
 import { StreetViewContext } from './src/components/ListingThumbnail.tsx';
 import {
   BrandMark,
@@ -261,20 +261,12 @@ function ApartmentSearch() {
     </>
   );
 
-  // Signed out, the app is only its sign-in form: nothing else works until the server knows who you are.
+  // Signed out, the app is its landing page, with the sign-in form: nothing else works until the server knows who you are.
   if (serverState === 'locked')
     return (
       <SafeAreaView style={styles.safe}>
-        {topBar}
-        <ScrollView contentContainerStyle={styles.signInScreen}>
-          <View style={styles.signInCard}>
-            <Text accessibilityRole="header" style={styles.chartTitle}>
-              Sign in
-            </Text>
-            <Text style={styles.bodyText}>Walkup is private. Enter your email and we’ll send you a six-digit code.</Text>
-            <SignIn onSignedIn={signedIn} />
-          </View>
-        </ScrollView>
+        <StatusBar barStyle="dark-content" />
+        <Landing onSignedIn={signedIn} />
       </SafeAreaView>
     );
 

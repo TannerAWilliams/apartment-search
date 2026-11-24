@@ -133,3 +133,29 @@ test('the admin dashboard counts members, payments, alerts, data and runs', asyn
   expect(stats.runs).toEqual({ nightly: null, daytime: null });
   expect((await handleApi(request('admin/stats'), env, { admin: false })).status).toBe(403);
 });
+
+test('the dashboard names failing sources and counts this week’s alerts', async () => {
+  const bucket = createMemoryBucket();
+  await bucket.put(
+    'rentals/refresh.json',
+    JSON.stringify({
+      lastCheckedAt: '2026-11-24T00:00:00Z',
+      sources: [
+        { id: 'zillow-live', name: 'Zillow', status: 'failed', checkedAt: '2026-11-24T00:00:00Z', updatedAt: null },
+        { id: 'tfc-live', name: 'TF Cornerstone', status: 'updated', checkedAt: '2026-11-24T00:00:00Z', updatedAt: '2026-11-24T00:00:00Z' },
+      ],
+    }),
+  );
+  await bucket.put(
+    'alerts/recent.json',
+    JSON.stringify([
+      { id: 'a', at: new Date().toISOString(), ruleId: 'r', title: 't', lines: [], newCount: 1, dropCount: 0 },
+      { id: 'b', at: '2020-01-01T00:00:00Z', ruleId: 'r', title: 't', lines: [], newCount: 1, dropCount: 0 },
+    ]),
+  );
+  const stats = await readJson<{ sources: { failed: string[] }; alerts: { sentThisWeek: number } }>(
+    handleApi(request('admin/stats'), { BUCKET: bucket }, { admin: true }),
+  );
+  expect(stats.sources.failed).toEqual(['Zillow']);
+  expect(stats.alerts.sentThisWeek).toBe(1);
+});

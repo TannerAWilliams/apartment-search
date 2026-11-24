@@ -63,7 +63,7 @@ export const styles = StyleSheet.create({
     paddingVertical: 5,
     borderRadius: 7,
   },
-  sectionHeading: { fontSize: 17, fontWeight: '800', color: colors.ink },
+  sectionHeading: { fontSize: 22, lineHeight: 28, fontWeight: '600', letterSpacing: -0.3, color: colors.ink, marginTop: 8 },
   field: { gap: 5 },
   fieldLabel: { ...small, color: colors.ink, fontWeight: weight },
   input: {

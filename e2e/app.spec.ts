@@ -704,31 +704,14 @@ test('market history charts one area, compares another, and says when figures ca
     ];
     return route.fulfill({ json: { month: '2026-10', areas, history: [] } });
   });
+  // One page: today's figures, then StreetEasy's since 2010, both for the area chosen once at the top.
   await page.getByRole('tab', { name: 'Market', exact: true }).click();
-  await page.getByRole('button', { name: 'Market history 2010–2026', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Rents today', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Since 2010', exact: true })).toBeVisible();
   await expect(page.getByText('These figures could not be loaded. No values have been substituted; try again shortly.')).toBeVisible();
 
   failValues = false;
-  await page.getByPlaceholder('Neighborhood or borough').first().fill('park');
-  await page.getByRole('button', { name: 'Park Slope · Brooklyn', exact: true }).click();
-  await expect(page.getByText('Area: Park Slope (Brooklyn)', { exact: true })).toBeVisible();
-  // The headline sentence, the tiles and the ranking agree on one month and one set of figures.
-  await expect(page.getByText(/Median asking rent in Park Slope was/)).toContainText('$3,550');
-  await expect(page.getByText('Park Slope is number 2 of 2 in Brooklyn, highlighted.', { exact: true })).toBeVisible();
-  await page.getByPlaceholder('Neighborhood or borough').nth(1).fill('dumbo');
-  await page.getByRole('button', { name: 'DUMBO · Brooklyn', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Stop comparing DUMBO', exact: true })).toBeVisible();
-  // Every chart has its table; a month StreetEasy left blank reads as such, never as zero.
-  const trend = page.getByRole('button', { name: 'Show table', exact: true }).first();
-  await trend.click();
-  await expect(page.getByText('Mar 2026', { exact: true }).first()).toBeVisible();
-  await page.getByRole('button', { name: 'Since 2010', exact: true }).click();
-  await page.getByRole('button', { name: 'Stop comparing DUMBO', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Stop comparing DUMBO', exact: true })).toHaveCount(0);
-  await page.getByRole('button', { name: 'Back to rent trends', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Market history', exact: true })).toHaveCount(0);
-
-  // State, then borough, then neighborhood: each choice is what the chart shows.
+  // State, then borough, then neighborhood: each choice is what both sections show.
   await page.getByRole('button', { name: 'New York', exact: true }).click();
   await expect.poll(() => marketRequests).toContain('nyc|city');
   await expect(page.getByText('Median asking rent over time: New York', { exact: true })).toBeVisible();
@@ -737,22 +720,29 @@ test('market history charts one area, compares another, and says when figures ca
   await expect.poll(() => marketRequests).toContain('nyc|neighborhood');
   await page.getByRole('button', { name: 'Neighborhood Park Slope', exact: true }).click();
   await expect(page.getByText('Median asking rent over time: Park Slope', { exact: true })).toBeVisible();
-  // The table lists the neighborhood's neighbors; a row charts it.
+  await expect(page.getByText(/Median 1 BR · Park Slope/)).toBeVisible();
+  // The history follows: the headline sentence, the tiles and the ranking agree on one month and one set of figures.
+  await expect(page.getByText(/Median asking rent in Park Slope was/)).toContainText('$3,550');
+  await expect(page.getByText('Park Slope is number 2 of 2 in Brooklyn, highlighted.', { exact: true })).toBeVisible();
+  await page.getByPlaceholder('Neighborhood or borough').first().fill('dumbo');
+  await page.getByRole('button', { name: 'DUMBO · Brooklyn', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Stop comparing DUMBO', exact: true })).toBeVisible();
+  // Every chart has its table; a month StreetEasy left blank reads as such, never as zero.
+  await page.getByRole('button', { name: 'Show table', exact: true }).nth(1).click();
+  await expect(page.getByText('Mar 2026', { exact: true }).first()).toBeVisible();
+  await page.getByRole('button', { name: 'Stop comparing DUMBO', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Stop comparing DUMBO', exact: true })).toHaveCount(0);
+  // The table lists the neighborhood's neighbors; a row charts it, and the history follows it too.
   await page.getByRole('button', { name: 'Show chart for DUMBO Brooklyn, NY', exact: true }).click();
   await expect(page.getByText('Median asking rent over time: DUMBO', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Neighborhood Park Slope', exact: true }).click();
-
-  // A neighborhood links to the same neighborhood's StreetEasy history since 2010.
-  await page.getByRole('link', { name: 'Park Slope since 2010 (StreetEasy) →', exact: true }).click();
-  await expect(page.getByText('Area: Park Slope (Brooklyn)', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Back to rent trends', exact: true }).click();
+  await expect(page.getByText(/Median asking rent in DUMBO was/)).toBeVisible();
 
   // A ZIP code charts that ZIP; one outside New York looks in both states, and an empty one says so.
   const zip = page.getByLabel('ZIP code', { exact: true });
   await zip.fill('11215');
   await expect(page.getByText('Median asking rent over time: 11215', { exact: true })).toBeVisible();
   await expect.poll(() => marketRequests).toContain('nyc|zip');
-  await expect(page.getByRole('link', { name: /since 2010/ })).toHaveCount(0);
+  await expect(page.getByText(/StreetEasy has no history for 11215/)).toBeVisible();
   await zip.fill('07302');
   await expect.poll(() => marketRequests).toContain('all|zip');
   await expect(page.getByText('No listings in 07302', { exact: true })).toBeVisible();
@@ -761,7 +751,7 @@ test('market history charts one area, compares another, and says when figures ca
   await page.getByRole('button', { name: 'New Jersey', exact: true }).click();
   await page.getByRole('button', { name: 'City Jersey City, NJ', exact: true }).click();
   await expect(page.getByText('Median asking rent over time: Jersey City, NJ', { exact: true })).toBeVisible();
-  await expect(page.getByRole('link', { name: /since 2010/ })).toHaveCount(0);
+  await expect(page.getByText(/StreetEasy has no history for Jersey City/)).toBeVisible();
 
   // The logo and title go home, to Market, from anywhere.
   await page.getByRole('tab', { name: /^Saved/ }).click();
@@ -815,16 +805,11 @@ test('iPhone 17 portrait keeps primary controls inside the screen', async ({ pag
   await checkLayout('search-return');
 });
 
-test('unavailable dashboard capability explains access without requesting source bytes', async ({ page }) => {
+test('without dashboard access the Market page shows today only, without requesting history', async ({ page }) => {
   const { requests } = await mockApp(page);
   await page.getByRole('tab', { name: 'Market', exact: true }).click();
-  await page.getByRole('button', { name: 'Market history 2010–2026', exact: true }).click();
-  await expect(
-    page.getByText(
-      'Market history is unavailable on this server. Connect to a server with dashboard access; a private server requires authentication.',
-      { exact: true },
-    ),
-  ).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Rents today', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Since 2010', exact: true })).toHaveCount(0);
   expect(requests.filter((request) => request.path.startsWith('/api/history'))).toHaveLength(0);
 });
 
@@ -1278,4 +1263,17 @@ test('results offer email alerts for the search, and newest and best-value sorti
   await expect(page.getByRole('button', { name: 'Best value for the area', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Get email alerts for this search', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Alerts', exact: true })).toBeVisible();
+});
+
+test('signed out, the landing page explains Walkup, shows the plans, and opens the terms', async ({ page }) => {
+  await mockApp(page, { signIn: true, start: '/' });
+  await expect(page.getByRole('heading', { name: 'Find the good apartment before everyone else does.', exact: true })).toBeVisible();
+  await expect(page.getByText('12% below similar · median $3,920 for 28 nearby', { exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Plans', exact: true })).toBeVisible();
+  await expect(page.getByLabel('Email', { exact: true })).toBeVisible();
+  await page.getByRole('link', { name: 'Terms of Service', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Terms of Service', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '← Back', exact: true }).click();
+  await page.getByRole('button', { name: 'Start searching', exact: true }).click();
+  await expect(page.getByLabel('Email', { exact: true })).toBeInViewport();
 });
