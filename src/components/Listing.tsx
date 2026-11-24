@@ -40,22 +40,11 @@ const card = StyleSheet.create({
     borderRadius: 999,
     overflow: 'hidden',
   },
-  heart: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#ffffffee',
-  },
+  // The heart sits on the image: white outline over a darkened fill, no circle behind it.
+  heart: { position: 'absolute', top: 10, right: 10, width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   title: { fontSize: 15, lineHeight: 20, fontWeight: '600', color: colors.ink },
   subtitle: { fontSize: 15, lineHeight: 20, color: colors.muted },
   priceLine: { fontSize: 15, lineHeight: 20, color: colors.ink, marginTop: 4 },
-  action: { minHeight: 40, justifyContent: 'center', paddingHorizontal: 4 },
-  actions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   notice: { fontSize: 13, lineHeight: 18, color: '#805213' },
   details: { borderTopWidth: 1, borderColor: '#ebebeb', paddingTop: 12, gap: 8 },
 });
@@ -106,26 +95,39 @@ export function Listing({
     : 'Check date unavailable';
   return (
     <View style={styles.rentalCard}>
-      {/* The image area: the listing's block on the map (or a plain tile), with its tags and the save heart on it. */}
-      <View style={card.media}>
-        <ListingThumbnail latitude={listing.latitude} longitude={listing.longitude} />
-        <View style={card.tags}>
-          <Text style={card.tag}>{presentation.bedsLabel}</Text>
-          {commute && transitSeconds != null && <Text style={card.tag}>{Math.ceil(transitSeconds / 60)} min transit</Text>}
-          {commute && drivingSeconds != null && <Text style={card.tag}>{Math.ceil(drivingSeconds / 60)} min drive</Text>}
+      {/* The card itself opens its details, as listing cards do in travel-booking apps; the heart saves. */}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={'Details for ' + title}
+        accessibilityState={{ expanded }}
+        aria-expanded={expanded}
+        onPress={() => setExpanded(!expanded)}
+        style={({ pressed }) => [{ gap: 10 }, pressed && { opacity: 0.85 }]}
+      >
+        <View style={card.media}>
+          <ListingThumbnail latitude={listing.latitude} longitude={listing.longitude} />
+          <View style={card.tags}>
+            <Text style={card.tag}>{presentation.bedsLabel}</Text>
+            {commute && transitSeconds != null && <Text style={card.tag}>{Math.ceil(transitSeconds / 60)} min transit</Text>}
+            {commute && drivingSeconds != null && <Text style={card.tag}>{Math.ceil(drivingSeconds / 60)} min drive</Text>}
+          </View>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={onRemove ? 'Remove saved apartment' : saved ? 'Apartment saved' : 'Save apartment'}
+            accessibilityState={{ disabled: !onRemove && saved }}
+            disabled={!onRemove && saved}
+            onPress={() => (onRemove ? onRemove(listing) : onSave(listing))}
+            hitSlop={8}
+            style={card.heart}
+          >
+            <HeartIcon
+              size={26}
+              color={saved || onRemove ? colors.green : colors.white}
+              filled={saved || Boolean(onRemove)}
+              fill="#00000066"
+            />
+          </Pressable>
         </View>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={onRemove ? 'Remove saved apartment' : saved ? 'Apartment saved' : 'Save apartment'}
-          accessibilityState={{ disabled: !onRemove && saved }}
-          disabled={!onRemove && saved}
-          onPress={() => (onRemove ? onRemove(listing) : onSave(listing))}
-          style={card.heart}
-        >
-          <HeartIcon color={saved || onRemove ? colors.green : colors.ink} filled={saved || Boolean(onRemove)} />
-        </Pressable>
-      </View>
-      <View style={styles.rentalCardBody}>
         <View style={{ gap: 2 }}>
           <Text accessibilityRole="header" style={card.title}>
             {title}
@@ -138,6 +140,8 @@ export function Listing({
               (listing.kind === 'snapshot' ? ' · Recorded rent' : ' · Total price, fees included')}
           </Text>
         </View>
+      </Pressable>
+      <View style={styles.rentalCardBody}>
         {listing.bestFit && (
           <View style={{ gap: 3 }}>
             <Text style={styles.fieldLabel}>
@@ -163,20 +167,9 @@ export function Listing({
             {notice}
           </Text>
         ))}
-        <View style={card.actions}>
-          {original?.url ? <Link label={listingLinkLabel(original)} url={original.url} onError={onError} /> : <View />}
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={'Details for ' + title}
-            accessibilityState={{ expanded }}
-            onPress={() => setExpanded(!expanded)}
-            style={card.action}
-          >
-            <Text style={styles.linkText}>{expanded ? 'Hide details ▴' : 'Details ▾'}</Text>
-          </Pressable>
-        </View>
         {expanded && (
           <View style={card.details}>
+            {original?.url ? <Link label={listingLinkLabel(original)} url={original.url} onError={onError} /> : null}
             <Text style={styles.smallMuted}>
               {checked}
               {['snapshot', 'cached'].includes(listing.kind) ? ' · Previously saved data' : ''}
@@ -199,6 +192,9 @@ export function Listing({
               <HousingCost />
             </Disclosure>
             {/* NYC's building records cover the five boroughs only; elsewhere there is nothing to check. */}
+            <Pressable accessibilityRole="button" onPress={() => setExpanded(false)} style={{ paddingVertical: 8 }}>
+              <Text style={styles.linkText}>Hide details</Text>
+            </Pressable>
             {searchBorough(listing) && (
               // The report loads when opened: violations, ownership and rent stabilization from NYC's records.
               <Disclosure title="NYC building records">

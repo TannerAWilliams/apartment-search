@@ -1,7 +1,7 @@
 /** The app's few icons, drawn as SVG so they look the same on every device and size. Decorative: the label beside each says what it is. */
 import Svg, { Circle, Line, Path, Rect } from 'react-native-svg';
 
-type IconProps = { color: string; size?: number; filled?: boolean };
+type IconProps = { color: string; size?: number; filled?: boolean; fill?: string };
 
 export function SearchIcon({ color, size = 22 }: IconProps) {
   return (
@@ -12,7 +12,7 @@ export function SearchIcon({ color, size = 22 }: IconProps) {
   );
 }
 
-export function HeartIcon({ color, size = 22, filled = false }: IconProps) {
+export function HeartIcon({ color, size = 22, filled = false, fill }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" aria-hidden>
       <Path
@@ -20,7 +20,7 @@ export function HeartIcon({ color, size = 22, filled = false }: IconProps) {
         stroke={color}
         strokeWidth={2}
         strokeLinejoin="round"
-        fill={filled ? color : 'none'}
+        fill={filled ? color : (fill ?? 'none')}
       />
     </Svg>
   );
@@ -61,6 +61,59 @@ export function BrandMark({ size = 30 }: { size?: number }) {
       <Rect x={12.5} y={22.6} width={7} height={1.4} rx={0.4} fill="#ffffff" />
       <Rect x={11} y={24.4} width={10} height={1.4} rx={0.4} fill="#ffffff" />
       <Rect x={9.5} y={26.2} width={13} height={1.4} rx={0.4} fill="#ffffff" />
+    </Svg>
+  );
+}
+
+/** Filters: three sliders. */
+export function SlidersIcon({ color, size = 18 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" aria-hidden>
+      {[6, 12, 18].map((y) => (
+        <Path key={y} d={`M3 ${y}h18`} stroke={color} strokeWidth={2} strokeLinecap="round" />
+      ))}
+      {[
+        [9, 6],
+        [16, 12],
+        [7, 18],
+      ].map(([x, y]) => (
+        <Circle key={x} cx={x} cy={y} r={2.6} fill="#ffffff" stroke={color} strokeWidth={2} />
+      ))}
+    </Svg>
+  );
+}
+
+/** Map: a folded map. */
+export function MapIcon({ color, size = 16 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" aria-hidden>
+      <Path
+        d="M3 6.5l6-2.5 6 2.5 6-2.5v13.5l-6 2.5-6-2.5-6 2.5z M9 4v13.5 M15 6.5V20"
+        stroke={color}
+        strokeWidth={2}
+        strokeLinejoin="round"
+        fill="none"
+      />
+    </Svg>
+  );
+}
+
+/** List: three lines with bullets. */
+export function ListIcon({ color, size = 16 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" aria-hidden>
+      {[6, 12, 18].map((y) => (
+        <Path key={y} d={`M9 ${y}h12 M4 ${y}h.01`} stroke={color} strokeWidth={2.4} strokeLinecap="round" />
+      ))}
+    </Svg>
+  );
+}
+
+/** Close: an X. */
+export function CloseIcon({ color, size = 16 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" aria-hidden>
+      <Path d="M5 5l14 14M19 5L5 19" stroke={color} strokeWidth={2.4} strokeLinecap="round" />
     </Svg>
   );
 }

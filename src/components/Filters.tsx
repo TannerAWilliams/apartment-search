@@ -42,7 +42,7 @@ export function Filters({
       setDraft((previous) => ({ ...previous, [field]: value }));
 
   return (
-    <View style={styles.filters}>
+    <View style={styles.sheetBody}>
       {(panel === 'more' || panel === 'beds') && (
         <>
           <Text style={styles.fieldLabel}>Bedrooms</Text>
@@ -226,10 +226,8 @@ export function Filters({
           Retry connection
         </Button>
       )}
-      <View style={styles.submit}>
-        <Button onPress={submit} disabled={busy}>
-          {busy ? 'Searching…' : panel === 'commute' ? 'Apply destination' : 'Search apartments →'}
-        </Button>
+      {/* Clear on the left, show results on the right, above a divider. */}
+      <View style={styles.sheetFooter}>
         <Pressable
           accessibilityRole="button"
           onPress={() =>
@@ -239,8 +237,11 @@ export function Filters({
           }
           style={styles.reset}
         >
-          <Text style={styles.linkText}>{panel === 'commute' ? 'Reset destination' : 'Reset filters'}</Text>
+          <Text style={[styles.linkText, { fontSize: 15 }]}>{panel === 'commute' ? 'Reset destination' : 'Clear all'}</Text>
         </Pressable>
+        <Button dark onPress={submit} disabled={busy}>
+          {busy ? 'Searching…' : panel === 'commute' ? 'Apply destination' : 'Show apartments'}
+        </Button>
       </View>
     </View>
   );

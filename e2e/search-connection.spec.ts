@@ -49,7 +49,7 @@ for (const initial of ['checking', 'offline'] as const) {
     await page.goto('/#results');
     await page.getByRole('button', { name: 'Filters', exact: true }).click();
     if (initial === 'offline') await expect(page.getByRole('button', { name: 'Retry connection', exact: true })).toBeVisible();
-    await page.getByRole('button', { name: 'Search apartments →', exact: true }).click();
+    await page.getByRole('button', { name: 'Show apartments', exact: true }).click();
     await expect(
       page
         .getByRole('alert')
@@ -60,7 +60,7 @@ for (const initial of ['checking', 'offline'] as const) {
     if (initial === 'checking') release();
     else await page.getByRole('button', { name: 'Retry connection', exact: true }).click();
     await expect.poll(() => searches.length).toBe(1);
-    await page.getByRole('button', { name: 'Search apartments →', exact: true }).click();
+    await page.getByRole('button', { name: 'Show apartments', exact: true }).click();
     await expect.poll(() => searches.length).toBe(2);
     await expect(page.getByText('12 Grove Street', { exact: true })).toBeVisible();
     await expect(page.getByRole('heading', { name: '1 matching apartment', exact: true })).toBeVisible();

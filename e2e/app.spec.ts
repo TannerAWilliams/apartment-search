@@ -228,7 +228,7 @@ test('mouse navigation and browser back restore tabs', async ({ page }) => {
 test('search failures are visible, not silently treated as zero matches', async ({ page }) => {
   await mockApp(page, { searchError: true });
   await page.getByRole('button', { name: 'Filters', exact: true }).click();
-  await page.getByRole('button', { name: 'Search apartments →', exact: true }).click();
+  await page.getByRole('button', { name: 'Show apartments', exact: true }).click();
   await expect(page.getByRole('alert').filter({ hasText: 'Synthetic search unavailable' }).first()).toBeVisible();
 });
 
@@ -250,7 +250,7 @@ test('rent filter sends user input and handles an empty result', async ({ page }
   const { requests } = await mockApp(page);
   await page.getByRole('button', { name: 'Filters', exact: true }).click();
   await page.getByRole('textbox', { name: 'Max rent per month ($)', exact: true }).fill('1000');
-  await page.getByRole('button', { name: 'Search apartments →', exact: true }).click();
+  await page.getByRole('button', { name: 'Show apartments', exact: true }).click();
   await expect.poll(() => requests.filter((r) => r.path === '/api/search').at(-1)?.body?.maxRent).toBe(1000);
   await expect(page.getByRole('button', { name: 'Save apartment', exact: true })).toHaveCount(0);
 });
@@ -322,11 +322,20 @@ test('without Street View set up, cards never ask for it', async ({ page }) => {
   expect(asked).toEqual([]);
 });
 
-test('listing links open the listing site in a new tab', async ({ page }) => {
+test('tapping a card opens its details, where the listing site opens in a new tab', async ({ page }) => {
   await mockApp(page);
+  const card = page.getByRole('button', { name: 'Details for 12 Grove Street', exact: true });
+  await expect(page.getByRole('link', { name: /^Open on / })).toHaveCount(0);
+  await card.click();
+  await expect(card).toHaveAttribute('aria-expanded', 'true');
   const link = page.getByRole('link', { name: /^Open on / }).first();
   await expect(link).toHaveAttribute('target', '_blank');
   await expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+  // The heart saves without opening or closing the card.
+  await page.getByRole('button', { name: 'Save apartment', exact: true }).click();
+  await expect(card).toHaveAttribute('aria-expanded', 'true');
+  await page.getByRole('button', { name: 'Hide details', exact: true }).click();
+  await expect(page.getByRole('link', { name: /^Open on / })).toHaveCount(0);
 });
 
 test('portrait keeps first listing visible and filter cancellation does not search', async ({ page }, testInfo) => {
@@ -346,7 +355,7 @@ test('portrait keeps first listing visible and filter cancellation does not sear
   await page.getByRole('button', { name: 'Filters', exact: true }).click();
   await expect(page.getByRole('textbox', { name: 'Max rent per month ($)', exact: true })).toHaveValue('');
   await page.keyboard.press('Escape');
-  await expect(page.getByRole('heading', { name: 'Search filters', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Filters', exact: true })).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
   await page.screenshot({ path: testInfo.outputPath('portrait-393x852.png'), fullPage: true });
 });
@@ -357,7 +366,7 @@ test('applied filters, expanded results and search scroll survive navigation', a
   await page.getByRole('button', { name: 'Filters', exact: true }).click();
   await page.getByRole('button', { name: '1 BR', exact: true }).click();
   await page.getByRole('textbox', { name: 'Max rent per month ($)', exact: true }).fill('5000');
-  await page.getByRole('button', { name: 'Search apartments →', exact: true }).click();
+  await page.getByRole('button', { name: 'Show apartments', exact: true }).click();
   await expect.poll(() => requests.filter((r) => r.path === '/api/search').at(-1)?.body?.maxRent).toBe(5000);
   expect(requests.filter((r) => r.path === '/api/search').at(-1)?.body?.bedrooms).toBe(1);
   await expect(page.getByText('1 bedroom · Up to $5,000', { exact: true })).toBeVisible();
@@ -453,7 +462,7 @@ test('feature filters require reported facts rather than matching unknown detail
   await page.getByRole('textbox', { name: 'Minimum square feet', exact: true }).fill('900');
   await page.getByRole('button', { name: 'Require pets allowed', exact: true }).click();
   await page.getByRole('button', { name: 'In-unit laundry', exact: true }).click();
-  await page.getByRole('button', { name: 'Search apartments →', exact: true }).click();
+  await page.getByRole('button', { name: 'Show apartments', exact: true }).click();
   await expect(page.getByText('12 Grove Street', { exact: true })).toBeVisible();
   await expect(page.getByText('13 Grove Street', { exact: true })).toHaveCount(0);
   const search = requests.filter((request) => request.path === '/api/search').at(-1)!;
@@ -723,10 +732,10 @@ test('iPhone 17 portrait keeps primary controls inside the screen', async ({ pag
   }
   await checkLayout('search');
   await page.getByRole('button', { name: 'Filters', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Search filters', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Filters', exact: true })).toBeVisible();
   await checkLayout('filters', false); // Modal hides background navigation from accessibility tree.
   await page.getByRole('button', { name: 'Cancel', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Search filters', exact: true })).toBeHidden();
+  await expect(page.getByRole('heading', { name: 'Filters', exact: true })).toBeHidden();
   await checkLayout('filters-dismissed');
   await page.getByRole('tab', { name: 'More', exact: true }).click();
   await page.getByRole('button', { name: 'Sources & sync', exact: true }).click();
@@ -770,7 +779,7 @@ test('signing in with an email code opens the app', async ({ page }) => {
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   // Signing in opens the market overview, not the search filters.
   await expect(page.getByRole('tab', { name: 'Market', exact: true })).toHaveAttribute('aria-selected', 'true');
-  await expect(page.getByText('Search filters', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Filters', exact: true })).toHaveCount(0);
   await page.getByRole('tab', { name: 'Search', exact: true }).click();
   await expect(page.getByText('12 Grove Street', { exact: true })).toBeVisible();
   expect(requests.find((r) => r.path === '/api/auth/email-otp/send-verification-otp')?.body).toEqual({

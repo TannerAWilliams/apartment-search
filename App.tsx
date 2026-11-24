@@ -30,7 +30,17 @@ import {
 import { Filters, WebsiteFilter } from './src/components/Filters.tsx';
 import { SignIn } from './src/components/SignIn.tsx';
 import { StreetViewContext } from './src/components/ListingThumbnail.tsx';
-import { BrandMark, ChartIcon, HeartIcon, MenuIcon, SearchIcon } from './src/components/Icons.tsx';
+import {
+  BrandMark,
+  ChartIcon,
+  CloseIcon,
+  HeartIcon,
+  ListIcon,
+  MapIcon,
+  MenuIcon,
+  SearchIcon,
+  SlidersIcon,
+} from './src/components/Icons.tsx';
 import { Marketplaces } from './src/screens/Marketplaces.tsx';
 import { Results } from './src/screens/Results.tsx';
 import { useServer } from './src/hooks/use-server.ts';
@@ -231,7 +241,7 @@ function ApartmentSearch() {
           <BrandMark />
           <Text style={styles.brandText}>walkup</Text>
         </Pressable>
-        <Text style={styles.topLabel}>NYC METRO</Text>
+        <View />
       </View>
     </>
   );
@@ -282,14 +292,14 @@ function ApartmentSearch() {
               </View>
             </Pressable>
             {tab === 'results' && (
-              <Button secondary onPress={() => toggleFilter('more')}>
-                Filters
-              </Button>
-            )}
-            {WEB_MAP && !(tab === 'saved' && saved.length === 0) && (
-              <Button secondary onPress={() => setMapView(!mapView)}>
-                {mapView ? 'List' : 'Map'}
-              </Button>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Filters"
+                onPress={() => toggleFilter('more')}
+                style={({ pressed }) => [mobileStyles.iconButton, pressed && styles.pressed]}
+              >
+                <SlidersIcon color={colors.ink} />
+              </Pressable>
             )}
           </View>
         )}
@@ -297,12 +307,18 @@ function ApartmentSearch() {
           <View style={[mobileStyles.overlay, wide && mobileStyles.overlayCentered]}>
             <View style={[mobileStyles.sheet, wide && mobileStyles.wideSheet]} accessibilityViewIsModal>
               <View style={mobileStyles.sheetHeader}>
-                <Text accessibilityRole="header" style={[styles.panelTitle, { flex: 1, minWidth: 0 }]}>
-                  {expanded === 'commute' ? 'Change commute destination' : 'Search filters'}
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Cancel"
+                  onPress={() => setExpanded('')}
+                  style={({ pressed }) => [mobileStyles.sheetClose, pressed && styles.pressed]}
+                >
+                  <CloseIcon color={colors.ink} />
+                </Pressable>
+                <Text accessibilityRole="header" style={mobileStyles.sheetTitle}>
+                  {expanded === 'commute' ? 'Commute destination' : 'Filters'}
                 </Text>
-                <Button secondary onPress={() => setExpanded('')}>
-                  Cancel
-                </Button>
+                <View style={mobileStyles.sheetClose} />
               </View>
               <ScrollView keyboardShouldPersistTaps="handled">
                 {error !== '' && (
@@ -577,6 +593,20 @@ function ApartmentSearch() {
             </View>
           </View>
         </ScrollView>
+        {/* Map and list switch from a floating pill above the tab bar. */}
+        {WEB_MAP && (tab === 'results' || (tab === 'saved' && saved.length > 0)) && (
+          <View pointerEvents="box-none" style={mobileStyles.floatingRow}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={mapView ? 'List' : 'Map'}
+              onPress={() => setMapView(!mapView)}
+              style={({ pressed }) => [mobileStyles.floatingPill, pressed && styles.pressed]}
+            >
+              <Text style={mobileStyles.floatingText}>{mapView ? 'Show list' : 'Show map'}</Text>
+              {mapView ? <ListIcon color={colors.white} /> : <MapIcon color={colors.white} />}
+            </Pressable>
+          </View>
+        )}
         <View style={mobileStyles.bottomNav} accessibilityRole="tablist">
           {(
             [

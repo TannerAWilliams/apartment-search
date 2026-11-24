@@ -38,12 +38,15 @@ export function Button({
   children,
   onPress,
   secondary = false,
+  dark = false,
   disabled = false,
   label,
 }: {
   children: ReactNode;
   onPress: () => void;
   secondary?: boolean;
+  /** Near-black, for the button that shows results (the accent is kept for saving and the brand). */
+  dark?: boolean;
   disabled?: boolean;
   /** The accessible name, when the visible text is shorter (Resync for Resync StreetEasy). */
   label?: string;
@@ -57,7 +60,12 @@ export function Button({
       aria-disabled={disabled}
       onPress={onPress}
       disabled={disabled}
-      style={({ pressed }) => [styles.button, secondary && styles.buttonSecondary, (pressed || disabled) && styles.pressed]}
+      style={({ pressed }) => [
+        styles.button,
+        secondary && styles.buttonSecondary,
+        dark && styles.buttonDark,
+        (pressed || disabled) && styles.pressed,
+      ]}
     >
       <Text style={[styles.buttonText, secondary && styles.buttonTextSecondary]}>{children}</Text>
     </Pressable>

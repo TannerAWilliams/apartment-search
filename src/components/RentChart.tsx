@@ -266,7 +266,6 @@ export function RentChart({
   return (
     <View style={styles.marketplacePanel}>
       <View style={styles.chartIntro}>
-        <Text style={styles.chartKicker}>MARKET DATA</Text>
         <Text accessibilityRole="header" style={styles.chartTitle}>
           Rent trends
         </Text>
