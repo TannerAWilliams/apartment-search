@@ -29,7 +29,7 @@ import {
 } from './src/app-shared.ts';
 import { Filters, WebsiteFilter } from './src/components/Filters.tsx';
 import { SignIn } from './src/components/SignIn.tsx';
-import { ChartIcon, HeartIcon, MenuIcon, SearchIcon } from './src/components/Icons.tsx';
+import { BrandMark, ChartIcon, HeartIcon, MenuIcon, SearchIcon } from './src/components/Icons.tsx';
 import { Marketplaces } from './src/screens/Marketplaces.tsx';
 import { Results } from './src/screens/Results.tsx';
 import { useServer } from './src/hooks/use-server.ts';
@@ -218,12 +218,15 @@ function ApartmentSearch() {
     <>
       <StatusBar barStyle="light-content" {...{ backgroundColor: colors.navy }} />
       <View style={styles.topBar}>
-        <View style={styles.brand}>
-          <View style={styles.brandMark}>
-            <Text style={styles.brandLetter}>A</Text>
-          </View>
+        <Pressable
+          accessibilityRole="link"
+          accessibilityLabel="Apartment Search, home"
+          onPress={() => navigateTab('chart')}
+          style={({ pressed }) => [styles.brand, pressed && styles.pressed]}
+        >
+          <BrandMark />
           <Text style={styles.brandText}>Apartment Search</Text>
-        </View>
+        </Pressable>
         <Text style={styles.topLabel}>NYC METRO</Text>
       </View>
     </>

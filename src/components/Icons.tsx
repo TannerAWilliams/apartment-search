@@ -1,5 +1,5 @@
 /** The app's few icons, drawn as SVG so they look the same on every device and size. Decorative: the label beside each says what it is. */
-import Svg, { Circle, Line, Path } from 'react-native-svg';
+import Svg, { Circle, Line, Path, Rect } from 'react-native-svg';
 
 type IconProps = { color: string; size?: number; filled?: boolean };
 
@@ -41,6 +41,21 @@ export function ChartIcon({ color, size = 22 }: IconProps) {
     <Svg width={size} height={size} viewBox="0 0 24 24" aria-hidden>
       <Path d="M4 19.5h16" stroke={color} strokeWidth={2} strokeLinecap="round" />
       <Path d="M5 15l4.5-4.5 3.5 3 6-6.5" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" fill="none" />
+    </Svg>
+  );
+}
+
+/** The app's mark, the same building as its home-screen icon (public/icons): a tower with lit windows. */
+export function BrandMark({ size = 28 }: { size?: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 32 32" aria-hidden>
+      <Rect x={0} y={0} width={32} height={32} rx={8} fill="#ffffff" />
+      <Rect x={9} y={7} width={11} height={18} rx={1} fill="#0b1f4d" />
+      <Rect x={21} y={12} width={3} height={13} rx={0.5} fill="#9db7e6" />
+      {[10.5, 14.5, 18.5].flatMap((y) =>
+        [11, 15.5].map((x) => <Rect key={`${x}-${y}`} x={x} y={y} width={2.5} height={2} rx={0.4} fill="#2f6fe0" />),
+      )}
+      <Rect x={13.5} y={22} width={2.5} height={3} fill="#ffffff" />
     </Svg>
   );
 }

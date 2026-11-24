@@ -554,7 +554,7 @@ test('market history charts one area, compares another, and says when figures ca
       },
     });
   });
-  // The snapshot's own figures: neighborhoods, or ZIP codes in the region asked for.
+  // The snapshot's own figures: a state's boroughs and cities, a borough's neighborhoods, or ZIP codes.
   const sizes = [3000, 3500, 4200, 5000, 6000].map((median) => ({ median, count: 4 }));
   const marketRequests: string[] = [];
   await page.route('**/api/market**', async (route) => {
@@ -563,12 +563,15 @@ test('market history charts one area, compares another, and says when figures ca
     const grouping = url.searchParams.get('grouping')!;
     marketRequests.push(region + '|' + grouping);
     const area = (id: string, label: string, detail: string) => ({ id, label, detail, count: 20, sizes });
-    const areas =
-      grouping !== 'zip'
-        ? [area('overall', 'All covered areas', ''), area('park-slope', 'Park Slope', 'Brooklyn, NY')]
-        : region === 'queens'
-          ? [area('overall', 'All covered areas', ''), area('11101', '11101', 'Long Island City, Queens, NY')]
-          : [area('overall', 'All covered areas', ''), area('11215', '11215', 'Park Slope, Brooklyn, NY')];
+    const nj = region !== 'nyc';
+    const areas = [
+      area('overall', 'All covered areas', ''),
+      ...(grouping === 'city'
+        ? [area('Brooklyn, NY', 'Brooklyn, NY', ''), ...(nj ? [area('Jersey City, NJ', 'Jersey City, NJ', '')] : [])]
+        : grouping === 'neighborhood'
+          ? [area('Brooklyn, NY|Park Slope', 'Park Slope', 'Brooklyn, NY'), area('Brooklyn, NY|DUMBO', 'DUMBO', 'Brooklyn, NY')]
+          : [area('11215', '11215', 'NY'), area('11101', '11101', 'NY')]),
+    ];
     return route.fulfill({ json: { month: '2026-10', areas, history: [] } });
   });
   await page.getByRole('tab', { name: 'Market', exact: true }).click();
@@ -595,22 +598,45 @@ test('market history charts one area, compares another, and says when figures ca
   await page.getByRole('button', { name: 'Back to rent trends', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Market history', exact: true })).toHaveCount(0);
 
-  // A neighborhood in the snapshot links to the same neighborhood's StreetEasy history since 2010.
-  await page.getByText('Park Slope', { exact: true }).first().click();
+  // State, then borough, then neighborhood: each choice is what the chart shows.
+  await page.getByRole('button', { name: 'New York', exact: true }).click();
+  await expect.poll(() => marketRequests).toContain('nyc|city');
+  await expect(page.getByText('Median asking rent over time: New York', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Borough Brooklyn, NY', exact: true }).click();
+  await expect(page.getByText('Median asking rent over time: Brooklyn, NY', { exact: true })).toBeVisible();
+  await expect.poll(() => marketRequests).toContain('nyc|neighborhood');
+  await page.getByRole('button', { name: 'Neighborhood Park Slope', exact: true }).click();
+  await expect(page.getByText('Median asking rent over time: Park Slope', { exact: true })).toBeVisible();
+  // The table lists the neighborhood's neighbors; a row charts it.
+  await page.getByRole('button', { name: 'Show chart for DUMBO Brooklyn, NY', exact: true }).click();
+  await expect(page.getByText('Median asking rent over time: DUMBO', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Neighborhood Park Slope', exact: true }).click();
+
+  // A neighborhood links to the same neighborhood's StreetEasy history since 2010.
   await page.getByRole('link', { name: 'Park Slope since 2010 (StreetEasy) →', exact: true }).click();
   await expect(page.getByText('Area: Park Slope (Brooklyn)', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Back to rent trends', exact: true }).click();
 
-  // Typing a ZIP code finds it among ZIP areas, in its own borough.
-  const find = page.getByPlaceholder('Search names or ZIP codes');
-  await find.fill('11215');
-  await expect.poll(() => marketRequests.at(-1)).toMatch(/^(manhattan-brooklyn|brooklyn)\|zip$/);
-  await expect(page.getByText('Park Slope, Brooklyn, NY', { exact: true }).first()).toBeVisible();
-  await find.fill('11101');
-  await expect.poll(() => marketRequests.at(-1)).toBe('queens|zip');
-  await expect(page.getByText('Long Island City, Queens, NY', { exact: true }).first()).toBeVisible();
-  // ZIP areas have no StreetEasy history to link to.
+  // A ZIP code charts that ZIP; one outside New York looks in both states, and an empty one says so.
+  const zip = page.getByLabel('ZIP code', { exact: true });
+  await zip.fill('11215');
+  await expect(page.getByText('Median asking rent over time: 11215', { exact: true })).toBeVisible();
+  await expect.poll(() => marketRequests).toContain('nyc|zip');
   await expect(page.getByRole('link', { name: /since 2010/ })).toHaveCount(0);
+  await zip.fill('07302');
+  await expect.poll(() => marketRequests).toContain('all|zip');
+  await expect(page.getByText('No listings in 07302', { exact: true })).toBeVisible();
+
+  // New Jersey: its cities, and no StreetEasy link (StreetEasy covers New York City only).
+  await page.getByRole('button', { name: 'New Jersey', exact: true }).click();
+  await page.getByRole('button', { name: 'City Jersey City, NJ', exact: true }).click();
+  await expect(page.getByText('Median asking rent over time: Jersey City, NJ', { exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: /since 2010/ })).toHaveCount(0);
+
+  // The logo and title go home, to Market, from anywhere.
+  await page.getByRole('tab', { name: /^Saved/ }).click();
+  await page.getByRole('link', { name: 'Apartment Search, home', exact: true }).click();
+  await expect(page.getByRole('tab', { name: 'Market', exact: true })).toHaveAttribute('aria-selected', 'true');
 });
 
 test('iPhone 17 portrait keeps primary controls inside the screen', async ({ page }, testInfo) => {
