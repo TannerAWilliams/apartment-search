@@ -1311,24 +1311,19 @@ test('a visitor uses Walkup without an account, and is asked for one only to sav
   await expect(page.getByRole('heading', { name: 'Create a free account to save apartments and get alerts', exact: true })).toBeVisible();
 });
 
-test('categories under the search bar search with one tap, and a save is confirmed', async ({ page }) => {
+test('deals and rent-stabilized are filters, with no category row; a save is confirmed', async ({ page }) => {
   const { requests } = await mockApp(page);
-  await page.getByRole('button', { name: 'Deals', exact: true }).click();
-  await expect.poll(() => requests.filter(({ path }) => path === '/api/search').at(-1)?.body).toMatchObject({ belowMarket: true });
-  await expect(page.getByRole('button', { name: 'Deals', exact: true })).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.getByRole('button', { name: 'Near subway', exact: true })).toHaveCount(0);
-  // Every category is the same width, chosen or not, so choosing one moves nothing.
-  const before = await page.getByRole('button', { name: 'Pets', exact: true }).boundingBox();
-  expect((await page.getByRole('button', { name: 'Rent-stabilized', exact: true }).boundingBox())?.width).toBe(before?.width);
-  await page.getByRole('button', { name: 'Pets', exact: true }).click();
-  await expect.poll(() => requests.filter(({ path }) => path === '/api/search').at(-1)?.body).toMatchObject({ petsRequired: true });
-  expect((await page.getByRole('button', { name: 'Pets', exact: true }).boundingBox())?.width).toBe(before?.width);
-  expect(requests.filter(({ path }) => path === '/api/search').at(-1)?.body).not.toHaveProperty('belowMarket', true);
-  await page.getByRole('button', { name: 'All', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'All', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('button', { name: 'All', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Save apartment', exact: true }).first().click();
   await expect(page.getByText('Saved to your list', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'View', exact: true }).click();
+  await page.getByRole('button', { name: 'Filters', exact: true }).click();
+  await page.getByRole('button', { name: 'Deals (20%+ below similar)', exact: true }).click();
+  await page.getByRole('button', { name: 'Rent-stabilized', exact: true }).click();
+  await page.getByRole('button', { name: 'Show apartments', exact: true }).click();
+  await expect
+    .poll(() => requests.filter(({ path }) => path === '/api/search').at(-1)?.body)
+    .toMatchObject({ belowMarket: true, stabilizedOnly: true });
+  await page.getByRole('tab', { name: 'Saved (1)', exact: true }).click();
   await expect(page.getByRole('tab', { name: 'Saved (1)', exact: true })).toHaveAttribute('aria-selected', 'true');
 });
 

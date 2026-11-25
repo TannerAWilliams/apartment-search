@@ -30,7 +30,6 @@ import {
 import { Filters } from './src/components/Filters.tsx';
 import { HomePage } from './src/screens/HomePage.tsx';
 import { AccountPrompt } from './src/components/AccountPrompt.tsx';
-import { CategoryBar } from './src/components/CategoryBar.tsx';
 import { StreetViewContext } from './src/components/ListingThumbnail.tsx';
 import {
   BrandMark,
@@ -530,18 +529,6 @@ function ApartmentSearch() {
                 <SlidersIcon color={colors.ink} />
               </Pressable>
             )}
-          </View>
-        )}
-        {view === 'results' && (
-          <View style={{ paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-            <CategoryBar
-              applied={applied}
-              onChoose={(changes) => {
-                const next = { ...draft, ...changes };
-                setDraft(next);
-                void submit(next);
-              }}
-            />
           </View>
         )}
         <Modal

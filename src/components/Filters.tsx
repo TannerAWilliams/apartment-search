@@ -262,6 +262,8 @@ export function Filters({
                   () => set('laundry')(draft.laundry === 'in_building' ? '' : 'in_building'),
                 ],
                 ['Good buildings', draft.goodBuildings === true, () => set('goodBuildings')(!draft.goodBuildings)],
+                ['Deals (20%+ below similar)', draft.belowMarket === true, () => set('belowMarket')(!draft.belowMarket)],
+                ['Rent-stabilized', draft.stabilizedOnly === true, () => set('stabilizedOnly')(!draft.stabilizedOnly)],
               ] as const
             ).map(([label, selected, toggle]) => (
               <Chip key={label} selected={selected} onPress={toggle}>
