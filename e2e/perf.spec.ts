@@ -62,8 +62,8 @@ const settled = (page: Page) => page.waitForLoadState('networkidle');
 test('the home page shows from one script, and asks the server for settings and one search, once each', async ({ page }) => {
   const { scripts, count, api } = await open(page, '/');
   await expect(page.getByRole('heading', { name: 'Find your next New York apartment', exact: true })).toBeVisible();
-  // The page showed from the app's own first script, which is the first thing downloaded.
-  expect(scripts[0]).toMatch(/^index-/);
+  // The page showed from two scripts: the small one that starts the requests early, and the app's own.
+  expect(scripts.slice(0, 2).toSorted()).toEqual(['boot.js', expect.stringMatching(/^index-/)]);
   await settled(page);
   // The map's code (MapLibre and Leaflet, larger than the rest of the app) is not part of opening the home page.
   expect(scripts.filter((name) => name.startsWith('ListingMap-'))).toEqual([]);

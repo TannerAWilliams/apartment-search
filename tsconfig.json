@@ -26,6 +26,7 @@
     "e2e/**/*.ts",
     "playwright.config.ts",
     "web/alert-message.ts",
+    "web/boot.ts",
     "types/strict-json.d.ts"
   ]
 }

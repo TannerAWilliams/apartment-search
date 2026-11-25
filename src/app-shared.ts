@@ -4,7 +4,8 @@ import type { SearchFilters, SearchResult } from './domain.ts';
 
 import { Platform } from 'react-native';
 import { REGIONS } from './regions.ts';
-import { DEFAULT_FILTERS } from './search.ts';
+import type { EarlyRequests } from './early-key.ts';
+import { WEB_SEARCH_DEFAULTS, withEarlyRequests } from './early-requests.ts';
 import { LONG_SYNC_LIMITS, LONG_SYNC_POLL_MS } from './source-status.ts';
 
 export type DraftFilters = Omit<
@@ -32,15 +33,7 @@ const PRODUCTION_ORIGIN = 'https://apartments.5thof6.com';
 export const API_ORIGIN = Platform.OS === 'web' ? '' : process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, '') || PRODUCTION_ORIGIN;
 export const WEB_MAP = Platform.OS === 'web';
 export const SEARCH_DEFAULTS: SearchFilters = {
-  ...DEFAULT_FILTERS,
-  region: 'all',
-  bedrooms: null,
-  maxRent: null,
-  source: '',
-  // The map's points are fetched when the map is opened: on a first visit they were most of the download.
-  includeMap: false,
-  liveOnly: true,
-  includeCached: true,
+  ...WEB_SEARCH_DEFAULTS,
   // The App Store app searches official feeds and open data only; the web app searches every source.
   officialOnly: Platform.OS !== 'web',
 };
@@ -80,7 +73,11 @@ export const formDefaults = (): DraftFilters => ({
   maxDrivingMinutes: '',
 });
 
-export const api = createApi(API_ORIGIN);
+// On the web, the first requests may already be on their way (src/early-requests.ts).
+export const api = createApi(
+  API_ORIGIN,
+  withEarlyRequests((globalThis as { walkupEarly?: EarlyRequests }).walkupEarly, (input, init) => fetch(input, init)),
+);
 
 export async function finishSourceCheck(
   check: RefreshInfo,

@@ -3,7 +3,7 @@
  * commute times when asked and links to affordable-housing lotteries in the same building.
  */
 import type { AppEnv, Bucket, SnapshotFilter } from './contracts.ts';
-import type { ListingData, SearchFilters, SearchResult, SourceStatus as SearchSource } from '../src/domain.ts';
+import { isRecord, type ListingData, type SearchFilters, type SearchResult, type SourceStatus as SearchSource } from '../src/domain.ts';
 import { isPoint, localWorkplace, matchListings, needsCommute, parseFilters } from '../src/search.ts';
 import { formatSearch } from '../src/market.ts';
 import { withInsights } from '../src/insights.ts';
@@ -131,6 +131,12 @@ export async function recentlyGathered(bucket: Bucket, key: string, gather: () =
   value.catch(() => kept.delete(key));
   return value;
 }
+
+/** How many sets of listings this instance holds for the bucket. */
+const keptCount = (bucket: Bucket) => recent.get(bucket)?.size ?? 0;
+/** Where finished answers are stored for every instance, and in how many slots. */
+const ANSWER_PREFIX = 'answers/';
+const ANSWER_SLOTS = 256;
 
 /** The listings kept for this key, if they were read in the last 15 minutes. */
 export function keptGathered(bucket: Bucket, key: string, now = Date.now()) {
@@ -536,24 +542,50 @@ export async function cachedSearch(
   const status = await timed(timings, 'status', () => refreshStatus(bucket));
   // Kept per deployed version: a deploy that changes ranking or matching must not serve the old answers.
   const version = env.CF_VERSION_METADATA?.id ?? '';
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify({ filters, status, version })));
-  const key = new Request(
-    `https://search-cache.internal/${[...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('')}`,
-  );
-  const hit = await timed(timings, 'cache', () => cache.match(key));
-  timings?.note('answer', hit ? 'cached' : 'computed');
-  if (hit) return (await hit.json()) as SearchResponse;
+  const hex = async (value: unknown) =>
+    [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(value))))]
+      .map((byte) => byte.toString(16).padStart(2, '0'))
+      .join('');
+  const [answerKey, slotKey] = await Promise.all([hex({ filters, status, version }), hex({ filters, version })]);
+  const key = new Request(`https://search-cache.internal/${answerKey}`);
+  // Answers are also kept in the database, where every Worker instance everywhere finds them, in a fixed number
+  // of slots (a search's slot comes from its filters, so storage does not grow; two searches sharing a slot take turns).
+  const slot = `${ANSWER_PREFIX}${Number.parseInt(slotKey.slice(0, 8), 16) % ANSWER_SLOTS}.json`;
+  const readStored = async (): Promise<SearchResponse | null> => {
+    const stored: unknown = await (await bucket.get(slot))?.json().catch(() => null);
+    return isRecord(stored) && stored.key === answerKey && isRecord(stored.result) ? (stored.result as SearchResponse) : null;
+  };
+  const [hit, stored] = await timed(timings, 'cache', () => Promise.all([cache.match(key), readStored().catch(() => null)]));
+  const later = (work: Promise<unknown>) => (waitUntil ? waitUntil(work) : work);
+  const keepInCache = (result: SearchResponse) =>
+    cache
+      .put(
+        key,
+        new Response(JSON.stringify(result), {
+          headers: { 'Content-Type': 'application/json', 'Cache-Control': `max-age=${GATHER_MS / 1000}` },
+        }),
+      )
+      .catch((cause) => log.warn('search_cache_write_failed', { error: cause instanceof Error ? cause.message : String(cause) }));
+  if (hit || stored) {
+    timings?.note('answer', hit ? 'cached' : 'stored');
+    // This instance answered without the listings; it reads them now, after the response, so the person's next
+    // search (another size, another area), which has no stored answer yet, does not wait for that.
+    const warm = keptCount(bucket)
+      ? Promise.resolve()
+      : search({ ...filters, offset: 0, includeMap: false, includeCommute: false }, env, offline, false, { status }).catch(() => {});
+    await later(Promise.all([warm, hit || !stored ? null : keepInCache(stored)]));
+    return hit ? ((await hit.json()) as SearchResponse) : stored!;
+  }
+  timings?.note('answer', 'computed');
   const result = await search(filters, env, fetcher, false, { status, timings });
   // Kept for the next person after this one has their answer, where the Worker allows work after the response.
-  const keep = cache
-    .put(
-      key,
-      new Response(JSON.stringify(result), {
-        headers: { 'Content-Type': 'application/json', 'Cache-Control': `max-age=${GATHER_MS / 1000}` },
-      }),
-    )
-    .catch((cause) => log.warn('search_cache_write_failed', { error: cause instanceof Error ? cause.message : String(cause) }));
-  if (waitUntil) waitUntil(keep);
-  else await keep;
+  await later(
+    Promise.all([
+      keepInCache(result),
+      bucket
+        .put(slot, JSON.stringify({ key: answerKey, result }))
+        .catch((cause) => log.warn('search_answer_write_failed', { error: cause instanceof Error ? cause.message : String(cause) })),
+    ]),
+  );
   return result;
 }

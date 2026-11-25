@@ -33,7 +33,8 @@ for (const initial of ['checking', 'offline'] as const) {
       if (url.pathname === '/api/config') {
         configurations++;
         if (configurations === 1 && initial === 'checking') await gate;
-        if (configurations === 1 && initial === 'offline')
+        // The page's early request and the app's own retry of it both fail.
+        if (configurations <= 2 && initial === 'offline')
           return route.fulfill({ status: 503, json: { error: 'Synthetic offline server' } });
         return route.fulfill({ json: { sources: [], commuteConfigured: false } });
       }
