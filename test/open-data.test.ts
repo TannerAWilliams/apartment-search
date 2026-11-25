@@ -11,7 +11,6 @@ import {
 import { withInsights } from '../src/insights.ts';
 import { matchListings, parseFilters } from '../src/search.ts';
 import { nearbyLines, stationIndex } from '../src/subway.ts';
-import { understand } from '../src/natural-search.ts';
 import { testListing } from './fixtures/listing.ts';
 import { createMemoryBucket } from './fixtures/memory-bucket.ts';
 
@@ -136,16 +135,7 @@ test('searches read both lists, refreshed monthly; listings near a line or in a 
   expect(parseFilters({ subwayLines: ['X'] }).subwayLines, 'unknown lines are dropped').toBeUndefined();
 });
 
-test('plain-English search understands subway lines and “near the subway”', () => {
-  expect(understand('1 bedroom near the L').changes).toEqual({ bedrooms: 1, subwayLines: ['L'] });
-  expect(understand('on the 4/5/6 under 3k').understood).toEqual(['under $3,000', 'near the 4/5/6']);
-  expect(understand('A, C or E train in Brooklyn').changes.subwayLines).toEqual(['A', 'C', 'E']);
-  expect(understand('close to the subway').changes).toEqual({ nearSubway: true });
-  expect(understand('near a park').changes).toEqual({});
-  expect(understand('on the 1st floor').changes).toEqual({});
-});
-
-test('accessible stations are marked, filtered and understood', async () => {
+test('accessible stations are marked and filtered', async () => {
   const { stations } = await loadStations(
     async () =>
       Response.json([
@@ -173,9 +163,6 @@ test('accessible stations are marked, filtered and understood', async () => {
       ({ id }) => id,
     ),
   ).toEqual(['union']);
-  expect(understand('wheelchair accessible 2br').changes).toEqual({ bedrooms: 2, accessibleSubway: true });
-  expect(understand('new listings in New Jersey').changes).toEqual({ region: 'nj', neighborhood: '', newWithinDays: 3 });
-  expect(understand('studio in new york city').changes).toEqual({ bedrooms: 0, region: 'nyc', neighborhood: '' });
 });
 
 test('searches carry on without the lists when storage cannot be read', async () => {

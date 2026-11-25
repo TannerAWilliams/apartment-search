@@ -177,6 +177,11 @@ function ApartmentSearch() {
     [serverState, activeToken],
   );
   useAccountSaved(saved, setSaved, account, serverState === 'ready' ? savedRequest : undefined, setError);
+  // An apartment's own page, with its estimated transit time to the destination searches use.
+  const loadListingWithCommute = useCallback(
+    (id: string) => loadListing(id, { workplace: applied.workplace, customWorkplace: applied.customWorkplace }),
+    [loadListing, applied.workplace, applied.customWorkplace],
+  );
   // Where the person commutes to, from their account (or this device): every new search starts from it.
   const commute = useCommutePlace(account, serverState === 'ready' && account ? commutePlaceRequest : undefined, (place) =>
     setDraft((current) => ({ ...current, ...place })),
@@ -410,9 +415,7 @@ function ApartmentSearch() {
             <Icon color={selected ? colors.green : wide ? colors.ink : colors.muted} />
             <Text
               style={
-                wide
-                  ? { fontSize: 15, fontWeight: selected ? '700' : '500', color: colors.ink }
-                  : [styles.tabLabel, selected && mobileStyles.navTextSelected]
+                wide ? { fontSize: 15, fontWeight: '600', color: colors.ink } : [styles.tabLabel, selected && mobileStyles.navTextSelected]
               }
             >
               {label}
@@ -553,12 +556,6 @@ function ApartmentSearch() {
                   draft={draft}
                   setDraft={setDraft}
                   submit={() => submit()}
-                  describe={(changes) => {
-                    const next = { ...draft, ...changes };
-                    setDraft(next);
-                    void submit(next);
-                  }}
-                  loadNeighborhoods={serverState === 'ready' ? loadNeighborhoods : undefined}
                   busy={busy}
                   serverState={serverState}
                   commuteConfigured={commuteConfigured}
@@ -868,7 +865,7 @@ function ApartmentSearch() {
                 {view.startsWith('listing=') && (
                   <ListingPage
                     id={decodeURIComponent(view.slice('listing='.length))}
-                    load={serverState === 'ready' ? loadListing : undefined}
+                    load={serverState === 'ready' ? loadListingWithCommute : undefined}
                     workplace={result.workplace}
                     saved={(listing) => savedByKey.has(listingKey(listing))}
                     onSave={saveListing}

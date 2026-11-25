@@ -232,15 +232,10 @@ export function Results({
           </View>
         </View>
       )}
-      {!savedView && applied.belowMarket && (
-        <Text style={styles.smallMuted}>
-          Deals: rents at least 5% below the median of similar apartments listed now, the same size in the same neighborhood (or ZIP code),
-          where at least 5 compare.
-        </Text>
-      )}
+      {!savedView && applied.belowMarket && <Text style={styles.smallMuted}>Deals are at least 5% below similar apartments nearby.</Text>}
       {result.commute && <Text style={styles.smallMuted}>Weekday-morning estimates from TravelTime.</Text>}
       {result.commuteNotice && <Text style={styles.smallMuted}>{result.commuteNotice}</Text>}
-      {/* Where the listings come from explains an empty result, so it leads then; otherwise it follows the list. */}
+      {/* Where the listings come from is shown only to explain an empty result; the Sources page has it all. */}
       {matches.length === 0 && coverage}
       {matches.length === 0 && (savedView || !checkingInventory) && (
         <View style={styles.empty}>
@@ -324,7 +319,6 @@ export function Results({
           Show more ({Math.min(visible, matches.length)} of {matches.length})
         </Button>
       )}
-      {matches.length > 0 && coverage}
     </>
   );
 }

@@ -1,6 +1,5 @@
 import { wholeNumber } from '../whole-number.ts';
-import React, { useEffect, useRef, useState } from 'react';
-import { understand } from '../natural-search.ts';
+import React, { useEffect, useState } from 'react';
 import { SUBWAY_LINES } from '../subway.ts';
 import { type ConfigSource } from '../api-client.ts';
 import type { SearchFilters, SearchResult } from '../domain.ts';
@@ -50,8 +49,6 @@ export function Filters({
   panel,
   commuteConfigured,
   websites,
-  describe,
-  loadNeighborhoods,
 }: {
   draft: DraftFilters;
   setDraft: React.Dispatch<React.SetStateAction<DraftFilters>>;
@@ -66,28 +63,8 @@ export function Filters({
   commuteConfigured: boolean;
   /** The listing-website filter, shown with the other filters. */
   websites?: React.ReactNode;
-  /** Applies the filters a typed sentence asks for, and searches. */
-  describe?: (changes: Partial<SearchFilters>) => void;
-  /** New York City's neighborhoods, so a sentence can name one. */
-  loadNeighborhoods?: (signal: AbortSignal) => Promise<{ areas?: { id: string; label: string; detail: string }[] }>;
 }) {
   const [moreFilters, setMoreFilters] = useState(false);
-  const [sentence, setSentence] = useState('');
-  const [understood, setUnderstood] = useState<string[] | null>(null);
-  const places = useRef<{ name: string; borough: string }[] | null>(null);
-  async function search() {
-    if (!places.current && loadNeighborhoods) {
-      try {
-        const { areas = [] } = await loadNeighborhoods(new AbortController().signal);
-        places.current = areas.filter(({ id }) => id.includes('|')).map(({ label, detail }) => ({ name: label, borough: detail }));
-      } catch {
-        places.current = [];
-      }
-    }
-    const result = understand(sentence, places.current ?? []);
-    setUnderstood(result.understood);
-    if (result.understood.length) describe?.(result.changes);
-  }
   const set =
     <K extends keyof DraftFilters>(field: K) =>
     (value: DraftFilters[K]) =>
@@ -95,27 +72,6 @@ export function Filters({
 
   return (
     <View style={styles.sheetBody}>
-      {panel === 'more' && describe && (
-        <>
-          <Field
-            label="Describe what you want"
-            value={sentence}
-            onChangeText={setSentence}
-            maxLength={200}
-            placeholder="2 bedroom in Park Slope under $4k with laundry"
-          />
-          <Button secondary disabled={busy || !sentence.trim()} onPress={() => void search()}>
-            Search for this
-          </Button>
-          {understood && (
-            <Text accessibilityRole="alert" style={styles.smallMuted}>
-              {understood.length
-                ? 'Searching for: ' + understood.join(' · ')
-                : 'Try naming a size, a budget or an area, like “studio in Queens under $2,500”.'}
-            </Text>
-          )}
-        </>
-      )}
       {draft.neighborhood ? (
         <View style={styles.chipRow}>
           <Chip selected onPress={() => set('neighborhood')('')} label={`Neighborhood ${draft.neighborhood}, remove`}>

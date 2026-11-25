@@ -25,7 +25,9 @@ export function CommuteCard({
 }) {
   const [draft, setDraft] = useState(place);
   const [saved, setSaved] = useState(false);
-  useEffect(() => setDraft(place), [place]);
+  // A new saved destination replaces the draft; the same one arriving again (each redraw) leaves typing alone.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: compared by value, not by object
+  useEffect(() => setDraft(place), [place.workplace, place.customWorkplace]);
   const label = place.workplace === 'custom' ? place.customWorkplace : (WORKPLACES[place.workplace]?.label ?? '');
   const changed = draft.workplace !== place.workplace || draft.customWorkplace !== place.customWorkplace;
   const ready = draft.workplace !== 'custom' || draft.customWorkplace.trim().length >= 4;

@@ -60,3 +60,36 @@ test('listings shown get an estimate to the destination when there is no routing
   const estimated = await search(parseFilters({ region: 'nyc', bedrooms: null, maxRent: 50_000 }), { BUCKET: bucket }, offline);
   expect(estimated.matches.some((listing) => typeof listing.insights?.transitMinutes === 'number')).toBe(true);
 });
+
+test('an apartment’s own page gets its estimate to the person’s destination', async () => {
+  const bucket = createMemoryBucket();
+  const { matches } = await search(parseFilters({ region: 'nyc', bedrooms: null, maxRent: null }), { BUCKET: bucket }, offline, true);
+  const home = matches.find((listing) => typeof listing.latitude === 'number')!;
+  const penn = { latitude: 40.75061, longitude: -73.99357 };
+  await bucket.put(
+    STATIONS_KEY,
+    JSON.stringify({
+      checkedAt: '2026-11-24T00:00:00Z',
+      stations: [
+        { name: 'Home', routes: ['A'], latitude: home.latitude!, longitude: home.longitude! },
+        { name: 'Penn', routes: ['A'], ...penn },
+      ],
+    }),
+  );
+  const { openData } = await import('../server/open-data.ts');
+  await openData(bucket, Date.now() + 7_200_000);
+  const { handleApi } = await import('./fixtures/api.ts');
+  const page = async (query: string) =>
+    (
+      (await (
+        await handleApi(new Request(`https://app.test/api/listing?id=${encodeURIComponent(home.id)}${query}`), { BUCKET: bucket })
+      ).json()) as {
+        listing: { insights?: { transitMinutes?: number } };
+      }
+    ).listing;
+  expect((await page('&workplace=penn')).insights?.transitMinutes).toBeNumber();
+  expect((await page('')).insights?.transitMinutes, 'no destination given').toBeUndefined();
+  expect((await page('&workplace=moon')).insights?.transitMinutes, 'an unknown destination is skipped').toBeUndefined();
+  const { withTransitEstimate } = await import('../server/search.ts');
+  expect(await withTransitEstimate(home, {}, { workplace: 'penn', customWorkplace: '' }, offline)).toBe(home);
+});

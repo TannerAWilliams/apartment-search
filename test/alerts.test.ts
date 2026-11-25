@@ -333,9 +333,11 @@ test('an alert can ask for several bedroom counts and named neighborhoods', () =
   expect(validateRule(rule, new Date(), 'me@example.com').owner).toBe('me@example.com');
   expect(() => validateRule({ ...rule, criteria: { bedrooms: [5] } })).toThrow(/studio to 4/);
   expect(() => validateRule({ ...rule, criteria: { bedrooms: [1.5] } })).toThrow(/studio to 4/);
-  expect(() => validateRule({ ...rule, criteria: { neighborhoods: Array.from({ length: 21 }, (_, i) => 'N' + i) } })).toThrow(
-    /20 neighborhoods/,
-  );
+  // Every neighborhood in the city fits in one alert.
+  expect(
+    validateRule({ ...rule, criteria: { neighborhoods: Array.from({ length: 215 }, (_, i) => 'N' + i) } }).criteria?.neighborhoods,
+  ).toHaveLength(215);
+  expect(() => validateRule({ ...rule, criteria: { neighborhoods: [''] } })).toThrow(/neighborhoods by name/);
 
   const place = (id: string, bedrooms: number, neighborhood: string | undefined, zip: string) =>
     testListing({ id, bedrooms, neighborhood, zip });

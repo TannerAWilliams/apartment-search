@@ -92,7 +92,8 @@ export const styles = StyleSheet.create({
   // A selected chip is black, as filters are in travel-booking apps; the accent is kept for actions.
   chipActive: { borderColor: colors.ink, backgroundColor: colors.ink },
   chipText: { ...small, fontWeight: '600', color: colors.ink },
-  chipTextActive: { color: colors.white, fontWeight: '700' },
+  // The same weight as unselected, so choosing a chip never changes its width or moves its neighbors.
+  chipTextActive: { color: colors.white },
   divider: { height: 1, backgroundColor: colors.border, marginTop: 6, marginBottom: 3 },
   button: {
     justifyContent: 'center',

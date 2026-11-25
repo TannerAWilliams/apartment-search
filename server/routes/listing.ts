@@ -2,11 +2,16 @@
 import { vValidator } from '@hono/valibot-validator';
 import * as v from 'valibot';
 import { parseFilters } from '../../src/search.ts';
-import { offline, search } from '../search.ts';
+import { offline, search, withTransitEstimate } from '../search.ts';
 import { factory, fail, refuse } from './context.ts';
 
 const ID = 'Name a listing.';
-const ListingQuerySchema = v.object({ id: v.pipe(v.string(ID), v.minLength(1, ID), v.maxLength(300, ID)) });
+const ListingQuerySchema = v.object({
+  id: v.pipe(v.string(ID), v.minLength(1, ID), v.maxLength(300, ID)),
+  /** The person's commute destination, so the page shows the estimated transit time to it. */
+  workplace: v.optional(v.pipe(v.string(), v.maxLength(40))),
+  customWorkplace: v.optional(v.pipe(v.string(), v.maxLength(160)), ''),
+});
 
 /** The listing with this ID in saved inventory, or null. */
 export async function findListing(env: Parameters<typeof search>[1], id: string) {
@@ -15,6 +20,9 @@ export async function findListing(env: Parameters<typeof search>[1], id: string)
 }
 
 export const listingRoutes = factory.createApp().get('/listing', vValidator('query', ListingQuerySchema, refuse), async (c) => {
-  const listing = await findListing(c.var.appEnv, c.req.valid('query').id);
-  return listing ? c.json({ listing }, 200) : fail(c, 404, 'This apartment is no longer listed.');
+  const { id, workplace, customWorkplace } = c.req.valid('query');
+  const listing = await findListing(c.var.appEnv, id);
+  if (!listing) return fail(c, 404, 'This apartment is no longer listed.');
+  const place = workplace ? { workplace, customWorkplace } : null;
+  return c.json({ listing: place ? await withTransitEstimate(listing, c.var.appEnv, place, c.var.services.fetcher) : listing }, 200);
 });

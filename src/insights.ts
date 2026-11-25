@@ -141,9 +141,7 @@ export function withInsights<T extends ListingData>(
     const compared = benchmark && benchmark.count >= MIN_COMPARABLES ? benchmark : null;
     const vsMarket = compared ? Math.round(((listing.rent - compared.median) / compared.median) * 100) / 100 : undefined;
     if (vsMarket !== undefined && vsMarket <= FAR_BELOW)
-      warnings.push(
-        `Priced ${Math.round(-vsMarket * 100)}% below similar apartments nearby. See the apartment and the lease before sending any money.`,
-      );
+      warnings.push(`Priced ${Math.round(-vsMarket * 100)}% below similar apartments nearby.`);
     if (!/^\s*\d/.test(listing.address)) warnings.push('No street number is given. Ask for the exact address before you tour.');
     const unit = unitOf(listing);
     const others = unit ? [...(rentsByUnit.get(unit) ?? [])].filter((rent) => rent !== listing.rent) : [];

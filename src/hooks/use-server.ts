@@ -308,7 +308,8 @@ export function useServer({ appliedFilters, searchVersion, submitted, setResult,
   );
   /** One listing from saved inventory, for its own page. */
   const loadListing = useCallback(
-    (id: string) => api<{ listing: ListingData }>('listing?' + new URLSearchParams({ id }), { token: activeToken }),
+    (id: string, place?: CommutePlace) =>
+      api<{ listing: ListingData }>('listing?' + new URLSearchParams({ id, ...place }), { token: activeToken }),
     [activeToken],
   );
   const loadHousing = useCallback(

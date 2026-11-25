@@ -79,7 +79,7 @@ export const readRecent = (bucket: Bucket): Promise<Alert[]> => read(bucket, REC
 /** Checks a new rule: a name, and filters a stored search can run without routing or geocoding. */
 const NAMED = 'Give the alert a name of up to 60 characters.';
 const BEDS = 'Choose bedroom counts from studio to 4.';
-const NEIGHBORHOODS = 'Choose up to 20 neighborhoods.';
+const NEIGHBORHOODS = 'Choose neighborhoods by name.';
 /** A new rule as sent: a name, filters checked by parseFilters, and optional bedroom counts and neighborhoods. */
 const NewRuleSchema = v.object(
   {
@@ -97,7 +97,8 @@ const NewRuleSchema = v.object(
               v.pipe(v.string(NEIGHBORHOODS), v.trim(), v.minLength(1, NEIGHBORHOODS), v.maxLength(60, NEIGHBORHOODS)),
               NEIGHBORHOODS,
             ),
-            v.maxLength(20, NEIGHBORHOODS),
+            // Every neighborhood in the city can be chosen (there are about 215).
+            v.maxLength(400, NEIGHBORHOODS),
           ),
           [],
         ),

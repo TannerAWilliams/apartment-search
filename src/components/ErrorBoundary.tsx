@@ -14,8 +14,21 @@ export class ErrorBoundary extends React.Component<{ children: ReactNode }, { fa
     return { failed: true };
   }
 
-  override componentDidCatch(error: unknown) {
+  override componentDidCatch(error: unknown, info: { componentStack?: string | null }) {
     console.error('Walkup could not render:', error);
+    // Sent to the server so a crash someone sees can be found and fixed; nothing about them is included.
+    if (Platform.OS !== 'web') return;
+    const failure = error instanceof Error ? error : new Error(String(error));
+    fetch('/api/client-error', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: failure.message.slice(0, 300),
+        stack: (failure.stack ?? '').slice(0, 1500),
+        componentStack: (info.componentStack ?? '').slice(0, 1500),
+        path: window.location.pathname.slice(0, 200),
+      }),
+    }).catch(() => {});
   }
 
   override render() {

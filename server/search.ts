@@ -4,7 +4,7 @@
  */
 import type { AppEnv, Bucket, SnapshotFilter } from './contracts.ts';
 import type { ListingData, SearchFilters, SearchResult, SourceStatus as SearchSource } from '../src/domain.ts';
-import { isPoint, localWorkplace, matchListings, needsCommute } from '../src/search.ts';
+import { isPoint, localWorkplace, matchListings, needsCommute, parseFilters } from '../src/search.ts';
 import { formatSearch } from '../src/market.ts';
 import { withInsights } from '../src/insights.ts';
 import { transitEstimator } from '../src/transit-estimate.ts';
@@ -400,6 +400,25 @@ export async function search(filters: SearchFilters, env: AppEnv, fetcher: Sourc
   const found = bucket && !observationsOnly ? await recentlyGathered(bucket, key, gather) : await gather();
   kept = bucket && !observationsOnly ? found : null;
   return finish(found.listings, found.mode, found.sources, [...found.notices], found.snapshotMonth);
+}
+
+/**
+ * One listing with its estimated transit time to the person's destination, for its own page (search adds it to
+ * every listing shown). A destination that cannot be found leaves the listing as it is.
+ */
+export async function withTransitEstimate<T extends ListingData>(
+  listing: T,
+  env: AppEnv,
+  place: Pick<SearchFilters, 'workplace' | 'customWorkplace'>,
+  fetcher: SourceFetch,
+): Promise<T> {
+  if (!env.BUCKET) return listing;
+  const destination = await Promise.resolve()
+    .then(() => resolveWorkplace(parseFilters({ ...place, region: 'all' }), fetcher))
+    .catch(() => null);
+  if (!destination) return listing;
+  const [estimated] = await withTransitEstimates([listing], env.BUCKET, destination);
+  return estimated!;
 }
 
 /** Each destination's estimator, made once per set of stations (kept ten minutes by openData). */

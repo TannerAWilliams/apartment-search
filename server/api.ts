@@ -15,6 +15,7 @@ import { historyRoutes } from './routes/history.ts';
 import { searchRoutes } from './routes/search.ts';
 import { sourceRoutes } from './routes/sources.ts';
 import { vitalsRoutes } from './routes/vitals.ts';
+import { clientErrorRoutes } from './routes/client-errors.ts';
 import { settingsRoutes } from './routes/settings.ts';
 import { savedRoutes } from './routes/saved.ts';
 import { commutePlaceRoutes } from './routes/commute-place.ts';
@@ -48,7 +49,8 @@ export const api = factory
   .route('/', accountRoutes)
   .route('/', listingRoutes)
   .route('/', directRoutes)
-  .route('/', vitalsRoutes);
+  .route('/', vitalsRoutes)
+  .route('/', clientErrorRoutes);
 
 /** The routes and the shape of each reply, for the app's API client. */
 export type ApiRoutes = typeof api;

@@ -7,6 +7,7 @@ import { NYC_SEARCH_AREAS } from '../regions.ts';
 import { formatRent } from '../search.ts';
 import { styles } from '../styles.ts';
 import { Button, Chip, Field } from '../components/ui.tsx';
+import { NeighborhoodPicker } from '../components/NeighborhoodPicker.tsx';
 
 /** The areas an alert can watch: all of New York City or one borough, as the search names them. */
 const AREAS: [string, string, string | null][] = [
@@ -24,7 +25,6 @@ const BEDS: [number, string][] = [
   [3, '3 BR'],
   [4, '4+ BR'],
 ];
-const SHOWN_NEIGHBORHOODS = 18;
 type Neighborhood = { id: string; label: string; detail: string; count: number };
 
 /** A name for an alert from what it watches: "West Village · 2 BR · under $5,000". */
@@ -71,7 +71,6 @@ export function AlertsPage({
   const [beds, setBeds] = useState<number[]>(filters.bedrooms == null ? [] : [Math.min(4, filters.bedrooms)]);
   const [maxRent, setMaxRent] = useState(filters.maxRent == null ? '' : String(filters.maxRent));
   const [picked, setPicked] = useState<string[]>([]);
-  const [allPlaces, setAllPlaces] = useState(false);
   const [places, setPlaces] = useState<Neighborhood[]>([]);
   const [customName, setCustomName] = useState('');
   const [busy, setBusy] = useState('');
@@ -205,37 +204,13 @@ export function AlertsPage({
                   onPress={() => {
                     setArea(key);
                     setPicked([]);
-                    setAllPlaces(false);
                   }}
                 >
                   {label}
                 </Chip>
               ))}
             </View>
-            {choices.length > 0 && (
-              <>
-                <Text style={styles.smallMuted}>
-                  {picked.length ? `Neighborhoods (${picked.length})` : 'Neighborhoods (optional; leave empty for the whole area)'}
-                </Text>
-                <View style={styles.chipRow}>
-                  {(allPlaces ? choices : choices.slice(0, SHOWN_NEIGHBORHOODS)).map(({ id, label, detail }) => (
-                    <Chip
-                      key={id}
-                      label={borough ? label : `${label}, ${detail.replace(/, NY$/, '')}`}
-                      selected={picked.includes(label)}
-                      onPress={() =>
-                        setPicked((current) => (current.includes(label) || current.length < 20 ? toggle(current, label) : current))
-                      }
-                    >
-                      {label}
-                    </Chip>
-                  ))}
-                  {choices.length > SHOWN_NEIGHBORHOODS && (
-                    <Chip onPress={() => setAllPlaces(!allPlaces)}>{allPlaces ? 'Show fewer' : `All ${choices.length}`}</Chip>
-                  )}
-                </View>
-              </>
-            )}
+            {choices.length > 0 && <NeighborhoodPicker choices={choices} picked={picked} onChange={setPicked} showBorough={!borough} />}
             <Text style={styles.smallMuted}>Bedrooms (choose any; none means any size)</Text>
             <View style={styles.chipRow}>
               {BEDS.map(([count, label]) => (

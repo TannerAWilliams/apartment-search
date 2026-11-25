@@ -1,6 +1,6 @@
 /**
  * Categories under the search bar, as listing apps browse by kind: one tap searches for new listings, deals,
- * rent-stabilized buildings, homes near the subway, well-kept buildings, pets or in-unit laundry. The chosen one is
+ * rent-stabilized buildings, well-kept buildings, pets or in-unit laundry. The chosen one is
  * dark and underlined; tapping it again, or All, goes back to every apartment.
  */
 import { Pressable, ScrollView, Text, View } from 'react-native';
@@ -61,7 +61,6 @@ export const CATEGORIES: [key: string, label: string, set: Partial<SearchFilters
   ['new', 'New', { newWithinDays: 3 }, (f) => f.newWithinDays === 3],
   ['deals', 'Deals', { belowMarket: true }, (f) => f.belowMarket === true],
   ['stabilized', 'Rent-stabilized', { stabilizedOnly: true }, (f) => f.stabilizedOnly === true],
-  ['subway', 'Near subway', { nearSubway: true }, (f) => f.nearSubway === true],
   ['buildings', 'Good buildings', { goodBuildings: true }, (f) => f.goodBuildings === true],
   ['pets', 'Pets', { petsRequired: true }, (f) => f.petsRequired === true],
   ['laundry', 'In-unit laundry', { laundry: 'in_unit' }, (f) => f.laundry === 'in_unit'],
@@ -84,7 +83,7 @@ export function CategoryBar({ applied, onChoose }: { applied: SearchFilters; onC
     ...CATEGORIES.map(([key, label, set]) => [key, label, set] as [string, string, Partial<SearchFilters>]),
   ];
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 26, paddingHorizontal: 4 }}>
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 4, paddingHorizontal: 0 }}>
       {items.map(([key, label, set]) => {
         const selected = key === 'all' ? chosen.length === 0 : chosen.includes(key);
         const color = selected ? colors.ink : colors.muted;
@@ -98,7 +97,9 @@ export function CategoryBar({ applied, onChoose }: { applied: SearchFilters; onC
             // Tapping the chosen category again clears it.
             onPress={() => onChoose(key === 'all' || selected ? NO_CATEGORY : { ...NO_CATEGORY, ...set })}
             style={({ pressed }) => [
+              // Every category the same width, so the icons are evenly spaced and nothing shifts when one is chosen.
               {
+                width: 88,
                 alignItems: 'center',
                 gap: 6,
                 paddingTop: 4,
@@ -112,7 +113,9 @@ export function CategoryBar({ applied, onChoose }: { applied: SearchFilters; onC
             <Svg width={24} height={24} viewBox="0 0 24 24" aria-hidden>
               {ICONS[key]!(color)}
             </Svg>
-            <Text style={{ fontSize: 12, lineHeight: 16, fontWeight: selected ? '600' : '500', color }}>{label}</Text>
+            <Text numberOfLines={1} style={{ fontSize: 12, lineHeight: 16, fontWeight: '600', color }}>
+              {label}
+            </Text>
           </Pressable>
         );
       })}

@@ -254,7 +254,8 @@ test('homepage searches saved all-region inventory without starting a refresh', 
 
 test('sources exposes blocked refresh honestly and retains cached rentals', async ({ page }) => {
   const { requests } = await mockApp(page, { failed: true });
-  await expect(page.getByText('Partial coverage · Some sources unavailable · Where listings come from', { exact: true })).toBeVisible();
+  await expect(page.getByText('12 Grove Street', { exact: true })).toBeVisible();
+  await expect(page.getByText('Partial coverage · Some sources unavailable · Where listings come from', { exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Resync all connected providers', exact: true })).toHaveCount(0);
   await page.getByRole('tab', { name: 'Profile', exact: true }).click();
   await page.getByRole('button', { name: 'Sources & sync', exact: true }).click();
@@ -325,11 +326,10 @@ test('rent filter sends user input and handles an empty result', async ({ page }
   await expect(page.getByRole('button', { name: 'Save apartment', exact: true })).toHaveCount(0);
 });
 
-test('search shows source coverage notices instead of hiding data caveats', async ({ page }) => {
+test('source coverage notes stay off a page of results', async ({ page }) => {
   await mockApp(page, { notices: ['Synthetic provider returned partial inventory.'] });
-  await expect(page.getByText('1 coverage note ▾', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Show coverage notes', exact: true }).click();
-  await expect(page.getByText('• Synthetic provider returned partial inventory.', { exact: true })).toBeVisible();
+  await expect(page.getByText('12 Grove Street', { exact: true })).toBeVisible();
+  await expect(page.getByText('1 coverage note ▾', { exact: true })).toHaveCount(0);
 });
 
 test('Sources tab is keyboard operable', async ({ page }) => {
@@ -990,8 +990,13 @@ test('alerts: build one from an area, neighborhoods, bedroom counts and a rent, 
   await expect(page.getByText('Phone and browser notifications aren’t set up yet.', { exact: true })).toBeVisible();
   // West Village, two bedrooms, under $5,000.
   await page.getByRole('button', { name: 'Manhattan', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Park Slope', exact: true }), 'only the borough’s neighborhoods').toHaveCount(0);
-  await page.getByRole('button', { name: 'West Village', exact: true }).click();
+  // The busiest are offered at once; any other is found by typing, and a chosen one can be removed.
+  await expect(page.getByRole('button', { name: 'Add Park Slope', exact: true }), 'only the borough’s neighborhoods').toHaveCount(0);
+  await page.getByRole('button', { name: 'Add Chelsea', exact: true }).click();
+  await page.getByRole('button', { name: 'Remove Chelsea', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Add a neighborhood', exact: true }).fill('west v');
+  await page.getByRole('button', { name: 'Add West Village', exact: true }).click();
+  await expect(page.getByRole('textbox', { name: 'Add a neighborhood', exact: true })).toHaveValue('');
   await page.getByRole('button', { name: '2 BR', exact: true }).click();
   await page.getByRole('textbox', { name: 'Max rent per month', exact: true }).fill('5000');
   const name = page.getByRole('textbox', { name: 'Alert name', exact: true });
@@ -1161,17 +1166,6 @@ test('application kit: the income rule and a ready-written message for a saved a
   await expect(page.getByRole('textbox', { name: 'Full name', exact: true })).toHaveValue('Alex Rivera');
 });
 
-test('plain-English search turns a sentence into filters and searches', async ({ page }) => {
-  const { requests } = await mockApp(page);
-  await page.getByRole('button', { name: 'Filters', exact: true }).click();
-  await page.getByRole('textbox', { name: 'Describe what you want', exact: true }).fill('2 bedroom in Brooklyn under $4k with laundry');
-  await page.getByRole('button', { name: 'Search for this', exact: true }).click();
-  // The sheet closes on a phone once the search runs; the request shows what was understood.
-  await expect
-    .poll(() => requests.filter(({ path }) => path === '/api/search').at(-1)?.body)
-    .toMatchObject({ bedrooms: 2, maxRent: 4000, region: 'brooklyn', laundry: 'in_building' });
-});
-
 const neighborhoodMocks = async (page: Page) => {
   await page.route('**/api/market?*', (route) =>
     route.fulfill({
@@ -1316,8 +1310,13 @@ test('categories under the search bar search with one tap, and a save is confirm
   await page.getByRole('button', { name: 'Deals', exact: true }).click();
   await expect.poll(() => requests.filter(({ path }) => path === '/api/search').at(-1)?.body).toMatchObject({ belowMarket: true });
   await expect(page.getByRole('button', { name: 'Deals', exact: true })).toHaveAttribute('aria-pressed', 'true');
-  await page.getByRole('button', { name: 'Near subway', exact: true }).click();
-  await expect.poll(() => requests.filter(({ path }) => path === '/api/search').at(-1)?.body).toMatchObject({ nearSubway: true });
+  await expect(page.getByRole('button', { name: 'Near subway', exact: true })).toHaveCount(0);
+  // Every category is the same width, chosen or not, so choosing one moves nothing.
+  const before = await page.getByRole('button', { name: 'Pets', exact: true }).boundingBox();
+  expect((await page.getByRole('button', { name: 'Rent-stabilized', exact: true }).boundingBox())?.width).toBe(before?.width);
+  await page.getByRole('button', { name: 'Pets', exact: true }).click();
+  await expect.poll(() => requests.filter(({ path }) => path === '/api/search').at(-1)?.body).toMatchObject({ petsRequired: true });
+  expect((await page.getByRole('button', { name: 'Pets', exact: true }).boundingBox())?.width).toBe(before?.width);
   expect(requests.filter(({ path }) => path === '/api/search').at(-1)?.body).not.toHaveProperty('belowMarket', true);
   await page.getByRole('button', { name: 'All', exact: true }).click();
   await expect(page.getByRole('button', { name: 'All', exact: true })).toHaveAttribute('aria-pressed', 'true');
