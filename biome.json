@@ -1,8 +1,19 @@
 {
   "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
-  "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
-  "files": { "includes": ["**/*.ts", "**/*.tsx", "**/*.json", "**/*.jsonc", "!server/data", "!src/data", "!web-build", "!bun.lock"] },
-  "formatter": { "enabled": true, "indentStyle": "space", "indentWidth": 2, "lineWidth": 140 },
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+  "files": {
+    "includes": ["**/*.ts", "**/*.tsx", "**/*.json", "**/*.jsonc", "!server/data", "!src/data", "!web-build", "!bun.lock"]
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 140
+  },
   "javascript": {
     "formatter": {
       "quoteStyle": "single",
@@ -12,6 +23,51 @@
       "arrowParentheses": "always"
     }
   },
-  "linter": { "enabled": false },
-  "assist": { "enabled": false }
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "none",
+      "performance": {
+        "noAwaitInLoops": "error",
+        "noAccumulatingSpread": "error",
+        "noBarrelFile": "error",
+        "noReExportAll": "error",
+        "noDelete": "error",
+        "noDynamicNamespaceImportAccess": "error"
+      },
+      "suspicious": {
+        "noAsyncPromiseExecutor": "error"
+      },
+      "nursery": {
+        "noFloatingPromises": "error",
+        "noMisusedPromises": "error"
+      }
+    }
+  },
+  "assist": {
+    "enabled": false
+  },
+  "overrides": [
+    {
+      "includes": [
+        "server/sources/**",
+        "server/sync-workflow.ts",
+        "server/refresh/**",
+        "scripts/**",
+        "test/**",
+        "e2e/**",
+        "perf/**",
+        "server/open-data.ts"
+      ],
+      "linter": {
+        "rules": {
+          "performance": {
+            "noAwaitInLoops": "off",
+            "noDelete": "off",
+            "noBarrelFile": "off"
+          }
+        }
+      }
+    }
+  ]
 }

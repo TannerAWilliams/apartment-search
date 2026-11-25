@@ -17,7 +17,10 @@ export const searchRoutes = factory
   .createApp()
   .post('/search', apiBodies, vValidator('json', SearchFiltersSchema, refuse), async (c) => {
     const timings = createTimings();
-    const result = await cachedSearch(c.req.valid('json'), c.var.appEnv, c.var.services.fetcher, undefined, timings);
+    const result = await cachedSearch(c.req.valid('json'), c.var.appEnv, c.var.services.fetcher, undefined, {
+      timings,
+      waitUntil: c.var.services.waitUntil,
+    });
     // Where the time went, for the browser's developer tools; a slow search is logged with its phases.
     c.header('Server-Timing', timings.header());
     if (timings.total() > SLOW_MS) log.warn('slow_search', { ms: Math.round(timings.total()), ...timings.fields() });

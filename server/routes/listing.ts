@@ -15,7 +15,13 @@ const ListingQuerySchema = v.object({
 
 /** The listing with this ID in saved inventory, or null. */
 export async function findListing(env: Parameters<typeof search>[1], id: string) {
-  const { matches } = await search(parseFilters({ region: 'all', bedrooms: null, maxRent: null, includeCached: true }), env, offline, true);
+  const { matches } = await search(
+    parseFilters({ region: 'all', bedrooms: null, maxRent: null, includeCached: true }),
+    env,
+    offline,
+    true,
+    { kept: true },
+  );
   return matches.find((listing) => listing.id === id) ?? null;
 }
 

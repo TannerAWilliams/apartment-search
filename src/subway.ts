@@ -47,14 +47,17 @@ function walkMinutes(latitude: number, longitude: number, station: Station) {
   return Math.max(1, Math.round(miles * WALK_MINUTES_PER_MILE));
 }
 
-const cellOf = (latitude: number, longitude: number) => `${Math.floor(latitude / CELL)}|${Math.floor(longitude / CELL)}`;
+/** A grid cell's number: its row and column in one number, which is cheaper to look up than text. */
+const cell = (row: number, column: number) => row * 100_000 + column;
 
 /** A lookup of the stations near a point. */
 export function stationIndex(stations: Station[]) {
-  const grid = new Map<string, Station[]>();
+  const grid = new Map<number, Station[]>();
   for (const station of stations) {
-    const cell = cellOf(station.latitude, station.longitude);
-    grid.set(cell, [...(grid.get(cell) ?? []), station]);
+    const at = cell(Math.floor(station.latitude / CELL), Math.floor(station.longitude / CELL));
+    const known = grid.get(at);
+    if (known) known.push(station);
+    else grid.set(at, [station]);
   }
   /** Stations within a ten-minute walk, the closest first, one entry per station name. */
   return (latitude: number | null | undefined, longitude: number | null | undefined): NearbySubway[] => {
@@ -65,7 +68,7 @@ export function stationIndex(stations: Station[]) {
     const found = new Map<string, NearbySubway>();
     for (let dy = -1; dy <= 1; dy++)
       for (let dx = -1; dx <= 1; dx++)
-        for (const station of grid.get(`${row + dy}|${column + dx}`) ?? []) {
+        for (const station of grid.get(cell(row + dy, column + dx)) ?? []) {
           const minutes = walkMinutes(latitude, longitude, station);
           if (minutes > NEAR_MINUTES) continue;
           const known = found.get(station.name);

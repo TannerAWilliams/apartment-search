@@ -3,7 +3,8 @@ import { expect, test } from 'bun:test';
 import { loadHdcRerentals } from '../server/sources/hdc-rerentals.ts';
 import { parseZillowPage, ZILLOW_LIVE } from '../server/sources/zillow.ts';
 import { parseRealtorPage, REALTOR_LIVE } from '../server/sources/realtor.ts';
-import { retryablePublicSources, decodeSourceImport, encodeSourceImport } from '../src/source-import.ts';
+import { decodeSourceImport, encodeSourceImport } from '../src/source-import.ts';
+import { retryablePublicSources } from '../src/public-sources.ts';
 import { rentSeries } from '../src/rent-history.ts';
 import { bundledRentHistory } from '../src/bundled-market.ts';
 const stamp = '2026-11-17T00:00:00Z';
@@ -244,7 +245,7 @@ test('HTML fetch rejects unsupported content and oversized declared and streamed
 });
 
 test('the browser can read every public export the retry check names', async () => {
-  const { PUBLIC_SOURCE_IDS } = await import('../src/source-import.ts');
+  const { PUBLIC_SOURCE_IDS } = await import('../src/public-sources.ts');
   const { pullPublicSources } = await import('../src/pull-sources.ts');
   const results = await pullPublicSources({}, async () => {
     throw new Error('offline');

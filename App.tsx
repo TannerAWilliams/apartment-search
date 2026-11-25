@@ -287,20 +287,20 @@ function ApartmentSearch() {
   function searchCompany(company: string) {
     const nextDraft = { ...defaults(), company, bedrooms: null, maxRent: '' };
     setDraft(nextDraft);
-    submit(nextDraft);
+    void submit(nextDraft);
   }
 
   /** The commute limit from the results bar: a new search with it, everything else kept. */
   function selectCommute(minutes: number | null) {
     if ((applied.maxCommuteMinutes ?? null) === minutes) return;
     setDraft((current) => ({ ...current, maxCommuteMinutes: minutes }));
-    submit({ ...applied, maxCommuteMinutes: minutes });
+    void submit({ ...applied, maxCommuteMinutes: minutes });
   }
 
   function selectSort(sort: string) {
     if (busy || sort === applied.sort) return;
     setDraft((current) => ({ ...current, sort }));
-    submit({ ...applied, sort });
+    void submit({ ...applied, sort });
   }
 
   const savedKeys = useMemo(() => new Set(saved.map(listingKey)), [saved]);
@@ -672,7 +672,7 @@ function ApartmentSearch() {
                             apply={(filters) => {
                               const next = { ...filters, includeMap: WEB_MAP && mapView };
                               setDraft({ ...defaults(), ...next });
-                              submit(next);
+                              void submit(next);
                             }}
                             check={(filters) => {
                               if (serverState !== 'ready')

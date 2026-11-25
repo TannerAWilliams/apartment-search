@@ -301,6 +301,7 @@ async function sendPushes(
   await mapLimit(devices, SENDS_AT_ONCE, async (device) => {
     for (const alert of alerts.filter(({ owner }) => owner === device.owner)) {
       try {
+        // biome-ignore lint/performance/noAwaitInLoops: one device's alerts go in order and stop when it is gone; devices run together
         const result = await sendPush(device, { title: alert.title, body: alert.lines.join('\n'), tag: alert.ruleId, url: '/' }, vapid, {
           fetcher,
         });

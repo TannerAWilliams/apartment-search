@@ -57,3 +57,23 @@ jobs:
           fi
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+
+  # Times the live site as a first-time visitor on a phone sees it (scripts/perf-live.ts). It runs after the
+  # deploy, so it cannot stop one; a red run here says production got slow and shows where the time went.
+  speed:
+    needs: deploy
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+      - run: bun install --frozen-lockfile
+      - name: Install Chromium
+        run: bun ./node_modules/playwright/cli.js install --with-deps chromium
+      - run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+      - name: Live site speed
+        run: bun run perf:live

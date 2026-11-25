@@ -1,6 +1,6 @@
 // Lab performance audit with Google Lighthouse (pinned) against the running app:
 //   bun run dev          # in one terminal
-//   bun run perf [url]   # defaults to http://127.0.0.1:8787/
+//   bun run perf:lighthouse [url]   # defaults to http://127.0.0.1:8787/
 // Lighthouse emulates a mid-range phone on a slow 4G connection. Real visits are measured separately
 // (src/web-vitals-report.ts → Workers Logs, event "web_vital"). Fails below the budgets below.
 import { $ } from 'bun';

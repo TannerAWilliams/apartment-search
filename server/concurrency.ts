@@ -15,6 +15,7 @@ export async function mapLimit<T, R>(items: readonly T[], limit: number, task: (
   const worker = async () => {
     while (next < items.length) {
       const index = next++;
+      // biome-ignore lint/performance/noAwaitInLoops: each worker takes one item at a time; the workers run together
       results[index] = await task(items[index]!, index);
     }
   };

@@ -28,6 +28,7 @@ import { STREETEASY_LIVE, STREETEASY_PUBLIC_COVERAGE, STREETEASY_PUBLIC_TRANSPOR
 import type { SourceFetch } from './contracts.ts';
 import { type SourceStatus, refreshStatus, sourceExpiresAt, sourceRecent } from './refresh/status.ts';
 import { refreshCatalog } from './refresh/sources.ts';
+import { log } from './log.ts';
 import { timed, type Timings } from './timing.ts';
 import { storedDirectRentals, storedFeed, storedHousing, storedOpenigloo } from './refresh/snapshots.ts';
 import { storedMarket } from './refresh/market.ts';
@@ -153,7 +154,7 @@ async function score(listings: ListingData[], bucket: Bucket | undefined, timing
 const scored = new WeakMap<Gathered, Promise<ListingData[]>>();
 function scoredOnce(found: Gathered, bucket: Bucket, timings?: Timings) {
   const known = scored.get(found);
-  if (known) return known;
+  if (known !== undefined) return known;
   const work = score(found.listings, bucket, timings);
   // Scoring reads only stored lists, each of which falls back to empty, so it does not fail on its own.
   scored.set(found, work);
@@ -165,6 +166,12 @@ type SearchExtra = {
   status?: Awaited<ReturnType<typeof refreshStatus>> | null;
   /** Where the request's time goes, by phase (server/timing.ts). */
   timings?: Timings;
+  /**
+   * With observationsOnly: answer from the listings this Worker instance already holds, when it holds them. For
+   * pages that show listings (an apartment's page, a neighborhood). Alerts and whole-search checks leave it off:
+   * they decide what changed, so they read the database each time.
+   */
+  kept?: boolean;
 };
 type SearchResponse = SearchResult & { snapshotMonth?: string; commute?: boolean; commuteNotice?: string };
 type ObservationResponse = { matches: ListingData[]; sources: SearchSource[]; notices: string[] };
@@ -181,13 +188,14 @@ export function search(
   env: AppEnv,
   fetcher: SourceFetch | undefined,
   observationsOnly: true,
+  extra?: SearchExtra,
 ): Promise<ObservationResponse>;
 export async function search(
   filters: SearchFilters,
   env: AppEnv,
   fetcher: SourceFetch = fetch,
   observationsOnly = false,
-  { status: known, timings }: SearchExtra = {},
+  { status: known, timings, kept: reuseKept = false }: SearchExtra = {},
 ) {
   const requireCommute = needsCommute(filters);
   const credentials = routingCredentials(env);
@@ -281,14 +289,19 @@ export async function search(
   }
   const status = known === undefined ? (bucket ? await timed(timings, 'status', () => refreshStatus(bucket)) : null) : known;
   const observedAt = new Date();
-  const sourceRegion = parentRegion(filters.region);
+  // Searches that people run share one set of listings per Worker instance: every listing, read once and kept, with
+  // each search's area and rent matched in memory (matchListings). Reading only what one search could match made
+  // every new rent or area a fresh database read, and compared rents with only the listings under that rent.
+  const keeps = bucket && (!observationsOnly || reuseKept) ? bucket : undefined;
+  const sourceRegion = keeps ? 'all' : parentRegion(filters.region);
+  // A one-off read (an alert's check) asks the database for only what it can match: a top-level region and the rent.
   // Official-only searches leave out every source read from a listing site's own pages: Openigloo and the direct rental sources.
-  // The database returns only listings this search can match: in a top-level region and within the rent.
-  // A city area or sub-region is matched by matchListings, which reads more than the region column.
-  const narrow: SnapshotFilter = {
-    ...(filters.region !== 'all' && parentRegion(filters.region) === filters.region ? { region: filters.region } : {}),
-    ...(filters.maxRent !== null ? { maxRent: filters.maxRent } : {}),
-  };
+  const narrow: SnapshotFilter = keeps
+    ? {}
+    : {
+        ...(filters.region !== 'all' && parentRegion(filters.region) === filters.region ? { region: filters.region } : {}),
+        ...(filters.maxRent !== null ? { maxRent: filters.maxRent } : {}),
+      };
   const directSources = filters.officialOnly
     ? []
     : DIRECT_RENTAL_SOURCES.filter(({ regions }) => sourceRegion === 'all' || regions.includes(sourceRegion));
@@ -430,26 +443,19 @@ export async function search(
     }
     return gathered(mergeListings(listings), 'live', sources, notices);
   }
-  // The same listings serve every search that differs only in its filters (All, Deals, New), so they are kept
-  // for 15 minutes, until a source check changes them: a second search re-filters them instead of reading and scoring every listing again.
-  const keyFor = (narrowed: SnapshotFilter, region: string) =>
-    JSON.stringify({
-      narrow: narrowed,
-      sourceRegion: region,
-      officialOnly: filters.officialOnly,
-      liveOnly: filters.liveOnly,
-      includeCached: filters.includeCached,
-      status,
-    });
-  const key = keyFor(narrow, sourceRegion);
-  // A narrower search (one area, a top rent) reuses every listing when they are already kept, such as by the
-  // search the app runs on opening: the listings it does not match are left out after, by matchListings.
-  const everything = bucket && key !== keyFor({}, 'all') ? keptGathered(bucket, keyFor({}, 'all')) : undefined;
-  if (bucket && !observationsOnly) timings?.note('listings', everything || keptGathered(bucket, key) ? 'kept' : 'read');
-  const found = await timed(timings, 'read', () =>
-    everything ? everything : bucket && !observationsOnly ? recentlyGathered(bucket, key, gather) : gather(),
-  );
-  kept = bucket && !observationsOnly ? found : null;
+  // Kept for 15 minutes, or until a source check changes them: a later search re-filters them instead of reading
+  // and scoring every listing again.
+  const key = JSON.stringify({
+    narrow,
+    sourceRegion,
+    officialOnly: filters.officialOnly,
+    liveOnly: filters.liveOnly,
+    includeCached: filters.includeCached,
+    status,
+  });
+  if (keeps) timings?.note('listings', keptGathered(keeps, key) !== undefined ? 'kept' : 'read');
+  const found = await timed(timings, 'read', () => (keeps ? recentlyGathered(keeps, key, gather) : gather()));
+  kept = keeps ? found : null;
   return finish(found.listings, found.mode, found.sources, [...found.notices], found.snapshotMonth);
 }
 
@@ -473,20 +479,36 @@ export async function withTransitEstimate<T extends ListingData>(
 }
 
 /** Each destination's estimator, made once per set of stations (kept ten minutes by openData). */
-const estimators = new WeakMap<object, Map<string, ReturnType<typeof transitEstimator>>>();
+type DestinationEstimates = { estimate: ReturnType<typeof transitEstimator>; byHome: Map<string, number | null> };
+const DESTINATIONS_KEPT = 24;
+const estimators = new WeakMap<object, Map<string, DestinationEstimates>>();
 async function withTransitEstimates<T extends ListingData>(
   listings: T[],
   bucket: Bucket,
   destination: { latitude: number; longitude: number },
 ) {
   const lists = await openData(bucket);
-  const byDestination = estimators.get(lists) ?? new Map<string, ReturnType<typeof transitEstimator>>();
+  const byDestination = estimators.get(lists) ?? new Map<string, DestinationEstimates>();
   estimators.set(lists, byDestination);
   const key = `${destination.latitude.toFixed(4)},${destination.longitude.toFixed(4)}`;
-  const estimate = byDestination.get(key) ?? transitEstimator([...lists.stations, ...lists.path], destination);
-  byDestination.set(key, estimate);
+  let known = byDestination.get(key);
+  if (!known) {
+    // A few destinations are kept; the one unused longest makes room.
+    if (byDestination.size >= DESTINATIONS_KEPT) byDestination.delete(byDestination.keys().next().value!);
+    known = { estimate: transitEstimator([...lists.stations, ...lists.path], destination), byHome: new Map() };
+  } else byDestination.delete(key);
+  byDestination.set(key, known);
+  const { estimate, byHome } = known;
   return listings.map((listing) => {
-    const minutes = isPoint(listing) ? estimate({ latitude: listing.latitude, longitude: listing.longitude }) : null;
+    if (!isPoint(listing)) return listing;
+    // An estimate measures every station near the home, so each home's is worked out once per destination:
+    // a person's later searches (another size, another sort) reuse them.
+    const home = `${listing.latitude.toFixed(5)},${listing.longitude.toFixed(5)}`;
+    let minutes = byHome.get(home);
+    if (minutes === undefined) {
+      minutes = estimate({ latitude: listing.latitude, longitude: listing.longitude });
+      byHome.set(home, minutes);
+    }
     return minutes === null ? listing : { ...listing, insights: { warnings: [], ...listing.insights, transitMinutes: minutes } };
   });
 }
@@ -504,7 +526,10 @@ export async function cachedSearch(
   env: AppEnv,
   fetcher: SourceFetch,
   cache: SearchCache | undefined = (globalThis as { caches?: { default?: Cache } }).caches?.default,
-  timings?: Timings,
+  {
+    timings,
+    waitUntil,
+  }: { timings?: Timings /** Runs work after the response is sent. */; waitUntil?: (work: Promise<unknown>) => void } = {},
 ): Promise<SearchResponse> {
   if (!cache || !env.BUCKET) return search(filters, env, fetcher, false, { timings });
   const bucket = env.BUCKET;
@@ -519,11 +544,16 @@ export async function cachedSearch(
   timings?.note('answer', hit ? 'cached' : 'computed');
   if (hit) return (await hit.json()) as SearchResponse;
   const result = await search(filters, env, fetcher, false, { status, timings });
-  await cache.put(
-    key,
-    new Response(JSON.stringify(result), {
-      headers: { 'Content-Type': 'application/json', 'Cache-Control': `max-age=${GATHER_MS / 1000}` },
-    }),
-  );
+  // Kept for the next person after this one has their answer, where the Worker allows work after the response.
+  const keep = cache
+    .put(
+      key,
+      new Response(JSON.stringify(result), {
+        headers: { 'Content-Type': 'application/json', 'Cache-Control': `max-age=${GATHER_MS / 1000}` },
+      }),
+    )
+    .catch((cause) => log.warn('search_cache_write_failed', { error: cause instanceof Error ? cause.message : String(cause) }));
+  if (waitUntil) waitUntil(keep);
+  else await keep;
   return result;
 }

@@ -32,15 +32,8 @@ test('neighborhood pages, their index, the sitemap and robots.txt are public', a
   expect(pages.every(({ count }) => count >= 5)).toBe(true);
   const first = pages[0]!;
 
-  const robots = await get(env, '/robots.txt');
-  expect(await robots.text()).toContain('Sitemap: https://walkup.test/sitemap.xml');
-  const sitemap = await (await get(env, '/sitemap.xml')).text();
-  expect(sitemap).toContain(`<loc>https://walkup.test/rents/${first.path}</loc>`);
-  const index = await get(env, '/rents');
-  expect(index.status).toBe(200);
-  expect(await index.text()).toContain(`href="/rents/${first.path}"`);
-
-  // One of its buildings has been checked.
+  // One of its buildings has been checked (before any page is asked for: pages show the scored listings the
+  // server holds, which take up new building facts within fifteen minutes).
   const { offline, search } = await import('../server/search.ts');
   const { parseFilters } = await import('../src/search.ts');
   const { buildingKey } = await import('../src/listings.ts');
@@ -50,6 +43,15 @@ test('neighborhood pages, their index, the sitemap and robots.txt are public', a
   )!;
   const facts = { stabilized: true, openViolations: 0, complaints: 0, bedbugs: false, flood: false, checkedAt: '2026-11-24T00:00:00Z' };
   await createD1Bucket(env.APARTMENTS).put('buildings/facts.json', JSON.stringify({ [buildingKey(listing)!]: facts }));
+
+  const robots = await get(env, '/robots.txt');
+  expect(await robots.text()).toContain('Sitemap: https://walkup.test/sitemap.xml');
+  const sitemap = await (await get(env, '/sitemap.xml')).text();
+  expect(sitemap).toContain(`<loc>https://walkup.test/rents/${first.path}</loc>`);
+  const index = await get(env, '/rents');
+  expect(index.status).toBe(200);
+  expect(await index.text()).toContain(`href="/rents/${first.path}"`);
+
   const response = await get(env, '/rents/' + first.path);
   expect(response.status).toBe(200);
   expect(response.headers.get('cache-control')).toBe('public, max-age=3600, no-transform');

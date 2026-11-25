@@ -56,6 +56,12 @@ test('a search is answered from the data center’s cache until a source check c
   // A new deploy keeps its own answers, so a change to ranking is seen at once.
   await cachedSearch(filters, { ...env, CF_VERSION_METADATA: { id: 'next-version' } }, offline, cache);
   expect(stored.size).toBe(2);
+  // Where the Worker allows work after the response, the answer is kept then; a failed write is only logged.
+  const later: Promise<unknown>[] = [];
+  const failing = { match: async () => undefined, put: async () => Promise.reject(new Error('cache full')) } as unknown as Cache;
+  expect((await cachedSearch(filters, env, offline, failing, { waitUntil: (work) => later.push(work) })).total).toBe(first.total);
+  expect(later).toHaveLength(1);
+  await later[0];
   // Without a cache or storage, it searches directly.
   expect((await cachedSearch(filters, {}, offline, undefined)).total).toBeGreaterThan(0);
 });

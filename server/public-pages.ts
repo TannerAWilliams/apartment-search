@@ -25,7 +25,7 @@ const escape = (text: string) => text.replace(/[&<>"']/g, (char) => `&#${char.ch
 
 /** Every New York City neighborhood with enough listings for a page: name, borough and count, by borough then name. */
 export async function neighborhoodIndex(env: AppEnv) {
-  const { matches } = await search(parseFilters({ region: 'nyc', bedrooms: null, maxRent: null }), env, offline, true);
+  const { matches } = await search(parseFilters({ region: 'nyc', bedrooms: null, maxRent: null }), env, offline, true, { kept: true });
   const counts = new Map<string, { name: string; borough: string; count: number }>();
   for (const { neighborhood, city } of matches) {
     if (!neighborhood || !BOROUGHS.includes(city)) continue;

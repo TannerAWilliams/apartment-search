@@ -51,7 +51,7 @@ export function libertySnapshot(latitude: number, longitude: number, width: numb
   const h = Math.round(height);
   const key = `${latitude.toFixed(5)},${longitude.toFixed(5)},${w}x${h}`;
   const known = done.get(key);
-  if (known) return known;
+  if (known !== undefined) return known;
   const picture = start().then(({ map, box }) => {
     // One at a time: the hidden map moves to each place, waits for its streets to draw, and is read back.
     const next = queue.then(

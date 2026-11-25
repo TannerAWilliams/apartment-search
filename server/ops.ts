@@ -48,8 +48,8 @@ export async function recordEvent(bucket: Bucket | undefined, event: ProductEven
 export async function funnel(bucket: Bucket, days = 30, now = new Date(), signups = 0) {
   const since = new Date(now.getTime() - days * 86_400_000).toISOString().slice(0, 10);
   const totals = Object.fromEntries(EVENTS.map((event) => [event, 0])) as Record<ProductEvent, number>;
-  for (const [day, counts] of Object.entries(await readDays(bucket)))
-    if (day > since) for (const event of EVENTS) totals[event] += counts[event] ?? 0;
+  const recorded = await readDays(bucket);
+  for (const [day, counts] of Object.entries(recorded)) if (day > since) for (const event of EVENTS) totals[event] += counts[event] ?? 0;
   return { days, signups, ...totals };
 }
 

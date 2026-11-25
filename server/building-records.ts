@@ -83,6 +83,7 @@ async function readOfficialJson(url: string, fetcher: FetchTransport, signal: Ab
   let size = 0;
   try {
     while (true) {
+      // biome-ignore lint/performance/noAwaitInLoops: a stream is read one chunk after another
       const next = await reader.read();
       if (next.done) break;
       size += next.value.length;

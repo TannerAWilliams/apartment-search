@@ -94,8 +94,10 @@ export async function finishSourceCheck(
   while (check.checking) {
     longSyncLimit = Math.max(longSyncLimit, LONG_SYNC_LIMITS[check.activeSource ?? ''] ?? 0);
     if (Date.now() - started >= (longSyncLimit || 150_000)) break;
+    // biome-ignore lint/performance/noAwaitInLoops: polling: each check waits, then asks how the sync is going
     await new Promise((resolve) => setTimeout(resolve, longSyncLimit ? LONG_SYNC_POLL_MS : 1200));
     if (signal?.aborted) return check;
+    // biome-ignore lint/performance/noAwaitInLoops: polling, as above
     check = await api('refresh', { token, signal });
     onProgress?.(check);
   }

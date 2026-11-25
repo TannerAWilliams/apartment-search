@@ -2,7 +2,7 @@
  * A production-sized inventory for performance tests: listings shaped like the real ones (the same fields, price
  * history and source links), spread over the sources as production's are, with the subway stations, the
  * rent-stabilized registry and building facts the scoring reads. Everything comes from a seeded generator, so
- * every run measures the same data.
+ * every run measures the same data (dated from now, so the sources count as freshly checked).
  */
 import type { ListingData } from '../src/domain.ts';
 import { buildingKey } from '../src/listings.ts';
@@ -49,7 +49,7 @@ const pick = <T>(random: () => number, items: readonly T[], weights?: readonly n
 };
 
 /** `count` listings, with the source each belongs to. */
-export function makeListings(count: number, seed = 1, now = new Date('2026-11-25T12:00:00Z')) {
+export function makeListings(count: number, seed = 1, now = new Date()) {
   const random = seeded(seed);
   const sources = DIRECT_RENTAL_SOURCES.slice(0, SOURCE_WEIGHTS.length);
   const checkedAt = now.toISOString();
@@ -129,7 +129,7 @@ export function makeStations(seed = 2) {
  * A bucket on the production schema (SQLite in memory behind the D1 store) holding `count` listings, every
  * source freshly checked, with the open data and building facts a search reads.
  */
-export async function seededDatabase(count = PRODUCTION_SIZE, now = new Date('2026-11-25T12:00:00Z')) {
+export async function seededDatabase(count = PRODUCTION_SIZE, now = new Date()) {
   const { d1 } = await fakeD1();
   const bucket = createD1Bucket(d1);
   const bySource = makeListings(count, 1, now);
@@ -162,5 +162,8 @@ export async function seededDatabase(count = PRODUCTION_SIZE, now = new Date('20
   return d1;
 }
 
-/** A bucket over a seeded database. A new bucket over the same database starts cold: nothing kept in memory. */
-export const coldBucket = (database: Awaited<ReturnType<typeof seededDatabase>>): Bucket => createD1Bucket(database);
+/**
+ * A bucket over a seeded database, as a new Worker instance has it: nothing kept in memory. (The store remembers
+ * its bucket per database object, so a cold one needs its own copy of the object over the same data.)
+ */
+export const coldBucket = (database: Awaited<ReturnType<typeof seededDatabase>>): Bucket => createD1Bucket({ ...database });

@@ -88,7 +88,7 @@ export async function zipComplaints(bucket: Bucket | undefined, zip: string, fet
 /** The neighborhood's page: its listings summarized, and 311 complaints where they can be read. */
 export async function neighborhoodReport(env: AppEnv, name: string, fetcher: FetchTransport) {
   const filters = parseFilters({ region: 'nyc', bedrooms: null, maxRent: null, neighborhood: name });
-  const { matches } = await search(filters, env, offline, true);
+  const { matches } = await search(filters, env, offline, true, { kept: true });
   const summary = summarizeNeighborhood(matches);
   let complaints = null;
   if (summary.zips[0]) {

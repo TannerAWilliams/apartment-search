@@ -17,6 +17,7 @@ import { isAppPath } from '../src/routes.ts';
 import { securityHeaders, withCacheControl } from './web-headers.ts';
 import { type ArchiveLoader, DASHBOARD_ARCHIVE_PATH } from './dashboard-snapshot.ts';
 import { SYNC_PROGRESS_KEY, WORKFLOW_SOURCE_IDS } from './sources/source-registry.ts';
+// biome-ignore lint/performance/noBarrelFile: Cloudflare finds the Workflow class by its export from the Worker's entry file
 export { CityRealtySync } from './sync-workflow.ts';
 
 type Workflow = {

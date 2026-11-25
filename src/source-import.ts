@@ -2,7 +2,6 @@ import base64 from 'base64-js';
 import { gzipSync, gunzipSync, strFromU8, strToU8 } from 'fflate';
 import { isRecord } from './domain.ts';
 
-export { PUBLIC_SOURCE_IDS, retryablePublicSources } from './public-sources.ts';
 const MAX_UNCOMPRESSED = 12 * 1024 * 1024;
 
 export function encodeSourceImport(sources: unknown) {

@@ -1,0 +1,82 @@
+{
+  "tolerance": 0.5,
+  "scenarios": {
+    "search-cold": {
+      "ratio": 7.639,
+      "ms": 296.3
+    },
+    "search-warm-all": {
+      "ratio": 1.073,
+      "ms": 41.62
+    },
+    "search-warm-borough": {
+      "ratio": 0.48,
+      "ms": 18.62
+    },
+    "search-warm-deals": {
+      "ratio": 0.333,
+      "ms": 14.7
+    },
+    "search-warm-commute-limit": {
+      "ratio": 1.124,
+      "ms": 43.58
+    },
+    "search-warm-map": {
+      "ratio": 1.674,
+      "ms": 64.93
+    },
+    "api-search": {
+      "ratio": 1.05,
+      "ms": 40.71
+    },
+    "api-config": {
+      "ratio": 0.017,
+      "ms": 0.66
+    },
+    "api-listing": {
+      "ratio": 0.563,
+      "ms": 24.87
+    },
+    "api-market": {
+      "ratio": 0.244,
+      "ms": 9.47
+    },
+    "merge-listings": {
+      "ratio": 0.558,
+      "ms": 21.66
+    },
+    "score-listings": {
+      "ratio": 3.713,
+      "ms": 144.04
+    },
+    "match-listings": {
+      "ratio": 0.293,
+      "ms": 11.38
+    },
+    "rent-areas": {
+      "ratio": 0.302,
+      "ms": 11.7
+    }
+  },
+  "scaling": {
+    "search-cold": 8,
+    "merge-listings": 8,
+    "score-listings": 8,
+    "rent-areas": 8
+  },
+  "sizes": {
+    "search-response-bytes": 145155,
+    "search-map-bytes-per-listing": 516,
+    "config-response-bytes": 20278
+  },
+  "memory": {
+    "search-cold-heap-mb": 33
+  },
+  "bundles": {
+    "entryJsKb": 238,
+    "entryCssKb": 14,
+    "lazyChunkKb": 329,
+    "totalJsKb": 668,
+    "workerKb": 1232
+  }
+}

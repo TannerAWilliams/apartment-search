@@ -24,7 +24,12 @@
     "format": "biome format --write .",
     "format:check": "biome format .",
     "typecheck": "bun ./node_modules/typescript/bin/tsc --noEmit && bun ./node_modules/typescript/bin/tsc --noEmit -p web",
-    "perf": "bun scripts/lighthouse.ts",
+    "lint": "biome lint . --diagnostic-level=error",
+    "perf": "bun perf/bench.ts",
+    "perf:update": "bun perf/bench.ts --update && bun run build:web && bun perf/bundle.ts --update && biome format --write perf/budgets.json",
+    "perf:bundle": "bun perf/bundle.ts",
+    "perf:live": "bun scripts/perf-live.ts",
+    "perf:lighthouse": "bun scripts/lighthouse.ts",
     "test:e2e": "bun run typecheck && bun run build:web && bun run test && bun ./node_modules/playwright/cli.js test",
     "test:e2e:list": "bun ./node_modules/playwright/cli.js test --list"
   },

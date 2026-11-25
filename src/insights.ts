@@ -75,14 +75,24 @@ export const IMPLAUSIBLE_RENT = 500;
 /** Whether a listing's rent is below any real apartment's here (how far below similar ones is only noted, not judged). */
 export const suspiciousRent = (listing: Pick<ListingData, 'rent'>) => listing.rent > 0 && listing.rent < IMPLAUSIBLE_RENT;
 
-const placeKey = (listing: Pick<ListingData, 'neighborhood' | 'zip'>) =>
-  listing.neighborhood
-    ? 'n:' +
+/** Neighborhood names in their compared form. There are a few hundred, met thousands of times each. */
+const neighborhoodKeys = new Map<string, string>();
+function placeKey(listing: Pick<ListingData, 'neighborhood' | 'zip'>) {
+  if (!listing.neighborhood) return 'z:' + listing.zip;
+  let key = neighborhoodKeys.get(listing.neighborhood);
+  if (key === undefined) {
+    key =
+      'n:' +
       listing.neighborhood
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, ' ')
-        .trim()
-    : 'z:' + listing.zip;
+        .trim();
+    // Names come from listings, so the memory is bounded rather than trusted to stay small.
+    if (neighborhoodKeys.size >= 5000) neighborhoodKeys.clear();
+    neighborhoodKeys.set(listing.neighborhood, key);
+  }
+  return key;
+}
 
 function median(values: number[]) {
   const sorted = [...values].sort((a, b) => a - b);
@@ -96,7 +106,10 @@ export function rentBenchmarks(listings: Pick<ListingData, 'neighborhood' | 'zip
   for (const listing of listings) {
     if (!(listing.rent > 0)) continue;
     const key = placeKey(listing) + '|' + listing.bedrooms;
-    groups.set(key, [...(groups.get(key) ?? []), listing.rent]);
+    const rents = groups.get(key);
+    // Added to the group's own list: copying the list for each listing made large groups quadratic.
+    if (rents) rents.push(listing.rent);
+    else groups.set(key, [listing.rent]);
   }
   return new Map([...groups].map(([key, rents]) => [key, { median: median(rents), count: rents.length }]));
 }
@@ -115,8 +128,7 @@ export function buildingGrade(facts: BuildingFacts | undefined): BuildingGrade |
 }
 
 const money = (rent: number) => '$' + rent.toLocaleString('en-US');
-const unitOf = (listing: ListingData) => {
-  const building = buildingKey(listing);
+const unitOf = (listing: ListingData, building = buildingKey(listing)) => {
   const unit = (listing.unit ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
   return building && unit ? building + '|' + unit : null;
 };
@@ -132,19 +144,24 @@ export function withInsights<T extends ListingData>(
 ) {
   const benchmarks = rentBenchmarks(listings);
   const near = stationIndex(stations);
+  // Each listing's building and unit keys are worked out once: they cost several text replacements each.
+  const buildingKeys = listings.map(buildingKey);
+  const units = listings.map((listing, index) => unitOf(listing, buildingKeys[index]));
   const rentsByUnit = new Map<string, Set<number>>();
-  for (const listing of listings) {
-    const unit = unitOf(listing);
+  for (const [index, listing] of listings.entries()) {
+    const unit = units[index];
     if (unit) rentsByUnit.set(unit, (rentsByUnit.get(unit) ?? new Set()).add(listing.rent));
   }
-  return listings.map((listing) => {
+  return listings.map((listing, index) => {
     const warnings: string[] = [];
     const benchmark = benchmarks.get(placeKey(listing) + '|' + listing.bedrooms);
     const compared = benchmark && benchmark.count >= MIN_COMPARABLES ? benchmark : null;
     const vsMarket = compared ? Math.round(((listing.rent - compared.median) / compared.median) * 100) / 100 : undefined;
     if (!/^\s*\d/.test(listing.address)) warnings.push('No street number is given. Ask for the exact address before you tour.');
-    const unit = unitOf(listing);
-    const others = unit ? [...(rentsByUnit.get(unit) ?? [])].filter((rent) => rent !== listing.rent) : [];
+    const unit = units[index];
+    const sameUnit = unit ? rentsByUnit.get(unit) : undefined;
+    // Almost every unit is listed at one rent, so there is nothing to compare.
+    const others = sameUnit && sameUnit.size > 1 ? [...sameUnit].filter((rent) => rent !== listing.rent) : [];
     if (others.length)
       warnings.push(
         `This unit is also listed at ${others
@@ -152,7 +169,7 @@ export function withInsights<T extends ListingData>(
           .map(money)
           .join(' and ')}.`,
       );
-    const key = buildingKey(listing);
+    const key = buildingKeys[index] ?? null;
     const checked = key ? buildings[key] : undefined;
     // The state's registry says a building is rent-stabilized even before its other records are checked.
     const registered = key !== null && key in registry;

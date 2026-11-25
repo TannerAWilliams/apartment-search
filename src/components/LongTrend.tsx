@@ -18,7 +18,7 @@ let catalogs = new WeakMap<LoadHistory, Promise<HistoryCatalog>>();
 /** The catalog once per loader, so changing the range or size does not fetch it again. */
 function catalog(load: LoadHistory) {
   const cached = catalogs.get(load);
-  if (cached) return cached;
+  if (cached !== undefined) return cached;
   const request = load<HistoryCatalog>('history', new AbortController().signal);
   catalogs.set(load, request);
   request.catch(() => catalogs.delete(load));

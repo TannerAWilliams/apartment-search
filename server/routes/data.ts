@@ -51,7 +51,7 @@ export const dataRoutes = factory
     try {
       // The snapshot covers New York City and nearby New Jersey; Connecticut's figures come from Walkup's own listings.
       if (parentRegion(region) === 'ct') {
-        const { matches } = await search(parseFilters({ region, bedrooms: null, maxRent: null }), env, offline, true);
+        const { matches } = await search(parseFilters({ region, bedrooms: null, maxRent: null }), env, offline, true, { kept: true });
         return c.json({ month: new Date().toISOString().slice(0, 7), areas: rentAreas(matches, { region, grouping }), history: [] }, 200);
       }
       const market = await storedMarket(env.BUCKET);
