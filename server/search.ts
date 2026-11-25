@@ -437,7 +437,9 @@ export async function cachedSearch(
 ): Promise<SearchResponse> {
   if (!cache || !env.BUCKET) return search(filters, env, fetcher);
   const status = await refreshStatus(env.BUCKET);
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify({ filters, status })));
+  // Kept per deployed version: a deploy that changes ranking or matching must not serve the old answers.
+  const version = env.CF_VERSION_METADATA?.id ?? '';
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify({ filters, status, version })));
   const key = new Request(
     `https://search-cache.internal/${[...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('')}`,
   );

@@ -18,6 +18,9 @@
   "workers_dev": true,
   // No per-version preview URLs; they were off before the first deploy from this file.
   "preview_urls": false,
+  // Which deployed version is running; cached search answers are kept per version, so a deploy that changes
+  // how results are ranked is seen at once.
+  "version_metadata": { "binding": "CF_VERSION_METADATA" },
   "vars": {
     // Links in alerts, and the Web Push sender identity. The matching VAPID_PRIVATE_KEY is a secret
     // (scripts/vapid-keys.ts makes a new pair).

@@ -40,6 +40,8 @@ export type Bucket = {
 };
 export type AppEnv = {
   BUCKET?: Bucket;
+  /** Cloudflare's metadata for the deployed version (wrangler.jsonc version_metadata). */
+  CF_VERSION_METADATA?: { id?: string };
   PUBLIC_APP?: string;
   APP_ACCESS_TOKEN?: string;
   /** Set when email-code sign-in is on (server/auth.ts). */

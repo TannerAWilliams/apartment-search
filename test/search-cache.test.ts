@@ -53,6 +53,9 @@ test('a search is answered from the data center’s cache until a source check c
   const again = await cachedSearch(filters, env, offline, cache);
   expect(again.total).toBe(first.total);
   expect(stored.size, 'the same search is not stored twice').toBe(1);
+  // A new deploy keeps its own answers, so a change to ranking is seen at once.
+  await cachedSearch(filters, { ...env, CF_VERSION_METADATA: { id: 'next-version' } }, offline, cache);
+  expect(stored.size).toBe(2);
   // Without a cache or storage, it searches directly.
   expect((await cachedSearch(filters, {}, offline, undefined)).total).toBeGreaterThan(0);
 });
