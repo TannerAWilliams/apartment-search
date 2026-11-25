@@ -17,6 +17,7 @@ import { warnAboutFailures } from './ops.ts';
 import { isDigestHour, runDigest } from './digest.ts';
 import type { SyncJob } from './routes/context.ts';
 import { checkedDocument } from './storage/stored-documents.ts';
+import { refreshInventory } from './inventory.ts';
 
 const SETTINGS_KEY = 'settings/platform.json';
 const RunSchema = v.object({ at: v.string(), state: v.string(), updated: v.number(), failed: v.number() });
@@ -61,6 +62,13 @@ type ScheduledDeps = { fetcher: SourceFetch; syncJob?: SyncJob; now?: Date };
 
 /** What the hourly wake-up does: the nightly resync at 1 AM, a daytime check every two hours, otherwise nothing. */
 export async function runScheduled(env: AppEnv & { BUCKET: Bucket }, deps: ScheduledDeps) {
+  const outcome = await runHour(env, deps);
+  // Each hour, whatever ran: the inventory file follows the listings, and listings age out with time alone.
+  await refreshInventory(env, deps.now).catch((cause) => log.error('inventory_build_failed', cause));
+  return outcome;
+}
+
+async function runHour(env: AppEnv & { BUCKET: Bucket }, deps: ScheduledDeps) {
   const now = deps.now ?? new Date();
   if (isNightlyHour(now)) return runNightly(env, { ...deps, now });
   if (isDaytimeHour(now)) return runDaytime(env, { fetcher: deps.fetcher, now });

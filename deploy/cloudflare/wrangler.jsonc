@@ -44,6 +44,8 @@
       "migrations_dir": "migrations"
     }
   ],
+  // The inventory file browsers search (server/inventory.ts, docs/architecture/search.md).
+  "kv_namespaces": [{ "binding": "INVENTORY", "id": "428aeaed22f04716b19a151f6099e7bf" }],
   "workflows": [
     // The complete syncs: CityRealty, Openigloo and Zumper. The Workflow and class keep their original
     // CityRealty names, since renaming a Workflow creates a new one. One run at a time, because each

@@ -21,7 +21,10 @@ import { offline, search } from '../server/search.ts';
 import { withInsights } from '../src/insights.ts';
 import { mergeListings } from '../src/listings.ts';
 import { rentAreas } from '../src/market.ts';
-import { matchListings, parseFilters } from '../src/search.ts';
+import { localWorkplace, matchListings, parseFilters } from '../src/search.ts';
+import { type Inventory, answerSearch } from '../src/answer.ts';
+import { decodeInventory } from '../src/inventory-format.ts';
+import { composeInventory, readInventory } from '../server/inventory.ts';
 import { coldBucket, makeListings, makeStations, PRODUCTION_SIZE, seeded, seededDatabase } from './fixtures.ts';
 
 type Budgets = {
@@ -88,6 +91,11 @@ async function measure() {
   const stations = makeStations();
   const scored = withInsights(mergeListings(full), {}, { stations });
   await search(filters(), env, offline);
+  // The inventory file browsers search (server/inventory.ts), and the search a browser runs over it.
+  const { text: file } = await composeInventory(await readInventory(env), 'bench', now);
+  const decoded = await decodeInventory<Omit<Inventory, 'listings'>, Record<string, unknown>>(file);
+  const inventory: Inventory = { ...decoded.header, listings: decoded.rows as unknown as Inventory['listings'] };
+  const answer = (extra: Record<string, unknown> = {}) => answerSearch(inventory, filters(extra), localWorkplace(filters(extra))!);
 
   /** Each scenario, with the same work at a quarter of the listings where its scaling is checked. */
   const scenarios: Record<string, { run: () => unknown; small?: () => unknown }> = {
@@ -107,6 +115,12 @@ async function measure() {
     'api-config': { run: async () => (await get('config')).text() },
     'api-listing': { run: async () => (await get('listing?id=' + encodeURIComponent(full[1234]!.id))).text() },
     'api-market': { run: async () => (await get('market?region=nyc&grouping=neighborhood')).text() },
+    // Building the file (after a sync, on the server), and what a browser does with it: decode it once, then answer.
+    'inventory-build': { run: async () => composeInventory(await readInventory({ BUCKET: coldBucket(database) }), 'bench', now) },
+    'inventory-decode': { run: () => decodeInventory(file) },
+    'browser-search-all': { run: () => answer() },
+    'browser-search-filters': { run: () => answer({ region: 'nyc', bedroomOptions: [1, 2], maxRent: 4500, sort: 'value' }) },
+    'browser-search-map': { run: () => answer({ includeMap: true }) },
     // The pure steps, so a slowdown names its own function.
     'merge-listings': { run: () => mergeListings(full), small: () => mergeListings(quarter) },
     'score-listings': { run: () => withInsights(full, {}, { stations }), small: () => withInsights(quarter, {}, { stations }) },
@@ -131,6 +145,8 @@ async function measure() {
     'search-response-bytes': await bytes(post('search', ALL)),
     'search-map-bytes-per-listing': Math.round((await bytes(post('search', { ...ALL, includeMap: true }))) / PRODUCTION_SIZE),
     'config-response-bytes': await bytes(get('config')),
+    // What a browser downloads to search by itself, compressed as it is sent.
+    'inventory-gzip-bytes-per-listing': Math.round(Bun.gzipSync(new TextEncoder().encode(file)).byteLength / PRODUCTION_SIZE),
   };
 
   Bun.gc(true);

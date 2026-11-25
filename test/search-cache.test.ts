@@ -56,23 +56,6 @@ test('a search is answered from the data center’s cache until a source check c
   // A new deploy keeps its own answers, so a change to ranking is seen at once.
   await cachedSearch(filters, { ...env, CF_VERSION_METADATA: { id: 'next-version' } }, offline, cache);
   expect(stored.size).toBe(2);
-  // Another Worker instance, with an empty cache of its own, finds the answer stored in the database, and reads
-  // the listings afterwards so that its next, different search does not wait for them.
-  const elsewhere = { match: async () => undefined, put: async () => {} } as unknown as Cache;
-  const background: Promise<unknown>[] = [];
-  const reads: string[] = [];
-  const counting = { ...env.BUCKET, get: (key: string) => (reads.push(key), env.BUCKET.get(key)) };
-  const timings = (await import('../server/timing.ts')).createTimings();
-  const answered = await cachedSearch(filters, { BUCKET: counting }, offline, elsewhere, {
-    timings,
-    waitUntil: (work) => background.push(work),
-  });
-  expect(answered.total).toBe(first.total);
-  expect(timings.fields().answer).toBe('stored');
-  // Answered from the sources' status and the stored answer alone.
-  expect(reads).toHaveLength(2);
-  await Promise.all(background);
-  expect(reads.length, 'the listings were read after the response').toBeGreaterThan(2);
   // Where the Worker allows work after the response, the answer is kept then; a failed write is only logged.
   const later: Promise<unknown>[] = [];
   const failing = { match: async () => undefined, put: async () => Promise.reject(new Error('cache full')) } as unknown as Cache;

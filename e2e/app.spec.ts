@@ -230,6 +230,9 @@ async function mockApp(
         ...localSearch(listings, filters, localWorkplace(filters), 'live', [], options.notices ?? []),
         ...(options.inventoryExpiresAt ? { inventoryExpiresAt: options.inventoryExpiresAt } : {}),
       };
+    } else if (url.pathname === '/api/inventory') {
+      // This stand-in server keeps no inventory file, so the app searches through it (e2e/perf.spec.ts has one).
+      return route.fulfill({ status: 404, json: { error: 'This server keeps no inventory file.' } });
     } else {
       unexpected.push(url.pathname);
       return route.fulfill({ status: 500, json: { error: 'Unexpected test endpoint' } });

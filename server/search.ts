@@ -3,11 +3,12 @@
  * commute times when asked and links to affordable-housing lotteries in the same building.
  */
 import type { AppEnv, Bucket, SnapshotFilter } from './contracts.ts';
-import { isRecord, type ListingData, type SearchFilters, type SearchResult, type SourceStatus as SearchSource } from '../src/domain.ts';
-import { isPoint, localWorkplace, matchListings, needsCommute, parseFilters } from '../src/search.ts';
+import type { ListingData, SearchFilters, SearchResult, SourceStatus as SearchSource } from '../src/domain.ts';
+import { localWorkplace, matchListings, needsCommute, parseFilters } from '../src/search.ts';
 import { formatSearch } from '../src/market.ts';
 import { withInsights } from '../src/insights.ts';
-import { transitEstimator } from '../src/transit-estimate.ts';
+import { withTransitEstimates as estimated } from '../src/answer.ts';
+import type { Station } from '../src/subway.ts';
 import { readBuildingFacts } from './building-facts.ts';
 import { openData } from './open-data.ts';
 import { directListings } from './direct-listings.ts';
@@ -132,12 +133,6 @@ export async function recentlyGathered(bucket: Bucket, key: string, gather: () =
   return value;
 }
 
-/** How many sets of listings this instance holds for the bucket. */
-const keptCount = (bucket: Bucket) => recent.get(bucket)?.size ?? 0;
-/** Where finished answers are stored for every instance, and in how many slots. */
-const ANSWER_PREFIX = 'answers/';
-const ANSWER_SLOTS = 256;
-
 /** The listings kept for this key, if they were read in the last 15 minutes. */
 export function keptGathered(bucket: Bucket, key: string, now = Date.now()) {
   const hit = recent.get(bucket)?.get(key);
@@ -178,7 +173,14 @@ type SearchExtra = {
    * they decide what changed, so they read the database each time.
    */
   kept?: boolean;
+  /**
+   * With observationsOnly: every listing as scored, before any matching, with the affordable-housing links of
+   * its building. What the inventory file is built from (server/inventory.ts).
+   */
+  scored?: boolean;
 };
+/** Every listing, merged and scored, with what a search over them reports. */
+export type ScoredListings = { listings: ListingData[]; mode: string; sources: SearchSource[]; notices: string[]; snapshotMonth?: string };
 type SearchResponse = SearchResult & { snapshotMonth?: string; commute?: boolean; commuteNotice?: string };
 type ObservationResponse = { matches: ListingData[]; sources: SearchSource[]; notices: string[] };
 /** Searches with checked filters (see SearchFiltersSchema). With observationsOnly, returns the matches alone, from saved inventory. */
@@ -194,6 +196,13 @@ export function search(
   env: AppEnv,
   fetcher: SourceFetch | undefined,
   observationsOnly: true,
+  extra: SearchExtra & { scored: true },
+): Promise<ScoredListings>;
+export function search(
+  filters: SearchFilters,
+  env: AppEnv,
+  fetcher: SourceFetch | undefined,
+  observationsOnly: true,
   extra?: SearchExtra,
 ): Promise<ObservationResponse>;
 export async function search(
@@ -201,8 +210,8 @@ export async function search(
   env: AppEnv,
   fetcher: SourceFetch = fetch,
   observationsOnly = false,
-  { status: known, timings, kept: reuseKept = false }: SearchExtra = {},
-) {
+  { status: known, timings, kept: reuseKept = false, scored: scoredOnly = false }: SearchExtra = {},
+): Promise<SearchResponse | ObservationResponse | ScoredListings> {
   const requireCommute = needsCommute(filters);
   const credentials = routingCredentials(env);
   if (requireCommute && !credentials)
@@ -223,6 +232,10 @@ export async function search(
       timed(timings, 'score', () => (kept && bucket ? scoredOnce(kept, bucket, timings) : score(listings, bucket, timings))),
       timed(timings, 'destination', () => workplaceFound),
     ]);
+    if (scoredOnly) {
+      const linked = await withHousingLinks({ matches: scoredListings }, bucket);
+      return { listings: linked.matches, mode, sources, notices, ...(snapshotMonth ? { snapshotMonth } : {}) };
+    }
     const matched = matchListings(scoredListings, filters, workplace).map(listingWithVerifiedLinks);
     let routed = matched;
     const commute: { commute?: boolean; commuteNotice?: string } = {};
@@ -484,39 +497,20 @@ export async function withTransitEstimate<T extends ListingData>(
   return estimated!;
 }
 
-/** Each destination's estimator, made once per set of stations (kept ten minutes by openData). */
-type DestinationEstimates = { estimate: ReturnType<typeof transitEstimator>; byHome: Map<string, number | null> };
-const DESTINATIONS_KEPT = 24;
-const estimators = new WeakMap<object, Map<string, DestinationEstimates>>();
+/** The subway and PATH stations estimates use, as one list per set read (openData keeps a set ten minutes). */
+const estimateStations = new WeakMap<object, Station[]>();
+export async function stationsForEstimates(bucket: Bucket) {
+  const lists = await openData(bucket);
+  const known = estimateStations.get(lists) ?? [...lists.stations, ...lists.path];
+  estimateStations.set(lists, known);
+  return known;
+}
 async function withTransitEstimates<T extends ListingData>(
   listings: T[],
   bucket: Bucket,
   destination: { latitude: number; longitude: number },
 ) {
-  const lists = await openData(bucket);
-  const byDestination = estimators.get(lists) ?? new Map<string, DestinationEstimates>();
-  estimators.set(lists, byDestination);
-  const key = `${destination.latitude.toFixed(4)},${destination.longitude.toFixed(4)}`;
-  let known = byDestination.get(key);
-  if (!known) {
-    // A few destinations are kept; the one unused longest makes room.
-    if (byDestination.size >= DESTINATIONS_KEPT) byDestination.delete(byDestination.keys().next().value!);
-    known = { estimate: transitEstimator([...lists.stations, ...lists.path], destination), byHome: new Map() };
-  } else byDestination.delete(key);
-  byDestination.set(key, known);
-  const { estimate, byHome } = known;
-  return listings.map((listing) => {
-    if (!isPoint(listing)) return listing;
-    // An estimate measures every station near the home, so each home's is worked out once per destination:
-    // a person's later searches (another size, another sort) reuse them.
-    const home = `${listing.latitude.toFixed(5)},${listing.longitude.toFixed(5)}`;
-    let minutes = byHome.get(home);
-    if (minutes === undefined) {
-      minutes = estimate({ latitude: listing.latitude, longitude: listing.longitude });
-      byHome.set(home, minutes);
-    }
-    return minutes === null ? listing : { ...listing, insights: { warnings: [], ...listing.insights, transitMinutes: minutes } };
-  });
+  return estimated(listings, await stationsForEstimates(bucket), destination);
 }
 
 /** The part of Cloudflare's Cache API a search uses. */
@@ -542,50 +536,24 @@ export async function cachedSearch(
   const status = await timed(timings, 'status', () => refreshStatus(bucket));
   // Kept per deployed version: a deploy that changes ranking or matching must not serve the old answers.
   const version = env.CF_VERSION_METADATA?.id ?? '';
-  const hex = async (value: unknown) =>
-    [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(value))))]
-      .map((byte) => byte.toString(16).padStart(2, '0'))
-      .join('');
-  const [answerKey, slotKey] = await Promise.all([hex({ filters, status, version }), hex({ filters, version })]);
-  const key = new Request(`https://search-cache.internal/${answerKey}`);
-  // Answers are also kept in the database, where every Worker instance everywhere finds them, in a fixed number
-  // of slots (a search's slot comes from its filters, so storage does not grow; two searches sharing a slot take turns).
-  const slot = `${ANSWER_PREFIX}${Number.parseInt(slotKey.slice(0, 8), 16) % ANSWER_SLOTS}.json`;
-  const readStored = async (): Promise<SearchResponse | null> => {
-    const stored: unknown = await (await bucket.get(slot))?.json().catch(() => null);
-    return isRecord(stored) && stored.key === answerKey && isRecord(stored.result) ? (stored.result as SearchResponse) : null;
-  };
-  const [hit, stored] = await timed(timings, 'cache', () => Promise.all([cache.match(key), readStored().catch(() => null)]));
-  const later = (work: Promise<unknown>) => (waitUntil ? waitUntil(work) : work);
-  const keepInCache = (result: SearchResponse) =>
-    cache
-      .put(
-        key,
-        new Response(JSON.stringify(result), {
-          headers: { 'Content-Type': 'application/json', 'Cache-Control': `max-age=${GATHER_MS / 1000}` },
-        }),
-      )
-      .catch((cause) => log.warn('search_cache_write_failed', { error: cause instanceof Error ? cause.message : String(cause) }));
-  if (hit || stored) {
-    timings?.note('answer', hit ? 'cached' : 'stored');
-    // This instance answered without the listings; it reads them now, after the response, so the person's next
-    // search (another size, another area), which has no stored answer yet, does not wait for that.
-    const warm = keptCount(bucket)
-      ? Promise.resolve()
-      : search({ ...filters, offset: 0, includeMap: false, includeCommute: false }, env, offline, false, { status }).catch(() => {});
-    await later(Promise.all([warm, hit || !stored ? null : keepInCache(stored)]));
-    return hit ? ((await hit.json()) as SearchResponse) : stored!;
-  }
-  timings?.note('answer', 'computed');
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify({ filters, status, version })));
+  const key = new Request(
+    `https://search-cache.internal/${[...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('')}`,
+  );
+  const hit = await timed(timings, 'cache', () => cache.match(key));
+  timings?.note('answer', hit ? 'cached' : 'computed');
+  if (hit) return (await hit.json()) as SearchResponse;
   const result = await search(filters, env, fetcher, false, { status, timings });
   // Kept for the next person after this one has their answer, where the Worker allows work after the response.
-  await later(
-    Promise.all([
-      keepInCache(result),
-      bucket
-        .put(slot, JSON.stringify({ key: answerKey, result }))
-        .catch((cause) => log.warn('search_answer_write_failed', { error: cause instanceof Error ? cause.message : String(cause) })),
-    ]),
-  );
+  const keep = cache
+    .put(
+      key,
+      new Response(JSON.stringify(result), {
+        headers: { 'Content-Type': 'application/json', 'Cache-Control': `max-age=${GATHER_MS / 1000}` },
+      }),
+    )
+    .catch((cause) => log.warn('search_cache_write_failed', { error: cause instanceof Error ? cause.message : String(cause) }));
+  if (waitUntil) waitUntil(keep);
+  else await keep;
   return result;
 }

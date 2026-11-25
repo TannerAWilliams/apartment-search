@@ -25,6 +25,7 @@ import { billingRoutes } from './routes/billing.ts';
 import { accountRoutes } from './routes/account.ts';
 import { listingRoutes } from './routes/listing.ts';
 import { directRoutes } from './routes/direct.ts';
+import { inventoryRoutes } from './routes/inventory.ts';
 
 export const api = factory
   .createApp()
@@ -49,6 +50,7 @@ export const api = factory
   .route('/', accountRoutes)
   .route('/', listingRoutes)
   .route('/', directRoutes)
+  .route('/', inventoryRoutes)
   .route('/', vitalsRoutes)
   .route('/', clientErrorRoutes);
 

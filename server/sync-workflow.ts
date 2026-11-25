@@ -11,6 +11,7 @@ import { refreshOpenData } from './open-data.ts';
 /** Batches of 40 building checks after a full nightly run: about 200 buildings a night. */
 const BUILDING_BATCHES = 5;
 import { SYNC_PROGRESS_KEY, WORKFLOW_SOURCE_IDS, workflowSync } from './sources/source-registry.ts';
+import { refreshInventory } from './inventory.ts';
 
 type Environment = AppEnv & { APARTMENTS: D1Database };
 /** sources: which complete syncs to run, in order; all of them when omitted. */
@@ -59,6 +60,10 @@ export class CityRealtySync extends WorkflowEntrypoint<Environment, RefreshParam
     }
     // A full run (the nightly one) also refreshes the open data and checks a few more listed buildings.
     if (!event.payload.sources) await afterFullRun(step, { ...this.env, BUCKET: bucket });
+    // The file browsers search follows what was just synced.
+    await step.do('Build the inventory file', { retries: { limit: 1, delay: '30 seconds' }, timeout: '5 minutes' }, () =>
+      refreshInventory({ ...this.env, BUCKET: bucket }),
+    );
     const failed = Object.entries(outcomes).filter(([, outcome]) => outcome.error);
     for (const [id, outcome] of failed) log.warn('complete_sync_failed', { source: id, error: outcome.error, instance: event.instanceId });
     if (failed.length) throw new Error(failed.map(([id, outcome]) => NAMES[id] + ': ' + outcome.error).join(' '));

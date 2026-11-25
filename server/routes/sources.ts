@@ -3,6 +3,7 @@ import { planFor } from '../plans.ts';
 import { vValidator } from '@hono/valibot-validator';
 import { decodeSourceImport } from '../../src/source-import.ts';
 import { runAlerts } from '../alerts.ts';
+import { refreshInventorySoon } from '../inventory.ts';
 import { appConfig, savedAppConfig } from '../app-config.ts';
 import { CITYREALTY_ID } from '../sources/cityrealty.ts';
 import { log } from '../log.ts';
@@ -16,7 +17,13 @@ import { RefreshRequestSchema } from './inputs.ts';
 /** After a refresh that saved anything, checks the alerts once the response is sent. */
 const alertsAfter = (env: AppEnv, waitUntil: ApiServices['waitUntil'], url: string) => (result: { state: string }) => {
   if (['complete', 'partial'].includes(result.state))
-    waitUntil?.(runAlerts(env, env.APP_ORIGIN ?? new URL(url).origin).catch((cause) => log.error('alert_check_failed', cause)));
+    waitUntil?.(
+      Promise.all([
+        runAlerts(env, env.APP_ORIGIN ?? new URL(url).origin).catch((cause) => log.error('alert_check_failed', cause)),
+        // The file browsers search follows the listings just saved.
+        env.BUCKET ? refreshInventorySoon({ ...env, BUCKET: env.BUCKET }) : null,
+      ]),
+    );
 };
 
 export const sourceRoutes = factory

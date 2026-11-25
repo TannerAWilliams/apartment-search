@@ -142,6 +142,9 @@ export function withInsights<T extends ListingData>(
   buildings: Record<string, BuildingFacts> = {},
   { registry = {}, stations = [] }: { registry?: Record<string, number>; stations?: Station[] } = {},
 ) {
+  // The day, not the moment: a building known only from the registry is the same listing all day, so files built
+  // from these listings stay the same until something changes.
+  const today = new Date().toISOString().slice(0, 10) + 'T12:00:00.000Z';
   const benchmarks = rentBenchmarks(listings);
   const near = stationIndex(stations);
   // Each listing's building and unit keys are worked out once: they cost several text replacements each.
@@ -175,7 +178,7 @@ export function withInsights<T extends ListingData>(
     const registered = key !== null && key in registry;
     const building: BuildingFacts | undefined = registered
       ? {
-          ...(checked ?? { openViolations: null, complaints: null, bedbugs: null, flood: null, checkedAt: new Date().toISOString() }),
+          ...(checked ?? { openViolations: null, complaints: null, bedbugs: null, flood: null, checkedAt: today }),
           stabilized: true,
         }
       : checked;

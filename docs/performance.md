@@ -48,27 +48,25 @@ Counts (requests, bytes, scaling) are exact; prefer adding one of those over a t
 - **Real visits** report Core Web Vitals as `web_vital` (`src/web-vitals-report.ts`).
 - `bun run perf:lighthouse` runs a Lighthouse audit against a local server.
 
-## How the server stays fast
+## How search stays fast
 
-- One set of listings per Worker instance: every listing is read, merged and scored once, kept for fifteen
-  minutes (or until a sync changes it), and every search, apartment page and neighborhood page filters that set
-  in memory. Alerts read the database each time, because they decide what changed.
-- A search's answer is also kept in Cloudflare's cache per data center, written after the response is sent.
-- Transit estimates are remembered per destination and home, so a person's later searches reuse them.
+Searches are answered in the browser from a file the server publishes when the listings change
+(`docs/architecture/search.md`). A filter, a sort, a page or the map costs no request.
+
+- The file is built after each sync and each hour, stored in Workers KV, and downloaded once per version.
+- `/boot.js` starts the settings, the file's head and the file itself while the app's code downloads.
+- The opening search's answer comes with the head, so first results do not wait for the file.
+- The server's own search remains for alerts, the phone app and browsers without the file. There, one set of
+  listings is kept per Worker instance for fifteen minutes, and answers are kept in Cloudflare's cache.
 - Independent reads run together (`Promise.all`); work over many items goes through `mapLimit`
-  (`server/concurrency.ts`), a rolling pool with a limit; bookkeeping runs after the response (`afterResponse`).
+  (`server/concurrency.ts`); bookkeeping runs after the response (`afterResponse`).
 - The sync runs one source at a time, by choice: no site sees two readers at once.
 
-## Known costs, and what would remove them
+## Known costs
 
-Measured in November 2026 with 18,400 listings (18 MB of stored JSON):
-
-- **A Worker instance's first search takes 1.5 to 2.5 seconds**: about 0.5 s waiting on the database and about
-  1 s of computing (parsing 18 MB, scoring). It is paid once per instance per fifteen minutes. Removing it means
-  a compact search index written at sync time (only the fields matching and cards need), so a cold instance
-  parses a few megabytes instead of all of it. That is the next structural step if cold starts matter more.
-- **The map's points are about 450 bytes per listing** (9 MB uncompressed for every listing), because each
-  carries what saving from the map needs. Sending position, rent and ID only, and reading the rest when a pin is
-  opened, would cut it to about a fifth. The size budget stops it growing meanwhile.
+- **An apartment opened from a link** (not from a card) is read by the server, which loads every listing on a
+  new instance: 2 to 3 seconds. A lookup by ID in the database would remove that.
+- **The server's fallback search** on a new instance still takes 2 to 3 seconds; browsers with the file never
+  use it.
 - **The Worker script is 3.4 MB** (1.1 MB compressed): about 2 MB is the sign-in library and its database layer,
   0.7 MB the bundled fallback snapshot. Every new instance parses it before answering.

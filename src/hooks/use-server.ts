@@ -7,7 +7,7 @@ import type { CommutePlace } from './use-commute-place.ts';
 import type React from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ApiConfig, ConfigSource, RefreshInfo } from '../api-client.ts';
-import { API_ORIGIN, CHECK_TIME, SEARCH_DEFAULTS, api, failureInfo, finishSourceCheck } from '../app-shared.ts';
+import { API_ORIGIN, CHECK_TIME, SEARCH_DEFAULTS, api, failureInfo, finishSourceCheck, searchApartments } from '../app-shared.ts';
 import type { AffordableHousing } from '../screens/AffordableHousing.tsx';
 import type { AlertState } from '../screens/AlertsPage.tsx';
 import type { HouseholdReply } from '../screens/SharedListPage.tsx';
@@ -190,7 +190,7 @@ export function useServer({ appliedFilters, searchVersion, submitted, setResult,
     setRefreshing(false);
     const version = searchVersion.current;
     const search = () =>
-      api('search', { body: { ...appliedFilters.current, includeCommute: true }, token: activeToken, signal: controller.signal });
+      searchApartments({ ...appliedFilters.current, includeCommute: true }, { token: activeToken, signal: controller.signal });
     // The first search starts with the settings rather than after them, so the page fills sooner. The server adds
     // commute times only when it can route them, so asking for them before the settings say so is harmless. It
     // uses the current filters; if the saved commute destination arrives while it runs, it is asked again with it.

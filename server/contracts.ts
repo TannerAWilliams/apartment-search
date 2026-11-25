@@ -40,6 +40,8 @@ export type Bucket = {
 };
 export type AppEnv = {
   BUCKET?: Bucket;
+  /** Workers KV, where the inventory file is kept (server/inventory.ts). */
+  INVENTORY?: import('./inventory.ts').InventoryStore;
   /** Cloudflare's metadata for the deployed version (wrangler.jsonc version_metadata). */
   CF_VERSION_METADATA?: { id?: string };
   PUBLIC_APP?: string;

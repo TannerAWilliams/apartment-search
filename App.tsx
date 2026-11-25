@@ -26,6 +26,7 @@ import {
   SAVED_FILTERS,
   formDefaults,
   api,
+  searchApartments,
 } from './src/app-shared.ts';
 import { Filters } from './src/components/Filters.tsx';
 import { HomePage } from './src/screens/HomePage.tsx';
@@ -186,7 +187,7 @@ function ApartmentSearch() {
     setApplied(filters);
     if (serverStateRef.current !== 'ready') return;
     const version = ++searchVersion.current;
-    api<SearchResult>('search', { body: filters, token: activeTokenRef.current })
+    searchApartments(filters, { token: activeTokenRef.current })
       .then((fresh) => version === searchVersion.current && setResult(fresh))
       .catch(() => {});
   });
@@ -260,7 +261,7 @@ function ApartmentSearch() {
       const searchResult =
         recent && Date.now() - recent.at < RECENT_SEARCH_MS
           ? recent.result
-          : await api('search', { body: filters, token: activeToken, signal: controller.signal });
+          : await searchApartments(filters, { token: activeToken, signal: controller.signal });
       if (version !== searchVersion.current) return;
       recentSearches.current.delete(key);
       recentSearches.current.set(key, { at: recent?.result === searchResult ? recent.at : Date.now(), result: searchResult });
@@ -292,7 +293,7 @@ function ApartmentSearch() {
     setBusy(true);
     setError('');
     try {
-      const page = await api('search', { body: { ...filters, offset }, token: activeToken });
+      const page = await searchApartments({ ...filters, offset }, { token: activeToken });
       if (searchVersion.current === version && appliedFilters.current === filters) setResult(page);
     } catch (caught) {
       const failure = failureInfo(caught);

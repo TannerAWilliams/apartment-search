@@ -6,6 +6,7 @@ import { Platform } from 'react-native';
 import { REGIONS } from './regions.ts';
 import type { EarlyRequests } from './early-key.ts';
 import { WEB_SEARCH_DEFAULTS, withEarlyRequests } from './early-requests.ts';
+import { createInventorySearch } from './inventory-client.ts';
 import { LONG_SYNC_LIMITS, LONG_SYNC_POLL_MS } from './source-status.ts';
 
 export type DraftFilters = Omit<
@@ -74,10 +75,21 @@ export const formDefaults = (): DraftFilters => ({
 });
 
 // On the web, the first requests may already be on their way (src/early-requests.ts).
-export const api = createApi(
-  API_ORIGIN,
-  withEarlyRequests((globalThis as { walkupEarly?: EarlyRequests }).walkupEarly, (input, init) => fetch(input, init)),
-);
+const transport = withEarlyRequests((globalThis as { walkupEarly?: EarlyRequests }).walkupEarly, (input, init) => fetch(input, init));
+export const api = createApi(API_ORIGIN, transport);
+/**
+ * Searches: on the web, answered in the app from the inventory file once it has arrived, and by the server
+ * until then and wherever the file does not apply (src/inventory-client.ts).
+ */
+export const inventory = createInventorySearch({
+  api,
+  origin: API_ORIGIN,
+  fetcher: transport,
+  enabled: Platform.OS === 'web',
+  // A moment for the page between pieces of the file.
+  pause: () => new Promise((resolve) => setTimeout(resolve)),
+});
+export const searchApartments = inventory.search;
 
 export async function finishSourceCheck(
   check: RefreshInfo,

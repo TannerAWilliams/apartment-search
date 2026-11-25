@@ -7,6 +7,9 @@ import { test, expect, type Page } from './fixtures.ts';
 import { localSearch } from '../src/market.ts';
 import { normalizeListing } from '../src/listings.ts';
 import { parseFilters, localWorkplace } from '../src/search.ts';
+import { answerSearch, type Inventory } from '../src/answer.ts';
+import { openingSearchBody } from '../src/early-requests.ts';
+import { encodeInventory, INVENTORY_FORMAT } from '../src/inventory-format.ts';
 
 const listings = Array.from({ length: 30 }, (_, index) => {
   const listing = normalizeListing(
@@ -29,8 +32,20 @@ const listings = Array.from({ length: 30 }, (_, index) => {
   return listing;
 });
 
+const INVENTORY: Inventory = {
+  listings,
+  stations: [],
+  mode: 'live',
+  sources: [{ id: 'zillow', name: 'Zillow', status: 'searched' }],
+  notices: [],
+};
+const { listings: _rows, ...INVENTORY_HEADER } = INVENTORY;
+const FILE = encodeInventory(INVENTORY_HEADER, listings as unknown as Record<string, unknown>[]);
+const OPENING = parseFilters(JSON.parse(openingSearchBody()));
+const HEAD = { format: INVENTORY_FORMAT, version: 'a'.repeat(24), opening: answerSearch(INVENTORY, OPENING, localWorkplace(OPENING)!) };
+
 /** The app with a stand-in server; records every API request and every script the page downloads. */
-async function open(page: Page, path: string, { holdConfig }: { holdConfig?: Promise<void> } = {}) {
+async function open(page: Page, path: string, { holdConfig, inventory = false }: { holdConfig?: Promise<void>; inventory?: boolean } = {}) {
   const api: { path: string; body: Record<string, unknown> | null }[] = [];
   const scripts: string[] = [];
   await page.route('**/*', async (route) => {
@@ -50,6 +65,9 @@ async function open(page: Page, path: string, { holdConfig }: { holdConfig?: Pro
       });
     }
     if (url.pathname === '/api/market') return route.fulfill({ json: { month: '2026-10', areas: [], history: [] } });
+    // The inventory file and its head, as the server publishes them (server/inventory.ts).
+    if (inventory && url.pathname === '/api/inventory') return route.fulfill({ json: HEAD });
+    if (inventory && url.pathname === '/api/inventory/' + HEAD.version) return route.fulfill({ body: FILE, contentType: 'text/plain' });
     return route.fulfill({ status: 404, json: { error: 'Not found.' } });
   });
   await page.goto(path);
@@ -109,4 +127,22 @@ test('a tap costs at most one request: sorting searches once, opening filters an
   await expect(page.getByRole('heading', { name: 'Rent prices', exact: true })).toBeVisible();
   await settled(page);
   expect(api.length).toBe(beforeRents);
+});
+
+test('with the inventory file, results and every filter after them cost no search request at all', async ({ page }) => {
+  const { count, api } = await open(page, '/search', { inventory: true });
+  // The opening results come with the file's head.
+  await expect(page.getByRole('heading', { name: '30 matching apartments', exact: true })).toBeVisible();
+  await expect.poll(() => count('/api/inventory/' + HEAD.version)).toBe(1);
+  await settled(page);
+  expect(count('/api/inventory')).toBe(1);
+  const before = api.length;
+  // A filter, applied: answered in the page from the file.
+  await page.getByRole('button', { name: 'Filters', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Max rent per month ($)', exact: true }).fill('2100');
+  await page.getByRole('button', { name: 'Show apartments', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '11 matching apartments', exact: true })).toBeVisible();
+  await settled(page);
+  expect(count('/api/search')).toBe(0);
+  expect(api.length).toBe(before);
 });

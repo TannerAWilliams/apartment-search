@@ -5,7 +5,7 @@
  * or the data, rather than one after the other.
  */
 import type { SearchFilters } from './domain.ts';
-import { type EarlyRequests, earlyKey } from './early-key.ts';
+import { EARLY_INVENTORY_FILE, type EarlyRequests, earlyKey } from './early-key.ts';
 import { DEFAULT_FILTERS } from './search.ts';
 
 /** The web app's opening search. */
@@ -22,6 +22,8 @@ export const WEB_SEARCH_DEFAULTS: SearchFilters = {
   // The web app searches every source.
   officialOnly: false,
 };
+const INVENTORY_FILE = '/api/inventory/';
+
 /** The opening search's request body, as the app sends it (src/hooks/use-server.ts). */
 export const openingSearchBody = () => JSON.stringify({ ...WEB_SEARCH_DEFAULTS, includeCommute: true });
 
@@ -32,10 +34,16 @@ type Fetch = (input: string, init?: RequestInit) => Promise<Response>;
  */
 export function withEarlyRequests(early: EarlyRequests | undefined, fetcher: Fetch): Fetch {
   return (input, init) => {
-    const key = earlyKey(input, init?.body);
+    // The inventory file's address is only known once its head has been read, so the page leaves it under one key.
+    const key = input.startsWith(INVENTORY_FILE) && early?.[EARLY_INVENTORY_FILE] ? EARLY_INVENTORY_FILE : earlyKey(input, init?.body);
     const started = early?.[key];
     if (!early || !started || (init?.headers as Record<string, string> | undefined)?.Authorization) return fetcher(input, init);
     early[key] = undefined;
-    return started.then((response) => (response.ok ? response : fetcher(input, init))).catch(() => fetcher(input, init));
+    // Taken when it succeeded and is the very request asked for; otherwise the request is made now.
+    return started
+      .then((response) =>
+        response.ok && (key !== EARLY_INVENTORY_FILE || new URL(response.url).pathname === input) ? response : fetcher(input, init),
+      )
+      .catch(() => fetcher(input, init));
   };
 }
