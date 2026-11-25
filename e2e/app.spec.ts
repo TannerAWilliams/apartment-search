@@ -90,6 +90,7 @@ async function mockApp(
       insights: {
         marketMedian: 2400,
         comparedWith: 12,
+        transitMinutes: 35,
         vsMarket: -0.25,
         warnings: ['This unit is also listed at $2,100.'],
         subway: [{ station: 'Bedford Av', routes: ['L'], minutes: 3, accessible: true }],
@@ -526,8 +527,10 @@ test('feature filters require reported facts rather than matching unknown detail
   expect(search.body?.minSquareFeet).toBe(900);
   expect(search.body?.petsRequired).toBe(true);
   expect(search.body?.laundry).toBe('in_unit');
+  // Baths on the card with the size; the page lists the other facts.
+  await expect(page.getByText(/1 bedroom · 1.5 baths/).first()).toBeVisible();
   await page.getByRole('button', { name: 'Details for 12 Grove Street', exact: true }).click();
-  await expect(page.getByText(/1.5 baths · 900 sq ft/)).toBeVisible();
+  await expect(page.getByText(/900 sq ft/).first()).toBeVisible();
 });
 
 test('saved comparison caps four, enables replacements and clears without removing saved apartments', async ({ page }) => {
@@ -1086,7 +1089,7 @@ test('cards show the building’s grade, rent stabilization, the price against s
   await expect(page.getByText('New today', { exact: true }).first()).toBeVisible();
   await expect(page.getByText('Building A', { exact: true }).first()).toBeVisible();
   await expect(page.getByText(/· 3 min to L$/).first()).toBeVisible();
-  await expect(page.getByText(/1 bedroom · Rent-stabilized · Price cut \$150/).first()).toBeVisible();
+  await expect(page.getByText(/1 bedroom · ≈ 35 min to Rockefeller Center · Rent-stabilized · Price cut \$150/).first()).toBeVisible();
   await expect(page.getByText(/· 25% below similar/).first()).toBeVisible();
   await expect(page.getByText('⚠ This unit is also listed at $2,100.', { exact: true }).first()).toBeVisible();
   await page
@@ -1095,7 +1098,7 @@ test('cards show the building’s grade, rent stabilization, the price against s
     .click();
   // Details lead with highlights, in sections.
   await expect(page.getByRole('heading', { name: 'Highlights', exact: true })).toBeVisible();
-  await expect(page.getByText('Median $2,400 for 12 similar apartments nearby', { exact: true })).toBeVisible();
+  await expect(page.getByText('Median $2,400 for 12 similar 1-bedroom apartments nearby', { exact: true })).toBeVisible();
   await expect(page.getByText('Rent-stabilized building', { exact: true })).toBeVisible();
   await expect(page.getByText('3 min walk · accessible station', { exact: true })).toBeVisible();
   await expect(

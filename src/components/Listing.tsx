@@ -223,12 +223,17 @@ export const Listing = memo(function Listing({
   ]
     .filter(Boolean)
     .join(' · ');
+  // Size, baths, then the commute to the person's destination (its name up to the first comma, kept short).
+  const facts = discoveryFacts(listing);
+  const baths = facts.bathrooms;
+  const destination = workplace.label.split(',')[0]!.trim().slice(0, 28);
   const details = [
     presentation.bedsLabel,
+    baths == null ? '' : `${baths} ${baths === 1 ? 'bath' : 'baths'}`,
     commute && transitSeconds != null
-      ? `${Math.ceil(transitSeconds / 60)} min transit`
+      ? `${Math.ceil(transitSeconds / 60)} min to ${destination}`
       : listing.insights?.transitMinutes
-        ? `≈ ${listing.insights.transitMinutes} min transit`
+        ? `≈ ${listing.insights.transitMinutes} min to ${destination}`
         : '',
     commute && drivingSeconds != null ? `${Math.ceil(drivingSeconds / 60)} min drive` : '',
     listing.building?.stabilized && photoBadge !== 'Rent-stabilized' ? 'Rent-stabilized' : '',
@@ -237,7 +242,6 @@ export const Listing = memo(function Listing({
   ]
     .filter(Boolean)
     .join(' · ');
-  const facts = discoveryFacts(listing);
   // What stands out, each as a heading and a line, as listing pages lead with theirs.
   const highlights: [string, string][] = [
     ...(listing.insights?.transitMinutes && !(commute && transitSeconds != null)
@@ -250,10 +254,16 @@ export const Listing = memo(function Listing({
       : []),
     ...(badge && listing.insights?.marketMedian
       ? [
-          [badge, `Median ${formatRent(listing.insights.marketMedian)} for ${listing.insights.comparedWith} similar apartments nearby`] as [
-            string,
-            string,
-          ],
+          [
+            badge,
+            `Median ${formatRent(listing.insights.marketMedian)} for ${listing.insights.comparedWith} similar ${
+              listing.bedrooms === 0
+                ? 'studios'
+                : listing.bedrooms >= 4
+                  ? '4+ bedroom apartments'
+                  : `${listing.bedrooms}-bedroom apartments`
+            } nearby`,
+          ] as [string, string],
         ]
       : []),
     ...(listing.building?.stabilized
@@ -289,7 +299,6 @@ export const Listing = memo(function Listing({
   ];
   // Only what the listing says; unknown details are simply not listed.
   const knownFacts = [
-    facts.bathrooms === null ? '' : `${facts.bathrooms} baths`,
     facts.squareFeet === null ? '' : `${facts.squareFeet.toLocaleString('en-US')} sq ft`,
     facts.petsAllowed === null ? '' : facts.petsAllowed ? 'Pets allowed; verify restrictions' : 'Pets not allowed per source',
     facts.laundry === null ? '' : LAUNDRY_LABELS[facts.laundry],
