@@ -37,14 +37,23 @@ export function ResultNotices({ notices = [] }: { notices?: string[] }) {
   );
 }
 
-/** Sorting as one button that opens its choices, instead of a row of every sort. */
-function SortMenu({ options, sort, onSort }: { options: [string, string][]; sort: string; onSort: (sort: string) => void }) {
+/** A small button that opens a list of choices over the cards (sorting, and the extra tools). */
+function ChipMenu({
+  label,
+  title,
+  items,
+  onChoose,
+}: {
+  label: string;
+  title: string;
+  items: [id: string, label: string, selected: boolean][];
+  onChoose: (id: string) => void;
+}) {
   const [open, setOpen] = useState(false);
-  const current = options.find(([id]) => id === sort)?.[1] ?? options[0]?.[1];
   return (
     <View style={{ position: 'relative' }}>
-      <Chip label={`Sort: ${current}`} selected={open} onPress={() => setOpen(!open)}>
-        {`Sort: ${current} ▾`}
+      <Chip label={label} selected={open} onPress={() => setOpen(!open)}>
+        {`${title} ▾`}
       </Chip>
       {open && (
         <View
@@ -66,27 +75,40 @@ function SortMenu({ options, sort, onSort }: { options: [string, string][]; sort
             zIndex: 20,
           }}
         >
-          {options.map(([id, label]) => (
+          {items.map(([id, itemLabel, selected]) => (
             <Pressable
               key={id}
               accessibilityRole="menuitem"
-              accessibilityLabel={label}
-              {...toggleProps(sort === id)}
+              accessibilityLabel={itemLabel}
+              {...toggleProps(selected)}
               onPress={() => {
                 setOpen(false);
-                onSort(id);
+                onChoose(id);
               }}
               style={({ pressed }) => [{ paddingHorizontal: 14, paddingVertical: 10 }, pressed && styles.pressed]}
             >
-              <Text style={{ fontSize: 15, color: colors.ink, fontWeight: sort === id ? '700' : '400' }}>
-                {sort === id ? '✓ ' : ''}
-                {label}
+              <Text style={{ fontSize: 15, color: colors.ink, fontWeight: selected ? '700' : '400' }}>
+                {selected ? '✓ ' : ''}
+                {itemLabel}
               </Text>
             </Pressable>
           ))}
         </View>
       )}
     </View>
+  );
+}
+
+/** Sorting as one button that opens its choices, instead of a row of every sort. */
+function SortMenu({ options, sort, onSort }: { options: [string, string][]; sort: string; onSort: (sort: string) => void }) {
+  const current = options.find(([id]) => id === sort)?.[1] ?? options[0]?.[1];
+  return (
+    <ChipMenu
+      label={`Sort: ${current}`}
+      title={`Sort: ${current}`}
+      items={options.map(([id, label]) => [id, label, sort === id])}
+      onChoose={onSort}
+    />
   );
 }
 
@@ -115,7 +137,15 @@ export function Results({
   onAlert,
   onOpen,
   searching = false,
+  destination,
+  tools = [],
+  onTool,
 }: {
+  /** Where commute times are to, and a way to change it, shown under the count. */
+  destination?: { label: string; onChange: () => void };
+  /** Extra tools for this list (saved searches, price changes), in a More menu. */
+  tools?: [id: string, label: string, selected: boolean][];
+  onTool?: (id: string) => void;
   /** A new search is on its way: the count says so and the cards still shown are dimmed until it comes. */
   searching?: boolean;
   visible: number;
@@ -220,6 +250,19 @@ export function Results({
             {!savedView && (applied.zip || applied.source || applied.maxTransitMinutes != null || applied.maxDrivingMinutes != null) && (
               <Text style={styles.smallMuted}>{summary}</Text>
             )}
+            {destination && (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Change destination"
+                onPress={destination.onChange}
+                style={({ pressed }) => [{ alignSelf: 'flex-start', paddingVertical: 2 }, pressed && styles.pressed]}
+              >
+                <Text numberOfLines={1} style={styles.smallMuted}>
+                  Commute times to <Text style={{ color: colors.ink, fontWeight: '600' }}>{destination.label}</Text> ·{' '}
+                  <Text style={styles.linkText}>Change</Text>
+                </Text>
+              </Pressable>
+            )}
           </View>
           {/* One row: the count, then sorting as a single menu and alerts as one small button. */}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, zIndex: 10 }}>
@@ -229,6 +272,7 @@ export function Results({
                 Get alerts
               </Chip>
             )}
+            {tools.length > 0 && onTool && <ChipMenu label="More tools" title="More" items={tools} onChoose={onTool} />}
           </View>
         </View>
       )}

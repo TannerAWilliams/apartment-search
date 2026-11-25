@@ -563,7 +563,8 @@ test('local change checks opt in, seed baseline and show newer observed price ch
   const { requests, listings } = await mockApp(page, { priceHistory: true });
   Object.assign(listings[0], { priceIncludesFees: true });
   await page.reload();
-  await page.getByRole('button', { name: 'Price changes found by a local check', exact: true }).click();
+  await page.getByRole('button', { name: 'More tools', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Price changes', exact: true }).click();
   await page.getByRole('button', { name: 'Check for changes', exact: true }).click();
   await expect(page.getByText(/Baseline saved. Check again after a later source observation/)).toBeVisible();
   Object.assign(listings[0], {
@@ -578,7 +579,8 @@ test('local change checks opt in, seed baseline and show newer observed price ch
     },
   });
   await page.reload();
-  await page.getByRole('button', { name: 'Price changes found by a local check', exact: true }).click();
+  await page.getByRole('button', { name: 'More tools', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Price changes', exact: true }).click();
   await page.getByRole('button', { name: 'Check for changes', exact: true }).click();
   await expect(page.getByText('Observed price decrease: $1,800 → $1,700/mo', { exact: true })).toBeVisible();
   expect(userRefreshes(requests)).toHaveLength(0);

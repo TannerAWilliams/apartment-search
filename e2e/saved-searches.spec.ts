@@ -38,7 +38,8 @@ test('presets persist and whole-search checks include page101 without refresh or
   });
   await page.goto('/search');
   await expect.poll(() => calls.includes('/api/search')).toBe(true);
-  await page.getByRole('button', { name: 'Saved searches and whole-search checks', exact: true }).click();
+  await page.getByRole('button', { name: 'More tools', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Saved searches', exact: true }).click();
   await page.getByLabel('Saved search name', { exact: true }).fill('Metro homes');
   await page.getByRole('button', { name: 'Save applied search', exact: true }).click();
   await page.getByRole('button', { name: 'Check all matches for Metro homes', exact: true }).click();
@@ -46,7 +47,8 @@ test('presets persist and whole-search checks include page101 without refresh or
   await expect(page.getByText(/Baseline saved; check again/)).toBeVisible();
   day = 2;
   await page.reload();
-  await page.getByRole('button', { name: 'Saved searches and whole-search checks', exact: true }).click();
+  await page.getByRole('button', { name: 'More tools', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Saved searches', exact: true }).click();
   await page.getByRole('button', { name: 'Check all matches for Metro homes', exact: true }).click();
   await expect(page.getByText(/Apartment 100: \$2,000 → \$1,900/)).toBeVisible();
   await page.getByRole('button', { name: 'Apply Metro homes', exact: true }).click();

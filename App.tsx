@@ -620,7 +620,7 @@ function ApartmentSearch() {
                   // shows the cards at once instead of building them all again.
                   <View style={listMode ? undefined : { display: 'none' }}>
                     <>
-                      {
+                      {view === 'saved' && (
                         <View style={styles.toolbar}>
                           {!(view === 'saved' && saved.length === 0) ? (
                             <Pressable
@@ -652,7 +652,7 @@ function ApartmentSearch() {
                               ))}
                           </View>
                         </View>
-                      }
+                      )}
                       {view === 'saved' && <SavedComparison listings={saved} open={tool === 'compare'} />}
                       {view === 'saved' && <TourPlanner listings={saved} open={tool === 'tours'} />}
                       {view === 'results' && (
@@ -694,6 +694,25 @@ function ApartmentSearch() {
                             <View style={styles.results}>
                               <Results
                                 searching={searching}
+                                destination={
+                                  view === 'results'
+                                    ? {
+                                        label: result.workplace.label,
+                                        onChange: () => {
+                                          setError('');
+                                          toggleFilter('commute');
+                                        },
+                                      }
+                                    : undefined
+                                }
+                                tools={
+                                  view === 'results'
+                                    ? TOOLS.results
+                                        .filter(([id]) => id !== 'changes' || !staleInventory)
+                                        .map(([id, label]) => [id, label, tool === id] as [string, string, boolean])
+                                    : []
+                                }
+                                onTool={(id) => setTool(tool === id ? '' : id)}
                                 onCheckBuilding={serverState === 'ready' ? checkBuilding : undefined}
                                 visible={visible}
                                 setVisible={setVisible}
