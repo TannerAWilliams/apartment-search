@@ -114,7 +114,10 @@ export function AlertsPage({
   const borough = AREAS.find(([key]) => key === area)?.[2] ?? null;
   // The chosen borough's neighborhoods (or the city's), those with the most listings first.
   const choices = useMemo(
-    () => places.filter(({ detail }) => !borough || detail === borough).sort((a, b) => b.count - a.count || a.label.localeCompare(b.label)),
+    () =>
+      places
+        .filter(({ detail }) => !borough || detail.replace(/, NY$/, '') === borough)
+        .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label)),
     [places, borough],
   );
   const rent = Number(maxRent) || null;
@@ -218,7 +221,7 @@ export function AlertsPage({
                   {(allPlaces ? choices : choices.slice(0, SHOWN_NEIGHBORHOODS)).map(({ id, label, detail }) => (
                     <Chip
                       key={id}
-                      label={borough ? label : `${label}, ${detail}`}
+                      label={borough ? label : `${label}, ${detail.replace(/, NY$/, '')}`}
                       selected={picked.includes(label)}
                       onPress={() =>
                         setPicked((current) => (current.includes(label) || current.length < 20 ? toggle(current, label) : current))

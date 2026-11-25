@@ -47,9 +47,12 @@ function Picker({
   }, [loadNeighborhoods]);
   const shown = useMemo(() => {
     const query = typed.trim().toLowerCase();
-    return places
-      .filter(({ label, detail }) => (query ? label.toLowerCase().includes(query) : detail === borough))
-      .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+    return (
+      places
+        // The market data names a borough with its state ("Manhattan, NY").
+        .filter(({ label, detail }) => (query ? label.toLowerCase().includes(query) : detail.replace(/, NY$/, '') === borough))
+        .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))
+    );
   }, [places, borough, typed]);
   return (
     <>

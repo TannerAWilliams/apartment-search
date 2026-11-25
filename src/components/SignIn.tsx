@@ -43,7 +43,9 @@ export function SignIn({ onSignedIn, primary = false }: { onSignedIn: (token: st
   const sendCode = () =>
     run(async () => {
       const address = email.trim().toLowerCase();
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address)) throw new Error('Enter your email address.');
+      if (!address) throw new Error('Enter your email address.');
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address))
+        throw new Error('That doesn’t look like an email address. Check it has an @ and a domain, like name@gmail.com.');
       await post('email-otp/send-verification-otp', { email: address, type: 'sign-in' });
       setSentTo(address);
       setCode('');
