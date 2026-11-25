@@ -14,7 +14,17 @@ export const securityHeaders = secureHeaders({
     // Cloudflare Web Analytics, which Cloudflare adds to the page (no cookies, no personal data).
     scriptSrc: ["'self'", 'https://static.cloudflareinsights.com'],
     styleSrc: ["'self'", "'unsafe-inline'"],
-    imgSrc: ["'self'", 'data:', 'https://tile.openstreetmap.org', ...PHOTO_HOSTS.map((host) => 'https://' + host)],
+    // OpenFreeMap's map style draws its streets in a worker and reads its tiles, fonts and icons from its own host.
+    workerSrc: ["'self'", 'blob:'],
+    childSrc: ['blob:'],
+    imgSrc: [
+      "'self'",
+      'data:',
+      'blob:',
+      'https://tile.openstreetmap.org',
+      'https://tiles.openfreemap.org',
+      ...PHOTO_HOSTS.map((host) => 'https://' + host),
+    ],
     connectSrc: [
       "'self'",
       'https://api.github.com',
@@ -22,6 +32,7 @@ export const securityHeaders = secureHeaders({
       'https://www.firstmovernyc.com',
       'https://data.cityofnewyork.us',
       'https://cloudflareinsights.com',
+      'https://tiles.openfreemap.org',
     ],
     fontSrc: ["'self'", 'data:'],
     objectSrc: ["'none'"],

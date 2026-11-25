@@ -349,8 +349,10 @@ test('the map view loads its tiles under the Content Security Policy', async ({ 
   await page.setViewportSize({ width: 393, height: 852 });
   // A request event means the policy allowed the tile; the mock then aborts it so nothing leaves the browser.
   const tiles: string[] = [];
+  const styles: string[] = [];
   page.on('request', (request) => {
     if (request.url().startsWith('https://tile.openstreetmap.org/')) tiles.push(request.url());
+    if (request.url().startsWith('https://tiles.openfreemap.org/')) styles.push(request.url());
   });
   await mockApp(page);
   // Listing cards show a map tile each; the map then asks for its own.
@@ -359,6 +361,9 @@ test('the map view loads its tiles under the Content Security Policy', async ({ 
   const before = tiles.length;
   await page.getByRole('button', { name: 'Map', exact: true }).click();
   await expect(page.getByRole('region', { name: 'Map of matching apartments', exact: true })).toBeVisible();
+  // OpenFreeMap's Liberty style is asked for (the policy allows it); here it cannot load, so the street tiles take over.
+  if (await page.evaluate(() => Boolean(document.createElement('canvas').getContext('webgl'))))
+    await expect.poll(() => styles.length).toBeGreaterThan(0);
   await expect.poll(() => tiles.length).toBeGreaterThan(before);
   // Subway, PATH, NJ Transit and Metro-North stops are drawn under the pins, with a legend, and can be hidden.
   const transit = page.getByRole('checkbox', { name: 'Transit stops', exact: true });

@@ -9,6 +9,8 @@ declare module 'leaflet' {
 }
 import 'leaflet.markercluster';
 import 'leaflet/dist/leaflet.css';
+import 'maplibre-gl/dist/maplibre-gl.css';
+import '@maplibre/maplibre-gl-leaflet';
 import { safeListingUrl } from '../marketplaces.ts';
 import { bedroomLabel, formatRent } from '../search.ts';
 
@@ -91,13 +93,14 @@ function pricePin(listings: MapPoint[]) {
   Object.assign(pill.style, {
     background: '#ffffff',
     color: '#222222',
-    border: '1px solid #dddddd',
+    border: '1px solid #b0b0b0',
     borderRadius: '999px',
     padding: '4px 9px',
     fontSize: '13px',
     fontWeight: '700',
     whiteSpace: 'nowrap',
-    boxShadow: '0 2px 6px rgba(0,0,0,0.18)',
+    // A firmer edge and shadow than on a plain map, so rents stand out against Liberty's colors.
+    boxShadow: '0 2px 8px rgba(0,0,0,0.35)',
     fontFamily: 'inherit',
     display: 'block',
     textAlign: 'center',
@@ -220,6 +223,9 @@ function popupContent(listings: MapPoint[], actions: SaveActions) {
   return content;
 }
 
+/** OpenFreeMap's Liberty map style. */
+const LIBERTY = 'https://tiles.openfreemap.org/styles/liberty';
+
 /** From this zoom (a few neighborhoods across) homes show their rents; further out, a dot each. */
 const PRICES_FROM_ZOOM = 14;
 
@@ -261,17 +267,42 @@ export function ListingMap({
   useEffect(() => {
     if (!visible || !container.current) return;
     const map = L.map(container.current, { scrollWheelZoom: false, maxZoom: 19 }).setView(center as L.LatLngTuple, 9);
-    const tiles = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      updateWhenIdle: true,
-      referrerPolicy: 'strict-origin-when-cross-origin',
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-    }).addTo(map);
-    tiles.on('tileerror', () => setUnavailable(true));
-    tiles.on('tileload', () => setUnavailable(false));
-    // The street map a little greyed, so the pins, not the streets, stand out.
-    const tilePane = map.getPane('tilePane');
-    if (tilePane) tilePane.style.filter = 'grayscale(0.55) saturate(0.85) brightness(1.04) contrast(0.92)';
+    // OpenFreeMap's Liberty style (free, no key, commercial use allowed): sharp vector streets with parks, water
+    // and highways in color. Where it cannot be drawn (no WebGL, or the style does not load), OpenStreetMap's own
+    // street tiles instead.
+    const streets = () => {
+      const tiles = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        updateWhenIdle: true,
+        referrerPolicy: 'strict-origin-when-cross-origin',
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      }).addTo(map);
+      tiles.on('tileerror', () => setUnavailable(true));
+      tiles.on('tileload', () => setUnavailable(false));
+    };
+    let vector: L.MaplibreGL | null = null;
+    try {
+      vector = L.maplibreGL({ style: LIBERTY }).addTo(map);
+      map.attributionControl.addAttribution(
+        '<a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a> &copy; <a href="https://www.openmaptiles.org/" target="_blank" rel="noopener">OpenMapTiles</a> Data from <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>',
+      );
+      const gl = vector.getMaplibreMap();
+      let loaded = false;
+      gl.on('load', () => {
+        loaded = true;
+        setUnavailable(false);
+      });
+      // The style itself not loading means no map: the plain street tiles take over. A missing tile later does not.
+      gl.on('error', () => {
+        if (loaded || !vector) return;
+        vector.remove();
+        vector = null;
+        streets();
+      });
+    } catch {
+      vector = null;
+      streets();
+    }
     // Zoomed out: one small dot per home. Zoomed in: price pills, with "N homes" where several overlap.
     const clusters = L.markerClusterGroup({
       showCoverageOnHover: false,
