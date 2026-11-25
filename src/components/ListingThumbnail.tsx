@@ -7,26 +7,38 @@ import { Image, Platform, StyleSheet, Text, View } from 'react-native';
 import Svg, { Path, Rect } from 'react-native-svg';
 import { colors } from '../styles.ts';
 
-const ZOOM = 15;
+/**
+ * OpenStreetMap's tiles are 256 pixels with no sharper version, so they are drawn at 192 points, close to their
+ * own size: crisp on ordinary screens and only 1.5 times enlarged on sharp ones (stretched to a whole card they
+ * were nearly three times, and blurred). Zoom 16 shows about two blocks around the apartment on a card.
+ */
+const ZOOM = 16;
+const TILE = 192;
 
 /** Whether the server can show Street View images (server/street-view.ts); the app sets it from its config. */
 export const StreetViewContext = createContext(false);
 
-/** The map tile holding a point at ZOOM, where in that tile (0 to 1 across and down) the point falls, and any tile's address. */
+/** Where a point falls on the map at ZOOM, in tiles (fractions are within a tile), and any tile's address. */
 export function tileFor(latitude: number, longitude: number) {
   const scale = 2 ** ZOOM;
-  const column = ((longitude + 180) / 360) * scale;
   const radians = (latitude * Math.PI) / 180;
-  const row = ((1 - Math.log(Math.tan(radians) + 1 / Math.cos(radians)) / Math.PI) / 2) * scale;
-  const x = Math.floor(column);
-  const y = Math.floor(row);
   return {
-    x,
-    y,
+    column: ((longitude + 180) / 360) * scale,
+    row: ((1 - Math.log(Math.tan(radians) + 1 / Math.cos(radians)) / Math.PI) / 2) * scale,
     url: (column: number, line: number) => `https://tile.openstreetmap.org/${ZOOM}/${column}/${line}.png`,
-    across: column - x,
-    down: row - y,
   };
+}
+
+/** The tiles that cover a box `width` by `height` centered on the point, each with its place in the box. */
+export function tilesAround(latitude: number, longitude: number, width: number, height: number) {
+  const { column, row, url } = tileFor(latitude, longitude);
+  const left = column * TILE - width / 2;
+  const top = row * TILE - height / 2;
+  const tiles: { key: string; uri: string; x: number; y: number }[] = [];
+  for (let x = Math.floor(left / TILE); x * TILE < left + width; x++)
+    for (let y = Math.floor(top / TILE); y * TILE < top + height; y++)
+      tiles.push({ key: `${x}/${y}`, uri: url(x, y), x: x * TILE - left, y: y * TILE - top });
+  return tiles;
 }
 
 const thumbnail = StyleSheet.create({
@@ -103,14 +115,7 @@ export function ListingThumbnail({
         />
       </View>
     );
-  const tile = tileFor(latitude, longitude);
-  // Four tiles, each as wide as the card, from the side the apartment is nearer to, so the pin sits in the
-  // middle of the card wherever it falls in its own tile.
   const { width, height } = size;
-  const left = tile.across < 0.5 ? -1 : 0;
-  const up = tile.down < 0.5 ? -1 : 0;
-  const offsetX = width / 2 - (tile.across - left) * width;
-  const offsetY = height / 2 - (tile.down - up) * width;
   return (
     <View
       style={[StyleSheet.absoluteFill, { overflow: 'hidden' }]}
@@ -119,16 +124,14 @@ export function ListingThumbnail({
     >
       {width > 0 && (
         <>
-          {[0, 1].flatMap((dy) =>
-            [0, 1].map((dx) => (
-              <Image
-                key={`${dx}${dy}`}
-                source={{ uri: tile.url(tile.x + left + dx, tile.y + up + dy) }}
-                onError={() => setFailed(true)}
-                style={{ position: 'absolute', left: offsetX + dx * width, top: offsetY + dy * width, width, height: width }}
-              />
-            )),
-          )}
+          {tilesAround(latitude, longitude, width, height).map((tile) => (
+            <Image
+              key={tile.key}
+              source={{ uri: tile.uri }}
+              onError={() => setFailed(true)}
+              style={{ position: 'absolute', left: tile.x, top: tile.y, width: TILE, height: TILE }}
+            />
+          ))}
           <View style={[thumbnail.pin, { left: width / 2, top: height / 2 }]} />
           <Text style={thumbnail.credit}>© OpenStreetMap</Text>
         </>

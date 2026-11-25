@@ -13,8 +13,8 @@ const date = new Intl.DateTimeFormat('en-US', {
 });
 export function PriceHistory({ value }: { value: unknown }) {
   const history = displayPriceHistory(value);
-  // Nothing to show until a price has been seen to change.
-  if (!history) return null;
+  // Nothing to show until a price has been seen to change: one price is already on the card.
+  if (!history || new Set(history.observations.map(({ rent }) => rent)).size < 2) return null;
   return (
     <View style={{ gap: 6 }}>
       <Text accessibilityRole="header" style={styles.fieldLabel}>

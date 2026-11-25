@@ -214,7 +214,7 @@ export function Filters({
             label="Max rent per month ($)"
             placeholder="Any rent"
             value={String(draft.maxRent ?? '')}
-            onChangeText={set('maxRent')}
+            onChangeText={(text) => set('maxRent')(wholeNumber(text, 100000))}
             keyboardType="number-pad"
             maxLength={6}
           />
@@ -333,7 +333,7 @@ export function Filters({
           <Field
             label="Minimum square feet"
             value={draft.minSquareFeet == null ? '' : String(draft.minSquareFeet)}
-            onChangeText={set('minSquareFeet')}
+            onChangeText={(text) => set('minSquareFeet')(wholeNumber(text, 100000))}
             placeholder="Any / unknown allowed"
             keyboardType="number-pad"
           />
@@ -375,7 +375,7 @@ export function Filters({
                 label="Max transit time (minutes)"
                 placeholder="Any transit time"
                 value={String(draft.maxTransitMinutes ?? '')}
-                onChangeText={set('maxTransitMinutes')}
+                onChangeText={(text) => set('maxTransitMinutes')(wholeNumber(text, 180))}
                 keyboardType="number-pad"
                 maxLength={3}
               />
@@ -383,7 +383,7 @@ export function Filters({
                 label="Max driving time (minutes)"
                 placeholder="Any driving time"
                 value={String(draft.maxDrivingMinutes ?? '')}
-                onChangeText={set('maxDrivingMinutes')}
+                onChangeText={(text) => set('maxDrivingMinutes')(wholeNumber(text, 180))}
                 keyboardType="number-pad"
                 maxLength={3}
               />
@@ -441,10 +441,19 @@ export function Filters({
   );
 }
 
+/**
+ * A number field's text kept to what the search accepts as it is typed: digits only, at most `max`, never 0, so
+ * "$4,500" becomes 4500 and 250000 becomes 100000 instead of an error after searching.
+ */
+export function wholeNumber(text: string, max: number) {
+  const digits = text.replace(/\D/g, '').replace(/^0+/, '');
+  return digits ? String(Math.min(Number(digits.slice(0, 9)), max)) : '';
+}
+
 type Place = { label: string; latitude: number; longitude: number };
 
 /** A typed destination: an address or a place name, with suggestions from the map as it is typed. */
-function DestinationField({
+export function DestinationField({
   value,
   onChange,
   suggest,

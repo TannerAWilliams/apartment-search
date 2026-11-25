@@ -24,6 +24,8 @@ test('a trip is estimated door to door: walk, wait, ride, transfer, walk', () =>
   expect(williamsburg).toBeLessThan(45);
   // Next door, walking wins.
   expect(estimate({ latitude: 40.7585, longitude: -73.979 })).toBeLessThan(3);
+  // Harlem with no station known near it: a two-hour walk is not shown as a commute.
+  expect(estimate({ latitude: 40.8184, longitude: -73.9403 })).toBeNull();
   // Nowhere near a station and over two hours on foot.
   expect(estimate({ latitude: 41.3, longitude: -74.5 })).toBeNull();
   expect(estimate(null)).toBeNull();

@@ -289,7 +289,10 @@ export function ProfilePage({
   settingsRequest,
   onError,
   signInCard,
+  commuteCard,
 }: {
+  /** Where the person commutes to, set once for every search. */
+  commuteCard?: ReactNode;
   /** For a visitor: creating an account, above the tools that work without one. */
   signInCard?: ReactNode;
   account: string | null;
@@ -363,6 +366,14 @@ export function ProfilePage({
         </View>
       )}
       {account && billingRequest && !admin && <PlanCard plan={plan} request={billingRequest} onError={onError} />}
+      {commuteCard && (
+        <>
+          <Text accessibilityRole="header" style={styles.fieldLabel}>
+            Your commute
+          </Text>
+          {commuteCard}
+        </>
+      )}
       <Text accessibilityRole="header" style={styles.fieldLabel}>
         Your apartments
       </Text>

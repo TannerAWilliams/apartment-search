@@ -38,25 +38,29 @@ function TypicalCost({ listing }: { listing: ListingData }) {
       <Text style={total ? card.highlight : styles.bodyText}>{formatRent(amount)}</Text>
     </View>
   );
+  // The two numbers people want first; the pieces and the rules behind them one tap away.
   return (
     <View style={{ gap: 6 }}>
-      <Text style={styles.fieldLabel}>Each month</Text>
-      {row('Rent', cost.parts.rent)}
-      {row('Electricity and gas (typical)', cost.parts.utilities)}
-      {row('Internet', cost.parts.internet)}
-      {row('Renter’s insurance', cost.parts.insurance)}
-      {row('About, all in', cost.monthly, true)}
-      <Text style={[styles.fieldLabel, { marginTop: 8 }]}>To move in</Text>
-      {row('First month', cost.moveInParts.firstMonth)}
-      {row('Security deposit', cost.moveInParts.deposit)}
-      {row('Application fee', cost.moveInParts.applicationFee)}
-      {cost.possibleBrokerFee ? row('Broker fee, if you pay one', cost.possibleBrokerFee) : null}
-      {row('Total', cost.moveIn + cost.possibleBrokerFee, true)}
-      {cost.notes.map((note) => (
-        <Text key={note} style={styles.smallMuted}>
-          {note}
-        </Text>
-      ))}
+      {row('About, each month with utilities', cost.monthly, true)}
+      {row('To move in', cost.moveIn + cost.possibleBrokerFee, true)}
+      <Disclosure title="See the breakdown">
+        <View style={{ gap: 6 }}>
+          {row('Rent', cost.parts.rent)}
+          {row('Electricity and gas (typical)', cost.parts.utilities)}
+          {row('Internet', cost.parts.internet)}
+          {row('Renter’s insurance', cost.parts.insurance)}
+          <Text style={[styles.fieldLabel, { marginTop: 8 }]}>To move in</Text>
+          {row('First month', cost.moveInParts.firstMonth)}
+          {row('Security deposit', cost.moveInParts.deposit)}
+          {row('Application fee', cost.moveInParts.applicationFee)}
+          {cost.possibleBrokerFee ? row('Broker fee, if you pay one', cost.possibleBrokerFee) : null}
+          {cost.notes.map((note) => (
+            <Text key={note} style={styles.smallMuted}>
+              {note}
+            </Text>
+          ))}
+        </View>
+      </Disclosure>
     </View>
   );
 }
@@ -423,7 +427,10 @@ export const Listing = memo(function Listing({
               <Text style={styles.linkText}>{shared || 'Share this apartment'}</Text>
             </Pressable>
             <Text style={styles.smallMuted}>
-              {[checked, listing.company ? `Listed by ${listing.company}` : ''].filter(Boolean).join(' · ')}
+              {/* A company given as a web address is not a name to show. */}
+              {[checked, listing.company && !/^https?:|\.(com|net|org)\b/i.test(listing.company) ? `Listed by ${listing.company}` : '']
+                .filter(Boolean)
+                .join(' · ')}
             </Text>
             {highlights.length > 0 && (
               <Section title="Highlights">

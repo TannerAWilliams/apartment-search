@@ -2,7 +2,8 @@
  * A door-to-door transit time worked out here, with no routing service: the walk to a nearby station, the wait,
  * the ride on one line (or two, with a transfer at a station where both stop) to a station near the destination,
  * and the walk from it. It uses the subway and PATH stations the app keeps and straight-line distances, so it is
- * an estimate, usually within about ten minutes of a trip planner's; walking alone counts when it is quicker.
+ * an estimate, usually within about ten minutes of a trip planner's; walking alone counts when it is quicker and
+ * under half an hour.
  *
  * The time from every station to the destination is worked out once per destination; each listing then only
  * looks at the stations around it.
@@ -26,6 +27,8 @@ const TRANSFER_MILES = 0.2;
 const MAX_WALK_MILES = 1.2;
 /** Beyond this the trip is not counted as a transit commute. */
 const MAX_MINUTES = 120;
+/** Walking alone counts only up to this; a longer walk with no train found means the stations are unknown. */
+const MAX_WALK_ONLY = 30;
 
 export function miles(a: Point, b: Point) {
   const radians = (degrees: number) => (degrees * Math.PI) / 180;
@@ -38,8 +41,8 @@ const walk = (a: Point, b: Point) => miles(a, b) * STREET_FACTOR * WALK_MINUTES_
 const ride = (a: Point, b: Point) => miles(a, b) * TRACK_FACTOR * RIDE_MINUTES_PER_MILE;
 
 /**
- * A function from a home to its estimated transit minutes to `destination`, or null when no station is within a
- * walk of either end and walking takes over two hours.
+ * A function from a home to its estimated transit minutes to `destination`, or null when no train route is found
+ * and walking takes over half an hour, or the trip takes over two hours.
  */
 export function transitEstimator(stations: Station[], destination: Point) {
   // The lines at each station, with those at stations close enough to transfer to.
@@ -75,7 +78,8 @@ export function transitEstimator(stations: Station[], destination: Point) {
 
   return (home: Point | null | undefined) => {
     if (!home || !Number.isFinite(home.latitude) || !Number.isFinite(home.longitude)) return null;
-    let best = walk(home, destination);
+    const walking = walk(home, destination);
+    let best = walking <= MAX_WALK_ONLY ? walking : Infinity;
     stations.forEach((station, index) => {
       const onward = toDestination[index]!;
       // A quick box first (about 1.4 miles of latitude and longitude), so each home measures only stations near it.

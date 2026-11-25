@@ -11,6 +11,7 @@ import type { AppEnv, Bucket } from './contracts.ts';
 import { changeHousehold, findHousehold } from './households.ts';
 import { planFor, readPaidList, setPaid } from './plans.ts';
 import { readSaved, writeSaved } from './saved.ts';
+import { readCommutePlace, writeCommutePlace } from './commute-place.ts';
 import type { D1Database } from './storage/d1-bucket.ts';
 
 /** Everything the app keeps for this account, as one JSON document. */
@@ -24,6 +25,7 @@ export async function exportAccount(env: AppEnv & { BUCKET: Bucket }, email: str
     plan: await planFor(env, env.BUCKET, account, admin),
     billing,
     savedListings: await readSaved(env.BUCKET, account),
+    commutePlace: await readCommutePlace(env.BUCKET, account),
     alerts,
     sharedList: await findHousehold(env.BUCKET, account),
   };
@@ -36,6 +38,7 @@ export async function deleteAccount(env: AppEnv & { BUCKET: Bucket }, database: 
   if (billing?.plan === 'monthly' && Date.parse(billing.until) > now.getTime())
     throw new SearchInputError('Cancel your subscription first (Profile → Manage billing), then delete your account.');
   await writeSaved(env.BUCKET, account, []);
+  await writeCommutePlace(env.BUCKET, account, null);
   await forgetAlerts(env.BUCKET, account);
   if (await findHousehold(env.BUCKET, account)) await changeHousehold(env.BUCKET, account, { action: 'leave' });
   if ((await readPaidList(env.BUCKET)).includes(account)) await setPaid(env.BUCKET, account, false);

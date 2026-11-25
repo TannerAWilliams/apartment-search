@@ -79,3 +79,30 @@ test('a typed destination suggests places from the map, and picking one fills it
   // Asked once typing paused, not once a letter.
   expect(asked).toEqual(['empire st']);
 });
+
+test('the commute destination is set once on the profile, kept on the device, and used by the next search', async ({ page }) => {
+  const searched: { workplace: string; customWorkplace: string }[] = [];
+  await page.route('**/*', async (route) => {
+    const url = new URL(route.request().url());
+    if (url.origin !== 'http://127.0.0.1:4173') return route.abort();
+    if (!url.pathname.startsWith('/api/')) return route.continue();
+    if (url.pathname === '/api/config') return route.fulfill({ json: { sources: [], commuteConfigured: false } });
+    if (url.pathname === '/api/search') {
+      const filters = parseFilters(route.request().postDataJSON());
+      searched.push({ workplace: filters.workplace, customWorkplace: filters.customWorkplace });
+      return route.fulfill({ json: localSearch([], filters, localWorkplace(filters), 'live') });
+    }
+    return route.abort();
+  });
+  await page.goto('/profile');
+  await expect(page.getByRole('heading', { name: 'Your commute', exact: true })).toBeVisible();
+  await expect(page.getByText(/Commute times on every apartment are to Rockefeller Center\. Kept on this device/)).toBeVisible();
+  await page.getByRole('button', { name: 'Penn Station', exact: true }).click();
+  await page.getByRole('button', { name: 'Save commute', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Saved', exact: true })).toBeVisible();
+  await page.reload();
+  await expect(page.getByText(/Commute times on every apartment are to Penn Station\./)).toBeVisible();
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Search apartments', exact: true }).click();
+  await expect.poll(() => searched.at(-1)).toEqual({ workplace: 'penn', customWorkplace: '' });
+});

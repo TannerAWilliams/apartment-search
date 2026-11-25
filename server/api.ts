@@ -17,6 +17,7 @@ import { sourceRoutes } from './routes/sources.ts';
 import { vitalsRoutes } from './routes/vitals.ts';
 import { settingsRoutes } from './routes/settings.ts';
 import { savedRoutes } from './routes/saved.ts';
+import { commutePlaceRoutes } from './routes/commute-place.ts';
 import { planRoutes } from './routes/plans.ts';
 import { householdRoutes } from './routes/households.ts';
 import { billingRoutes } from './routes/billing.ts';
@@ -40,6 +41,7 @@ export const api = factory
   .route('/', alertRoutes)
   .route('/', settingsRoutes)
   .route('/', savedRoutes)
+  .route('/', commutePlaceRoutes)
   .route('/', planRoutes)
   .route('/', householdRoutes)
   .route('/', billingRoutes)

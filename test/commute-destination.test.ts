@@ -1,3 +1,4 @@
+import { placeLabel } from '../server/commute.ts';
 import { test, expect } from 'bun:test';
 import { parseFilters } from '../src/search.ts';
 import { resolveWorkplace, routeCommutes, CommuteError } from '../server/commute.ts';
@@ -28,7 +29,7 @@ test('a typed place or address is found with OpenStreetMap, and exact addresses 
     ]);
   };
   expect(await resolveWorkplace(filters, osm)).toEqual({
-    label: 'Empire State Building, 350, 5th Avenue',
+    label: 'Empire State Building, 350 5th Avenue, Koreatown',
     latitude: 40.7484,
     longitude: -73.9857,
   });
@@ -95,4 +96,11 @@ test('disconnected or failed routing never manufactures estimates for a changed 
   await expect(
     routeCommutes(listings, destination, { appId: 'synthetic', apiKey: 'synthetic' }, async () => Response.json({}, { status: 503 })),
   ).rejects.toThrow('couldn’t calculate routes');
+});
+
+test('a building named for its address is named once', () => {
+  expect(placeLabel('520 Madison Avenue, 520, Madison Avenue, Midtown East, Manhattan')).toBe(
+    '520 Madison Avenue, Midtown East, Manhattan',
+  );
+  expect(placeLabel('Hoboken (PATH), Hudson Place, Downtown')).toBe('Hoboken (PATH), Hudson Place, Downtown');
 });

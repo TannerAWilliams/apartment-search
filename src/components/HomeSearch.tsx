@@ -153,7 +153,7 @@ export function HomeSearch({
             accessibilityLabel="Max rent"
             value={rent}
             onChangeText={(value) => {
-              const digits = value.replace(/\D/g, '').slice(0, 6);
+              const digits = String(Math.min(Number(value.replace(/\D/g, '').slice(0, 9)) || 0, 100000) || '');
               setRent(digits ? '$' + Number(digits).toLocaleString('en-US') : '');
             }}
             keyboardType="number-pad"

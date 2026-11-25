@@ -3,6 +3,7 @@
  * checks, and loaders for the data each screen reads. Searches stay in the screen; this hook reads their
  * current filters and version so a source check can refresh the results it shows.
  */
+import type { CommutePlace } from './use-commute-place.ts';
 import type React from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ApiConfig, ConfigSource, RefreshInfo } from '../api-client.ts';
@@ -254,6 +255,17 @@ export function useServer({ appliedFilters, searchVersion, submitted, setResult,
     },
     [activeToken],
   );
+  /** The signed-in account's commute destination: read it, or keep this one (null forgets it). */
+  const commutePlaceRequest = useCallback(
+    async (place?: CommutePlace | null) => {
+      const reply = await api<{ place?: CommutePlace | null }>(
+        'commute-place',
+        place === undefined ? { token: activeToken } : { body: { place }, token: activeToken },
+      );
+      return reply.place ?? null;
+    },
+    [activeToken],
+  );
   /** Platform settings: anyone can read them; only an admin can change them. */
   const settingsRequest = useCallback(
     (body?: SettingsChange) => api<PlatformSettings>('settings', body ? { body, token: activeToken } : { token: activeToken }),
@@ -381,6 +393,7 @@ export function useServer({ appliedFilters, searchVersion, submitted, setResult,
     alertRequest,
     loadNeighborhoods,
     savedRequest,
+    commutePlaceRequest,
     settingsRequest,
     loadHousing,
     checkBuilding,

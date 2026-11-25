@@ -45,6 +45,8 @@ import {
 } from './src/components/Icons.tsx';
 import { Marketplaces } from './src/screens/Marketplaces.tsx';
 import { Results } from './src/screens/Results.tsx';
+import { CommuteCard } from './src/components/CommuteCard.tsx';
+import { useCommutePlace } from './src/hooks/use-commute-place.ts';
 import { useServer } from './src/hooks/use-server.ts';
 import { preloadable, preloadScreens } from './src/preloadable.tsx';
 import React, { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -147,6 +149,7 @@ function ApartmentSearch() {
     alertRequest,
     loadNeighborhoods,
     savedRequest,
+    commutePlaceRequest,
     settingsRequest,
     loadHousing,
     checkBuilding,
@@ -172,6 +175,11 @@ function ApartmentSearch() {
     [serverState, activeToken],
   );
   useAccountSaved(saved, setSaved, account, serverState === 'ready' ? savedRequest : undefined, setError);
+  // Where the person commutes to, from their account (or this device): every new search starts from it.
+  const commute = useCommutePlace(account, serverState === 'ready' && account ? commutePlaceRequest : undefined, (place) =>
+    setDraft((current) => ({ ...current, ...place })),
+  );
+  const defaults = () => ({ ...formDefaults(), ...commute.current.current });
   const savedByKey = useMemo(() => new Map(saved.map((listing) => [listingKey(listing), listing])), [saved]);
   const savedResults = useMemo(() => localSearch(saved, SAVED_FILTERS, result.workplace, 'saved'), [saved, result.workplace]);
 
@@ -205,6 +213,7 @@ function ApartmentSearch() {
       }
       // The chosen category or filter shows as chosen at once, and the results screen opens while they load.
       setApplied(filters);
+      if (changingDestination) commute.remember({ workplace: filters.workplace, customWorkplace: filters.customWorkplace });
       setScope('market');
       navigateTab('results');
       setExpanded('');
@@ -254,7 +263,7 @@ function ApartmentSearch() {
   }
 
   function searchCompany(company: string) {
-    const nextDraft = { ...formDefaults(), company, bedrooms: null, maxRent: '' };
+    const nextDraft = { ...defaults(), company, bedrooms: null, maxRent: '' };
     setDraft(nextDraft);
     submit(nextDraft);
   }
@@ -635,7 +644,7 @@ function ApartmentSearch() {
                           disabled={busy}
                           apply={(filters) => {
                             const next = { ...filters, includeMap: WEB_MAP };
-                            setDraft({ ...formDefaults(), ...next });
+                            setDraft({ ...defaults(), ...next });
                             submit(next);
                           }}
                           check={(filters) => {
@@ -737,6 +746,17 @@ function ApartmentSearch() {
                     onOpen={navigateTab}
                     onSignOut={() => void signOut()}
                     signInCard={member ? undefined : <AccountPrompt reason="save apartments and get alerts" onSignedIn={signedIn} />}
+                    commuteCard={
+                      <CommuteCard
+                        place={commute.place ?? { workplace: applied.workplace, customWorkplace: applied.customWorkplace }}
+                        signedIn={Boolean(account)}
+                        suggest={suggestPlaces}
+                        onSave={(place) => {
+                          commute.remember(place);
+                          setDraft((current) => ({ ...current, ...place }));
+                        }}
+                      />
+                    }
                     settingsRequest={serverState === 'ready' ? settingsRequest : undefined}
                     onError={setError}
                   />
@@ -806,7 +826,7 @@ function ApartmentSearch() {
                     onOpen={navigateTab}
                     // A search from the home page starts fresh, not from the filters of an earlier one.
                     onSearch={(changes) => {
-                      const next = { ...formDefaults(), ...changes, maxRent: changes.maxRent == null ? '' : String(changes.maxRent) };
+                      const next = { ...defaults(), ...changes, maxRent: changes.maxRent == null ? '' : String(changes.maxRent) };
                       setDraft(next);
                       void submit(next);
                     }}

@@ -207,6 +207,22 @@ export async function routeCommutes<T extends { latitude?: unknown; longitude?: 
 /** The NY, NJ and CT area the app covers, as Nominatim's west,north,east,south viewbox. */
 const METRO_VIEWBOX = '-75.6,41.7,-71.7,39.9';
 /**
+ * A short name for an OpenStreetMap place: "Empire State Building, 350, 5th Avenue, Koreatown, …" becomes
+ * "Empire State Building, 350 5th Avenue, Koreatown", and a building named for its address is named once
+ * ("520 Madison Avenue, 520, Madison Avenue, Midtown East" becomes "520 Madison Avenue, Midtown East").
+ */
+export function placeLabel(displayName: string) {
+  const parts: string[] = [];
+  const pieces = displayName.split(', ');
+  for (let index = 0; index < pieces.length; index++) {
+    const piece = pieces[index]!.trim();
+    const joined = /^\d+[a-z]?(-\d+)?$/i.test(piece) && pieces[index + 1] ? `${piece} ${pieces[++index]!.trim()}` : piece;
+    if (joined && !parts.some((part) => part.toLowerCase() === joined.toLowerCase())) parts.push(joined);
+  }
+  return parts.slice(0, 3).join(', ');
+}
+
+/**
  * OpenStreetMap's Nominatim finds places by name (Empire State Building, Hoboken PATH) as well as addresses.
  * Its usage policy asks for an identifying User-Agent, at most one request a second and caching; searches
  * repeat the same destination, so answers are kept for 30 days in Cloudflare's cache (where there is one), and
@@ -233,8 +249,7 @@ async function nominatim(query: string, fetcher: SourceFetch) {
   const match = Array.isArray(matches) ? matches[0] : undefined;
   if (!match) return null;
   const point = {
-    // "Empire State Building, 350, 5th Avenue, Koreatown, …" → its first three parts.
-    label: typeof match.display_name === 'string' ? match.display_name.split(', ').slice(0, 3).join(', ') : query,
+    label: typeof match.display_name === 'string' ? placeLabel(match.display_name) : query,
     latitude: Number(match.lat),
     longitude: Number(match.lon),
   };
