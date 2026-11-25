@@ -136,8 +136,8 @@ function scoredOnce(found: Gathered, bucket: Bucket) {
   const known = scored.get(found);
   if (known) return known;
   const work = score(found.listings, bucket);
+  // Scoring reads only stored lists, each of which falls back to empty, so it does not fail on its own.
   scored.set(found, work);
-  work.catch(() => scored.delete(found));
   return work;
 }
 

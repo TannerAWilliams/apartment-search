@@ -94,10 +94,10 @@ test('searches read both lists, refreshed monthly; listings near a line or in a 
   const bucket = createMemoryBucket();
   expect(await openData(bucket, 1)).toMatchObject({ registry: {}, stations: [] });
   const { fetcher, requests } = openDataFetcher();
-  expect(await refreshOpenData(bucket, fetcher, now)).toEqual(['registry', 'stations']);
+  expect(await refreshOpenData(bucket, fetcher, now)).toEqual(['registry', 'stations', 'rail stops']);
   expect(await refreshOpenData(bucket, fetcher, new Date(now.getTime() + 86_400_000)), 'fresh').toEqual([]);
   const calls = requests.length;
-  expect(await refreshOpenData(bucket, fetcher, new Date(now.getTime() + 31 * 86_400_000))).toEqual(['registry', 'stations']);
+  expect(await refreshOpenData(bucket, fetcher, new Date(now.getTime() + 31 * 86_400_000))).toEqual(['registry', 'stations', 'rail stops']);
   expect(requests.length).toBeGreaterThan(calls);
   expect(await bucket.get(REGISTRY_KEY)).not.toBeNull();
   expect(await bucket.get(STATIONS_KEY)).not.toBeNull();

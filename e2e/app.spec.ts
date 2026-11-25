@@ -194,6 +194,11 @@ async function mockApp(
       };
     } else if (url.pathname === '/api/account' && options.account) {
       data = body ? { deleted: true } : { account: options.account, savedListings: [] };
+    } else if (url.pathname === '/api/transit') {
+      data = {
+        subway: [{ name: 'Grove St', routes: ['PATH'], latitude: 40.7196, longitude: -74.0429 }],
+        rail: [{ name: 'Hoboken', system: 'path', line: 'PATH', latitude: 40.7348, longitude: -74.0294 }],
+      };
     } else if (url.pathname === '/api/saved' && options.account) {
       if (body) savedOnAccount = body.listings;
       data = { listings: savedOnAccount };
@@ -352,6 +357,14 @@ test('the map view loads its tiles under the Content Security Policy', async ({ 
   await page.getByRole('button', { name: 'Map', exact: true }).click();
   await expect(page.getByRole('region', { name: 'Map of matching apartments', exact: true })).toBeVisible();
   await expect.poll(() => tiles.length).toBeGreaterThan(before);
+  // Subway, PATH, NJ Transit and Metro-North stops are drawn under the pins, with a legend, and can be hidden.
+  const transit = page.getByRole('checkbox', { name: 'Transit stops', exact: true });
+  await expect(transit).toBeChecked();
+  await expect(page.getByText('Metro-North', { exact: true })).toBeVisible();
+  await expect.poll(() => page.locator('.leaflet-overlay-pane canvas').count()).toBeGreaterThan(0);
+  await transit.uncheck();
+  await expect(page.getByText('Metro-North', { exact: true })).toHaveCount(0);
+  await transit.check();
   // A pin's pop-up saves its listing, and its links open in a new tab.
   const popup = page.locator('.leaflet-popup-content');
   // The map may still be settling on its pins; click until the pop-up stays open.
@@ -1411,10 +1424,11 @@ test('the affordability calculator shows the landlord rule and Dave Ramsey’s 2
   await expect(page.getByText('What landlords approve', { exact: true })).toBeVisible();
   await expect(page.getByText(/^\$3,000 a month$/)).toBeVisible();
   await expect(page.getByText('New York City income tax', { exact: true })).toBeVisible();
-  // Pre-tax savings and take-home pay are percentages of income, shown in dollars too.
-  await page.getByRole('textbox', { name: '401(k), HSA or other pre-tax savings, % of income (optional)', exact: true }).fill('6');
-  await expect(page.getByText('$7,200 a year', { exact: true })).toBeVisible();
-  await page.getByRole('textbox', { name: 'Or the share of your pay you actually take home, % (optional)', exact: true }).fill('60');
+  // Pre-tax savings and take-home pay are percentages of income, shown in dollars too, folded away until wanted.
+  await page.getByRole('button', { name: 'Fine-tune my take-home pay', exact: true }).click();
+  await page.getByRole('textbox', { name: '401(k), HSA or other pre-tax savings, % of income', exact: true }).fill('6');
+  await expect(page.getByText(/^\$7,200 a year\. Only what comes out/)).toBeVisible();
+  await page.getByRole('textbox', { name: 'Or the share of your pay you take home, %', exact: true }).fill('60');
   await expect(page.getByText('$6,000 a month', { exact: true })).toBeVisible();
   await expect(page.getByText(/^\$1,500 a month$/)).toBeVisible();
   await page.getByRole('button', { name: 'Search up to $1,500 (25% rule)', exact: true }).click();
@@ -1422,8 +1436,9 @@ test('the affordability calculator shows the landlord rule and Dave Ramsey’s 2
   // Debt payments lower the 25% budget to keep rent plus debt within 36% of gross pay ($10,000 a month).
   await page.goBack();
   await page.getByRole('textbox', { name: 'Your yearly income before tax', exact: true }).fill('120000');
-  await page.getByRole('textbox', { name: 'Or the share of your pay you actually take home, % (optional)', exact: true }).fill('60');
-  await page.getByRole('textbox', { name: 'Monthly debt payments: car, student loans, credit cards (optional)', exact: true }).fill('2500');
+  await page.getByRole('button', { name: 'Fine-tune my take-home pay', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Or the share of your pay you take home, %', exact: true }).fill('60');
+  await page.getByRole('textbox', { name: 'Monthly debt payments (optional)', exact: true }).fill('2500');
   await expect(page.getByText(/^\$1,100 a month$/)).toBeVisible();
   await expect(page.getByText(/Lowered from \$1,500/)).toBeVisible();
   await expect(page.getByText(/rent plus your debt payments would be 55% of your gross pay/)).toBeVisible();

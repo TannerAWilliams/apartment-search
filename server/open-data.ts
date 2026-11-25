@@ -12,6 +12,7 @@ import { buildingKey } from '../src/listings.ts';
 import type { Station } from '../src/subway.ts';
 import type { Bucket } from './contracts.ts';
 import { checkedDocument } from './storage/stored-documents.ts';
+import { loadRailStops, RAIL_STOPS_KEY, readRailStops } from './transit-stops.ts';
 
 const REGISTRY =
   'https://services8.arcgis.com/ek7Sxtay3Z4WZWvk/arcgis/rest/services/registered_buildings_unit_counts/FeatureServer/0/query';
@@ -129,11 +130,25 @@ export async function refreshOpenData(bucket: Bucket, fetcher: FetchTransport, n
     await bucket.put(STATIONS_KEY, JSON.stringify(await loadStations(fetcher, now)));
     refreshed.push('stations');
   }
+  const rail = await readRailStops(bucket).catch(() => null);
+  if (stale(rail?.checkedAt)) {
+    await bucket.put(RAIL_STOPS_KEY, JSON.stringify(await loadRailStops(fetcher, rail?.stops, now)));
+    refreshed.push('rail stops');
+  }
   return refreshed;
 }
 
 const CACHE_MS = 10 * 60_000;
 let cache: { at: number; bucket: Bucket; registry: Record<string, number>; stations: Station[] } | null = null;
+
+/** The map's transit layer: every subway station and the other rail stops, as stored. Empty lists when not loaded yet. */
+export async function transitStops(bucket: Bucket) {
+  const [stations, rail] = await Promise.all([
+    readDocument(bucket, STATIONS_KEY, StationsSchema).catch(() => null),
+    readRailStops(bucket).catch(() => null),
+  ]);
+  return { subway: stations?.stations ?? [], rail: rail?.stops ?? [] };
+}
 
 /** Both lists for a search, from this Worker's memory when read in the last ten minutes. Empty when not loaded yet. */
 export async function openData(bucket: Bucket, now = Date.now()) {

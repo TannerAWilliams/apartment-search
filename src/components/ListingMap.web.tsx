@@ -15,6 +15,49 @@ import { bedroomLabel, formatRent } from '../search.ts';
 
 const center = [40.75, -73.98];
 
+/** The transit layer's kinds of stop, their color and name in the legend. */
+const TRANSIT = {
+  subway: ['#0039a6', 'Subway'],
+  path: ['#d0103a', 'PATH'],
+  njt: ['#f18a00', 'NJ Transit'],
+  'light-rail': ['#7b4fa3', 'Light rail'],
+  'metro-north': ['#00843d', 'Metro-North'],
+} as const;
+type TransitKind = keyof typeof TRANSIT;
+type TransitStop = { name: string; kind: TransitKind; detail: string; latitude: number; longitude: number };
+type TransitResponse = {
+  subway?: { name: string; routes: string[]; latitude: number; longitude: number }[];
+  rail?: { name: string; system: Exclude<TransitKind, 'subway'>; line: string; latitude: number; longitude: number }[];
+};
+
+let transitRequest: Promise<TransitStop[]> | null = null;
+/** Every subway, PATH, NJ Transit and Metro-North stop, fetched once per page (the server lets the browser keep it a day). */
+function transitStops() {
+  transitRequest ??= fetch('/api/transit')
+    .then((response) => (response.ok ? (response.json() as Promise<TransitResponse>) : { subway: [], rail: [] }))
+    .then(({ subway = [], rail = [] }) => [
+      ...subway.map(({ name, routes, latitude, longitude }) => ({
+        name,
+        kind: 'subway' as const,
+        detail: routes.join(' '),
+        latitude,
+        longitude,
+      })),
+      ...rail.map(({ name, system, line, latitude, longitude }) => ({
+        name,
+        kind: system,
+        detail: system === 'path' || system === 'metro-north' ? '' : line,
+        latitude,
+        longitude,
+      })),
+    ])
+    .catch(() => {
+      transitRequest = null;
+      return [];
+    });
+  return transitRequest;
+}
+
 function pinIcon(count: number) {
   const badge = document.createElement('span');
   const size = count > 1 ? 34 : 15;
@@ -160,8 +203,11 @@ export function ListingMap({
   // Pop-ups are built when opened, so they read the latest save state through this ref.
   const actions = useRef<SaveActions>({});
   actions.current = { save: onSave, isSaved };
-  const instance = useRef<{ map: L.Map; clusters: L.MarkerClusterGroup } | null>(null);
+  const instance = useRef<{ map: L.Map; clusters: L.MarkerClusterGroup; transit: L.LayerGroup } | null>(null);
   const [unavailable, setUnavailable] = useState(false);
+  // Subway, PATH, NJ Transit and Metro-North stops under the pins, on by default and one tap to hide.
+  const [transitShown, setTransitShown] = useState(true);
+  const [transitCount, setTransitCount] = useState<number | null>(null);
   const locations = useMemo(() => {
     const grouped = new Map<string, MapPoint[]>();
     for (const point of points) {
@@ -188,7 +234,9 @@ export function ListingMap({
       iconCreateFunction: (cluster) =>
         pinIcon(cluster.getAllChildMarkers().reduce((sum, marker) => sum + (marker.options.listingCount ?? 0), 0)),
     }).addTo(map);
-    instance.current = { map, clusters };
+    // Stops are drawn on a canvas below the pins, so hundreds of them stay quick.
+    const transit = L.layerGroup().addTo(map);
+    instance.current = { map, clusters, transit };
     const resize = new ResizeObserver(() => map.invalidateSize({ pan: false }));
     resize.observe(container.current);
     return () => {
@@ -217,6 +265,36 @@ export function ListingMap({
     if (pins.length) map.fitBounds(clusters.getBounds(), { padding: [32, 32], maxZoom: 14, animate: false });
   }, [locations, visible]);
 
+  useEffect(() => {
+    if (!instance.current) return;
+    const { transit } = instance.current;
+    transit.clearLayers();
+    if (!transitShown) return;
+    let current = true;
+    const renderer = L.canvas({ padding: 0.5 });
+    void transitStops().then((stops) => {
+      if (!current) return;
+      setTransitCount(stops.length);
+      for (const stop of stops) {
+        const [color, system] = TRANSIT[stop.kind];
+        const label = `${stop.name} · ${system}${stop.detail ? ` (${stop.detail})` : ''}`;
+        L.circleMarker([stop.latitude, stop.longitude], {
+          renderer,
+          radius: 4,
+          color: '#ffffff',
+          weight: 1.5,
+          fillColor: color,
+          fillOpacity: 1,
+        })
+          .bindTooltip(label, { direction: 'top', offset: [0, -4] })
+          .addTo(transit);
+      }
+    });
+    return () => {
+      current = false;
+    };
+  }, [transitShown, visible]);
+
   return (
     <section aria-label="Map of matching apartments" style={{ border: '1px solid #d7e0ec', background: '#fff' }}>
       <div ref={container} style={{ height: 'clamp(350px, 66vh, 800px)', background: '#edf1f4' }} />
@@ -233,6 +311,31 @@ export function ListingMap({
         {`${points.length.toLocaleString()} mapped${total > points.length ? ` · ${total - points.length} without coordinates` : ''}`}
         {points.length > 0 && onSave && ' · Tap a pin to see and save listings'}
         {unavailable && ' · Some street tiles could not load'}
+      </div>
+      <div
+        style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          gap: 12,
+          padding: '0 12px 10px',
+          fontSize: 13,
+          color: '#35445a',
+          fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
+        }}
+      >
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontWeight: 600, color: '#222' }}>
+          <input type="checkbox" checked={transitShown} onChange={(event) => setTransitShown(event.target.checked)} />
+          Transit stops
+        </label>
+        {transitShown &&
+          Object.values(TRANSIT).map(([color, name]) => (
+            <span key={name} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+              <span aria-hidden style={{ width: 10, height: 10, borderRadius: 5, background: color, display: 'inline-block' }} />
+              {name}
+            </span>
+          ))}
+        {transitShown && <span>{transitCount === null ? 'Loading stops…' : transitCount === 0 ? 'Stops are not loaded yet' : ''}</span>}
       </div>
     </section>
   );

@@ -12,7 +12,7 @@
 export type Residence = 'nyc' | 'ny' | 'nj' | 'ct';
 export const RESIDENCES: [Residence, string][] = [
   ['nyc', 'New York City'],
-  ['ny', 'New York State, outside NYC'],
+  ['ny', 'Elsewhere in New York'],
   ['nj', 'New Jersey'],
   ['ct', 'Connecticut'],
 ];

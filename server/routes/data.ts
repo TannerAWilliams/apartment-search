@@ -12,13 +12,18 @@ import { storedJerseyAffordable } from '../sources/jersey-affordable.ts';
 import { storedHomeSeeker } from '../sources/westchester-homeseeker.ts';
 import { storedHdcRerentals, storedHousing } from '../refresh/snapshots.ts';
 import { storedMarket, storedRentHistory } from '../refresh/market.ts';
-import { apiBodies, factory, fail, refuse } from './context.ts';
+import { apiBodies, factory, fail, needsStorage, refuse } from './context.ts';
+import { transitStops } from '../open-data.ts';
 import { BuildingAddressSchema, MarketQuerySchema, NeighborhoodQuerySchema, StreetViewQuerySchema } from './inputs.ts';
 import { neighborhoodReport } from '../neighborhoods.ts';
 import { streetViewImage, streetViewLimit } from '../street-view.ts';
 
 export const dataRoutes = factory
   .createApp()
+  // The map's transit layer; the same for everyone and changed monthly, so browsers and Cloudflare keep it a day.
+  .get('/transit', needsStorage('Transit stops need saved storage.'), async (c) =>
+    c.json(await transitStops(c.var.bucket), 200, { 'Cache-Control': 'public, max-age=86400' }),
+  )
   .get('/street-view', vValidator('query', StreetViewQuerySchema, refuse), async (c) => {
     const env = c.var.appEnv;
     const { database, fetcher } = c.var.services;
