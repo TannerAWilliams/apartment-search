@@ -2,17 +2,8 @@ import base64 from 'base64-js';
 import { gzipSync, gunzipSync, strFromU8, strToU8 } from 'fflate';
 import { isRecord } from './domain.ts';
 
-/** Public exports the browser can fetch itself when the Worker could not (see pull-sources.ts). */
-export const PUBLIC_SOURCE_IDS = ['firstmover', 'housingconnect'];
+export { PUBLIC_SOURCE_IDS, retryablePublicSources } from './public-sources.ts';
 const MAX_UNCOMPRESSED = 12 * 1024 * 1024;
-
-export function retryablePublicSources(check: { sources?: { id: string; status?: string; retryAt?: string | null }[] }, now = new Date()) {
-  return (check.sources ?? [])
-    .filter(
-      ({ id, status, retryAt }) => PUBLIC_SOURCE_IDS.includes(id) && status === 'failed' && !(Date.parse(retryAt ?? '') > now.getTime()),
-    )
-    .map(({ id }) => id);
-}
 
 export function encodeSourceImport(sources: unknown) {
   return { payload: base64.fromByteArray(gzipSync(strToU8(JSON.stringify(sources)))) };

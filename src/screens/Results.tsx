@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { inventoryUnavailable } from '../inventory-state.ts';
 import type { ListingData, SourceLink, SearchFilters, SearchResult } from '../domain.ts';
 
@@ -88,6 +88,26 @@ export function Results({
   onAlert?: () => void;
 }) {
   const [open, setOpen] = useState<Set<string>>(new Set());
+  // The cards' actions keep one identity across renders, so memoized cards are not redrawn because the page
+  // passed a new function; each call still reaches the latest handler.
+  const latest = useRef({ onSave, onSaveLink, onRemove, onError });
+  latest.current = { onSave, onSaveLink, onRemove, onError };
+  const actions = useMemo(
+    () => ({
+      onSave: (listing: ListingData) => latest.current.onSave(listing),
+      onSaveLink: (listing: ListingData, link: SourceLink) => latest.current.onSaveLink(listing, link),
+      onRemove: (listing: ListingData) => latest.current.onRemove(listing),
+      onError: (message: string) => latest.current.onError(message),
+      onExpandedChange: (id: string, expanded: boolean) =>
+        setOpen((current) => {
+          const next = new Set(current);
+          if (expanded) next.add(id);
+          else next.delete(id);
+          return next;
+        }),
+    }),
+    [],
+  );
   const { matches } = result;
   const shown = matches.slice(0, visible);
   // Cards after the last open one, which takes a whole row; they decide how full the last row is.
@@ -202,19 +222,12 @@ export function Results({
                 workplace={result.workplace}
                 commute={result.commute === true}
                 onCheckBuilding={onCheckBuilding}
-                onSave={onSave}
-                onSaveLink={onSaveLink}
-                onError={onError}
-                onRemove={savedView ? onRemove : undefined}
+                onSave={actions.onSave}
+                onSaveLink={actions.onSaveLink}
+                onError={actions.onError}
+                onRemove={savedView ? actions.onRemove : undefined}
                 saved={Boolean(saved)}
-                onExpandedChange={(expanded) =>
-                  setOpen((current) => {
-                    const next = new Set(current);
-                    if (expanded) next.add(listing.id);
-                    else next.delete(listing.id);
-                    return next;
-                  })
-                }
+                onExpandedChange={actions.onExpandedChange}
               />
             </View>
           );

@@ -19,7 +19,7 @@ import type { Listing } from '../components/Listing.tsx';
 import type { RentChart } from '../components/RentChart.tsx';
 import { useRetryCooldown } from './app-hooks.ts';
 import { localWorkplace, needsCommute } from '../search.ts';
-import { encodeSourceImport, retryablePublicSources } from '../source-import.ts';
+import { retryablePublicSources } from '../public-sources.ts';
 import { refreshSummary, type SourceDefinition } from '../source-status.ts';
 import { savedSessionToken, saveSessionToken } from '../session-token.ts';
 
@@ -121,6 +121,8 @@ export function useServer({ appliedFilters, searchVersion, submitted, setResult,
           if (signal?.aborted) return;
           const recovered = Object.fromEntries(Object.entries(exports).filter(([, data]) => data));
           if (Object.keys(recovered).length) {
+            // The compressor loads only for this rare recovery, not with the app.
+            const { encodeSourceImport } = await import('../source-import.ts');
             const outcome = await api('refresh', {
               body: { ...encodeSourceImport(recovered), fallback: true },
               token: activeToken,

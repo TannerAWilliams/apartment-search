@@ -46,30 +46,28 @@ import {
 import { Marketplaces } from './src/screens/Marketplaces.tsx';
 import { Results } from './src/screens/Results.tsx';
 import { useServer } from './src/hooks/use-server.ts';
-import React, { Suspense, lazy, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { preloadable, preloadScreens } from './src/preloadable.tsx';
+import React, { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
-// Screens off the first page load on first use, so opening the app downloads only what search needs.
-const ListingMap = lazy(() => import('./src/components/ListingMap').then((module) => ({ default: module.ListingMap })));
-const AffordableHousing = lazy(() =>
-  import('./src/screens/AffordableHousing.tsx').then((module) => ({ default: module.AffordableHousing })),
-);
-const SourcesPage = lazy(() => import('./src/screens/SourcesPage.tsx').then((module) => ({ default: module.SourcesPage })));
-const SavedComparison = lazy(() => import('./src/components/SavedComparison.tsx').then((module) => ({ default: module.SavedComparison })));
-const TourPlanner = lazy(() => import('./src/components/TourPlanner.tsx').then((module) => ({ default: module.TourPlanner })));
-const RentChart = lazy(() => import('./src/components/RentChart.tsx').then((module) => ({ default: module.RentChart })));
-const ProfilePage = lazy(() => import('./src/screens/ProfilePage.tsx').then((module) => ({ default: module.ProfilePage })));
-const SharedListPage = lazy(() => import('./src/screens/SharedListPage.tsx').then((module) => ({ default: module.SharedListPage })));
-const ApplyPage = lazy(() => import('./src/screens/ApplyPage.tsx').then((module) => ({ default: module.ApplyPage })));
-const NeighborhoodsPage = lazy(() =>
-  import('./src/screens/NeighborhoodsPage.tsx').then((module) => ({ default: module.NeighborhoodsPage })),
-);
-const RenewalPage = lazy(() => import('./src/screens/NeighborhoodsPage.tsx').then((module) => ({ default: module.RenewalPage })));
-const AdminPage = lazy(() => import('./src/screens/AdminPage.tsx').then((module) => ({ default: module.AdminPage })));
-const LegalPage = lazy(() => import('./src/screens/LegalPage.tsx').then((module) => ({ default: module.LegalPage })));
-const ListingPage = lazy(() => import('./src/screens/ListingPage.tsx').then((module) => ({ default: module.ListingPage })));
-const DirectPage = lazy(() => import('./src/screens/DirectPage.tsx').then((module) => ({ default: module.DirectPage })));
-const AffordPage = lazy(() => import('./src/screens/AffordPage.tsx').then((module) => ({ default: module.AffordPage })));
-const AlertsPage = lazy(() => import('./src/screens/AlertsPage.tsx').then((module) => ({ default: module.AlertsPage })));
+// Screens off the first page load: downloaded while the app is idle (or on first use), so opening the app
+// downloads only what search needs and later screens open at once (src/preloadable.tsx).
+const ListingMap = preloadable(() => import('./src/components/ListingMap').then((module) => module.ListingMap));
+const AffordableHousing = preloadable(() => import('./src/screens/AffordableHousing.tsx').then((module) => module.AffordableHousing));
+const SourcesPage = preloadable(() => import('./src/screens/SourcesPage.tsx').then((module) => module.SourcesPage));
+const SavedComparison = preloadable(() => import('./src/components/SavedComparison.tsx').then((module) => module.SavedComparison));
+const TourPlanner = preloadable(() => import('./src/components/TourPlanner.tsx').then((module) => module.TourPlanner));
+const RentChart = preloadable(() => import('./src/components/RentChart.tsx').then((module) => module.RentChart), 'soon');
+const ProfilePage = preloadable(() => import('./src/screens/ProfilePage.tsx').then((module) => module.ProfilePage), 'soon');
+const SharedListPage = preloadable(() => import('./src/screens/SharedListPage.tsx').then((module) => module.SharedListPage));
+const ApplyPage = preloadable(() => import('./src/screens/ApplyPage.tsx').then((module) => module.ApplyPage));
+const NeighborhoodsPage = preloadable(() => import('./src/screens/NeighborhoodsPage.tsx').then((module) => module.NeighborhoodsPage));
+const RenewalPage = preloadable(() => import('./src/screens/NeighborhoodsPage.tsx').then((module) => module.RenewalPage));
+const AdminPage = preloadable(() => import('./src/screens/AdminPage.tsx').then((module) => module.AdminPage));
+const LegalPage = preloadable(() => import('./src/screens/LegalPage.tsx').then((module) => module.LegalPage));
+const ListingPage = preloadable(() => import('./src/screens/ListingPage.tsx').then((module) => module.ListingPage));
+const DirectPage = preloadable(() => import('./src/screens/DirectPage.tsx').then((module) => module.DirectPage));
+const AffordPage = preloadable(() => import('./src/screens/AffordPage.tsx').then((module) => module.AffordPage));
+const AlertsPage = preloadable(() => import('./src/screens/AlertsPage.tsx').then((module) => module.AlertsPage));
 
 function ApartmentSearch() {
   const { width } = useWindowDimensions();
@@ -272,9 +270,30 @@ function ApartmentSearch() {
     document.title = tab === 'home' ? title : `${title} · Walkup`;
   }, [tab]);
 
+  // The screens people open most are downloaded while the app is idle, so their first visit does not wait.
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    // The main screens first; the map and the rest a few seconds later, and not at all on a data-saving or
+    // very slow connection, where they load when opened.
+    const connection = (navigator as { connection?: { saveData?: boolean; effectiveType?: string } }).connection;
+    const thrifty = connection?.saveData === true || /2g/.test(connection?.effectiveType ?? '');
+    const idle = (run: () => void) => {
+      const request = (globalThis as { requestIdleCallback?: (run: () => void) => number }).requestIdleCallback;
+      if (request) request(run);
+      else setTimeout(run, 1500);
+    };
+    idle(() => void preloadScreens('soon'));
+    if (thrifty) return;
+    const later = setTimeout(() => idle(() => void preloadScreens('later')), 6000);
+    return () => clearTimeout(later);
+  }, []);
+
   // A visitor (no account, not the app's own admin token) uses everything except what belongs to an account.
   const member = Boolean(account) || admin;
   const view = !member && ACCOUNT_TABS[tab] ? 'account' : tab;
+  const listMode = view === 'results' || view === 'saved';
+  const [listMounted, setListMounted] = useState(listMode);
+  if (listMode && !listMounted) setListMounted(true);
 
   // The main screens. On a phone they are the tab bar at the bottom; on a wider screen, links in the header,
   // as websites put them. Search comes first: it is what people come for.
@@ -427,7 +446,13 @@ function ApartmentSearch() {
             />
           </View>
         )}
-        <Modal visible={Boolean(expanded)} transparent animationType="slide" onRequestClose={() => setExpanded('')}>
+        <Modal
+          visible={Boolean(expanded)}
+          transparent
+          // A sheet slides up on a phone; on a wide screen the centered dialog appears at once.
+          animationType={wide ? 'fade' : 'slide'}
+          onRequestClose={() => setExpanded('')}
+        >
           <View style={[mobileStyles.overlay, wide && mobileStyles.overlayCentered]}>
             <View style={[mobileStyles.sheet, wide && mobileStyles.wideSheet]} accessibilityViewIsModal>
               <View style={mobileStyles.sheetHeader}>
@@ -509,136 +534,140 @@ function ApartmentSearch() {
                     <Text style={[styles.linkText, { fontSize: 15 }]}>‹ Profile</Text>
                   </Pressable>
                 )}
-                {(view === 'results' || view === 'saved') && (
-                  <>
-                    {
-                      <View style={styles.toolbar}>
-                        {!(view === 'saved' && saved.length === 0) ? (
-                          <Pressable
-                            accessibilityRole="button"
-                            accessibilityLabel="Change destination"
-                            disabled={busy}
-                            onPress={() => {
-                              setError('');
-                              toggleFilter('commute');
-                            }}
-                            style={{ flexShrink: 1, paddingVertical: 6 }}
-                          >
-                            <Text numberOfLines={1} style={mobileStyles.destinationText}>
-                              Commute times to <Text style={{ color: colors.ink, fontWeight: '600' }}>{result.workplace.label}</Text> ·{' '}
-                              <Text style={styles.linkText}>Change</Text>
-                            </Text>
-                          </Pressable>
-                        ) : (
-                          <View />
-                        )}
-                        <View style={[styles.chipRow, { flexShrink: 1 }]}>
-                          {TOOLS[view]
-                            .filter(([id]) => id !== 'changes' || !staleInventory)
-                            .filter(() => view !== 'saved' || saved.length > 0)
-                            .map(([id, short, full]) => (
-                              <Chip key={id} label={full} selected={tool === id} onPress={() => setTool(tool === id ? '' : id)}>
-                                {short}
-                              </Chip>
-                            ))}
+                {listMounted && (
+                  // Kept mounted after the first visit and hidden on other screens, so coming back to Search or Saved
+                  // shows the cards at once instead of building them all again.
+                  <View style={listMode ? undefined : { display: 'none' }}>
+                    <>
+                      {
+                        <View style={styles.toolbar}>
+                          {!(view === 'saved' && saved.length === 0) ? (
+                            <Pressable
+                              accessibilityRole="button"
+                              accessibilityLabel="Change destination"
+                              disabled={busy}
+                              onPress={() => {
+                                setError('');
+                                toggleFilter('commute');
+                              }}
+                              style={{ flexShrink: 1, paddingVertical: 6 }}
+                            >
+                              <Text numberOfLines={1} style={mobileStyles.destinationText}>
+                                Commute times to <Text style={{ color: colors.ink, fontWeight: '600' }}>{result.workplace.label}</Text> ·{' '}
+                                <Text style={styles.linkText}>Change</Text>
+                              </Text>
+                            </Pressable>
+                          ) : (
+                            <View />
+                          )}
+                          <View style={[styles.chipRow, { flexShrink: 1 }]}>
+                            {TOOLS[view === 'saved' ? 'saved' : 'results']
+                              .filter(([id]) => id !== 'changes' || !staleInventory)
+                              .filter(() => view !== 'saved' || saved.length > 0)
+                              .map(([id, short, full]) => (
+                                <Chip key={id} label={full} selected={tool === id} onPress={() => setTool(tool === id ? '' : id)}>
+                                  {short}
+                                </Chip>
+                              ))}
+                          </View>
                         </View>
-                      </View>
-                    }
-                    {view === 'saved' && <SavedComparison listings={saved} open={tool === 'compare'} />}
-                    {view === 'saved' && <TourPlanner listings={saved} open={tool === 'tours'} />}
-                    {view === 'results' && (
-                      <SavedSearches
-                        open={tool === 'searches'}
-                        filters={applied}
-                        disabled={busy}
-                        apply={(filters) => {
-                          const next = { ...filters, includeMap: WEB_MAP };
-                          setDraft({ ...formDefaults(), ...next });
-                          submit(next);
-                        }}
-                        check={(filters) => {
-                          if (serverState !== 'ready')
-                            return Promise.reject(new Error('Connect to the inventory server before checking a saved search.'));
-                          return api('search-check', { body: filters, token: activeToken });
-                        }}
-                      />
-                    )}
-                    {view === 'results' && !staleInventory && <ObservedChanges listings={result.matches} open={tool === 'changes'} />}
-                    {view === 'results' && staleInventory && (
-                      <View style={styles.empty}>
-                        <Text accessibilityRole="header" style={styles.panelTitle}>
-                          These results need a fresh check
-                        </Text>
-                        <Text style={styles.bodyText}>
-                          Their source freshness window has expired. The old results and map are hidden rather than presented as current
-                          availability. Search again to read the server’s cached inventory, or review source status. No provider refresh
-                          runs automatically from this notice.
-                        </Text>
-                        <Button secondary onPress={() => navigateTab('sources')}>
-                          Review source status
-                        </Button>
-                      </View>
-                    )}
-                    {(view === 'saved' || !staleInventory) && (
-                      <View style={[styles.resultLayout, split && styles.resultLayoutWide]}>
-                        {listVisible && (
-                          <View style={styles.results}>
-                            <Results
-                              onCheckBuilding={serverState === 'ready' ? checkBuilding : undefined}
-                              visible={visible}
-                              setVisible={setVisible}
-                              result={displayed}
-                              applied={applied}
-                              sort={scope === 'saved' ? SAVED_FILTERS.sort : applied.sort}
-                              onSort={selectSort}
-                              onPage={fetchPage}
-                              paging={busy}
-                              openCommute={() => setExpanded('commute')}
-                              commuteConfigured={commuteConfigured}
-                              checkingInventory={refreshing || serverState === 'checking' || busy}
-                              columns={split ? 1 : width >= 1200 ? 3 : wide ? 2 : 1}
-                              savedByKey={savedByKey}
-                              showMarkets={() => navigateTab('marketplaces')}
-                              showSources={() => navigateTab('sources')}
-                              onAlert={() => navigateTab('alerts')}
-                              onSave={saveListing}
-                              onSaveLink={saveLink}
-                              onRemove={(listing) =>
-                                setSaved((current) => current.filter((item) => listingKey(item) !== listingKey(listing)))
-                              }
-                              onError={setError}
-                              status={
-                                view === 'results' ? (
-                                  <Pressable
-                                    accessibilityRole="button"
-                                    accessibilityLabel={freshness + ' · Where listings come from'}
-                                    onPress={() => navigateTab('sources')}
-                                  >
-                                    <Text style={styles.smallMuted}>
-                                      {freshness} · <Text style={styles.linkText}>Where listings come from</Text>
-                                    </Text>
-                                  </Pressable>
-                                ) : undefined
-                              }
-                            />
-                          </View>
-                        )}
-                        {WEB_MAP && mapView && (
-                          <View style={[styles.mapPanel, split && styles.mapPanelWide]}>
-                            <Suspense fallback={<Text style={styles.smallMuted}>Loading map…</Text>}>
-                              <ListingMap
-                                points={points}
-                                total={displayed.total}
-                                visible
-                                onSave={(point) => saveListing(mapListing(point, displayed.matches))}
-                                isSaved={(point) => savedKeys.has(listingKey(mapListing(point, displayed.matches)))}
+                      }
+                      {view === 'saved' && <SavedComparison listings={saved} open={tool === 'compare'} />}
+                      {view === 'saved' && <TourPlanner listings={saved} open={tool === 'tours'} />}
+                      {view === 'results' && (
+                        <SavedSearches
+                          open={tool === 'searches'}
+                          filters={applied}
+                          disabled={busy}
+                          apply={(filters) => {
+                            const next = { ...filters, includeMap: WEB_MAP };
+                            setDraft({ ...formDefaults(), ...next });
+                            submit(next);
+                          }}
+                          check={(filters) => {
+                            if (serverState !== 'ready')
+                              return Promise.reject(new Error('Connect to the inventory server before checking a saved search.'));
+                            return api('search-check', { body: filters, token: activeToken });
+                          }}
+                        />
+                      )}
+                      {view === 'results' && !staleInventory && <ObservedChanges listings={result.matches} open={tool === 'changes'} />}
+                      {view === 'results' && staleInventory && (
+                        <View style={styles.empty}>
+                          <Text accessibilityRole="header" style={styles.panelTitle}>
+                            These results need a fresh check
+                          </Text>
+                          <Text style={styles.bodyText}>
+                            Their source freshness window has expired. The old results and map are hidden rather than presented as current
+                            availability. Search again to read the server’s cached inventory, or review source status. No provider refresh
+                            runs automatically from this notice.
+                          </Text>
+                          <Button secondary onPress={() => navigateTab('sources')}>
+                            Review source status
+                          </Button>
+                        </View>
+                      )}
+                      {(view === 'saved' || !staleInventory) && (
+                        <View style={[styles.resultLayout, split && styles.resultLayoutWide]}>
+                          {listVisible && (
+                            <View style={styles.results}>
+                              <Results
+                                onCheckBuilding={serverState === 'ready' ? checkBuilding : undefined}
+                                visible={visible}
+                                setVisible={setVisible}
+                                result={displayed}
+                                applied={applied}
+                                sort={scope === 'saved' ? SAVED_FILTERS.sort : applied.sort}
+                                onSort={selectSort}
+                                onPage={fetchPage}
+                                paging={busy}
+                                openCommute={() => setExpanded('commute')}
+                                commuteConfigured={commuteConfigured}
+                                checkingInventory={refreshing || serverState === 'checking' || busy}
+                                columns={split ? 1 : width >= 1200 ? 3 : wide ? 2 : 1}
+                                savedByKey={savedByKey}
+                                showMarkets={() => navigateTab('marketplaces')}
+                                showSources={() => navigateTab('sources')}
+                                onAlert={() => navigateTab('alerts')}
+                                onSave={saveListing}
+                                onSaveLink={saveLink}
+                                onRemove={(listing) =>
+                                  setSaved((current) => current.filter((item) => listingKey(item) !== listingKey(listing)))
+                                }
+                                onError={setError}
+                                status={
+                                  view === 'results' ? (
+                                    <Pressable
+                                      accessibilityRole="button"
+                                      accessibilityLabel={freshness + ' · Where listings come from'}
+                                      onPress={() => navigateTab('sources')}
+                                    >
+                                      <Text style={styles.smallMuted}>
+                                        {freshness} · <Text style={styles.linkText}>Where listings come from</Text>
+                                      </Text>
+                                    </Pressable>
+                                  ) : undefined
+                                }
                               />
-                            </Suspense>
-                          </View>
-                        )}
-                      </View>
-                    )}
-                  </>
+                            </View>
+                          )}
+                          {WEB_MAP && mapView && listMode && (
+                            <View style={[styles.mapPanel, split && styles.mapPanelWide]}>
+                              <Suspense fallback={<Text style={styles.smallMuted}>Loading map…</Text>}>
+                                <ListingMap
+                                  points={points}
+                                  total={displayed.total}
+                                  visible
+                                  onSave={(point) => saveListing(mapListing(point, displayed.matches))}
+                                  isSaved={(point) => savedKeys.has(listingKey(mapListing(point, displayed.matches)))}
+                                />
+                              </Suspense>
+                            </View>
+                          )}
+                        </View>
+                      )}
+                    </>
+                  </View>
                 )}
                 {view === 'more' && (
                   <ProfilePage

@@ -5,10 +5,10 @@
     <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no, viewport-fit=cover" />
     <title>Walkup</title>
-    <meta name="description" content="New York–area rentals from many listing sites, compared by rent and commute." />
+    <meta name="description" content="New York City apartments from more than 40 listing sites in one search, with real deals, building grades and rent-stabilized buildings." />
     <meta name="theme-color" content="#ffffff" />
     <!-- Installable on iPhone and Android; notifications on iPhone need the Home Screen app. The manifest is
-         fetched with credentials because the app is behind Cloudflare Access sign-in. -->
+         fetched with credentials so a signed-in session carries over. -->
     <link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Apartments" />
@@ -21,10 +21,15 @@
       html, body { height: 100%; }
       body { overflow: hidden; }
       #root { display: flex; height: 100%; flex: 1; }
+      /* Shown at once, before the app's script has loaded; the app replaces it. */
+      .boot { display: flex; flex-direction: column; flex: 1; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #fff; }
+      .boot-bar { height: 56px; display: flex; align-items: center; padding: 0 20px; border-bottom: 1px solid #ebebeb; }
+      .boot-brand { color: #d62a52; font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
+      .boot-note { margin: 32px auto; color: #6a6a6a; font-size: 15px; }
     </style>
   </head>
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>
-    <div id="root"></div>
+    <div id="root"><div class="boot"><div class="boot-bar"><span class="boot-brand">walkup</span></div><p class="boot-note">Loading apartments…</p></div></div>
   </body>
 </html>

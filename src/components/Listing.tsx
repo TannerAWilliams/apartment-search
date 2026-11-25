@@ -5,7 +5,7 @@ import type { CheckBuilding } from './BuildingReport.tsx';
 import { BuildingReport } from './BuildingReport.tsx';
 import { discoveryFacts, LAUNDRY_LABELS } from '../discovery.ts';
 import type React from 'react';
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { Platform, Pressable, Share, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { matchesRegion, REGIONS, searchBorough } from '../regions.ts';
 import { directionsLink, formatRent } from '../search.ts';
@@ -143,7 +143,11 @@ const card = StyleSheet.create({
   costTotal: { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 8, marginTop: 2 },
 });
 
-export function Listing({
+/**
+ * One apartment's card. Memoized: a results grid redraws only the cards whose apartment, saved state or open
+ * state changed, not all of them on every change elsewhere on the page.
+ */
+export const Listing = memo(function Listing({
   listing,
   selectedSource,
   workplace,
@@ -170,12 +174,12 @@ export function Listing({
   /** Opens with its details shown, as on the listing's own page. */
   defaultExpanded?: boolean;
   /** Told when the details open or close, so a grid can give the open card a whole row. */
-  onExpandedChange?: (expanded: boolean) => void;
+  onExpandedChange?: (id: string, expanded: boolean) => void;
 }) {
   const [expanded, setExpandedState] = useState(defaultExpanded);
   const setExpanded = (value: boolean) => {
     setExpandedState(value);
-    onExpandedChange?.(value);
+    onExpandedChange?.(listing.id, value);
   };
   // On a wide screen the open card shows its photo on the left and the details beside it, not one long column.
   const { width: screenWidth } = useWindowDimensions();
@@ -453,4 +457,4 @@ export function Listing({
       </View>
     </View>
   );
-}
+});
