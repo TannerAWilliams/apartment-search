@@ -93,10 +93,10 @@ test('searches read both lists, refreshed monthly; listings near a line or in a 
   const bucket = createMemoryBucket();
   expect(await openData(bucket, 1)).toMatchObject({ registry: {}, stations: [] });
   const { fetcher, requests } = openDataFetcher();
-  expect(await refreshOpenData(bucket, fetcher, now)).toEqual(['registry', 'stations', 'rail stops']);
+  expect(await refreshOpenData(bucket, fetcher, now)).toEqual(['stations', 'rail stops', 'registry']);
   expect(await refreshOpenData(bucket, fetcher, new Date(now.getTime() + 86_400_000)), 'fresh').toEqual([]);
   const calls = requests.length;
-  expect(await refreshOpenData(bucket, fetcher, new Date(now.getTime() + 31 * 86_400_000))).toEqual(['registry', 'stations', 'rail stops']);
+  expect(await refreshOpenData(bucket, fetcher, new Date(now.getTime() + 31 * 86_400_000))).toEqual(['stations', 'rail stops', 'registry']);
   expect(requests.length).toBeGreaterThan(calls);
   expect(await bucket.get(REGISTRY_KEY)).not.toBeNull();
   expect(await bucket.get(STATIONS_KEY)).not.toBeNull();
@@ -173,4 +173,15 @@ test('searches carry on without the lists when storage cannot be read', async ()
     },
   };
   expect(await openData(broken, 1)).toMatchObject({ registry: {}, stations: [] });
+});
+
+test('one open-data source failing keeps the others loading; all failing is an error', async () => {
+  const bucket = createMemoryBucket();
+  const { fetcher } = openDataFetcher();
+  const noStations: typeof fetcher = (url, init) =>
+    String(url).includes('data.ny.gov') ? Promise.resolve(new Response('busy', { status: 503 })) : fetcher(url, init);
+  const loaded = await refreshOpenData(bucket, noStations, now);
+  expect(loaded).not.toContain('stations');
+  expect(loaded).toContain('registry');
+  await expect(refreshOpenData(createMemoryBucket(), () => Promise.reject(new Error('offline')), now)).rejects.toThrow();
 });

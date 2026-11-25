@@ -5,6 +5,7 @@
  * - every New York City subway station (MTA, data.ny.gov), with the lines that stop there in the daytime.
  * Searches read them from storage at most every ten minutes per Worker.
  */
+import { log } from './log.ts';
 import * as v from 'valibot';
 import { isRecord } from '../src/domain.ts';
 import type { FetchTransport } from '../src/fetch-type.ts';
@@ -122,19 +123,40 @@ async function readDocument<T extends v.GenericSchema>(bucket: Bucket, key: stri
 export async function refreshOpenData(bucket: Bucket, fetcher: FetchTransport, now = new Date()) {
   const stale = (checkedAt: string | undefined) => !checkedAt || Date.parse(checkedAt) < now.getTime() - REFRESH_DAYS * 86_400_000;
   const refreshed: string[] = [];
-  if (stale((await readDocument(bucket, REGISTRY_KEY, RegistrySchema))?.checkedAt)) {
-    await bucket.put(REGISTRY_KEY, JSON.stringify(await loadStabilizedRegistry(fetcher, now)));
-    refreshed.push('registry');
+  // Each list on its own, the small ones first, so one source failing never keeps the others from loading.
+  const parts: [string, () => Promise<boolean>][] = [
+    [
+      'stations',
+      async () =>
+        stale((await readDocument(bucket, STATIONS_KEY, StationsSchema))?.checkedAt) &&
+        (await bucket.put(STATIONS_KEY, JSON.stringify(await loadStations(fetcher, now))), true),
+    ],
+    [
+      'rail stops',
+      async () => {
+        const rail = await readRailStops(bucket).catch(() => null);
+        return (
+          stale(rail?.checkedAt) && (await bucket.put(RAIL_STOPS_KEY, JSON.stringify(await loadRailStops(fetcher, rail?.stops, now))), true)
+        );
+      },
+    ],
+    [
+      'registry',
+      async () =>
+        stale((await readDocument(bucket, REGISTRY_KEY, RegistrySchema))?.checkedAt) &&
+        (await bucket.put(REGISTRY_KEY, JSON.stringify(await loadStabilizedRegistry(fetcher, now))), true),
+    ],
+  ];
+  const failures: unknown[] = [];
+  for (const [name, refresh] of parts) {
+    try {
+      if (await refresh()) refreshed.push(name);
+    } catch (cause) {
+      log.warn('open_data_failed', { part: name, error: cause instanceof Error ? cause.message : String(cause) });
+      failures.push(cause);
+    }
   }
-  if (stale((await readDocument(bucket, STATIONS_KEY, StationsSchema))?.checkedAt)) {
-    await bucket.put(STATIONS_KEY, JSON.stringify(await loadStations(fetcher, now)));
-    refreshed.push('stations');
-  }
-  const rail = await readRailStops(bucket).catch(() => null);
-  if (stale(rail?.checkedAt)) {
-    await bucket.put(RAIL_STOPS_KEY, JSON.stringify(await loadRailStops(fetcher, rail?.stops, now)));
-    refreshed.push('rail stops');
-  }
+  if (failures.length === parts.length) throw failures[0];
   return refreshed;
 }
 

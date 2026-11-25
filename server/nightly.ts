@@ -7,6 +7,7 @@
  *   are reported within a couple of hours instead of the next morning.
  * An admin turns either one off on their profile.
  */
+import { refreshOpenData } from './open-data.ts';
 import * as v from 'valibot';
 import type { AppEnv, Bucket, SourceFetch } from './contracts.ts';
 import { log } from './log.ts';
@@ -64,7 +65,10 @@ export async function runScheduled(env: AppEnv & { BUCKET: Bucket }, deps: Sched
   if (isNightlyHour(now)) return runNightly(env, { ...deps, now });
   if (isDaytimeHour(now)) return runDaytime(env, { fetcher: deps.fetcher, now });
   if (isDigestHour(now)) return `digest:${await runDigest(env, { now })}`;
-  return 'idle';
+  // Quiet hours keep the subway stations, rail stops and rent registry loaded (each is fetched once a month);
+  // the nightly run does it too, but only once every source has synced.
+  const refreshed = await refreshOpenData(env.BUCKET, deps.fetcher, now).catch(() => []);
+  return refreshed.length ? `open-data:${refreshed.join(',')}` : 'idle';
 }
 
 /** The daytime check: the quick sources, then alerts. Says what it did. */
