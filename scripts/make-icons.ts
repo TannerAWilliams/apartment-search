@@ -2,13 +2,13 @@
 //   bun scripts/make-icons.ts
 import { chromium } from 'playwright';
 
-/** The brownstone mark (public/icons/walkup.svg), on its own brown, inset by `inset` so a maskable icon keeps it in the safe zone. */
+/** The brownstone mark (public/icons/walkup.svg), on its own sky color, inset by `inset` so a maskable icon keeps it in the safe zone. */
 const mark = await Bun.file(new URL('../public/icons/walkup.svg', import.meta.url)).text();
 const drawing = mark.slice(mark.indexOf('>') + 1, mark.lastIndexOf('</svg>'));
 const svg = (size: number, { rounded = true, inset = 0 } = {}) => {
   const pad = size * inset;
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
-    <rect width="${size}" height="${size}" rx="${rounded ? size * 0.22 : 0}" fill="#8b4a2b"/>
+    <rect width="${size}" height="${size}" rx="${rounded ? size * 0.22 : 0}" fill="#f1e4cc"/>
     <svg x="${pad}" y="${pad}" width="${size - pad * 2}" height="${size - pad * 2}" viewBox="0 0 32 32">${drawing}</svg>
   </svg>`;
 };
