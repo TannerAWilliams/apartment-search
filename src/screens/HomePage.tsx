@@ -47,7 +47,7 @@ export function HomePage({
   const column = { width: '100%', maxWidth: 1120, alignSelf: 'center' } as const;
   const heading = { fontSize: wide ? 26 : 22, lineHeight: wide ? 32 : 28, fontWeight: '700', color: colors.ink } as const;
   return (
-    <View style={{ paddingBottom: 20 }}>
+    <View>
       <View style={[column, { gap: 18, paddingTop: wide ? 28 : 8, paddingBottom: 8, zIndex: 5 }]}>
         <Text
           accessibilityRole="header"
@@ -111,12 +111,21 @@ export function HomePage({
         )}
       </View>
 
-      <View style={[column, { gap: 14, paddingVertical: 24 }]}>
+      {/* The footer's own line follows, so the last question has none and the page ends without a gap. */}
+      <View style={[column, { gap: 14, paddingTop: 24 }]}>
         <Text accessibilityRole="header" style={heading}>
           Questions
         </Text>
-        {QUESTIONS.map(([question, answer]) => (
-          <View key={question} style={{ gap: 4, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+        {QUESTIONS.map(([question, answer], index) => (
+          <View
+            key={question}
+            style={{
+              gap: 4,
+              paddingVertical: 10,
+              borderBottomWidth: index < QUESTIONS.length - 1 ? 1 : 0,
+              borderBottomColor: colors.border,
+            }}
+          >
             <Text style={{ fontSize: 16, fontWeight: '600', color: colors.ink }}>{question}</Text>
             <Text style={styles.bodyText}>{answer}</Text>
           </View>
