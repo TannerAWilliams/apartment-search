@@ -219,13 +219,24 @@ export function Filters({
             })}
           </View>
           {panel === 'more' && (
-            <Field
-              label="Minimum square feet"
-              value={draft.minSquareFeet == null ? '' : String(draft.minSquareFeet)}
-              onChangeText={(text) => set('minSquareFeet')(wholeNumber(text, 100000))}
-              placeholder="Any size"
-              keyboardType="number-pad"
-            />
+            <>
+              {/* Its own section, a tap each, as listing apps offer size. */}
+              <Text accessibilityRole="header" style={FILTER_HEADING}>
+                Size
+              </Text>
+              <View style={styles.chipRow}>
+                {([null, 500, 750, 1000, 1500] as const).map((feet) => (
+                  <Chip
+                    key={String(feet)}
+                    label={feet === null ? 'Any size' : `At least ${feet.toLocaleString('en-US')} square feet`}
+                    selected={(draft.minSquareFeet == null || draft.minSquareFeet === '' ? null : Number(draft.minSquareFeet)) === feet}
+                    onPress={() => set('minSquareFeet')(feet === null ? '' : String(feet))}
+                  >
+                    {feet === null ? 'Any' : `${feet.toLocaleString('en-US')}+ sq ft`}
+                  </Chip>
+                ))}
+              </View>
+            </>
           )}
         </>
       )}

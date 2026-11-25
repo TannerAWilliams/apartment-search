@@ -526,7 +526,9 @@ test('feature filters require reported facts rather than matching unknown detail
   await page.getByRole('dialog').getByRole('button', { name: '2 BR', exact: true }).click();
   await page.getByRole('button', { name: '1 bathroom', exact: true }).click();
   await page.getByRole('button', { name: '2 bathrooms', exact: true }).click();
-  await page.getByRole('textbox', { name: 'Minimum square feet', exact: true }).fill('900');
+  // Size is its own section, chosen with a tap.
+  await expect(page.getByRole('header', { name: 'Size' }).or(page.getByText('Size', { exact: true }))).toBeVisible();
+  await page.getByRole('button', { name: 'At least 750 square feet', exact: true }).click();
   await page.getByRole('checkbox', { name: 'Pets allowed', exact: true }).click();
   await expect(page.getByRole('checkbox', { name: 'Pets allowed', exact: true })).toBeChecked();
   await page.getByRole('dialog').getByRole('button', { name: 'In unit', exact: true }).click();
@@ -536,7 +538,7 @@ test('feature filters require reported facts rather than matching unknown detail
   const search = requests.filter((request) => request.path === '/api/search').at(-1)!;
   expect(search.body?.bedroomOptions).toEqual([1, 2]);
   expect(search.body?.bathroomOptions).toEqual([1, 2]);
-  expect(search.body?.minSquareFeet).toBe(900);
+  expect(search.body?.minSquareFeet).toBe(750);
   expect(search.body?.petsRequired).toBe(true);
   expect(search.body?.laundry).toBe('in_unit');
   // Baths on the card with the size; the page lists the other facts.
