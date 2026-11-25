@@ -130,6 +130,12 @@ export async function recentlyGathered(bucket: Bucket, key: string, gather: () =
   return value;
 }
 
+/** The listings kept for this key, if they were read in the last 15 minutes. */
+export function keptGathered(bucket: Bucket, key: string, now = Date.now()) {
+  const hit = recent.get(bucket)?.get(key);
+  return hit && now - hit.at < GATHER_MS ? hit.value : undefined;
+}
+
 /** Every listing with its comparison with similar apartments and its building's facts. */
 async function score(listings: ListingData[], bucket: Bucket | undefined) {
   const buildings = bucket ? await readBuildingFacts(bucket).catch(() => ({})) : {};
@@ -398,15 +404,20 @@ export async function search(filters: SearchFilters, env: AppEnv, fetcher: Sourc
   }
   // The same listings serve every search that differs only in its filters (All, Deals, New), so they are kept
   // for 15 minutes, until a source check changes them: a second search re-filters them instead of reading and scoring every listing again.
-  const key = JSON.stringify({
-    narrow,
-    sourceRegion,
-    officialOnly: filters.officialOnly,
-    liveOnly: filters.liveOnly,
-    includeCached: filters.includeCached,
-    status,
-  });
-  const found = bucket && !observationsOnly ? await recentlyGathered(bucket, key, gather) : await gather();
+  const keyFor = (narrowed: SnapshotFilter, region: string) =>
+    JSON.stringify({
+      narrow: narrowed,
+      sourceRegion: region,
+      officialOnly: filters.officialOnly,
+      liveOnly: filters.liveOnly,
+      includeCached: filters.includeCached,
+      status,
+    });
+  const key = keyFor(narrow, sourceRegion);
+  // A narrower search (one area, a top rent) reuses every listing when they are already kept, such as by the
+  // search the app runs on opening: the listings it does not match are left out after, by matchListings.
+  const everything = bucket && key !== keyFor({}, 'all') ? keptGathered(bucket, keyFor({}, 'all')) : undefined;
+  const found = everything ? await everything : bucket && !observationsOnly ? await recentlyGathered(bucket, key, gather) : await gather();
   kept = bucket && !observationsOnly ? found : null;
   return finish(found.listings, found.mode, found.sources, [...found.notices], found.snapshotMonth);
 }

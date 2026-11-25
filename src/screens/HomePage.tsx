@@ -1,13 +1,12 @@
 /**
  * The home page, at the site's address, for everyone, laid out as listing sites lay theirs out: a search bar
- * (where, bedrooms, the most rent), popular neighborhoods, then real apartments (today's best deals and what is
- * new), then what Walkup does, plans and common questions. Signing in is only needed to save, get alerts or share.
+ * (where, bedrooms, the most rent), then what Walkup does, plans and common questions. It shows no apartments, so it
+ * opens at once; the search the app runs on opening readies the server for the first search made here. Signing in
+ * is only needed to save, get alerts or share.
  */
-import { useEffect, useState } from 'react';
-import { Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native';
+import { Pressable, Text, useWindowDimensions, View } from 'react-native';
 import { HomeSearch, type NeighborhoodLoader } from '../components/HomeSearch.tsx';
-import { Listing } from '../components/Listing.tsx';
-import type { ListingData, SearchFilters, SourceLink, Workplace } from '../domain.ts';
+import type { SearchFilters } from '../domain.ts';
 import { colors, styles } from '../styles.ts';
 
 const FEATURES: [title: string, body: string][] = [
@@ -31,98 +30,22 @@ const QUESTIONS: [question: string, answer: string][] = [
   ],
 ];
 
-/** What a row of apartments on the home page needs to show and act on its cards. */
-export type ListingActions = {
-  workplace: Workplace;
-  onOpen: (listing: ListingData) => void;
-  onSave: (listing: ListingData) => void;
-  onSaveLink: (listing: ListingData, link: SourceLink) => void;
-  saved: (listing: ListingData) => boolean;
-  onError: (message: string) => void;
-};
-
-/** A titled row of apartments that scrolls sideways, with a link to all of them. */
-function ListingRow({
-  title,
-  filters,
-  preview,
-  actions,
-  onSeeAll,
-}: {
-  title: string;
-  filters: Partial<SearchFilters>;
-  preview: (filters: Partial<SearchFilters>) => Promise<ListingData[]>;
-  actions: ListingActions;
-  onSeeAll: () => void;
-}) {
-  const [listings, setListings] = useState<ListingData[] | null>(null);
-  useEffect(() => {
-    let current = true;
-    preview(filters)
-      .then((found) => current && setListings(found.slice(0, 10)))
-      .catch(() => current && setListings([]));
-    return () => {
-      current = false;
-    };
-    // biome-ignore lint/correctness/useExhaustiveDependencies: each row asks once
-  }, []);
-  if (listings && listings.length === 0) return null;
-  return (
-    <View style={{ gap: 12, paddingVertical: 12 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
-        <Text accessibilityRole="header" style={{ fontSize: 22, fontWeight: '700', color: colors.ink }}>
-          {title}
-        </Text>
-        <Pressable accessibilityRole="link" accessibilityLabel={`See all: ${title}`} onPress={onSeeAll}>
-          <Text style={styles.linkText}>See all</Text>
-        </Pressable>
-      </View>
-      {listings === null ? (
-        <Text style={styles.smallMuted}>Loading apartments…</Text>
-      ) : (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 16, paddingBottom: 4 }}>
-          {listings.map((listing) => (
-            <View key={listing.id} style={{ width: 260 }}>
-              <Listing
-                listing={listing}
-                workplace={actions.workplace}
-                onOpen={actions.onOpen}
-                onSave={actions.onSave}
-                onSaveLink={actions.onSaveLink}
-                onError={actions.onError}
-                saved={actions.saved(listing)}
-              />
-            </View>
-          ))}
-        </ScrollView>
-      )}
-    </View>
-  );
-}
-
 export function HomePage({
   signedIn,
   onSearch,
   onOpen,
   loadNeighborhoods,
-  preview,
-  actions,
 }: {
   signedIn: boolean;
   /** Searches with these filters and opens the results. */
   onSearch: (changes: Partial<SearchFilters>) => void;
   onOpen: (tab: string) => void;
   loadNeighborhoods?: NeighborhoodLoader;
-  /** A few apartments for a row, from a search; none while the server cannot be reached. */
-  preview?: (filters: Partial<SearchFilters>) => Promise<ListingData[]>;
-  actions: ListingActions;
 }) {
   const { width } = useWindowDimensions();
   const wide = width >= 900;
   const column = { width: '100%', maxWidth: 1120, alignSelf: 'center' } as const;
   const heading = { fontSize: wide ? 26 : 22, lineHeight: wide ? 32 : 28, fontWeight: '700', color: colors.ink } as const;
-  const deals: Partial<SearchFilters> = { region: 'nyc', belowMarket: true, sort: 'value' };
-  const fresh: Partial<SearchFilters> = { region: 'nyc', newWithinDays: 1, sort: 'newest' };
   return (
     <View style={{ paddingBottom: 20 }}>
       <View style={[column, { gap: 18, paddingTop: wide ? 28 : 8, paddingBottom: 8, zIndex: 5 }]}>
@@ -138,13 +61,6 @@ export function HomePage({
         </Text>
         <HomeSearch onSearch={onSearch} loadNeighborhoods={loadNeighborhoods} />
       </View>
-
-      {preview && (
-        <View style={column}>
-          <ListingRow title="Today’s best deals" filters={deals} preview={preview} actions={actions} onSeeAll={() => onSearch(deals)} />
-          <ListingRow title="Listed today" filters={fresh} preview={preview} actions={actions} onSeeAll={() => onSearch(fresh)} />
-        </View>
-      )}
 
       <View style={[column, { gap: 18, paddingVertical: 24 }]}>
         <Text accessibilityRole="header" style={heading}>

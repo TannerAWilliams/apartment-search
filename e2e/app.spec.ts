@@ -1350,14 +1350,12 @@ test('an apartment has its own page from a shared link, with its details open', 
   await expect(page.getByRole('tab', { name: 'Search', exact: true })).toHaveAttribute('aria-selected', 'true');
 });
 
-test('the home page searches by where, bedrooms and rent, and shows real apartments first', async ({ page }) => {
+test('the home page searches by where, bedrooms and rent, and readies the search without showing apartments', async ({ page }) => {
   const { requests } = await mockApp(page, { account: 'renter@example.test', start: '/', nyc: true, insights: true });
   await expect(page.getByRole('heading', { name: 'Find your next New York apartment', exact: true })).toBeVisible();
-  // Real apartments on the home page, opening their own page.
-  await expect(page.getByRole('heading', { name: 'Listed today', exact: true })).toBeVisible();
-  await expect
-    .poll(() => requests.filter(({ path, body }) => path === '/api/search' && body?.belowMarket === true).length)
-    .toBeGreaterThan(0);
+  // No apartments on the home page; one search runs behind it, so the server is ready for the person's own.
+  await expect.poll(() => requests.filter(({ path }) => path === '/api/search').length).toBe(1);
+  await expect(page.getByRole('heading', { name: 'Listed today', exact: true })).toHaveCount(0);
   // Where is suggested as it is typed; several bedroom counts; the most rent.
   await page.getByRole('textbox', { name: 'Where', exact: true }).fill('brook');
   await page.getByRole('button', { name: 'Brooklyn, Area', exact: true }).click();

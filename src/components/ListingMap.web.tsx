@@ -11,6 +11,9 @@ import 'leaflet.markercluster';
 import 'leaflet/dist/leaflet.css';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import '@maplibre/maplibre-gl-leaflet';
+// For the card thumbnails (liberty-snapshot.web.tsx), which load MapLibre through this file: a library that two
+// lazily loaded files import is bundled into the code every visitor downloads first.
+export { default as maplibregl } from 'maplibre-gl';
 import { safeListingUrl } from '../marketplaces.ts';
 import { bedroomLabel, formatRent } from '../search.ts';
 

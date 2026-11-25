@@ -2,7 +2,7 @@ import { searchAvailabilityMessage } from './src/search-availability.ts';
 import { ErrorBoundary } from './src/components/ErrorBoundary.tsx';
 import { useAccountSaved, useHashNavigation, useInventoryClock, useSavedListings } from './src/hooks/app-hooks.ts';
 import { inventoryExpired } from './src/inventory-freshness.ts';
-import type { ListingData, SourceLink, SearchFilters, SearchResult } from './src/domain.ts';
+import type { ListingData, SourceLink, SearchResult } from './src/domain.ts';
 
 import { Modal, Platform, Pressable, ScrollView, StatusBar, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
@@ -158,15 +158,6 @@ function ApartmentSearch() {
     loadHousing,
     checkBuilding,
   } = useServer({ appliedFilters, searchVersion, submitted, setResult, setError });
-  /** A few apartments for a row on the home page. */
-  const previewListings = useCallback(
-    (changes: Partial<SearchFilters>) =>
-      api<SearchResult>('search', {
-        body: parseFilters({ ...SEARCH_DEFAULTS, liveOnly: true, ...changes, includeMap: false }),
-        token: activeToken,
-      }).then(({ matches }) => matches),
-    [activeToken],
-  );
   const suggestPlaces = useMemo(
     () =>
       serverState === 'ready'
@@ -880,15 +871,6 @@ function ApartmentSearch() {
                         void submit(next);
                       }}
                       loadNeighborhoods={serverState === 'ready' ? loadNeighborhoods : undefined}
-                      preview={serverState === 'ready' ? previewListings : undefined}
-                      actions={{
-                        workplace: result.workplace,
-                        onOpen: openListing,
-                        onSave: saveListing,
-                        onSaveLink: saveLink,
-                        saved: (listing) => savedByKey.has(listingKey(listing)),
-                        onError: setError,
-                      }}
                     />
                   )}
                   {view === 'account' && <AccountPrompt reason={ACCOUNT_TABS[tab] ?? 'save apartments'} onSignedIn={signedIn} />}

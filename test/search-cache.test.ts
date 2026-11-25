@@ -77,3 +77,16 @@ test('the companies in the app settings are counted once per saved state and dep
   // Without a cache it counts them directly.
   expect((await savedAppConfig(env, appConfig(env), undefined)).companies).toEqual(first.companies);
 });
+
+test('a narrower search reuses every listing kept by a wider one, and matches the same apartments', async () => {
+  const fresh = await search(
+    parseFilters({ region: 'brooklyn', bedrooms: null, maxRent: 3000 }),
+    { BUCKET: createMemoryBucket() },
+    offline,
+  );
+  const env = { BUCKET: createMemoryBucket() };
+  await search(parseFilters({ region: 'all', bedrooms: null, maxRent: null }), env, offline);
+  const reused = await search(parseFilters({ region: 'brooklyn', bedrooms: null, maxRent: 3000 }), env, offline);
+  expect(reused.total).toBe(fresh.total);
+  expect(reused.matches.every(({ rent }) => rent <= 3000)).toBe(true);
+});

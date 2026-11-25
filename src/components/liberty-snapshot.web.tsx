@@ -15,31 +15,33 @@ let queue: Promise<unknown> = Promise.resolve();
 const done = new Map<string, Promise<string>>();
 
 function start() {
-  renderer ??= import('maplibre-gl').then(
-    ({ default: maplibregl }) =>
-      new Promise((resolve, reject) => {
-        const box = document.createElement('div');
-        Object.assign(box.style, { position: 'fixed', left: '-10000px', top: '0', width: '400px', height: '240px' });
-        document.body.append(box);
-        try {
-          const map = new maplibregl.Map({
-            container: box,
-            style: LIBERTY,
-            interactive: false,
-            attributionControl: false,
-            center: [-73.98, 40.75],
-            zoom: ZOOM,
-            // Kept after each frame, so the picture can be read back as an image.
-            canvasContextAttributes: { preserveDrawingBuffer: true },
-            fadeDuration: 0,
-          });
-          map.once('load', () => resolve({ map, box }));
-          map.once('error', () => reject(new Error('The map style did not load.')));
-        } catch (error) {
-          reject(error);
-        }
-      }),
-  );
+  renderer ??=
+    // The web map's file by name: the type check reads the phone version under the plain name.
+    import('./ListingMap.web').then(
+      ({ maplibregl }) =>
+        new Promise((resolve, reject) => {
+          const box = document.createElement('div');
+          Object.assign(box.style, { position: 'fixed', left: '-10000px', top: '0', width: '400px', height: '240px' });
+          document.body.append(box);
+          try {
+            const map = new maplibregl.Map({
+              container: box,
+              style: LIBERTY,
+              interactive: false,
+              attributionControl: false,
+              center: [-73.98, 40.75],
+              zoom: ZOOM,
+              // Kept after each frame, so the picture can be read back as an image.
+              canvasContextAttributes: { preserveDrawingBuffer: true },
+              fadeDuration: 0,
+            });
+            map.once('load', () => resolve({ map, box }));
+            map.once('error', () => reject(new Error('The map style did not load.')));
+          } catch (error) {
+            reject(error);
+          }
+        }),
+    );
   return renderer;
 }
 
