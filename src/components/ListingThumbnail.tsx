@@ -9,6 +9,7 @@ import { libertySnapshot } from './liberty-snapshot';
 import { Image, Platform, StyleSheet, Text, View } from 'react-native';
 import Svg, { Path, Rect } from 'react-native-svg';
 import { colors } from '../styles.ts';
+import { palette } from '../palette.ts';
 
 /**
  * OpenStreetMap's tiles are 256 pixels with no sharper version, so they are drawn at 192 points, close to their
@@ -63,7 +64,7 @@ const thumbnail = StyleSheet.create({
     bottom: 4,
     fontSize: 9,
     lineHeight: 12,
-    color: '#444',
+    color: palette.gray[8],
     backgroundColor: '#ffffffcc',
     paddingHorizontal: 4,
     borderRadius: 3,
@@ -111,11 +112,11 @@ export function ListingThumbnail({
     return (
       <View style={thumbnail.fill} aria-hidden>
         <Svg width={56} height={56} viewBox="0 0 32 32">
-          <Rect x={9} y={6} width={11} height={20} rx={1} fill="#c9c9c9" />
-          <Rect x={21} y={12} width={4} height={14} rx={0.5} fill="#dcdcdc" />
+          <Rect x={9} y={6} width={11} height={20} rx={1} fill={palette.gray[1]} />
+          <Rect x={21} y={12} width={4} height={14} rx={0.5} fill={palette.gray[1]} />
           <Path
             d="M11 10h2.5v2H11zM15.5 10H18v2h-2.5zM11 14h2.5v2H11zM15.5 14H18v2h-2.5zM11 18h2.5v2H11zM15.5 18H18v2h-2.5z"
-            fill="#f7f7f7"
+            fill={palette.gray[0]}
           />
         </Svg>
       </View>
@@ -134,7 +135,7 @@ export function ListingThumbnail({
   const { width, height } = size;
   return (
     <View
-      style={[StyleSheet.absoluteFill, { overflow: 'hidden', backgroundColor: '#f2efe9' }]}
+      style={[StyleSheet.absoluteFill, { overflow: 'hidden', backgroundColor: palette.gray[0] }]}
       aria-hidden
       onLayout={({ nativeEvent }) => setSize({ width: nativeEvent.layout.width, height: nativeEvent.layout.height })}
     >

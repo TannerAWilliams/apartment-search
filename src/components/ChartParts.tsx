@@ -4,6 +4,7 @@ import { type LayoutChangeEvent, Platform, Text, View } from 'react-native';
 import { CHART_INK } from '../chart-colors.ts';
 import { styles } from '../styles.ts';
 import { Chip } from './ui.tsx';
+import { palette } from '../palette.ts';
 
 /** The width the chart has to draw in, measured once laid out. */
 export function useWidth(): [number, (event: LayoutChangeEvent) => void] {
@@ -68,7 +69,7 @@ export function Tooltip({
         top,
         ...(alignRight ? { right: left } : { left }),
         backgroundColor: CHART_INK.surface,
-        borderColor: 'rgba(11,11,11,0.10)',
+        borderColor: palette.gray[1],
         borderWidth: 1,
         borderRadius: 8,
         paddingVertical: 8,

@@ -19,6 +19,7 @@ import { SavedNotes } from './SavedNotes.tsx';
 import { listingKey } from '../listings.ts';
 import { HeartIcon } from './Icons.tsx';
 import { ListingThumbnail } from './ListingThumbnail.tsx';
+import { palette } from '../palette.ts';
 
 const CHECK_TIME = new Intl.DateTimeFormat('en-US', {
   timeZone: 'America/New_York',
@@ -144,7 +145,7 @@ const card = StyleSheet.create({
   priceLine: { fontSize: 15, lineHeight: 20, color: colors.ink, marginTop: 4 },
   pageTitle: { fontSize: 26, lineHeight: 32, fontWeight: '700' },
   pagePrice: { fontSize: 20, lineHeight: 28, marginTop: 8 },
-  notice: { fontSize: 13, lineHeight: 18, color: '#805213' },
+  notice: { fontSize: 13, lineHeight: 18, color: palette.amber[7] },
   details: { paddingTop: 4, gap: 12 },
   open: { flexDirection: 'row', alignItems: 'flex-start', gap: 40 },
   openSummary: { width: '40%', maxWidth: 440 },

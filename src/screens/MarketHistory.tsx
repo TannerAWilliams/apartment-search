@@ -6,7 +6,7 @@
 import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import { type Insight, InsightCards } from '../components/InsightCards.tsx';
 import { Pressable, Text, View } from 'react-native';
-import { SERIES_COLORS } from '../chart-colors.ts';
+import { CHART_INK, SERIES_COLORS } from '../chart-colors.ts';
 import { ChartCard } from '../components/ChartParts.tsx';
 import { LineChart } from '../components/LineChart.tsx';
 import { RankedList, ScatterChart, SeasonColumns, YearHeatmap } from '../components/MarketCharts.tsx';
@@ -672,7 +672,7 @@ export function MarketHistory({
               legend={[
                 ...(area?.type === 'neighborhood' ? [{ label: area.name, color: SERIES_COLORS[1], shape: 'dot' as const }] : []),
                 ...(borough ? [{ label: `Other ${borough} neighborhoods`, color: SERIES_COLORS[0], shape: 'dot' as const }] : []),
-                ...(borough ? [{ label: 'Other neighborhoods', color: '#c9c8c1', shape: 'dot' as const }] : []),
+                ...(borough ? [{ label: 'Other neighborhoods', color: CHART_INK.context, shape: 'dot' as const }] : []),
               ]}
               table={{
                 columns: ['Neighborhood', `${seriesFor(config.price)?.label} vs a year earlier`, seriesFor(config.cuts)?.label ?? ''],

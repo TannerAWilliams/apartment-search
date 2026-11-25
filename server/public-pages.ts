@@ -54,11 +54,11 @@ function page(origin: string, path: string, title: string, description: string, 
 body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:#222;background:#fff;line-height:1.5}
 header,main,footer{max-width:880px;margin:0 auto;padding:16px 20px}
 header{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #ddd}
-a{color:#222}.brand{color:#d62a52;font-weight:800;font-size:22px;text-decoration:none;letter-spacing:-.5px}
+a{color:#222}.brand{color:#db164e;font-weight:800;font-size:22px;text-decoration:none;letter-spacing:-.5px}
 h1{font-size:34px;line-height:1.15;letter-spacing:-.6px;margin:24px 0 8px}h2{font-size:22px;margin:32px 0 12px}
-.muted{color:#6a6a6a}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.muted{color:#5f5b59}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
 .tile{border:1px solid #ddd;border-radius:12px;padding:14px}.tile b{display:block;font-size:24px}
-.cta{display:inline-block;background:#d62a52;color:#fff;text-decoration:none;font-weight:600;padding:12px 20px;border-radius:10px;margin:16px 0}
+.cta{display:inline-block;background:#db164e;color:#fff;text-decoration:none;font-weight:600;padding:12px 20px;border-radius:10px;margin:16px 0}
 ul.links{columns:2;padding-left:18px}footer{border-top:1px solid #ddd;margin-top:40px;font-size:14px}
 </style></head><body>
 <header><a class="brand" href="/">walkup</a><a href="/">Sign in</a></header>

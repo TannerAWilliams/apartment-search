@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Text, TextInput, View } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Button, Chip } from './ui.tsx';
-import { styles } from '../styles.ts';
+import { colors, styles } from '../styles.ts';
 import { emptySavedNote, NOTE_LIMIT, parseSavedNote, savedNoteKey, VIEWING_STATUSES } from '../saved-notes.ts';
 
 export function SavedNotes({ identity }: { identity: string }) {
@@ -77,7 +77,7 @@ export function SavedNotes({ identity }: { identity: string }) {
               setNote((current) => ({ ...current, text }));
               setMessage('Unsaved changes');
             }}
-            style={{ minHeight: 88, borderWidth: 1, borderColor: '#999', borderRadius: 8, padding: 10, fontSize: 16 }}
+            style={{ minHeight: 88, borderWidth: 1, borderColor: colors.field, borderRadius: 8, padding: 10, fontSize: 16 }}
           />
           <Text style={styles.smallMuted}>
             {note.text.length}/{NOTE_LIMIT} characters

@@ -1,24 +1,27 @@
+import { palette } from './palette.ts';
+
 /**
- * Chart colors. The categorical slots are used in this order and never cycled; the first four pass the palette
- * validator on the app's white surface (adjacent colorblind separation ΔE ≥ 9). Slots 3 and 4 are under 3:1
- * against white, so every chart that uses them also labels its lines and offers a table.
+ * Chart colors, from the palette's scales (src/palette.ts). The categorical slots are used in this order and never
+ * cycled; all four pass the palette validator on white, and each has at least 3:1 contrast with it. Green and
+ * orange are closest for red-green colorblind readers (ΔE 8.2), so charts that use both also label their lines.
  */
-export const SERIES_COLORS = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100'] as const;
+export const SERIES_COLORS = [palette.blue[5], palette.orange[4], palette.green[4], palette.purple[5]] as const;
 export const CHART_INK = {
-  primary: '#0b0b0b',
-  secondary: '#52514e',
-  muted: '#898781',
-  grid: '#e1e0d9',
-  axis: '#c3c2b7',
+  primary: palette.gray[9],
+  secondary: palette.gray[7],
+  muted: palette.gray[5],
+  grid: palette.gray[1],
+  axis: palette.gray[2],
   /** The gray that everything except the highlighted mark takes. */
-  context: '#c9c8c1',
+  context: palette.gray[2],
   surface: '#ffffff',
 };
 
+const rgb = (hex: string) => [1, 3, 5].map((at) => Number.parseInt(hex.slice(at, at + 2), 16));
 /** Blue (lower) to red (higher) through a neutral gray: a diverging scale. */
-const NEUTRAL = [0xf0, 0xef, 0xec];
-const LOWER = [0x25, 0x6a, 0xbf];
-const HIGHER = [0xc9, 0x3a, 0x39];
+const NEUTRAL = rgb(palette.gray[0]);
+const LOWER = rgb(palette.blue[6]);
+const HIGHER = rgb(palette.red[6]);
 
 /** The color for a position from −1 (lower) through 0 (no change) to 1 (higher). */
 export function divergingColor(position: number) {

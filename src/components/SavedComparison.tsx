@@ -77,13 +77,13 @@ export function SavedComparison({ listings, open: shown }: { listings: ListingDa
                       height: 18,
                       borderRadius: 4,
                       borderWidth: 2,
-                      borderColor: checked ? colors.green : '#a3afbf',
+                      borderColor: checked ? colors.green : colors.field,
                       backgroundColor: checked ? colors.green : 'transparent',
                       alignItems: 'center',
                       justifyContent: 'center',
                     }}
                   >
-                    {checked && <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700', lineHeight: 14 }}>✓</Text>}
+                    {checked && <Text style={{ color: colors.white, fontSize: 12, fontWeight: '700', lineHeight: 14 }}>✓</Text>}
                   </View>
                   <Text style={{ color: colors.ink, flexShrink: 1 }}>{comparisonTitle(listing)}</Text>
                 </Pressable>
@@ -112,7 +112,7 @@ export function SavedComparison({ listings, open: shown }: { listings: ListingDa
               {selected.map((listing) => (
                 <View
                   key={listingKey(listing)}
-                  style={{ width: 260, padding: 12, borderWidth: 1, borderColor: '#aab3bf', borderRadius: 8, gap: 10 }}
+                  style={{ width: 260, padding: 12, borderWidth: 1, borderColor: colors.border, borderRadius: 8, gap: 10 }}
                 >
                   <Text accessibilityRole="header" style={styles.fieldLabel}>
                     {comparisonTitle(listing)}

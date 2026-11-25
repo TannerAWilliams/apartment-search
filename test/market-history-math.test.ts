@@ -1,3 +1,4 @@
+import { palette } from '../src/palette.ts';
 import { expect, test } from 'bun:test';
 import { divergingColor, textOn } from '../src/chart-colors.ts';
 import {
@@ -208,10 +209,10 @@ test('pointer positions snap to the nearest month, and diverging positions stay 
 
 test('the diverging scale runs blue through gray to red, with readable text on its ends', () => {
   expect([divergingColor(0), divergingColor(1), divergingColor(-1), divergingColor(2)]).toEqual([
-    '#f0efec',
-    '#c93a39',
-    '#256abf',
-    '#c93a39',
+    palette.gray[0],
+    palette.red[6],
+    palette.blue[6],
+    palette.red[6],
   ]);
-  expect([textOn(0.9), textOn(-0.2)]).toEqual(['#ffffff', '#0b0b0b']);
+  expect([textOn(0.9), textOn(-0.2)]).toEqual(['#ffffff', palette.gray[9]]);
 });

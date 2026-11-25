@@ -16,6 +16,8 @@ import '@maplibre/maplibre-gl-leaflet';
 export { default as maplibregl } from 'maplibre-gl';
 import { safeListingUrl } from '../marketplaces.ts';
 import { bedroomLabel, formatRent } from '../search.ts';
+import { colors } from '../styles.ts';
+import { palette } from '../palette.ts';
 
 const center = [40.75, -73.98];
 
@@ -67,8 +69,8 @@ function pinIcon(count: number) {
   const pill = document.createElement('span');
   const label = count === 1 ? '1 home' : `${count.toLocaleString()} homes`;
   Object.assign(pill.style, {
-    background: '#222222',
-    color: '#fff',
+    background: colors.ink,
+    color: colors.white,
     border: '2px solid white',
     borderRadius: '999px',
     padding: '3px 9px',
@@ -94,9 +96,9 @@ function pricePin(listings: MapPoint[]) {
   const label = listings.length > 1 ? `${listings.length} from ${low}` : low;
   const pill = document.createElement('span');
   Object.assign(pill.style, {
-    background: '#ffffff',
-    color: '#222222',
-    border: '1px solid #b0b0b0',
+    background: colors.white,
+    color: colors.ink,
+    border: `1px solid ${palette.gray[3]}`,
     borderRadius: '999px',
     padding: '4px 9px',
     fontSize: '13px',
@@ -156,9 +158,9 @@ function saveButton(point: MapPoint, { save, isSaved }: SaveActions) {
     button.disabled = saved;
     button.setAttribute('aria-label', (saved ? 'Saved: ' : 'Save ') + point.title);
     Object.assign(button.style, BUTTON, {
-      border: '1px solid #222222',
+      border: `1px solid ${colors.ink}`,
       background: '#ffffff',
-      color: saved ? '#d62a52' : '#222222',
+      color: saved ? colors.green : colors.ink,
       cursor: saved ? 'default' : 'pointer',
     });
   };
@@ -188,17 +190,17 @@ function popupContent(listings: MapPoint[], actions: SaveActions) {
     const row = document.createElement('div');
     Object.assign(row.style, {
       padding: '4px 0 10px',
-      borderTop: index ? '1px solid #ebebeb' : 'none',
+      borderTop: index ? `1px solid ${colors.border}` : 'none',
       paddingTop: index ? '10px' : '4px',
     });
     const price = document.createElement('div');
-    Object.assign(price.style, { fontSize: '17px', fontWeight: '700', color: '#222222' });
+    Object.assign(price.style, { fontSize: '17px', fontWeight: '700', color: colors.ink });
     price.textContent = formatRent(rent) + ' a month';
     const heading = document.createElement('div');
-    Object.assign(heading.style, { fontSize: '14px', fontWeight: '600', color: '#222222', marginTop: '2px' });
+    Object.assign(heading.style, { fontSize: '14px', fontWeight: '600', color: colors.ink, marginTop: '2px' });
     heading.textContent = title;
     const detail = document.createElement('div');
-    Object.assign(detail.style, { fontSize: '13px', color: '#6a6a6a', marginTop: '2px' });
+    Object.assign(detail.style, { fontSize: '13px', color: colors.muted, marginTop: '2px' });
     const status = ({ snapshot: 'Dated listing', cached: 'Last saved result' } as Record<string, string>)[kind];
     detail.textContent = [bedroomLabel(bedrooms), status, transitSeconds == null ? null : `${Math.ceil(transitSeconds / 60)} min transit`]
       .filter(Boolean)
@@ -217,7 +219,7 @@ function popupContent(listings: MapPoint[], actions: SaveActions) {
           actions.open?.(point);
         });
       }
-      Object.assign(view.style, BUTTON, { border: '1px solid #d62a52', background: '#d62a52', color: '#ffffff' });
+      Object.assign(view.style, BUTTON, { border: `1px solid ${colors.green}`, background: colors.green, color: colors.white });
       buttons.append(view);
     }
     row.append(price, heading, detail, buttons);
@@ -359,7 +361,7 @@ export function ListingMap({
         radius: 5,
         color: '#ffffff',
         weight: 1.5,
-        fillColor: '#d62a52',
+        fillColor: colors.green,
         fillOpacity: 0.9,
       })
         .bindPopup(() => popupContent(listings, actions.current), { maxWidth: 280 })
@@ -400,14 +402,14 @@ export function ListingMap({
   }, [transitShown, visible]);
 
   return (
-    <section aria-label="Map of matching apartments" style={{ border: '1px solid #d7e0ec', background: '#fff' }}>
-      <div ref={container} style={{ height: 'clamp(350px, 66vh, 800px)', background: '#edf1f4' }} />
+    <section aria-label="Map of matching apartments" style={{ border: `1px solid ${colors.border}`, background: colors.white }}>
+      <div ref={container} style={{ height: 'clamp(350px, 66vh, 800px)', background: palette.gray[0] }} />
       <div
         role="status"
         style={{
           padding: '8px 12px',
           fontSize: 13,
-          color: '#35445a',
+          color: palette.gray[8],
           // The same system font as the rest of the app (React Native Web's default for text).
           fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
         }}
@@ -424,11 +426,11 @@ export function ListingMap({
           gap: 12,
           padding: '0 12px 10px',
           fontSize: 13,
-          color: '#35445a',
+          color: palette.gray[8],
           fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
         }}
       >
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontWeight: 600, color: '#222' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontWeight: 600, color: colors.ink }}>
           <input type="checkbox" checked={transitShown} onChange={(event) => setTransitShown(event.target.checked)} />
           Transit stops
         </label>

@@ -1,18 +1,26 @@
 import { Platform, StyleSheet } from 'react-native';
+import { palette } from './palette.ts';
 
+/**
+ * The app's colors, all from the palette's scales (src/palette.ts): small text sits at least five levels from its
+ * background, and borders that must be seen (form fields, checkboxes) at least four.
+ */
 export const colors = {
   /** The page is white, as travel-booking apps are; cards separate with space, not fills. */
   background: '#ffffff',
   /** The header is white too. (Named navy for history.) */
   navy: '#ffffff',
   white: '#ffffff',
-  ink: '#222222',
-  muted: '#6a6a6a',
-  /** The accent: the brand mark, primary buttons, selected tab, saved hearts. (Named green for history; it is rose.) */
-  green: '#d62a52',
-  border: '#dddddd',
+  ink: palette.gray[9],
+  muted: palette.gray[6],
+  /** The accent: primary buttons, selected tab, saved hearts. (Named green for history; it is rose.) */
+  green: palette.rose[5],
+  /** Lines that separate; decorative, so lighter than the four-level rule. */
+  border: palette.gray[1],
+  /** The edge of a field or checkbox, which must be seen: four levels from white. */
+  field: palette.gray[4],
   /** The quiet fill behind selected rows, tags and image areas. */
-  light: '#f7f7f7',
+  light: palette.gray[0],
   lime: '#ffffff',
 };
 
@@ -34,10 +42,10 @@ export const styles = StyleSheet.create({
     paddingHorizontal: 20,
     backgroundColor: colors.navy,
     borderBottomWidth: 1,
-    borderColor: '#ebebeb',
+    borderColor: palette.gray[1],
   },
   brand: { ...row, gap: 9 },
-  brandText: { color: '#7a3b22', fontSize: 23, fontWeight: '800', letterSpacing: -0.9 },
+  brandText: { color: palette.brown[7], fontSize: 23, fontWeight: '800', letterSpacing: -0.9 },
   topLabel: { ...eyebrow, color: colors.muted, textAlign: 'right' },
   resultLayout: { gap: 14 },
   resultLayoutWide: { flexDirection: 'row', alignItems: 'flex-start' },
@@ -67,10 +75,10 @@ export const styles = StyleSheet.create({
   field: { gap: 5 },
   fieldLabel: { ...small, color: colors.ink, fontWeight: weight },
   input: {
-    borderColor: '#b0b0b0',
+    borderColor: palette.gray[4],
     borderWidth: 1,
     borderRadius: 8,
-    backgroundColor: '#fff',
+    backgroundColor: '#ffffff',
     paddingHorizontal: 12,
     paddingVertical: 12,
     minHeight: 48,
@@ -123,7 +131,7 @@ export const styles = StyleSheet.create({
     marginTop: 8,
     paddingTop: 14,
     borderTopWidth: 1,
-    borderColor: '#ebebeb',
+    borderColor: palette.gray[1],
   },
   reset: { paddingVertical: 10, paddingHorizontal: 4 },
   tabLabel: { fontSize: 11, lineHeight: 14, color: colors.muted, fontWeight: '600' },
@@ -132,9 +140,9 @@ export const styles = StyleSheet.create({
   panelTitle: { fontSize: 22, lineHeight: 26, fontWeight: '600', letterSpacing: -0.4, color: colors.ink },
   resultHeading: { ...wrap, justifyContent: 'space-between', gap: 10, marginVertical: 1 },
   headingCopy: { gap: 3, flexShrink: 1 },
-  noticeLine: { ...small, color: '#624215', padding: 10, backgroundColor: '#f9eed6', borderRadius: 10 },
-  noticePanel: { padding: 10, gap: 6, backgroundColor: '#f9eed6', borderRadius: 10 },
-  error: { ...small, color: '#822924', backgroundColor: '#fae8e5', borderRadius: 10, padding: 12 },
+  noticeLine: { ...small, color: palette.amber[7], padding: 10, backgroundColor: palette.amber[0], borderRadius: 10 },
+  noticePanel: { padding: 10, gap: 6, backgroundColor: palette.amber[0], borderRadius: 10 },
+  error: { ...small, color: palette.red[7], backgroundColor: palette.red[0], borderRadius: 10, padding: 12 },
   empty: { ...panel, padding: 24, alignItems: 'flex-start', gap: 10 },
   listing: { ...panel, paddingHorizontal: 15, paddingVertical: 13, gap: 10 },
   listingTitle: { fontSize: 17, lineHeight: 22, fontWeight: '600', color: colors.ink },
@@ -196,9 +204,9 @@ export const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
   },
-  trendChangeUp: { color: '#795025', backgroundColor: '#f8efd9' },
+  trendChangeUp: { color: palette.amber[7], backgroundColor: palette.amber[0] },
   trendPlot: { width: '100%', position: 'relative' },
-  trendGrid: { position: 'absolute', right: 0, height: 1, backgroundColor: '#e1e0d9' },
+  trendGrid: { position: 'absolute', right: 0, height: 1, backgroundColor: palette.gray[1] },
   trendTick: {
     position: 'absolute',
     left: 0,
@@ -208,7 +216,7 @@ export const styles = StyleSheet.create({
     lineHeight: 16,
     fontVariant: ['tabular-nums'],
   },
-  trendGuide: { position: 'absolute', width: 1, backgroundColor: '#898781' },
+  trendGuide: { position: 'absolute', width: 1, backgroundColor: palette.gray[4] },
   trendLine: { position: 'absolute', height: 2, borderRadius: 1 },
   trendDot: { position: 'absolute', width: 6, height: 6, borderRadius: 5 },
   trendDotActive: { width: 10, height: 10, borderWidth: 1, borderColor: colors.white },
@@ -223,7 +231,7 @@ export const styles = StyleSheet.create({
   trendLegendLabel: { ...small, color: colors.ink, flex: 1 },
   barRow: { ...row, gap: 10, minHeight: 38 },
   barLabel: { ...small, color: colors.ink, fontWeight: weight, width: 49 },
-  barTrack: { height: 15, backgroundColor: '#eef1f6', borderRadius: 4, flex: 1, overflow: 'hidden' },
+  barTrack: { height: 15, backgroundColor: palette.blue[0], borderRadius: 4, flex: 1, overflow: 'hidden' },
   barFill: { height: '100%', borderRadius: 4 },
   barValue: { alignItems: 'flex-end', width: 84 },
   chartPrice: { ...small, color: colors.ink, fontWeight: '800', fontVariant: ['tabular-nums'] },
@@ -240,6 +248,6 @@ export const styles = StyleSheet.create({
   menuRow: { ...row, gap: 12, paddingHorizontal: 16, paddingVertical: 14, minHeight: 64 },
   menuDivider: { borderTopWidth: 1, borderTopColor: colors.border },
   menuLabel: { fontSize: 16, lineHeight: 22, fontWeight: '600', color: colors.ink },
-  menuChevron: { fontSize: 24, lineHeight: 26, color: '#a3afbf' },
-  footer: { gap: 3, borderTopWidth: 1, borderColor: '#ebebeb', paddingTop: 16 },
+  menuChevron: { fontSize: 24, lineHeight: 26, color: palette.gray[4] },
+  footer: { gap: 3, borderTopWidth: 1, borderColor: palette.gray[1], paddingTop: 16 },
 });

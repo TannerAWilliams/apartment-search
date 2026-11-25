@@ -1,5 +1,6 @@
 import { StyleSheet } from 'react-native';
 import { colors } from './styles.ts';
+import { palette } from './palette.ts';
 export const mobileStyles = StyleSheet.create({
   searchBar: {
     flexDirection: 'row',
@@ -51,7 +52,7 @@ export const mobileStyles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderBottomWidth: 1,
-    borderColor: '#ebebeb',
+    borderColor: palette.gray[1],
   },
   sheetTitle: { flex: 1, textAlign: 'center', fontSize: 16, lineHeight: 20, fontWeight: '700', color: colors.ink },
   sheetClose: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
@@ -82,7 +83,7 @@ export const mobileStyles = StyleSheet.create({
     elevation: 6,
   },
   floatingText: { color: colors.white, fontSize: 14, lineHeight: 18, fontWeight: '600' },
-  bottomNav: { flexDirection: 'row', backgroundColor: colors.white, borderTopWidth: 1, borderColor: '#ebebeb', paddingBottom: 8 },
+  bottomNav: { flexDirection: 'row', backgroundColor: colors.white, borderTopWidth: 1, borderColor: palette.gray[1], paddingBottom: 8 },
   navItem: { flex: 1, minHeight: 60, alignItems: 'center', justifyContent: 'center', gap: 4 },
   // The selected tab is shown by its accent color alone.
   navSelected: {},

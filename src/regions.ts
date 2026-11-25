@@ -1,4 +1,5 @@
 import type { Workplace } from './domain.ts';
+import { palette } from './palette.ts';
 type Location = { state: string; city?: string; county?: string; zip?: string; region?: string };
 export const WORKPLACES: Record<string, Workplace> = {
   rockefeller: { label: 'Rockefeller Center', latitude: 40.75874, longitude: -73.97867 },
@@ -8,12 +9,12 @@ export const WORKPLACES: Record<string, Workplace> = {
 };
 
 export const NYC_SEARCH_AREAS = {
-  'manhattan-brooklyn': { label: 'Manhattan & Brooklyn', color: '#27725a' },
-  manhattan: { label: 'Manhattan', color: '#27725a' },
-  brooklyn: { label: 'Brooklyn', color: '#2c6196' },
-  queens: { label: 'Queens', color: '#8a5a12' },
-  bronx: { label: 'The Bronx', color: '#7b3f8c' },
-  'staten-island': { label: 'Staten Island', color: '#2f7480' },
+  'manhattan-brooklyn': { label: 'Manhattan & Brooklyn', color: palette.green[6] },
+  manhattan: { label: 'Manhattan', color: palette.green[6] },
+  brooklyn: { label: 'Brooklyn', color: palette.blue[6] },
+  queens: { label: 'Queens', color: palette.amber[6] },
+  bronx: { label: 'The Bronx', color: palette.purple[6] },
+  'staten-island': { label: 'Staten Island', color: palette.teal[6] },
 };
 export const NYC_SEARCH_DEFAULT = 'manhattan-brooklyn';
 /** Borough keys, as returned by searchBorough. */
@@ -26,14 +27,14 @@ const SUB_REGIONS: Record<string, { parent: string; state: string; counties: str
 
 export const REGIONS = {
   ...NYC_SEARCH_AREAS,
-  all: { label: 'All regions', center: [40.81, -73.53, 99], color: '#27604f' },
-  nyc: { label: 'New York City', center: [40.7, -73.96, 24], color: '#27725a' },
-  nj: { label: 'New Jersey', center: [40.7, -74.44, 58], color: '#a4482b' },
-  li: { label: 'Long Island', center: [40.87, -72.9, 65], color: '#2c6196' },
-  metroNorth: { label: 'Metro-North NY', center: [41.3, -73.91, 56], color: '#68519a' },
-  westchester: { label: 'Westchester County', center: [41.12, -73.78, 28], color: '#5a4a8f' },
-  ct: { label: 'Connecticut', center: [41.23, -73.27, 51], color: '#815e16' },
-  pa: { label: 'Eastern Pennsylvania', center: [40.62, -75.33, 52], color: '#7a415e' },
+  all: { label: 'All regions', center: [40.81, -73.53, 99], color: palette.green[7] },
+  nyc: { label: 'New York City', center: [40.7, -73.96, 24], color: palette.green[6] },
+  nj: { label: 'New Jersey', center: [40.7, -74.44, 58], color: palette.orange[6] },
+  li: { label: 'Long Island', center: [40.87, -72.9, 65], color: palette.blue[6] },
+  metroNorth: { label: 'Metro-North NY', center: [41.3, -73.91, 56], color: palette.purple[6] },
+  westchester: { label: 'Westchester County', center: [41.12, -73.78, 28], color: palette.purple[7] },
+  ct: { label: 'Connecticut', center: [41.23, -73.27, 51], color: palette.amber[7] },
+  pa: { label: 'Eastern Pennsylvania', center: [40.62, -75.33, 52], color: palette.rose[7] },
 };
 
 export const MARKETS = [

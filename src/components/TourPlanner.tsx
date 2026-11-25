@@ -214,7 +214,7 @@ export function TourPlanner({ listings, open: shown }: { listings: ListingData[]
                             height: 18,
                             borderRadius: 9,
                             borderWidth: selected === key ? 6 : 2,
-                            borderColor: selected === key ? colors.green : '#a3afbf',
+                            borderColor: selected === key ? colors.green : colors.field,
                           }}
                         />
                         <Text style={{ color: colors.ink, flexShrink: 1 }}>
@@ -316,7 +316,7 @@ export function TourPlanner({ listings, open: shown }: { listings: ListingData[]
                 </>
               )}
               {tours.map((t, i) => (
-                <View key={t.id} style={{ borderWidth: 1, borderColor: '#ddd', padding: 12, gap: 8 }}>
+                <View key={t.id} style={{ borderWidth: 1, borderColor: colors.border, padding: 12, gap: 8 }}>
                   <Text style={styles.fieldLabel}>
                     {i + 1}. {t.address}
                   </Text>

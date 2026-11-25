@@ -9,6 +9,7 @@ import Svg, { Circle, Line, Path, Polyline, Rect, Text as SvgText } from 'react-
 import { CHART_INK, divergingColor, SERIES_COLORS, textOn } from '../chart-colors.ts';
 import { divergingPosition, niceTicks, type Ranked, type ScatterPoint } from '../market-history.ts';
 import { CHART_FONT, pointerX, pointerY, tabular, Tooltip, useWidth } from './ChartParts.tsx';
+import { palette } from '../palette.ts';
 
 /** A small line of the last values, the latest point marked. */
 export function Sparkline({ values, width = 120, height = 32 }: { values: (number | null)[]; width?: number; height?: number }) {
@@ -56,7 +57,7 @@ export function StatTile({
         flexGrow: 1,
         flexBasis: 160,
         borderWidth: 1,
-        borderColor: 'rgba(11,11,11,0.10)',
+        borderColor: palette.gray[1],
         borderRadius: 12,
         padding: 12,
         gap: 4,
@@ -109,9 +110,9 @@ export function RankedList({
               paddingVertical: 10,
               paddingHorizontal: 8,
               borderTopWidth: index > 0 ? 1 : 0,
-              borderTopColor: 'rgba(11,11,11,0.08)',
+              borderTopColor: palette.gray[1],
               borderRadius: chosen ? 8 : 0,
-              backgroundColor: chosen ? 'rgba(42,120,214,0.08)' : 'transparent',
+              backgroundColor: chosen ? palette.blue[0] : 'transparent',
             }}
           >
             <Text style={[{ width: 28, fontSize: 13, color: CHART_INK.muted }, tabular]}>{index + 1}</Text>

@@ -5,9 +5,9 @@ import { type RentArea, type RentHistory, type RentPoint, rentSeries } from '../
 import { bedroomLabel, formatRent } from '../search.ts';
 import { styles } from '../styles.ts';
 import { toggleProps } from './ui.tsx';
+import { SERIES_COLORS } from '../chart-colors.ts';
 
 // The validated chart palette (src/chart-colors.ts): blue, orange, aqua.
-const SERIES_COLORS = ['#2a78d6', '#eb6834', '#1baf7a'];
 const CHART_HEIGHT = 178;
 const AXIS_WIDTH = 65;
 const PADDING = 10;

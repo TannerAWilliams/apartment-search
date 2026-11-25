@@ -4,6 +4,7 @@ import { MARKETPLACE_NAMES } from '../marketplaces.ts';
 import { sourceCoverage, sourceRows, type SourceDefinition, type SourceStatus } from '../source-status.ts';
 import { colors, styles } from '../styles.ts';
 import { Button } from '../components/ui.tsx';
+import { palette } from '../palette.ts';
 
 const time = (value?: string | null) => (value && Number.isFinite(Date.parse(value)) ? new Date(value).toLocaleString() : 'Never');
 const shortTime = (value?: string | null) =>
@@ -13,10 +14,10 @@ const shortTime = (value?: string | null) =>
 
 /** A source's state as a colored dot; the words beside it always say the same thing. */
 const DOT: Record<string, string> = {
-  'Saved data available': '#0ca30c',
-  'Last attempt failed': '#d03b3b',
-  'Sync paused': '#fab219',
-  'Not fetched yet': '#c3c2b7',
+  'Saved data available': palette.green[5],
+  'Last attempt failed': palette.red[5],
+  'Sync paused': palette.amber[4],
+  'Not fetched yet': palette.gray[3],
 };
 
 type Row = ReturnType<typeof sourceRows>[number];
@@ -44,7 +45,7 @@ function SourceRow({ row, first, disabled, onResync }: { row: Row; first: boolea
   return (
     <View style={[{ paddingHorizontal: 16, paddingVertical: 12, gap: 6 }, !first && styles.menuDivider]}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-        <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: DOT[row.state] ?? '#c3c2b7' }} />
+        <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: DOT[row.state] ?? palette.gray[3] }} />
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={`${row.name}: ${summary}. ${open ? 'Hide' : 'Show'} details`}
@@ -53,7 +54,7 @@ function SourceRow({ row, first, disabled, onResync }: { row: Row; first: boolea
           style={{ flex: 1, minWidth: 0, gap: 1 }}
         >
           <Text style={styles.fieldLabel}>
-            {row.name} <Text style={{ color: '#a3afbf' }}>{open ? '▴' : '▾'}</Text>
+            {row.name} <Text style={{ color: palette.gray[4] }}>{open ? '▴' : '▾'}</Text>
           </Text>
           <Text style={styles.smallMuted}>{summary}</Text>
         </Pressable>
@@ -66,7 +67,7 @@ function SourceRow({ row, first, disabled, onResync }: { row: Row; first: boolea
           {row.paused ? 'Paused' : 'Resync'}
         </Button>
       </View>
-      {row.status?.error && <Text style={[styles.smallMuted, { color: '#a12f2a' }]}>{row.status.error}</Text>}
+      {row.status?.error && <Text style={[styles.smallMuted, { color: palette.red[7] }]}>{row.status.error}</Text>}
       {row.coolingDown && <Text style={styles.smallMuted}>Retry after {time(row.status?.retryAt)}</Text>}
       {open && (
         <View style={{ gap: 3 }}>
