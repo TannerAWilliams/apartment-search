@@ -1,14 +1,10 @@
 import { wholeNumber } from '../whole-number.ts';
 import React, { useEffect, useState } from 'react';
 import { SUBWAY_LINES } from '../subway.ts';
-import { type ConfigSource } from '../api-client.ts';
-import type { SearchFilters, SearchResult } from '../domain.ts';
-
-import { Pressable, ScrollView, Text, View } from 'react-native';
-import { REGIONS, WORKPLACES, marketsForSearch } from '../regions.ts';
-import { marketplaceLinks } from '../marketplaces.ts';
+import { Pressable, Text, View } from 'react-native';
+import { REGIONS, WORKPLACES } from '../regions.ts';
 import { colors, styles } from '../styles.ts';
-import { Button, Chip, Field, Link } from './ui.tsx';
+import { Button, Chip, Field } from './ui.tsx';
 import { type DraftFilters, SEARCH_DEFAULTS, BEDROOMS, formDefaults } from '../app-shared.ts';
 
 /** A filter section's heading, with a divider above it. */
@@ -52,39 +48,6 @@ const AREA_CHOICES: (readonly [string, string])[] = [
   ['ct', 'Connecticut'],
 ];
 
-/** One requirement as a checklist line: a box, its name and what it means. */
-function CheckRow({ label, detail, checked, onPress }: { label: string; detail: string; checked: boolean; onPress: () => void }) {
-  return (
-    <Pressable
-      accessibilityRole="checkbox"
-      accessibilityState={{ checked }}
-      aria-checked={checked}
-      accessibilityLabel={label}
-      onPress={onPress}
-      style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10 }, pressed && styles.pressed]}
-    >
-      <View
-        style={{
-          width: 22,
-          height: 22,
-          borderRadius: 6,
-          borderWidth: 2,
-          borderColor: checked ? colors.ink : '#b0b0b0',
-          backgroundColor: checked ? colors.ink : colors.white,
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        {checked && <Text style={{ color: colors.white, fontSize: 14, fontWeight: '800', lineHeight: 16 }}>✓</Text>}
-      </View>
-      <View style={{ flex: 1 }}>
-        <Text style={{ fontSize: 15, color: colors.ink, fontWeight: '600' }}>{label}</Text>
-        <Text style={styles.smallMuted}>{detail}</Text>
-      </View>
-    </Pressable>
-  );
-}
-
 /** Commute limits offered, in minutes; null is any. */
 const COMMUTE_LIMITS: [number | null, string][] = [
   [null, 'Any'],
@@ -104,7 +67,6 @@ export function Filters({
   suggest,
   panel,
   commuteConfigured,
-  websites,
 }: {
   draft: DraftFilters;
   setDraft: React.Dispatch<React.SetStateAction<DraftFilters>>;
@@ -117,8 +79,6 @@ export function Filters({
   suggest?: (query: string) => Promise<{ label: string; latitude: number; longitude: number }[]>;
   panel: string;
   commuteConfigured: boolean;
-  /** The listing-website filter, shown with the other filters. */
-  websites?: React.ReactNode;
 }) {
   const [linesOpen, setLinesOpen] = useState(false);
   const set =
@@ -286,39 +246,25 @@ export function Filters({
       {panel === 'more' && (
         <>
           <Text accessibilityRole="header" style={FILTER_HEADING}>
-            Must-haves
+            Amenities
           </Text>
-          {/* A checklist, one line each; a listing that does not say is hidden when a feature is required. */}
-          <View>
-            {(
-              [
-                ['nearSubway', 'Near the subway', 'A station within a 10-minute walk'],
-                ['petsRequired', 'Pets allowed', 'The listing says pets are welcome'],
-                ['stabilizedOnly', 'Rent-stabilized', 'In a building registered with the state'],
-                ['belowMarket', 'Deals only', 'At least 20% below similar apartments nearby'],
-                ['goodBuildings', 'Well-kept buildings', 'Hide buildings graded C or D from city records'],
-                ['accessibleSubway', 'Elevator-accessible station', 'Nearest station has elevators'],
-              ] as const
-            ).map(([field, label, detail]) => (
-              <CheckRow
-                key={field}
-                label={label}
-                detail={detail}
-                checked={draft[field] === true}
-                onPress={() => set(field)(!draft[field])}
-              />
-            ))}
-          </View>
-          <Text style={styles.fieldLabel}>Laundry</Text>
+          {/* One tap each; a listing that does not say is hidden while one is on. Laundry is one or the other. */}
           <View style={styles.chipRow}>
             {(
               [
-                ['', 'Any'],
-                ['in_unit', 'In unit'],
-                ['in_building', 'In building'],
+                ['Pets allowed', draft.petsRequired === true, () => set('petsRequired')(!draft.petsRequired)],
+                ['Near subway', draft.nearSubway === true, () => set('nearSubway')(!draft.nearSubway)],
+                ['Elevator station', draft.accessibleSubway === true, () => set('accessibleSubway')(!draft.accessibleSubway)],
+                ['Laundry in unit', draft.laundry === 'in_unit', () => set('laundry')(draft.laundry === 'in_unit' ? '' : 'in_unit')],
+                [
+                  'Laundry in building',
+                  draft.laundry === 'in_building',
+                  () => set('laundry')(draft.laundry === 'in_building' ? '' : 'in_building'),
+                ],
+                ['Good buildings', draft.goodBuildings === true, () => set('goodBuildings')(!draft.goodBuildings)],
               ] as const
-            ).map(([value, label]) => (
-              <Chip key={label} selected={(draft.laundry || '') === value} onPress={() => set('laundry')(value)}>
+            ).map(([label, selected, toggle]) => (
+              <Chip key={label} selected={selected} onPress={toggle}>
                 {label}
               </Chip>
             ))}
@@ -375,7 +321,6 @@ export function Filters({
           )}
         </>
       )}
-      {panel === 'more' && websites}
       {panel === 'commute' && (
         <>
           <Text style={styles.smallMuted}>Where you commute to. Typed places are looked up with OpenStreetMap.</Text>
@@ -549,61 +494,6 @@ export function DestinationField({
         </Text>
       )}
       {picked !== '' && picked === value && <Text style={styles.smallMuted}>Commute times will be to {picked}.</Text>}
-    </View>
-  );
-}
-
-export function WebsiteFilter({
-  result,
-  applied,
-  onSelect,
-  onError,
-  configuredSources,
-}: {
-  result: SearchResult;
-  applied: SearchFilters | DraftFilters;
-  onSelect: (source: string) => void;
-  onError: (message: string) => void;
-  configuredSources: ConfigSource[];
-}) {
-  const counts = [...(result.sourceCounts ?? [])];
-  for (const source of configuredSources)
-    if (!counts.some(({ id }) => id === source.id)) counts.push({ ...source, count: 0, checkedCount: 0 });
-  const streetEasy = counts.find(({ id }) => id === 'streeteasy');
-  const areas = marketsForSearch(applied);
-  // Only websites with listings to show, and the one already chosen; nothing to choose between, no filter.
-  const choices = counts.filter(({ id, count }) => count > 0 || applied.source === id);
-  if (choices.length < 2 && !applied.source) return null;
-
-  return (
-    <View style={styles.websiteFilter}>
-      <Text style={styles.fieldLabel}>Listing website</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.marketChips}>
-        <Chip selected={!applied.source} onPress={() => onSelect('')}>
-          All websites
-        </Chip>
-        {choices.map(({ id, name, count }) => (
-          <Chip key={id} selected={applied.source === id} onPress={() => onSelect(id)}>
-            {name + ' (' + count.toLocaleString('en-US') + ')'}
-          </Chip>
-        ))}
-      </ScrollView>
-      {applied.source === 'streeteasy' && (
-        <View style={styles.actionLinks}>
-          {(!streetEasy || !streetEasy.checkedCount) && (
-            <Text style={styles.smallMuted}>
-              StreetEasy’s dated export supplies rent charts. Browse StreetEasy for its current listings.
-            </Text>
-          )}
-          {areas.map((area) => {
-            const link = marketplaceLinks(area, {
-              ...applied,
-              maxRent: applied.maxRent === '' || applied.maxRent === null ? null : Number(applied.maxRent),
-            }).find(({ id }) => id === 'streeteasy');
-            return link ? <Link key={area.label} label={`Browse ${area.label} on StreetEasy`} url={link.url} onError={onError} /> : null;
-          })}
-        </View>
-      )}
     </View>
   );
 }

@@ -527,11 +527,14 @@ test('feature filters require reported facts rather than matching unknown detail
   await page.getByRole('button', { name: '1 bathroom', exact: true }).click();
   await page.getByRole('button', { name: '2 bathrooms', exact: true }).click();
   // Size is its own section, chosen with a tap.
-  await expect(page.getByRole('header', { name: 'Size' }).or(page.getByText('Size', { exact: true }))).toBeVisible();
+  await expect(page.getByText('Size', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'At least 750 square feet', exact: true }).click();
-  await page.getByRole('checkbox', { name: 'Pets allowed', exact: true }).click();
-  await expect(page.getByRole('checkbox', { name: 'Pets allowed', exact: true })).toBeChecked();
-  await page.getByRole('dialog').getByRole('button', { name: 'In unit', exact: true }).click();
+  // Amenities are one row of chips.
+  await page.getByRole('button', { name: 'Pets allowed', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Pets allowed', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'Laundry in unit', exact: true }).click();
+  await expect(page.getByText('Must-haves', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('All websites', { exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Show apartments', exact: true }).click();
   await expect(page.getByText('12 Grove Street', { exact: true })).toBeVisible();
   await expect(page.getByText('13 Grove Street', { exact: true })).toHaveCount(0);

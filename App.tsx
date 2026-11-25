@@ -27,7 +27,7 @@ import {
   formDefaults,
   api,
 } from './src/app-shared.ts';
-import { Filters, WebsiteFilter } from './src/components/Filters.tsx';
+import { Filters } from './src/components/Filters.tsx';
 import { HomePage } from './src/screens/HomePage.tsx';
 import { AccountPrompt } from './src/components/AccountPrompt.tsx';
 import { CategoryBar } from './src/components/CategoryBar.tsx';
@@ -583,15 +583,6 @@ function ApartmentSearch() {
                   commuteConfigured={commuteConfigured}
                   connect={connect}
                   suggest={suggestPlaces}
-                  websites={
-                    <WebsiteFilter
-                      result={result}
-                      applied={draft}
-                      onSelect={(source) => setDraft((current) => ({ ...current, source }))}
-                      onError={setError}
-                      configuredSources={configuredSources}
-                    />
-                  }
                 />
               </ScrollView>
             </View>
