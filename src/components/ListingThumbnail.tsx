@@ -1,8 +1,10 @@
 /**
- * A listing card's image area. Listings carry no photos, so it shows where the apartment is: the OpenStreetMap
- * tiles around it, with a pin on the spot in the middle. A listing without coordinates gets a plain tile with a building.
+ * A listing card's image area. Listings carry no photos, so it shows where the apartment is: the streets around it in
+ * OpenFreeMap's Liberty style, as the map is (OpenStreetMap's tiles where that cannot be drawn), with a pin on the
+ * spot in the middle. A listing without coordinates gets a plain tile with a building.
  */
-import { createContext, useContext, useState } from 'react';
+import { createContext, useContext, useEffect, useState } from 'react';
+import { libertySnapshot } from './liberty-snapshot.tsx';
 import { Image, Platform, StyleSheet, Text, View } from 'react-native';
 import Svg, { Path, Rect } from 'react-native-svg';
 import { colors } from '../styles.ts';
@@ -84,13 +86,26 @@ export function ListingThumbnail({
   const streetView = useContext(StreetViewContext);
   // Street View first, when the server has it; no image there, or the month's free images used up, shows the map.
   const [streetViewFailed, setStreetViewFailed] = useState(false);
+  // The card's Liberty picture: drawn once the card has its size; 'failed' shows OpenStreetMap's tiles instead.
+  const [liberty, setLiberty] = useState<string>('pending');
+  const located = typeof latitude === 'number' && typeof longitude === 'number' && Number.isFinite(latitude) && Number.isFinite(longitude);
+  const wanted = located && !(photo && !photoFailed) && !(streetView && Platform.OS === 'web' && !streetViewFailed);
+  useEffect(() => {
+    if (!wanted || size.width === 0) return;
+    let current = true;
+    libertySnapshot(latitude as number, longitude as number, size.width, size.height)
+      .then((picture) => current && setLiberty(picture))
+      .catch(() => current && setLiberty('failed'));
+    return () => {
+      current = false;
+    };
+  }, [wanted, latitude, longitude, size.width, size.height]);
   if (photo && !photoFailed)
     return (
       <View style={StyleSheet.absoluteFill} aria-hidden>
         <Image source={{ uri: photo }} onError={() => setPhotoFailed(true)} resizeMode="cover" style={StyleSheet.absoluteFill} />
       </View>
     );
-  const located = typeof latitude === 'number' && typeof longitude === 'number' && Number.isFinite(latitude) && Number.isFinite(longitude);
   if (!located || failed)
     return (
       <View style={thumbnail.fill} aria-hidden>
@@ -118,11 +133,20 @@ export function ListingThumbnail({
   const { width, height } = size;
   return (
     <View
-      style={[StyleSheet.absoluteFill, { overflow: 'hidden' }]}
+      style={[StyleSheet.absoluteFill, { overflow: 'hidden', backgroundColor: '#f2efe9' }]}
       aria-hidden
       onLayout={({ nativeEvent }) => setSize({ width: nativeEvent.layout.width, height: nativeEvent.layout.height })}
     >
-      {width > 0 && (
+      {/* The Liberty picture once drawn; until then a plain ground, and street tiles if it cannot be drawn. */}
+      {width > 0 && liberty === 'pending' && <View style={[thumbnail.pin, { left: width / 2, top: height / 2 }]} />}
+      {width > 0 && typeof liberty === 'string' && liberty !== 'pending' && liberty !== 'failed' && (
+        <>
+          <Image source={{ uri: liberty }} style={StyleSheet.absoluteFill} />
+          <View style={[thumbnail.pin, { left: width / 2, top: height / 2 }]} />
+          <Text style={thumbnail.credit}>© OpenFreeMap © OpenStreetMap</Text>
+        </>
+      )}
+      {width > 0 && liberty === 'failed' && (
         <>
           {tilesAround(latitude, longitude, width, height).map((tile) => (
             <Image
