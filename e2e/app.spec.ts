@@ -511,15 +511,17 @@ test('observed timeline distinguishes historical checks from live availability a
 test('feature filters require reported facts rather than matching unknown details', async ({ page }) => {
   const { requests } = await mockApp(page, { listingCount: 2, discovery: true });
   await page.getByRole('button', { name: 'Filters', exact: true }).click();
-  await page.getByRole('button', { name: /^More filters/ }).click();
+  // No Newly listed section, and no extra panel to open: must-haves are a checklist.
+  await expect(page.getByText('Newly listed', { exact: true })).toHaveCount(0);
   // Several bedroom counts and bathroom counts at once.
   await page.getByRole('dialog').getByRole('button', { name: '1 BR', exact: true }).click();
   await page.getByRole('dialog').getByRole('button', { name: '2 BR', exact: true }).click();
   await page.getByRole('button', { name: '1 bathroom', exact: true }).click();
   await page.getByRole('button', { name: '2 bathrooms', exact: true }).click();
   await page.getByRole('textbox', { name: 'Minimum square feet', exact: true }).fill('900');
-  await page.getByRole('button', { name: 'Require pets allowed', exact: true }).click();
-  await page.getByRole('dialog').getByRole('button', { name: 'In-unit laundry', exact: true }).click();
+  await page.getByRole('checkbox', { name: 'Pets allowed', exact: true }).click();
+  await expect(page.getByRole('checkbox', { name: 'Pets allowed', exact: true })).toBeChecked();
+  await page.getByRole('dialog').getByRole('button', { name: 'In unit', exact: true }).click();
   await page.getByRole('button', { name: 'Show apartments', exact: true }).click();
   await expect(page.getByText('12 Grove Street', { exact: true })).toBeVisible();
   await expect(page.getByText('13 Grove Street', { exact: true })).toHaveCount(0);

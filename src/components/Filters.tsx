@@ -9,8 +9,7 @@ import { REGIONS, WORKPLACES, marketsForSearch } from '../regions.ts';
 import { marketplaceLinks } from '../marketplaces.ts';
 import { colors, styles } from '../styles.ts';
 import { Button, Chip, Field, Link } from './ui.tsx';
-import { LAUNDRY_LABELS } from '../discovery.ts';
-import { type DraftFilters, SEARCH_DEFAULTS, BEDROOMS, AREA_GROUPS, formDefaults } from '../app-shared.ts';
+import { type DraftFilters, SEARCH_DEFAULTS, BEDROOMS, formDefaults } from '../app-shared.ts';
 
 /** A filter section's heading, with a divider above it. */
 const FILTER_HEADING = {
@@ -36,6 +35,54 @@ function lineColors(line: string): [string, string] {
   if (line === 'L') return ['#A7A9AC', '#222222'];
   if ('NQRW'.includes(line)) return ['#FCCC0A', '#222222'];
   return ['#808183', '#ffffff'];
+}
+
+/** The places offered, in one row: anywhere, the city and each borough, then the areas around it. */
+const AREA_CHOICES: (readonly [string, string])[] = [
+  ['all', 'Anywhere'],
+  ['nyc', 'All NYC'],
+  ['manhattan', 'Manhattan'],
+  ['brooklyn', 'Brooklyn'],
+  ['queens', 'Queens'],
+  ['bronx', 'Bronx'],
+  ['staten-island', 'Staten Island'],
+  ['nj', 'New Jersey'],
+  ['li', 'Long Island'],
+  ['westchester', 'Westchester'],
+  ['ct', 'Connecticut'],
+];
+
+/** One requirement as a checklist line: a box, its name and what it means. */
+function CheckRow({ label, detail, checked, onPress }: { label: string; detail: string; checked: boolean; onPress: () => void }) {
+  return (
+    <Pressable
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked }}
+      aria-checked={checked}
+      accessibilityLabel={label}
+      onPress={onPress}
+      style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10 }, pressed && styles.pressed]}
+    >
+      <View
+        style={{
+          width: 22,
+          height: 22,
+          borderRadius: 6,
+          borderWidth: 2,
+          borderColor: checked ? colors.ink : '#b0b0b0',
+          backgroundColor: checked ? colors.ink : colors.white,
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        {checked && <Text style={{ color: colors.white, fontSize: 14, fontWeight: '800', lineHeight: 16 }}>✓</Text>}
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={{ fontSize: 15, color: colors.ink, fontWeight: '600' }}>{label}</Text>
+        <Text style={styles.smallMuted}>{detail}</Text>
+      </View>
+    </Pressable>
+  );
 }
 
 /** Commute limits offered, in minutes; null is any. */
@@ -73,7 +120,7 @@ export function Filters({
   /** The listing-website filter, shown with the other filters. */
   websites?: React.ReactNode;
 }) {
-  const [moreFilters, setMoreFilters] = useState(false);
+  const [linesOpen, setLinesOpen] = useState(false);
   const set =
     <K extends keyof DraftFilters>(field: K) =>
     (value: DraftFilters[K]) =>
@@ -108,6 +155,20 @@ export function Filters({
           </Chip>
         </View>
       ) : null}
+      {(panel === 'more' || panel === 'price') && (
+        <>
+          <Text accessibilityRole="header" style={[FILTER_HEADING, { borderTopWidth: 0, paddingTop: 0, marginTop: 0 }]}>
+            Price
+          </Text>
+          <Field
+            label="Max rent per month ($)"
+            placeholder="Any rent"
+            value={String(draft.maxRent ?? '')}
+            onChangeText={(text) => set('maxRent')(wholeNumber(text, 100000))}
+            keyboardType="number-pad"
+          />
+        </>
+      )}
       {(panel === 'more' || panel === 'beds') && (
         <>
           <Text accessibilityRole="header" style={FILTER_HEADING}>
@@ -157,8 +218,14 @@ export function Filters({
               );
             })}
           </View>
-          {(draft.bathroomOptions?.length ?? 0) > 0 && (
-            <Text style={styles.smallMuted}>Listings that do not say how many bathrooms they have are left out.</Text>
+          {panel === 'more' && (
+            <Field
+              label="Minimum square feet"
+              value={draft.minSquareFeet == null ? '' : String(draft.minSquareFeet)}
+              onChangeText={(text) => set('minSquareFeet')(wholeNumber(text, 100000))}
+              placeholder="Any size"
+              keyboardType="number-pad"
+            />
           )}
         </>
       )}
@@ -167,37 +234,22 @@ export function Filters({
           <Text accessibilityRole="header" style={FILTER_HEADING}>
             Area
           </Text>
+          {/* One row of places, the city's first; an area chosen elsewhere (a saved search) is shown too. */}
           <View style={styles.chipRow}>
-            <Chip selected={draft.region === 'all'} onPress={() => set('region')('all')}>
-              {REGIONS.all.label}
-            </Chip>
+            {[
+              ...AREA_CHOICES,
+              ...(AREA_CHOICES.some(([key]) => key === draft.region)
+                ? []
+                : [[draft.region, (REGIONS as Record<string, { label: string }>)[draft.region]?.label ?? draft.region] as const]),
+            ].map(([key, label]) => (
+              <Chip key={key} selected={draft.region === key} onPress={() => set('region')(key)}>
+                {label}
+              </Chip>
+            ))}
           </View>
-          {AREA_GROUPS.map(([heading, keys]) => (
-            <React.Fragment key={heading}>
-              <Text style={styles.smallMuted}>{heading}</Text>
-              <View style={styles.chipRow}>
-                {keys.map((key) => (
-                  <Chip key={key} selected={draft.region === key} onPress={() => set('region')(key)}>
-                    {key === 'nyc' ? 'All five boroughs' : REGIONS[key].label}
-                  </Chip>
-                ))}
-              </View>
-            </React.Fragment>
-          ))}
         </>
       )}
       {panel === 'more' && commuteLimit}
-      {(panel === 'more' || panel === 'price') && (
-        <>
-          <Field
-            label="Max rent per month ($)"
-            placeholder="Any rent"
-            value={String(draft.maxRent ?? '')}
-            onChangeText={(text) => set('maxRent')(wholeNumber(text, 100000))}
-            keyboardType="number-pad"
-          />
-        </>
-      )}
       {panel === 'more' && commuteConfigured && (
         <>
           <Text style={styles.fieldLabel}>Best fit weighs</Text>
@@ -223,111 +275,93 @@ export function Filters({
       {panel === 'more' && (
         <>
           <Text accessibilityRole="header" style={FILTER_HEADING}>
-            Value and building
+            Must-haves
           </Text>
-          <View style={styles.chipRow}>
-            <Chip selected={draft.belowMarket === true} onPress={() => set('belowMarket')(!draft.belowMarket)}>
-              Below similar apartments
-            </Chip>
-            <Chip selected={draft.stabilizedOnly === true} onPress={() => set('stabilizedOnly')(!draft.stabilizedOnly)}>
-              Rent-stabilized buildings
-            </Chip>
-            <Chip selected={draft.goodBuildings === true} onPress={() => set('goodBuildings')(!draft.goodBuildings)}>
-              Hide buildings graded C or D
-            </Chip>
-          </View>
-          <Text accessibilityRole="header" style={FILTER_HEADING}>
-            Newly listed
-          </Text>
-          <View style={styles.chipRow}>
-            {([null, 1, 3, 7, 14] as const).map((days) => (
-              <Chip
-                key={String(days)}
-                selected={(draft.newWithinDays ?? null) === days}
-                onPress={() => set('newWithinDays')(days ?? undefined)}
-              >
-                {days === null ? 'Any time' : days === 1 ? 'Last day' : `Last ${days} days`}
-              </Chip>
+          {/* A checklist, one line each; a listing that does not say is hidden when a feature is required. */}
+          <View>
+            {(
+              [
+                ['nearSubway', 'Near the subway', 'A station within a 10-minute walk'],
+                ['petsRequired', 'Pets allowed', 'The listing says pets are welcome'],
+                ['stabilizedOnly', 'Rent-stabilized', 'In a building registered with the state'],
+                ['belowMarket', 'Deals only', 'At least 20% below similar apartments nearby'],
+                ['goodBuildings', 'Well-kept buildings', 'Hide buildings graded C or D from city records'],
+                ['accessibleSubway', 'Elevator-accessible station', 'Nearest station has elevators'],
+              ] as const
+            ).map(([field, label, detail]) => (
+              <CheckRow
+                key={field}
+                label={label}
+                detail={detail}
+                checked={draft[field] === true}
+                onPress={() => set(field)(!draft[field])}
+              />
             ))}
           </View>
-          <Text accessibilityRole="header" style={FILTER_HEADING}>
-            Subway
-          </Text>
+          <Text style={styles.fieldLabel}>Laundry</Text>
           <View style={styles.chipRow}>
-            <Chip selected={draft.nearSubway === true} onPress={() => set('nearSubway')(!draft.nearSubway)}>
-              Within a 10-minute walk
-            </Chip>
-            <Chip selected={draft.accessibleSubway === true} onPress={() => set('accessibleSubway')(!draft.accessibleSubway)}>
-              Accessible station (elevators)
-            </Chip>
-          </View>
-          <View style={styles.chipRow}>
-            {SUBWAY_LINES.map((line) => {
-              const on = draft.subwayLines?.includes(line) === true;
-              const [background, text] = lineColors(line);
-              return (
-                <Pressable
-                  key={line}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${line} train`}
-                  aria-pressed={on}
-                  accessibilityState={{ selected: on }}
-                  onPress={() =>
-                    set('subwayLines')(
-                      on ? (draft.subwayLines ?? []).filter((item) => item !== line) : [...(draft.subwayLines ?? []), line],
-                    )
-                  }
-                  style={({ pressed }) => ({
-                    width: 36,
-                    height: 36,
-                    borderRadius: 18,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    backgroundColor: background,
-                    opacity: on ? 1 : pressed ? 0.7 : 0.4,
-                    borderWidth: on ? 3 : 0,
-                    borderColor: colors.ink,
-                  })}
-                >
-                  <Text style={{ color: text, fontWeight: '700', fontSize: 15 }}>{line}</Text>
-                </Pressable>
-              );
-            })}
-          </View>
-          {(draft.stabilizedOnly || draft.goodBuildings) && (
-            <Text style={styles.smallMuted}>
-              Rent stabilization comes from the state’s list of registered buildings; grades come from city records for buildings checked so
-              far, and more are checked every night.
-            </Text>
-          )}
-          <Pressable accessibilityRole="button" accessibilityState={{ expanded: moreFilters }} onPress={() => setMoreFilters(!moreFilters)}>
-            <Text style={styles.linkText}>{moreFilters ? 'Fewer filters ▴' : 'More filters: size, pets, laundry ▾'}</Text>
-          </Pressable>
-        </>
-      )}
-      {panel === 'more' && moreFilters && (
-        <>
-          <Text style={styles.smallMuted}>Apartments whose listing does not say are left out when you require a feature.</Text>
-          <Field
-            label="Minimum square feet"
-            value={draft.minSquareFeet == null ? '' : String(draft.minSquareFeet)}
-            onChangeText={(text) => set('minSquareFeet')(wholeNumber(text, 100000))}
-            placeholder="Any / unknown allowed"
-            keyboardType="number-pad"
-          />
-          <View style={styles.chipRow}>
-            <Chip selected={draft.petsRequired === true} onPress={() => set('petsRequired')(!draft.petsRequired)}>
-              Require pets allowed
-            </Chip>
-            <Chip selected={!draft.laundry} onPress={() => set('laundry')('')}>
-              Any laundry / unknown allowed
-            </Chip>
-            {Object.entries(LAUNDRY_LABELS).map(([value, label]) => (
-              <Chip key={value} selected={draft.laundry === value} onPress={() => set('laundry')(value)}>
+            {(
+              [
+                ['', 'Any'],
+                ['in_unit', 'In unit'],
+                ['in_building', 'In building'],
+              ] as const
+            ).map(([value, label]) => (
+              <Chip key={label} selected={(draft.laundry || '') === value} onPress={() => set('laundry')(value)}>
                 {label}
               </Chip>
             ))}
           </View>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ expanded: linesOpen }}
+            onPress={() => setLinesOpen(!linesOpen)}
+            style={{ paddingVertical: 6 }}
+          >
+            <Text style={styles.linkText}>
+              {linesOpen
+                ? 'Hide train lines'
+                : draft.subwayLines?.length
+                  ? `Train lines: ${draft.subwayLines.join(', ')}`
+                  : 'Choose train lines'}
+            </Text>
+          </Pressable>
+          {linesOpen && (
+            <View style={styles.chipRow}>
+              {SUBWAY_LINES.map((line) => {
+                const on = draft.subwayLines?.includes(line) === true;
+                const [background, text] = lineColors(line);
+                return (
+                  <Pressable
+                    key={line}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${line} train`}
+                    aria-pressed={on}
+                    accessibilityState={{ selected: on }}
+                    onPress={() =>
+                      set('subwayLines')(
+                        on ? (draft.subwayLines ?? []).filter((item) => item !== line) : [...(draft.subwayLines ?? []), line],
+                      )
+                    }
+                    style={({ pressed }) => ({
+                      width: 36,
+                      height: 36,
+                      borderRadius: 18,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      // Chosen lines in their own color; the rest outlined, so the choice reads at a glance.
+                      backgroundColor: on ? background : colors.white,
+                      borderWidth: 2,
+                      borderColor: on ? background : colors.border,
+                      opacity: pressed ? 0.7 : 1,
+                    })}
+                  >
+                    <Text style={{ color: on ? text : colors.ink, fontWeight: '700', fontSize: 15 }}>{line}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          )}
         </>
       )}
       {panel === 'more' && websites}
