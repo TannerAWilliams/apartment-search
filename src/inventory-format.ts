@@ -8,7 +8,7 @@
  * A row group stores its listings by column, as columnar files do: each field's name once, its values in an
  * array, and a dictionary for text that repeats (a city, a neighborhood, a company). That is under half the size
  * of the listings as JSON objects, and compresses better. Groups let a phone decode the file a piece at a time
- * without freezing the page. Encoding is generic: any JSON-safe field round-trips exactly, so a new listing field
+ * without freezing the page. Encoding is generic: every JSON-safe field round-trips exactly, so a new listing field
  * needs no change here.
  */
 export const INVENTORY_FORMAT = 1;
