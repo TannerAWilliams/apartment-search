@@ -249,9 +249,11 @@ export function Results({
                     : `${result.total.toLocaleString('en-US')} ${savedView ? 'saved' : 'matching'} ${result.total === 1 ? 'apartment' : 'apartments'}`}
             </Text>
             {!savedView &&
-              (applied.zip || applied.source || applied.maxTransitMinutes != null || applied.maxDrivingMinutes != null || applied.maxCommuteMinutes != null) && (
-              <Text style={styles.smallMuted}>{summary}</Text>
-            )}
+              (applied.zip ||
+                applied.source ||
+                applied.maxTransitMinutes != null ||
+                applied.maxDrivingMinutes != null ||
+                applied.maxCommuteMinutes != null) && <Text style={styles.smallMuted}>{summary}</Text>}
             {destination && (
               <Pressable
                 accessibilityRole="button"
@@ -278,7 +280,7 @@ export function Results({
           </View>
         </View>
       )}
-      {!savedView && applied.belowMarket && <Text style={styles.smallMuted}>Deals are at least 5% below similar apartments nearby.</Text>}
+      {!savedView && applied.belowMarket && <Text style={styles.smallMuted}>Deals are at least 20% below similar apartments nearby.</Text>}
       {result.commute && <Text style={styles.smallMuted}>Weekday-morning estimates from TravelTime.</Text>}
       {result.commuteNotice && <Text style={styles.smallMuted}>{result.commuteNotice}</Text>}
       {/* Where the listings come from is shown only to explain an empty result; the Sources page has it all. */}

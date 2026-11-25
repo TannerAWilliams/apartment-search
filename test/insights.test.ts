@@ -136,4 +136,9 @@ test('every listing 5% or more below similar ones is a deal, however far below; 
   expect([plain, deal, scam].sort((a, b) => compareResults(a, b, 'rent')).map(({ id }) => id)).toEqual(['scam', 'deal', 'plain']);
   const deals = matchListings([scam, deal, plain] as never, parseFilters({ region: 'all', belowMarket: true }), null);
   expect(deals.map(({ id }) => id).sort()).toEqual(['deal', 'scam']);
+  // 20% below is the line: 19% below is not a deal.
+  const close = { ...testListing({ id: 'close', rent: 3100 }), insights: { warnings: [], vsMarket: -0.19 } };
+  expect(matchListings([close, deal] as never, parseFilters({ region: 'all', belowMarket: true }), null).map(({ id }) => id)).toEqual([
+    'deal',
+  ]);
 });

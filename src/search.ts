@@ -3,7 +3,7 @@ import { isRecord, type ListingData, type Loose, type Point, type SearchFilters 
 import { LAUNDRY_OPTIONS, matchesDiscovery } from './discovery.ts';
 import { companyMatches } from './companies.ts';
 import { REGIONS, WORKPLACES, matchesRegion, regionOf } from './regions.ts';
-import { buildingGrade, suspiciousRent } from './insights.ts';
+import { buildingGrade, DEAL_BELOW, suspiciousRent } from './insights.ts';
 import { nearbyLines, SUBWAY_LINES } from './subway.ts';
 
 export const DEFAULT_FILTERS: SearchFilters = {
@@ -318,8 +318,8 @@ export function matchListings(listings: ListingData[], filters: SearchFilters, w
       (filters.subwayLines?.length && !nearbyLines(listing.insights?.subway).some((line) => filters.subwayLines!.includes(line))) ||
       (filters.stabilizedOnly && listing.building?.stabilized !== true) ||
       (filters.goodBuildings && ['C', 'D'].includes(buildingGrade(listing.building) ?? '')) ||
-      // A deal is 5% or more below similar apartments, however far below.
-      (filters.belowMarket && !((listing.insights?.vsMarket ?? 0) <= -0.05))
+      // A deal is 20% or more below similar apartments, however far below.
+      (filters.belowMarket && !((listing.insights?.vsMarket ?? 0) <= DEAL_BELOW))
     )
       return [];
 

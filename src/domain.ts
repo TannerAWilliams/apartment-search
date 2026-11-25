@@ -109,7 +109,7 @@ export interface SearchFilters {
   stabilizedOnly?: boolean;
   /** Leave out buildings graded C or D from their records. */
   goodBuildings?: boolean;
-  /** Only rents at least 5% below similar apartments. */
+  /** Only rents at least 20% below similar apartments (a deal). */
   belowMarket?: boolean;
   /** Any of these bedroom counts (0 is a studio, 4 is four or more); overrides `bedrooms` when given. */
   bedroomOptions?: number[];

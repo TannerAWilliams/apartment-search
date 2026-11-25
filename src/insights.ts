@@ -67,6 +67,8 @@ export function listedLabel(firstSeen: string | undefined, now = new Date()) {
 export const MIN_COMPARABLES = 5;
 /** A rent this far below the median gets a warning. */
 export const FAR_BELOW = -0.4;
+/** A deal: a rent at least 20% below the median of similar apartments nearby. */
+export const DEAL_BELOW = -0.2;
 /** No whole apartment in the area rents for under this (listings.ts notes it on the card): a room, parking, a typo or a scam. */
 export const IMPLAUSIBLE_RENT = 500;
 /** Whether a listing's rent is below any real apartment's here (how far below similar ones is only noted, not judged). */
