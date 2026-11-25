@@ -12,6 +12,7 @@ const photon = {
     feature({ name: 'Empire State Building', housenumber: '350', street: '5th Avenue', city: 'New York', state: 'New York' }),
     feature({ name: 'Empire State Building', housenumber: '350', street: '5th Avenue', city: 'New York', state: 'New York' }),
     feature({ housenumber: '1', street: 'Main St', district: 'Brooklyn', state: 'New York' }),
+    feature({ housenumber: '520', street: 'Madison Street', city: 'New York', county: 'Kings County', state: 'New York' }),
     feature({ street: 'Grove St', county: 'Hudson', state: 'New Jersey' }),
     feature({ name: 'Nowhere' }, ['x', 'y']),
     feature({}),
@@ -28,9 +29,16 @@ test('places are suggested as a destination is typed, within the area, each once
   expect(places.map(({ label }) => label)).toEqual([
     'Empire State Building, 350 5th Avenue, New York',
     '1 Main St, Brooklyn, NY',
-    'Grove St, Hudson',
+    // In the city, the borough rather than "New York".
+    '520 Madison Street, Brooklyn',
+    'Grove St, Hudson, NJ',
   ]);
-  expect(new URL(urls[0]!).searchParams.get('bbox')).toBe('-75.6,39.9,-71.7,41.7');
+  // Within the area, nearer Midtown first.
+  expect(Object.fromEntries(new URL(urls[0]!).searchParams)).toMatchObject({
+    bbox: '-75.6,39.9,-71.7,41.7',
+    lat: '40.754',
+    lon: '-73.984',
+  });
   expect(await suggestPlaces('x', async () => Response.json({}))).toEqual([]);
   await expect(suggestPlaces('x', async () => new Response('busy', { status: 503 }))).rejects.toThrow(/unavailable/);
 });
@@ -50,5 +58,5 @@ test('the places API checks what was typed and never fails while typing', async 
   const down = await ask({ query: 'empire' }, (async () => new Response('busy', { status: 503 })) as unknown as typeof fetch);
   expect(await down.json()).toEqual({ places: [] });
   const found = await ask({ query: 'empire' }, (async () => Response.json(photon)) as unknown as typeof fetch);
-  expect(((await found.json()) as { places: unknown[] }).places).toHaveLength(3);
+  expect(((await found.json()) as { places: unknown[] }).places).toHaveLength(4);
 });

@@ -130,7 +130,10 @@ export function Field({
   keyboardType,
   maxLength,
   secureTextEntry,
-}: Pick<TextInputProps, 'placeholder' | 'value' | 'onChangeText' | 'keyboardType' | 'maxLength' | 'secureTextEntry'> & { label: string }) {
+  onSubmitEditing,
+}: Pick<TextInputProps, 'placeholder' | 'value' | 'onChangeText' | 'keyboardType' | 'maxLength' | 'secureTextEntry' | 'onSubmitEditing'> & {
+  label: string;
+}) {
   return (
     <View style={styles.field}>
       <Text style={styles.fieldLabel}>{label}</Text>
@@ -144,6 +147,7 @@ export function Field({
         keyboardType={keyboardType}
         maxLength={maxLength}
         secureTextEntry={secureTextEntry}
+        onSubmitEditing={onSubmitEditing}
         autoCapitalize={secureTextEntry ? 'none' : 'sentences'}
         autoCorrect={false}
       />

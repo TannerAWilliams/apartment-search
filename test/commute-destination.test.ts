@@ -33,9 +33,9 @@ test('a typed place or address is found with OpenStreetMap, and exact addresses 
     latitude: 40.7484,
     longitude: -73.9857,
   });
-  // Searched within the NY, NJ and CT area only.
-  expect(asked[0]?.hostname).toBe('nominatim.openstreetmap.org');
-  expect(Object.fromEntries(asked[0]!.searchParams)).toMatchObject({ q: 'Empire State Building', bounded: '1', countrycodes: 'us' });
+  // The suggestions' search first (it found nothing usable here), then OpenStreetMap's, within the NY, NJ and CT area.
+  expect(asked.map(({ hostname }) => hostname)).toEqual(['photon.komoot.io', 'nominatim.openstreetmap.org']);
+  expect(Object.fromEntries(asked[1]!.searchParams)).toMatchObject({ q: 'Empire State Building', bounded: '1', countrycodes: 'us' });
 
   // Nothing found, an error, or an unusable answer from OpenStreetMap: the Census geocoder tries the exact address.
   const census = {
@@ -76,9 +76,10 @@ test("OpenStreetMap answers are kept in Cloudflare's cache, so a repeated destin
     };
     const filters = parseFilters({ workplace: 'custom', customWorkplace: 'Hoboken PATH' });
     const first = await resolveWorkplace(filters, osm);
+    const asked = requests;
     const second = await resolveWorkplace(filters, osm);
     expect(second).toEqual(first);
-    expect(requests).toBe(1);
+    expect(requests, 'nothing asked again').toBe(asked);
     expect([...store.values()][0]?.headers.get('Cache-Control')).toBe('max-age=2592000');
   } finally {
     delete scope.caches;
@@ -103,4 +104,26 @@ test('a building named for its address is named once', () => {
     '520 Madison Avenue, Midtown East, Manhattan',
   );
   expect(placeLabel('Hoboken (PATH), Hudson Place, Downtown')).toBe('Hoboken (PATH), Hudson Place, Downtown');
+});
+
+test('a destination picked from the suggestions is found exactly where it was suggested', async () => {
+  const asked: string[] = [];
+  const photon = async (url: string) => {
+    asked.push(new URL(url).hostname);
+    return Response.json({
+      features: [
+        {
+          geometry: { coordinates: [-73.9744, 40.7602] },
+          properties: { housenumber: '520', street: 'Madison Avenue', city: 'New York', county: 'New York County', state: 'New York' },
+        },
+      ],
+    });
+  };
+  const filters = parseFilters({ workplace: 'custom', customWorkplace: '520 Madison Avenue, Manhattan' });
+  expect(await resolveWorkplace(filters, photon)).toEqual({
+    label: '520 Madison Avenue, Manhattan',
+    latitude: 40.7602,
+    longitude: -73.9744,
+  });
+  expect(asked).toEqual(['photon.komoot.io']);
 });

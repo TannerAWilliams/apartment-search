@@ -411,46 +411,58 @@ export function DestinationField({
   onChange: (value: string) => void;
   suggest?: (query: string) => Promise<Place[]>;
 }) {
-  const [places, setPlaces] = useState<{ query: string; list: Place[] }>({ query: '', list: [] });
+  // What the list shows: nothing yet, a search under way, its places, or that nothing matched.
+  const [places, setPlaces] = useState<{ query: string; list: Place[]; state: 'idle' | 'searching' | 'done' }>({
+    query: '',
+    list: [],
+    state: 'idle',
+  });
   const [picked, setPicked] = useState('');
+  const query = value.trim();
   // Asked once typing pauses, and only for the latest text; a choice closes the list.
   useEffect(() => {
-    const query = value.trim();
     if (!suggest || query.length < 3 || query === picked) {
-      setPlaces({ query: '', list: [] });
+      setPlaces({ query: '', list: [], state: 'idle' });
       return;
     }
     let current = true;
+    setPlaces((previous) => ({ ...previous, state: 'searching' }));
     const timer = setTimeout(() => {
       suggest(query)
-        .then((list) => current && setPlaces({ query, list }))
-        .catch(() => current && setPlaces({ query, list: [] }));
+        // An edited suggestion ("520 Madison Avenue, Manhatt") is searched again by its first part.
+        .then((list) => (list.length || !query.includes(',') ? list : suggest(query.split(',')[0]!.trim())))
+        .then((list) => current && setPlaces({ query, list, state: 'done' }))
+        .catch(() => current && setPlaces({ query, list: [], state: 'done' }));
     }, 300);
     return () => {
       current = false;
       clearTimeout(timer);
     };
-  }, [value, suggest, picked]);
+  }, [query, suggest, picked]);
+  const choose = (place: Place) => {
+    setPicked(place.label);
+    onChange(place.label);
+  };
+  const open = query.length >= 3 && query !== picked;
   return (
     <View style={styles.tokenForm}>
       <Field
         label="Destination address or place"
-        placeholder="Empire State Building, or 350 5th Ave, New York"
+        placeholder="Empire State Building, or 350 5th Ave"
         value={value}
         onChangeText={onChange}
+        // Enter takes the first suggestion, as search boxes do.
+        onSubmitEditing={() => places.list[0] && open && choose(places.list[0])}
         maxLength={160}
       />
-      {places.list.length > 0 && (
-        <View accessibilityRole="list" style={styles.menu}>
+      {open && places.list.length > 0 && (
+        <View accessibilityRole="list" style={[styles.menu, places.state === 'searching' && { opacity: 0.6 }]}>
           {places.list.map((place, index) => (
             <Pressable
               key={place.label}
               accessibilityRole="button"
               accessibilityLabel={`Use ${place.label}`}
-              onPress={() => {
-                setPicked(place.label);
-                onChange(place.label);
-              }}
+              onPress={() => choose(place)}
               style={({ pressed }) => [styles.menuRow, index > 0 && styles.menuDivider, pressed && styles.pressed]}
             >
               <Text style={styles.bodyText} numberOfLines={2}>
@@ -459,6 +471,13 @@ export function DestinationField({
             </Pressable>
           ))}
         </View>
+      )}
+      {open && suggest && places.list.length === 0 && (
+        <Text accessibilityRole="status" style={styles.smallMuted}>
+          {places.state === 'done'
+            ? `No places match “${query}”. Try a street address, like 350 5th Ave, or a landmark.`
+            : 'Looking up places…'}
+        </Text>
       )}
       {picked !== '' && picked === value && <Text style={styles.smallMuted}>Commute times will be to {picked}.</Text>}
     </View>

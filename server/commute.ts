@@ -256,13 +256,30 @@ async function nominatim(query: string, fetcher: SourceFetch) {
   return isPoint(point) ? point : null;
 }
 
+const BOROUGHS: Record<string, string> = {
+  'New York County': 'Manhattan',
+  'Kings County': 'Brooklyn',
+  'Queens County': 'Queens',
+  'Bronx County': 'Bronx',
+  'Richmond County': 'Staten Island',
+};
+const STATES: Record<string, string> = { 'New York': 'NY', 'New Jersey': 'NJ', Connecticut: 'CT' };
+
 /**
  * Suggestions while a destination is typed, from Photon (komoot's search over OpenStreetMap, made for
  * search-as-you-type, which Nominatim's policy does not allow), within the NY, NJ and CT area. Answers are kept a
  * month in Cloudflare's cache; the API's lookup limit bounds the rest.
  */
 export async function suggestPlaces(query: string, fetcher: SourceFetch = fetch) {
-  const params = new URLSearchParams({ q: query.trim(), limit: '6', lang: 'en', bbox: '-75.6,39.9,-71.7,41.7' });
+  // Within the NY, NJ and CT area, and nearer Midtown first, so "520 Madison" is Manhattan's before Long Island's.
+  const params = new URLSearchParams({
+    q: query.trim(),
+    limit: '6',
+    lang: 'en',
+    bbox: '-75.6,39.9,-71.7,41.7',
+    lat: '40.754',
+    lon: '-73.984',
+  });
   const url = `https://photon.komoot.io/api/?${params}`;
   const cache = (globalThis as { caches?: { default?: Cache } }).caches?.default;
   const cached = await cache?.match(url);
@@ -289,12 +306,15 @@ export async function suggestPlaces(query: string, fetcher: SourceFetch = fetch)
     const [longitude, latitude] = Array.isArray(geometry?.coordinates) ? (geometry.coordinates as unknown[]) : [];
     const text = (key: string) => (typeof properties?.[key] === 'string' ? (properties[key] as string) : '');
     const street = [text('housenumber'), text('street')].filter(Boolean).join(' ');
-    // "Empire State Building, 350 5th Avenue, New York" or "350 5th Avenue, New York, NY".
+    // "Empire State Building, 350 5th Avenue, Manhattan" or "12 Main Street, Hoboken, NJ": in the city, the
+    // borough, since "New York" alone does not tell Manhattan from Brooklyn.
+    const borough = text('city') === 'New York' ? BOROUGHS[text('county')] : undefined;
+    const state = STATES[text('state')] ?? '';
     const label = [
       text('name'),
       street,
-      text('city') || text('district') || text('county'),
-      text('state') === 'New York' && !text('name') ? 'NY' : '',
+      borough ?? (text('city') || text('district') || text('county')),
+      borough || text('name') ? '' : state,
     ]
       .filter((part, index, parts) => part && parts.indexOf(part) === index)
       .join(', ');
@@ -307,6 +327,9 @@ export async function suggestPlaces(query: string, fetcher: SourceFetch = fetch)
 
 /** A destination typed as an address or a place name: OpenStreetMap first, then the U.S. Census geocoder. */
 export async function geocodeAddress(address: string, fetcher: SourceFetch = fetch) {
+  // The suggestions' own search first, so a place picked from them is found exactly where it was shown.
+  const [suggested] = await suggestPlaces(address, fetcher).catch(() => []);
+  if (suggested) return suggested;
   return (await nominatim(address.trim(), fetcher).catch(() => null)) ?? censusAddress(address, fetcher);
 }
 

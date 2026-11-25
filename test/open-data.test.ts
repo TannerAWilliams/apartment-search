@@ -178,8 +178,7 @@ test('searches carry on without the lists when storage cannot be read', async ()
 test('one open-data source failing keeps the others loading; all failing is an error', async () => {
   const bucket = createMemoryBucket();
   const { fetcher } = openDataFetcher();
-  const noStations: typeof fetcher = (url, init) =>
-    String(url).includes('data.ny.gov') ? Promise.resolve(new Response('busy', { status: 503 })) : fetcher(url, init);
+  const noStations = (url: string) => (url.includes('data.ny.gov') ? Promise.resolve(new Response('busy', { status: 503 })) : fetcher(url));
   const loaded = await refreshOpenData(bucket, noStations, now);
   expect(loaded).not.toContain('stations');
   expect(loaded).toContain('registry');

@@ -57,7 +57,9 @@ test('a typed destination suggests places from the map, and picking one fills it
     if (!url.pathname.startsWith('/api/')) return route.continue();
     if (url.pathname === '/api/config') return route.fulfill({ json: { sources: [], commuteConfigured: false } });
     if (url.pathname === '/api/places') {
-      asked.push(route.request().postDataJSON().query);
+      const query: string = route.request().postDataJSON().query;
+      asked.push(query);
+      if (query.startsWith('zzz')) return route.fulfill({ json: { places: [] } });
       return route.fulfill({
         json: { places: [{ label: 'Empire State Building, 350 5th Avenue, New York', latitude: 40.7484, longitude: -73.9857 }] },
       });
@@ -78,6 +80,14 @@ test('a typed destination suggests places from the map, and picking one fills it
   await expect(page.getByText('Commute times will be to Empire State Building, 350 5th Avenue, New York.', { exact: true })).toBeVisible();
   // Asked once typing paused, not once a letter.
   expect(asked).toEqual(['empire st']);
+  // Nothing found says so, instead of showing nothing.
+  await page.getByLabel('Destination address or place').fill('zzzz');
+  await expect(page.getByText(/No places match “zzzz”/)).toBeVisible();
+  // Enter takes the first suggestion.
+  await page.getByLabel('Destination address or place').fill('empire');
+  await expect(page.getByRole('button', { name: /^Use Empire State Building/ })).toBeVisible();
+  await page.getByLabel('Destination address or place').press('Enter');
+  await expect(page.getByLabel('Destination address or place')).toHaveValue('Empire State Building, 350 5th Avenue, New York');
 });
 
 test('the commute destination is set once on the profile, kept on the device, and used by the next search', async ({ page }) => {
