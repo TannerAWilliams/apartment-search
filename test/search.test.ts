@@ -310,20 +310,37 @@ test('the available rentals view excludes off-market, sold, rented and stale rec
   expect(streetEasy.mapPoints).toStrictEqual([]);
 });
 
-test('direction links route from the apartment to the workplace in the requested mode', () => {
-  const work = localWorkplace(DEFAULT_FILTERS);
+test('direction links name the apartment and the destination, so Maps shows the places, not dropped pins', () => {
+  const work = required(localWorkplace(DEFAULT_FILTERS));
   for (const mode of ['transit', 'driving']) {
-    const coordinates = new URL(directionsLink({ latitude: 40.68, longitude: -73.99 }, required(work), mode));
-    expect(coordinates.origin + coordinates.pathname).toBe('https://www.google.com/maps/dir/');
-    expect(Object.fromEntries(coordinates.searchParams)).toStrictEqual({
+    const link = new URL(
+      directionsLink(
+        { address: '235 West 48th Street', city: 'Manhattan', state: 'NY', zip: '10036', latitude: 40.76, longitude: -73.98 },
+        work,
+        mode,
+      ),
+    );
+    expect(link.origin + link.pathname).toBe('https://www.google.com/maps/dir/');
+    expect(Object.fromEntries(link.searchParams)).toStrictEqual({
       api: '1',
-      origin: '40.68,-73.99',
-      destination: `${required(work).latitude},${required(work).longitude}`,
+      origin: '235 West 48th Street, Manhattan, NY 10036',
+      destination: 'Rockefeller Center, New York, NY',
       travelmode: mode,
     });
-    const address = new URL(directionsLink({ address: '38 Lott Ave', city: 'Brooklyn', state: 'NY', zip: '11212' }, required(work), mode));
-    expect(address.searchParams.get('origin')).toBe('38 Lott Ave, Brooklyn, NY, 11212');
   }
+  // A named place keeps its state; one with a borough gets it; coordinates stand in where nothing else will do.
+  const to = (label: string | undefined) =>
+    new URL(directionsLink({ address: '1 Main St', city: 'Hoboken', state: 'NJ' }, { ...work, label })).searchParams;
+  expect(to('520 Madison Avenue, Manhattan').get('destination')).toBe('520 Madison Avenue, Manhattan, NY');
+  expect(to('Hoboken Terminal, Hoboken, NJ').get('destination')).toBe('Hoboken Terminal, Hoboken, NJ');
+  expect(to('40.75, -73.98').get('destination')).toBe(`${work.latitude},${work.longitude}`);
+  expect(to(undefined).get('destination')).toBe(`${work.latitude},${work.longitude}`);
+  expect(to(undefined).get('origin')).toBe('1 Main St, Hoboken, NJ');
+  // No street number: the spot, or whatever address there is.
+  expect(
+    new URL(directionsLink({ address: 'East 82nd Street', latitude: 40.68, longitude: -73.99 }, work)).searchParams.get('origin'),
+  ).toBe('40.68,-73.99');
+  expect(new URL(directionsLink({ address: 'Lott Ave', city: 'Brooklyn' }, work)).searchParams.get('origin')).toBe('Lott Ave, Brooklyn');
 });
 
 test('medians handle even and odd sample counts and missing bedroom sizes', () => {

@@ -330,15 +330,32 @@ export function matchListings(listings: ListingData[], filters: SearchFilters, w
   });
 }
 
+/**
+ * Google Maps directions from the apartment to the destination, by their addresses and names so Maps shows the real
+ * places ("235 West 48th Street, Manhattan, NY 10036" to "Rockefeller Center, New York, NY"), not "Dropped pin".
+ * Coordinates stand in only where there is no street address or name.
+ */
 export function directionsLink(
   listing: Partial<Pick<ListingData, 'address' | 'city' | 'state' | 'zip' | 'latitude' | 'longitude'>>,
-  workplace: Point,
+  workplace: Point & { label?: string },
   mode = 'transit',
 ) {
-  const home = isPoint(listing)
-    ? `${listing.latitude},${listing.longitude}`
-    : [listing.address, listing.city, listing.state, listing.zip].filter(Boolean).join(', ');
-  const work = `${workplace.latitude},${workplace.longitude}`;
+  const street = /^\s*\d/.test(listing.address ?? '');
+  const home = street
+    ? [listing.address, listing.city, [listing.state, listing.zip].filter(Boolean).join(' ')].filter(Boolean).join(', ')
+    : isPoint(listing)
+      ? `${listing.latitude},${listing.longitude}`
+      : [listing.address, listing.city, listing.state, listing.zip].filter(Boolean).join(', ');
+  const label = workplace.label?.trim() ?? '';
+  // A place in the area is named with its state, so "Penn Station" is New York's, not Newark's.
+  const named = label && !/^[-\d.]+,\s*[-\d.]+$/.test(label);
+  const work = named
+    ? /\b(NY|NJ|CT|New York|New Jersey|Connecticut)\b/.test(label)
+      ? label
+      : label.includes(',')
+        ? `${label}, NY`
+        : `${label}, New York, NY`
+    : `${workplace.latitude},${workplace.longitude}`;
   const driving = mode === 'driving';
   return `https://www.google.com/maps/dir/?${new URLSearchParams({
     api: '1',
