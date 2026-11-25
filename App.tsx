@@ -778,6 +778,7 @@ function ApartmentSearch() {
                                   visible
                                   onSave={(point) => saveListing(mapListing(point, displayed.matches))}
                                   isSaved={(point) => savedKeys.has(listingKey(mapListing(point, displayed.matches)))}
+                                  onOpen={(point) => openListing(mapListing(point, displayed.matches))}
                                 />
                               </Suspense>
                             </View>

@@ -4,6 +4,7 @@ export function ListingMap(_props: {
   visible: boolean;
   onSave?: (point: never) => void;
   isSaved?: (point: never) => boolean;
+  onOpen?: (point: never) => void;
 }) {
   return null;
 }

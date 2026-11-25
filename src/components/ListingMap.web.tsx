@@ -9,7 +9,6 @@ declare module 'leaflet' {
 }
 import 'leaflet.markercluster';
 import 'leaflet/dist/leaflet.css';
-import { listingLinkLabel } from '../listings.ts';
 import { safeListingUrl } from '../marketplaces.ts';
 import { bedroomLabel, formatRent } from '../search.ts';
 
@@ -58,24 +57,28 @@ function transitStops() {
   return transitRequest;
 }
 
+/** Several homes too close to tell apart at this zoom: a small pill, "12 homes", that zooms in when tapped. */
 function pinIcon(count: number) {
-  const badge = document.createElement('span');
-  const size = count > 1 ? 34 : 15;
-  Object.assign(badge.style, {
+  const pill = document.createElement('span');
+  const label = count === 1 ? '1 home' : `${count.toLocaleString()} homes`;
+  Object.assign(pill.style, {
     background: '#222222',
     color: '#fff',
     border: '2px solid white',
-    borderRadius: '50%',
-    width: size + 'px',
-    height: size + 'px',
-    display: 'grid',
-    placeItems: 'center',
-    fontSize: '11px',
+    borderRadius: '999px',
+    padding: '3px 9px',
+    fontSize: '12px',
     fontWeight: '700',
-    boxShadow: '0 1px 4px #193e6780',
+    whiteSpace: 'nowrap',
+    boxShadow: '0 2px 6px rgba(0,0,0,0.25)',
+    display: 'block',
+    textAlign: 'center',
+    boxSizing: 'border-box',
+    lineHeight: '16px',
   });
-  if (count > 1) badge.textContent = count.toLocaleString();
-  return L.divIcon({ className: '', html: badge, iconSize: [size + 4, size + 4] });
+  pill.textContent = label;
+  const width = label.length * 7 + 22;
+  return L.divIcon({ className: '', html: pill, iconSize: [width, 26], iconAnchor: [width / 2, 13] });
 }
 
 /** A rent on the map, as listing apps label pins: "$2,450", or "3 from $2,450" for several at one address. */
@@ -119,7 +122,23 @@ function popupLink(url: unknown, label: string) {
   return link;
 }
 
-type SaveActions = { save?: (point: MapPoint) => void; isSaved?: (point: MapPoint) => boolean };
+type SaveActions = {
+  save?: (point: MapPoint) => void;
+  isSaved?: (point: MapPoint) => boolean;
+  open?: (point: MapPoint) => void;
+};
+
+const BUTTON = {
+  flex: '1',
+  padding: '8px 10px',
+  borderRadius: '8px',
+  font: '600 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+  cursor: 'pointer',
+  textAlign: 'center',
+  textDecoration: 'none',
+  boxSizing: 'border-box',
+  whiteSpace: 'nowrap',
+} as const;
 
 /** A Save button for one listing in a pop-up; it reads "Saved" once the listing is saved. */
 function saveButton(point: MapPoint, { save, isSaved }: SaveActions) {
@@ -130,14 +149,10 @@ function saveButton(point: MapPoint, { save, isSaved }: SaveActions) {
     button.textContent = saved ? '♥ Saved' : '♡ Save';
     button.disabled = saved;
     button.setAttribute('aria-label', (saved ? 'Saved: ' : 'Save ') + point.title);
-    Object.assign(button.style, {
-      marginTop: '6px',
-      padding: '5px 12px',
-      borderRadius: '999px',
-      border: '1px solid #d62a52',
-      background: saved ? '#f7f7f7' : '#d62a52',
-      color: saved ? '#d62a52' : '#fff',
-      font: '600 13px system-ui, sans-serif',
+    Object.assign(button.style, BUTTON, {
+      border: '1px solid #222222',
+      background: '#ffffff',
+      color: saved ? '#d62a52' : '#222222',
       cursor: saved ? 'default' : 'pointer',
     });
   };
@@ -150,41 +165,63 @@ function saveButton(point: MapPoint, { save, isSaved }: SaveActions) {
   return button;
 }
 
+/**
+ * A listing's pop-up, as a small card: the address, the rent and size, and two buttons: Save, and View, which
+ * opens the apartment's own page here (or the listing site when there is no page to open).
+ */
 function popupContent(listings: MapPoint[], actions: SaveActions) {
   const content = document.createElement('div');
-  Object.assign(content.style, { maxHeight: '260px', overflowY: 'auto', minWidth: '160px' });
-  for (const point of listings) {
-    const { title, rent, bedrooms, kind, url, name, linkKind, additionalLinks = [], transitSeconds, drivingSeconds } = point;
+  Object.assign(content.style, {
+    maxHeight: '300px',
+    overflowY: 'auto',
+    minWidth: '240px',
+    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+  });
+  listings.forEach((point, index) => {
+    const { title, rent, bedrooms, kind, url, transitSeconds } = point;
     const row = document.createElement('div');
-    row.style.padding = '7px 2px';
-    const heading = document.createElement('strong');
-    const primary = popupLink(url, title);
-    if (primary) heading.append(primary);
-    else heading.textContent = title;
+    Object.assign(row.style, {
+      padding: '4px 0 10px',
+      borderTop: index ? '1px solid #ebebeb' : 'none',
+      paddingTop: index ? '10px' : '4px',
+    });
+    const price = document.createElement('div');
+    Object.assign(price.style, { fontSize: '17px', fontWeight: '700', color: '#222222' });
+    price.textContent = formatRent(rent) + ' a month';
+    const heading = document.createElement('div');
+    Object.assign(heading.style, { fontSize: '14px', fontWeight: '600', color: '#222222', marginTop: '2px' });
+    heading.textContent = title;
     const detail = document.createElement('div');
-    const status = ({ snapshot: 'Dated listing', cached: 'Last saved result', saved: 'Saved listing' } as Record<string, string>)[kind];
-    detail.textContent = [
-      formatRent(rent),
-      bedroomLabel(bedrooms),
-      status,
-      transitSeconds == null ? null : `${Math.ceil(transitSeconds / 60)} min transit`,
-      drivingSeconds == null ? null : `${Math.ceil(drivingSeconds / 60)} min drive`,
-    ]
+    Object.assign(detail.style, { fontSize: '13px', color: '#6a6a6a', marginTop: '2px' });
+    const status = ({ snapshot: 'Dated listing', cached: 'Last saved result' } as Record<string, string>)[kind];
+    detail.textContent = [bedroomLabel(bedrooms), status, transitSeconds == null ? null : `${Math.ceil(transitSeconds / 60)} min transit`]
       .filter(Boolean)
       .join(' · ');
-    row.append(heading, detail);
+    const buttons = document.createElement('div');
+    Object.assign(buttons.style, { display: 'flex', gap: '8px', marginTop: '10px' });
     const save = saveButton(point, actions);
-    if (save) row.append(save);
-    for (const source of [{ url, name, kind: linkKind }, ...additionalLinks]) {
-      const link = popupLink(source.url, listingLinkLabel({ name: source.name ?? 'Website', kind: source.kind ?? kind }) + ' ↗');
-      if (!link) continue;
-      link.style.display = 'block';
-      row.append(link);
+    if (save) buttons.append(save);
+    const view = actions.open ? document.createElement('button') : popupLink(url, 'View listing ↗');
+    if (view) {
+      if (view instanceof HTMLButtonElement) {
+        view.type = 'button';
+        view.textContent = 'View apartment';
+        view.addEventListener('click', (event) => {
+          event.stopPropagation();
+          actions.open?.(point);
+        });
+      }
+      Object.assign(view.style, BUTTON, { border: '1px solid #d62a52', background: '#d62a52', color: '#ffffff' });
+      buttons.append(view);
     }
+    row.append(price, heading, detail, buttons);
     content.append(row);
-  }
+  });
   return content;
 }
+
+/** From this zoom (a few neighborhoods across) homes show their rents; further out, a dot each. */
+const PRICES_FROM_ZOOM = 14;
 
 export function ListingMap({
   points,
@@ -192,7 +229,10 @@ export function ListingMap({
   visible,
   onSave,
   isSaved,
+  onOpen,
 }: {
+  /** Opens a listing's own page from its pop-up. */
+  onOpen?: (point: MapPoint) => void;
   points: MapPoint[];
   total: number;
   visible: boolean;
@@ -202,8 +242,8 @@ export function ListingMap({
   const container = useRef<HTMLDivElement | null>(null);
   // Pop-ups are built when opened, so they read the latest save state through this ref.
   const actions = useRef<SaveActions>({});
-  actions.current = { save: onSave, isSaved };
-  const instance = useRef<{ map: L.Map; clusters: L.MarkerClusterGroup; transit: L.LayerGroup } | null>(null);
+  actions.current = { save: onSave, isSaved, open: onOpen };
+  const instance = useRef<{ map: L.Map; clusters: L.MarkerClusterGroup; dots: L.LayerGroup; transit: L.LayerGroup } | null>(null);
   const [unavailable, setUnavailable] = useState(false);
   // Subway, PATH, NJ Transit and Metro-North stops under the pins, on by default and one tap to hide.
   const [transitShown, setTransitShown] = useState(true);
@@ -229,14 +269,32 @@ export function ListingMap({
     }).addTo(map);
     tiles.on('tileerror', () => setUnavailable(true));
     tiles.on('tileload', () => setUnavailable(false));
+    // The street map a little greyed, so the pins, not the streets, stand out.
+    const tilePane = map.getPane('tilePane');
+    if (tilePane) tilePane.style.filter = 'grayscale(0.55) saturate(0.85) brightness(1.04) contrast(0.92)';
+    // Zoomed out: one small dot per home. Zoomed in: price pills, with "N homes" where several overlap.
     const clusters = L.markerClusterGroup({
       showCoverageOnHover: false,
+      maxClusterRadius: 36,
       iconCreateFunction: (cluster) =>
         pinIcon(cluster.getAllChildMarkers().reduce((sum, marker) => sum + (marker.options.listingCount ?? 0), 0)),
-    }).addTo(map);
+    });
+    const dots = L.layerGroup();
+    const showForZoom = () => {
+      const close = map.getZoom() >= PRICES_FROM_ZOOM;
+      if (close) {
+        dots.remove();
+        clusters.addTo(map);
+      } else {
+        clusters.remove();
+        dots.addTo(map);
+      }
+    };
+    map.on('zoomend', showForZoom);
+    showForZoom();
     // Stops are drawn on a canvas below the pins, so hundreds of them stay quick.
     const transit = L.layerGroup().addTo(map);
-    instance.current = { map, clusters, transit };
+    instance.current = { map, clusters, dots, transit };
     const resize = new ResizeObserver(() => map.invalidateSize({ pan: false }));
     resize.observe(container.current);
     return () => {
@@ -248,8 +306,10 @@ export function ListingMap({
 
   useEffect(() => {
     if (!instance.current) return;
-    const { map, clusters } = instance.current;
+    const { map, clusters, dots } = instance.current;
     clusters.clearLayers();
+    dots.clearLayers();
+    const dotRenderer = L.canvas({ padding: 0.5 });
     const pins = [];
     for (const [key, listings] of locations) {
       const coordinate = key.split(',').map(Number) as L.LatLngTuple;
@@ -257,12 +317,22 @@ export function ListingMap({
       pins.push(
         L.marker(coordinate, { icon: pricePin(listings), title, alt: title, listingCount: listings.length }).bindPopup(
           () => popupContent(listings, actions.current),
-          { maxWidth: 260 },
+          { maxWidth: 280 },
         ),
       );
+      L.circleMarker(coordinate, {
+        renderer: dotRenderer,
+        radius: 5,
+        color: '#ffffff',
+        weight: 1.5,
+        fillColor: '#d62a52',
+        fillOpacity: 0.9,
+      })
+        .bindPopup(() => popupContent(listings, actions.current), { maxWidth: 280 })
+        .addTo(dots);
     }
     clusters.addLayers(pins);
-    if (pins.length) map.fitBounds(clusters.getBounds(), { padding: [32, 32], maxZoom: 14, animate: false });
+    if (pins.length) map.fitBounds(L.latLngBounds(pins.map((pin) => pin.getLatLng())), { padding: [32, 32], maxZoom: 15, animate: false });
   }, [locations, visible]);
 
   useEffect(() => {
@@ -309,7 +379,7 @@ export function ListingMap({
         }}
       >
         {`${points.length.toLocaleString()} mapped${total > points.length ? ` · ${total - points.length} without coordinates` : ''}`}
-        {points.length > 0 && onSave && ' · Tap a pin to see and save listings'}
+        {points.length > 0 && ' · Zoom in for prices; tap a home to see it'}
         {unavailable && ' · Some street tiles could not load'}
       </div>
       <div

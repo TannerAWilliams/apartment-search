@@ -375,13 +375,16 @@ test('the map view loads its tiles under the Content Security Policy', async ({ 
     if (!(await popup.isVisible())) await page.locator('.leaflet-marker-icon').first().click();
     await expect(popup).toBeVisible({ timeout: 1000 });
   }).toPass();
-  await expect(popup.getByRole('link').first()).toHaveAttribute('target', '_blank');
+  // A pop-up is a small card: the rent, the address, then Save and View apartment.
+  await expect(popup.getByText(/^\$[\d,]+ a month$/).first()).toBeVisible();
   await popup
     .getByRole('button', { name: /^Save / })
     .first()
     .click();
   await expect(popup.getByRole('button', { name: /^Saved: / }).first()).toBeDisabled();
   await expect(page.getByRole('tab', { name: 'Saved (1)', exact: true })).toBeVisible();
+  await popup.getByRole('button', { name: 'View apartment', exact: true }).first().click();
+  await expect(page).toHaveURL(/\/listing\//);
 });
 
 test('cards show a Street View image where there is one, and the map elsewhere', async ({ page }) => {
