@@ -46,8 +46,8 @@ export function ChartIcon({ color, size = 22 }: IconProps) {
 }
 
 /**
- * Walkup's mark at small sizes: a Brooklyn brownstone between its neighbors, drawn bold enough to read in a browser
- * tab: a heavy cornice, big windows, the red parlor door at the top of its stoop, and the railing. The same drawing
+ * Walkup's mark at small sizes: a Brooklyn brownstone filling the icon, drawn bold enough to read in a browser
+ * tab: an overhanging cornice, big windows, the red parlor door at the top of its stoop, and the railing. The same drawing
  * is the tab icon (public/icons/walkup.svg); the home-screen icons use a more detailed one (walkup-detailed.svg).
  */
 export function BrandMark({ size = 30 }: { size?: number }) {
@@ -60,20 +60,18 @@ export function BrandMark({ size = 30 }: { size?: number }) {
       </Defs>
       <G clipPath="url(#r)">
         <Rect width={32} height={32} fill="#f1e4cc" />
-        <Rect x={0} y={8} width={6} height={24} fill="#c9a28a" />
-        <Rect x={26} y={7} width={6} height={25} fill="#bf9479" />
-        <Rect x={6} y={5.5} width={20} height={26.5} fill="#6f3418" />
-        <Rect x={4.5} y={2.8} width={23} height={3.6} rx={0.6} fill="#2b1206" />
+        <Rect x={3.5} y={5.5} width={25} height={26.5} fill="#6f3418" />
+        <Rect x={2} y={2.5} width={28} height={4} rx={0.7} fill="#2b1206" />
         <G fill="#f6ead2">
-          <Rect x={8.2} y={8.6} width={4.4} height={5.2} rx={0.4} />
-          <Rect x={14.4} y={8.6} width={4.4} height={5.2} rx={0.4} />
-          <Rect x={20.6} y={8.6} width={3.6} height={5.2} rx={0.4} />
-          <Rect x={8.2} y={16.2} width={4.4} height={6} rx={0.4} />
-          <Rect x={14.4} y={16.2} width={4.4} height={6} rx={0.4} />
+          <Rect x={6} y={9} width={5.6} height={6} rx={0.5} />
+          <Rect x={13.3} y={9} width={5.6} height={6} rx={0.5} />
+          <Rect x={20.6} y={9} width={5.6} height={6} rx={0.5} />
+          <Rect x={6} y={17.4} width={5.6} height={6.4} rx={0.5} />
+          <Rect x={13.3} y={17.4} width={5.6} height={6.4} rx={0.5} />
         </G>
-        <Path d="M20.6 22.4v-4.6a1.8 1.8 0 0 1 3.6 0v4.6z" fill="#d62a52" />
-        <Path d="M19.8 22.4h5.4v2L15.4 32H8.4z" fill="#d9a882" />
-        <Path d="M19.4 22.6 8.6 31.6" stroke="#1a0a03" strokeWidth={1.4} strokeLinecap="round" />
+        <Path d="M21 23.8v-4.6a2.2 2.2 0 0 1 4.4 0v4.6z" fill="#d62a52" />
+        <Path d="M19.8 23.8h7v2.2L16.4 32H8.6z" fill="#d9a882" />
+        <Path d="M19.6 24 8.8 31.8" stroke="#1a0a03" strokeWidth={1.6} strokeLinecap="round" />
       </G>
     </Svg>
   );
