@@ -608,7 +608,7 @@ function ApartmentSearch() {
                   </View>
                 )}
                 {/* Pages opened from Profile say where they came from and lead back to it. */}
-                {PROFILE_PAGES.includes(view) && (
+                {PROFILE_PAGES.includes(tab) && (
                   <Pressable
                     accessibilityRole="link"
                     accessibilityLabel="Back to Profile"
