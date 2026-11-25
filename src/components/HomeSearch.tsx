@@ -115,7 +115,7 @@ export function HomeSearch({
             onSubmitEditing={() => search(suggestions[0] ?? place)}
             placeholder="Neighborhood, borough or area"
             placeholderTextColor={colors.muted}
-            style={{ fontSize: 15, color: colors.ink, paddingVertical: 4, outlineStyle: 'none' } as object}
+            style={{ fontSize: 16, color: colors.ink, paddingVertical: 4, outlineStyle: 'none' } as object}
           />
         </View>
         {wide && <View style={{ width: 1, alignSelf: 'stretch', backgroundColor: colors.border, marginVertical: 6 }} />}
@@ -159,7 +159,7 @@ export function HomeSearch({
             keyboardType="number-pad"
             placeholder="Any"
             placeholderTextColor={colors.muted}
-            style={{ fontSize: 15, color: colors.ink, paddingVertical: 4, outlineStyle: 'none' } as object}
+            style={{ fontSize: 16, color: colors.ink, paddingVertical: 4, outlineStyle: 'none' } as object}
           />
         </View>
         <Pressable

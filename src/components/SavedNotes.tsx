@@ -77,7 +77,7 @@ export function SavedNotes({ identity }: { identity: string }) {
               setNote((current) => ({ ...current, text }));
               setMessage('Unsaved changes');
             }}
-            style={{ minHeight: 88, borderWidth: 1, borderColor: '#999', borderRadius: 8, padding: 10 }}
+            style={{ minHeight: 88, borderWidth: 1, borderColor: '#999', borderRadius: 8, padding: 10, fontSize: 16 }}
           />
           <Text style={styles.smallMuted}>
             {note.text.length}/{NOTE_LIMIT} characters

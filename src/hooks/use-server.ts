@@ -196,7 +196,8 @@ export function useServer({ appliedFilters, searchVersion, submitted, setResult,
         const version = searchVersion.current;
         if (!submitted.current) {
           api('search', {
-            body: { ...SEARCH_DEFAULTS, includeCommute: config.commuteConfigured === true },
+            // The current filters: the saved commute destination may already be in them.
+            body: { ...appliedFilters.current, includeCommute: config.commuteConfigured === true },
             token: activeToken,
             signal: controller.signal,
           })

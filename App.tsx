@@ -86,6 +86,8 @@ function ApartmentSearch() {
   const submitted = useRef(false);
   const searchVersion = useRef(0);
   const appliedFilters = useRef(SEARCH_DEFAULTS);
+  const serverStateRef = useRef('checking');
+  const activeTokenRef = useRef<string | undefined>(undefined);
   const { tab, navigateTab, scope, setScope, expanded, setExpanded } = useHashNavigation();
   /** The open tool panel below the commute box: one at a time. */
   const [tool, setTool] = useState('');
@@ -183,9 +185,22 @@ function ApartmentSearch() {
     [loadListing, applied.workplace, applied.customWorkplace],
   );
   // Where the person commutes to, from their account (or this device): every new search starts from it.
-  const commute = useCommutePlace(account, serverState === 'ready' && account ? commutePlaceRequest : undefined, (place) =>
-    setDraft((current) => ({ ...current, ...place })),
-  );
+  const commute = useCommutePlace(account, serverState === 'ready' && account ? commutePlaceRequest : undefined, (place) => {
+    setDraft((current) => ({ ...current, ...place }));
+    // The results shown are for the saved destination: searched again with it if they were for another.
+    const shown = appliedFilters.current;
+    if (shown.workplace === place.workplace && shown.customWorkplace === place.customWorkplace) return;
+    const filters = parseFilters({ ...shown, ...place });
+    appliedFilters.current = filters;
+    setApplied(filters);
+    if (serverStateRef.current !== 'ready') return;
+    const version = ++searchVersion.current;
+    api<SearchResult>('search', { body: filters, token: activeTokenRef.current })
+      .then((fresh) => version === searchVersion.current && setResult(fresh))
+      .catch(() => {});
+  });
+  serverStateRef.current = serverState;
+  activeTokenRef.current = activeToken;
   const defaults = () => ({ ...formDefaults(), ...commute.current.current });
   const savedByKey = useMemo(() => new Map(saved.map((listing) => [listingKey(listing), listing])), [saved]);
   const savedResults = useMemo(() => localSearch(saved, SAVED_FILTERS, result.workplace, 'saved'), [saved, result.workplace]);

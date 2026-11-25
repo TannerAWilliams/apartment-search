@@ -115,6 +115,11 @@ test('the commute destination is set once on the profile, kept on the device, an
   await page.goto('/');
   await page.getByRole('button', { name: 'Search apartments', exact: true }).click();
   await expect.poll(() => searched.at(-1)).toEqual({ workplace: 'penn', customWorkplace: '' });
+  // Opening search afresh shows commute times to the saved destination, with no change needed.
+  searched.length = 0;
+  await page.goto('/search');
+  await expect.poll(() => searched.at(-1)).toEqual({ workplace: 'penn', customWorkplace: '' });
+  await expect(page.getByText(/Commute times to/)).toContainText('Penn Station');
 });
 
 test('a commute limit is chosen with the destination and sent with the search; there is no ZIP field', async ({ page }) => {
