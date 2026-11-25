@@ -4,9 +4,10 @@
  */
 import type { AppEnv, Bucket, SnapshotFilter } from './contracts.ts';
 import type { ListingData, SearchFilters, SearchResult, SourceStatus as SearchSource } from '../src/domain.ts';
-import { localWorkplace, matchListings, needsCommute } from '../src/search.ts';
+import { isPoint, localWorkplace, matchListings, needsCommute } from '../src/search.ts';
 import { formatSearch } from '../src/market.ts';
 import { withInsights } from '../src/insights.ts';
+import { transitEstimator } from '../src/transit-estimate.ts';
 import { readBuildingFacts } from './building-facts.ts';
 import { openData } from './open-data.ts';
 import { directListings } from './direct-listings.ts';
@@ -215,7 +216,10 @@ export async function search(filters: SearchFilters, env: AppEnv, fetcher: Sourc
         sources,
         notices,
       };
-    const result = formatSearch(routed, filters, workplace!, mode, sources, notices);
+    const formatted = formatSearch(routed, filters, workplace!, mode, sources, notices);
+    // Without a routing service, each listing shown gets an estimated transit time to the destination.
+    const result =
+      commute.commute || !bucket ? formatted : { ...formatted, matches: await withTransitEstimates(formatted.matches, bucket, workplace!) };
     // The client may warn when any contributing live inventory ages out, without
     // initiating another search or transmitting a destination in the background.
     const searched = new Set(sources.filter((source) => source.status === 'searched').map((source) => source.id));
@@ -396,6 +400,25 @@ export async function search(filters: SearchFilters, env: AppEnv, fetcher: Sourc
   const found = bucket && !observationsOnly ? await recentlyGathered(bucket, key, gather) : await gather();
   kept = bucket && !observationsOnly ? found : null;
   return finish(found.listings, found.mode, found.sources, [...found.notices], found.snapshotMonth);
+}
+
+/** Each destination's estimator, made once per set of stations (kept ten minutes by openData). */
+const estimators = new WeakMap<object, Map<string, ReturnType<typeof transitEstimator>>>();
+async function withTransitEstimates<T extends ListingData>(
+  listings: T[],
+  bucket: Bucket,
+  destination: { latitude: number; longitude: number },
+) {
+  const lists = await openData(bucket);
+  const byDestination = estimators.get(lists) ?? new Map<string, ReturnType<typeof transitEstimator>>();
+  estimators.set(lists, byDestination);
+  const key = `${destination.latitude.toFixed(4)},${destination.longitude.toFixed(4)}`;
+  const estimate = byDestination.get(key) ?? transitEstimator([...lists.stations, ...lists.path], destination);
+  byDestination.set(key, estimate);
+  return listings.map((listing) => {
+    const minutes = isPoint(listing) ? estimate({ latitude: listing.latitude, longitude: listing.longitude }) : null;
+    return minutes === null ? listing : { ...listing, insights: { warnings: [], ...listing.insights, transitMinutes: minutes } };
+  });
 }
 
 /** The part of Cloudflare's Cache API a search uses. */

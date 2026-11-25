@@ -62,7 +62,7 @@ The code is deployed (`server/billing.ts`); payments stay off, and the upgrade b
 
 ## Optional
 
-- [ ] Transit and driving times on every listing: sign up at TravelTime (traveltime.com, a free developer plan to start) and set the two Worker secrets from `deploy/cloudflare`: `wrangler secret put TRAVELTIME_APP_ID` and `wrangler secret put TRAVELTIME_API_KEY`. Each search then shows a weekday-morning transit time on every card for the destination chosen, saved for a week so repeat searches cost nothing.
+- [ ] Exact transit and driving times (optional; estimated transit times are already free and on every listing): TravelTime gives door-to-door times from real timetables. Sign up at traveltime.com, then `wrangler secret put TRAVELTIME_APP_ID` and `wrangler secret put TRAVELTIME_API_KEY` from `deploy/cloudflare`. Its free tier is a trial, so this costs money after that.
 - [ ] Load the subway stations, rent-stabilized buildings and the map's transit stops now instead of at tonight's 1 AM run: Profile → Sources & sync → Resync all.
 
 - [ ] Street View photos on cards: add a Google Maps API key as the `GOOGLE_MAPS_API_KEY` Worker secret (free up to about 9,000 images a month; the app stops at that cap).

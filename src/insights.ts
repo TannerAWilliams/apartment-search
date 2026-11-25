@@ -34,6 +34,8 @@ export type ListingInsights = {
   firstSeen?: string;
   /** How much the rent dropped at its last change, when it dropped. */
   priceCut?: number;
+  /** Estimated door-to-door transit minutes to the search's destination (src/transit-estimate.ts). */
+  transitMinutes?: number;
 };
 
 /** First seen and the last price cut, from a listing's recorded price history. */

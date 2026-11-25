@@ -219,7 +219,11 @@ export const Listing = memo(function Listing({
     .join(' · ');
   const details = [
     presentation.bedsLabel,
-    commute && transitSeconds != null ? `${Math.ceil(transitSeconds / 60)} min transit` : '',
+    commute && transitSeconds != null
+      ? `${Math.ceil(transitSeconds / 60)} min transit`
+      : listing.insights?.transitMinutes
+        ? `≈ ${listing.insights.transitMinutes} min transit`
+        : '',
     commute && drivingSeconds != null ? `${Math.ceil(drivingSeconds / 60)} min drive` : '',
     listing.building?.stabilized && photoBadge !== 'Rent-stabilized' ? 'Rent-stabilized' : '',
     priceCut && !isNew ? '' : priceCut ? `Price cut ${formatRent(priceCut)}` : '',
@@ -230,6 +234,14 @@ export const Listing = memo(function Listing({
   const facts = discoveryFacts(listing);
   // What stands out, each as a heading and a line, as listing pages lead with theirs.
   const highlights: [string, string][] = [
+    ...(listing.insights?.transitMinutes && !(commute && transitSeconds != null)
+      ? [
+          [
+            `About ${listing.insights.transitMinutes} min by transit to ${workplace.label}`,
+            'Estimated from the walk to the nearest subway or PATH station, the wait, the ride and up to one transfer. Check the trip planner below for today’s exact route.',
+          ] as [string, string],
+        ]
+      : []),
     ...(badge && listing.insights?.marketMedian
       ? [
           [badge, `Median ${formatRent(listing.insights.marketMedian)} for ${listing.insights.comparedWith} similar apartments nearby`] as [

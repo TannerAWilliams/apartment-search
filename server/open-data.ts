@@ -139,7 +139,7 @@ export async function refreshOpenData(bucket: Bucket, fetcher: FetchTransport, n
 }
 
 const CACHE_MS = 10 * 60_000;
-let cache: { at: number; bucket: Bucket; registry: Record<string, number>; stations: Station[] } | null = null;
+let cache: { at: number; bucket: Bucket; registry: Record<string, number>; stations: Station[]; path: Station[] } | null = null;
 
 /** The map's transit layer: every subway station and the other rail stops, as stored. Empty lists when not loaded yet. */
 export async function transitStops(bucket: Bucket) {
@@ -153,10 +153,15 @@ export async function transitStops(bucket: Bucket) {
 /** Both lists for a search, from this Worker's memory when read in the last ten minutes. Empty when not loaded yet. */
 export async function openData(bucket: Bucket, now = Date.now()) {
   if (cache && cache.bucket === bucket && now - cache.at < CACHE_MS) return cache;
-  const [registry, stations] = await Promise.all([
+  const [registry, stations, rail] = await Promise.all([
     readDocument(bucket, REGISTRY_KEY, RegistrySchema).catch(() => null),
     readDocument(bucket, STATIONS_KEY, StationsSchema).catch(() => null),
+    readRailStops(bucket).catch(() => null),
   ]);
-  cache = { at: now, bucket, registry: registry?.buildings ?? {}, stations: stations?.stations ?? [] };
+  // PATH's stations, as one more line, for transit time estimates.
+  const path = (rail?.stops ?? [])
+    .filter(({ system }) => system === 'path')
+    .map(({ name, latitude, longitude }) => ({ name, routes: ['PATH'], latitude, longitude }));
+  cache = { at: now, bucket, registry: registry?.buildings ?? {}, stations: stations?.stations ?? [], path };
   return cache;
 }
