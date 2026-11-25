@@ -294,6 +294,13 @@ function ApartmentSearch() {
     submit(nextDraft);
   }
 
+  /** The commute limit from the results bar: a new search with it, everything else kept. */
+  function selectCommute(minutes: number | null) {
+    if ((applied.maxCommuteMinutes ?? null) === minutes) return;
+    setDraft((current) => ({ ...current, maxCommuteMinutes: minutes }));
+    submit({ ...applied, maxCommuteMinutes: minutes });
+  }
+
   function selectSort(sort: string) {
     if (busy || sort === applied.sort) return;
     setDraft((current) => ({ ...current, sort }));
@@ -735,6 +742,7 @@ function ApartmentSearch() {
                                 applied={applied}
                                 sort={scope === 'saved' ? SAVED_FILTERS.sort : applied.sort}
                                 onSort={selectSort}
+                                onCommute={view === 'results' ? selectCommute : undefined}
                                 onPage={fetchPage}
                                 paging={busy}
                                 openCommute={() => setExpanded('commute')}

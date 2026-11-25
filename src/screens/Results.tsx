@@ -99,6 +99,17 @@ function ChipMenu({
   );
 }
 
+/** Commute limits offered on the results bar, in minutes; null is any. */
+const COMMUTE_CHOICES: [number | null, string][] = [
+  [null, 'Any commute'],
+  [20, '20 min'],
+  [30, '30 min'],
+  [45, '45 min'],
+  [60, '1 hour'],
+];
+const commuteLabel = (minutes: number | null | undefined) =>
+  minutes == null ? 'Any' : (COMMUTE_CHOICES.find(([value]) => value === minutes)?.[1] ?? `${minutes} min`);
+
 /** Sorting as one button that opens its choices, instead of a row of every sort. */
 function SortMenu({ options, sort, onSort }: { options: [string, string][]; sort: string; onSort: (sort: string) => void }) {
   const current = options.find(([id]) => id === sort)?.[1] ?? options[0]?.[1];
@@ -140,7 +151,10 @@ export function Results({
   destination,
   tools = [],
   onTool,
+  onCommute,
 }: {
+  /** Sets the longest commute to the destination, from the results bar. */
+  onCommute?: (minutes: number | null) => void;
   /** Where commute times are to, and a way to change it, shown under the count. */
   destination?: { label: string; onChange: () => void };
   /** Extra tools for this list (saved searches, price changes), in a More menu. */
@@ -269,8 +283,17 @@ export function Results({
             )}
           </View>
           {/* One row: the count, then sorting as a single menu and alerts as one small button. */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, zIndex: 10 }}>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8, zIndex: 10 }}>
             {sortOptions.length > 1 && <SortMenu options={sortOptions} sort={sort} onSort={onSort} />}
+            {/* How long the trip to work may be, one tap from the results. */}
+            {!savedView && onCommute && (
+              <ChipMenu
+                label={`Commute: ${commuteLabel(applied.maxCommuteMinutes)}`}
+                title={applied.maxCommuteMinutes == null ? 'Commute' : `≤ ${commuteLabel(applied.maxCommuteMinutes)}`}
+                items={COMMUTE_CHOICES.map(([minutes, label]) => [String(minutes), label, (applied.maxCommuteMinutes ?? null) === minutes])}
+                onChoose={(id) => onCommute(id === 'null' ? null : Number(id))}
+              />
+            )}
             {!savedView && onAlert && result.total > 0 && (
               <Chip label="Get email alerts for this search" onPress={onAlert}>
                 Get alerts
