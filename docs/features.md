@@ -77,7 +77,7 @@ The routes answer only someone signed in (or anyone, when the app is public).
 **The page** (`src/screens/MarketHistory.tsx`, charts in `src/components/LineChart.tsx` and `MarketCharts.tsx`, arithmetic in `src/market-history.ts`). One row of filters (rentals or sales, area, up to three comparison areas, bedrooms or property type, measure, time range) scopes everything below it:
 
 - a sentence with the latest figure, its change from a year earlier and where the area ranks in its borough;
-- stat tiles with two-year sparklines (rent, inventory, price-cut share, rent index where StreetEasy publishes one);
+- stat tiles with two-year sparklines (rent, inventory, price-cut share, same-apartment rent, StreetEasy's repeat-rent index, where it publishes one: New York City, Manhattan, Brooklyn and Queens);
 - the trend for the area and its comparisons, as values or as percent change from the start of the range, with a crosshair that reads every line (pointer, touch, or arrow keys);
 - the measure by apartment size (or property type);
 - a heatmap of the change from a year earlier for every month since 2011;

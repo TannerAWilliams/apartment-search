@@ -116,6 +116,10 @@ function AreaPicker({
   );
 }
 
+/** What StreetEasy's rent and price indexes are, in words. */
+const INDEX_NOTE =
+  'StreetEasy’s index follows the same apartments over time, so it shows how rents really moved, not which apartments happened to be listed. Shown in dollars at today’s level; it covers New York City, Manhattan, Brooklyn and Queens.';
+
 /** StreetEasy's cards, and the chart each opens. */
 const CARD_VIEWS = {
   cuts: 'trend',
@@ -369,7 +373,7 @@ export function MarketHistory({
                   key: 'extra',
                   question: extraSeries.label,
                   answer: formatValue(extra.value, extraSeries.unit, true),
-                  context: `${formatChange(extra.yearly, extraSeries.unit)} in a year`,
+                  context: `${formatChange(extra.yearly, extraSeries.unit)} in a year${extraSeries.metric.endsWith('Index') ? ' · the same homes over time, all sizes' : ''}`,
                 },
               ]
             : []),
@@ -485,14 +489,21 @@ export function MarketHistory({
             </Text>
           )}
 
-          {view === 'trend' && trend && focusSeries && (
+          {view === 'trend' && trend && focusSeries && trend.series.length === 0 && !values.busy && (
+            <Text style={styles.smallMuted}>
+              StreetEasy publishes no {focusSeries.label.toLowerCase()} for {area?.name ?? 'this area'}
+              {focusSeries.metric.endsWith('Index') ? '; it does for New York City, Manhattan, Brooklyn and Queens only.' : '.'}
+            </Text>
+          )}
+          {view === 'trend' && trend && focusSeries && trend.series.length > 0 && (
             <ChartCard
               busy={values.busy}
               title={`${focusSeries.label}${focusSeries.segment !== 'All' ? ` · ${dashboardSegmentLabel(focusSeries.segment)}` : ''}, ${start.slice(0, 4)}–${latestMonth.slice(0, 4)}`}
               subtitle={
-                indexedView
+                (focusSeries.metric.endsWith('Index') ? `${INDEX_NOTE} ` : '') +
+                (indexedView
                   ? `Percent change since ${monthLabel(trend.months[0] ?? start)}, so areas of any size compare.`
-                  : 'Monthly values. Add areas to compare above; hover or touch the chart to read a month.'
+                  : 'Monthly values. Add areas to compare above; hover or touch the chart to read a month.')
               }
               legend={trend.series.map(({ label, color }) => ({ label, color }))}
               table={{

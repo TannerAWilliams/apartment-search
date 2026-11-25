@@ -7,11 +7,12 @@ export const METRICS = {
   medianAskingPrice: ['Median asking sale price', 'USD'],
   medianSalesPrice: ['Median recorded sale price', 'USD'],
   daysOnMarket: ['Median days on market', 'days'],
-  priceIndex: ['StreetEasy price index (dollar level)', 'USD'],
+  // StreetEasy's repeat-sales and repeat-rent indexes, in dollars at today's level: the same homes over time.
+  priceIndex: ['Same-home price', 'USD'],
   rentalInventory: ['Rental inventory', 'count'],
   medianAskingRent: ['Median asking rent', 'USD'],
   discountShare: ['Rental price-cut share', 'share'],
-  rentalIndex: ['StreetEasy rent index (dollar level)', 'USD'],
+  rentalIndex: ['Same-apartment rent', 'USD'],
 } as const;
 export type DashboardFile = {
   name: string;
