@@ -10,11 +10,12 @@
  */
 import { chromium, devices, type Browser } from 'playwright';
 
+// Measured after search moved into the browser: about 0.8 s, 0.25 s, 1 s and 0.06 s. The limits leave room for a slow network.
 const LIMITS_MS = {
-  'home page ready': 3000,
-  'results after tapping Search': 3000,
-  'results opening /search': 4000,
-  'Rents after tapping it': 800,
+  'home page ready': 1500,
+  'results after tapping Search': 1000,
+  'results opening /search': 2000,
+  'Rents after tapping it': 500,
 };
 const VISITS = 3;
 type Measure = keyof typeof LIMITS_MS;
