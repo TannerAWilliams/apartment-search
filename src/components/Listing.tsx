@@ -1,10 +1,12 @@
+import { CommuteContext } from './commute-context.ts';
+import { LineBullets } from './LineBullet.tsx';
 import type { ListingData, SourceLink, Workplace } from '../domain.ts';
 import { typicalCosts } from '../move-in.ts';
 import { buildingGrade, listedLabel, listedWithin, marketBadge, type BuildingFacts } from '../insights.ts';
 import type { CheckBuilding } from './BuildingReport.tsx';
 import { discoveryFacts, LAUNDRY_LABELS } from '../discovery.ts';
 import type React from 'react';
-import { memo, useState } from 'react';
+import { memo, useContext, useState } from 'react';
 import { Platform, Pressable, Share, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { matchesRegion, REGIONS, searchBorough } from '../regions.ts';
 import { directionsLink, formatRent } from '../search.ts';
@@ -41,16 +43,28 @@ function TypicalCost({ listing }: { listing: ListingData }) {
   // The two numbers people want first; the pieces and the rules behind them one tap away.
   return (
     <View style={{ gap: 6 }}>
-      {row('Each month, with utilities (estimate)', cost.monthly, true)}
-      {row('To move in', cost.moveIn + cost.possibleBrokerFee, true)}
+      {row('Each month, with utilities (estimated)', cost.monthly, true)}
+      {row('To move in (estimated)', cost.moveIn + cost.possibleBrokerFee, true)}
       {/* Only the pieces of the two totals above, without the notes. */}
       <Disclosure title="See the breakdown">
         <View style={{ gap: 6 }}>
-          {row('Rent', cost.parts.rent)}
+          {row('Rent (from the listing)', cost.parts.rent)}
           {row('Utilities, internet and insurance (typical)', cost.parts.utilities + cost.parts.internet + cost.parts.insurance)}
-          {row('First month and security deposit', cost.moveInParts.firstMonth + cost.moveInParts.deposit)}
-          {row('Application fee', cost.moveInParts.applicationFee)}
-          {cost.possibleBrokerFee ? row('Broker fee, if you pay one', cost.possibleBrokerFee) : null}
+          {row(
+            listing.state === 'NY'
+              ? 'First month and deposit (NY caps a deposit at one month)'
+              : 'First month and security deposit (up to the legal cap)',
+            cost.moveInParts.firstMonth + cost.moveInParts.deposit,
+          )}
+          {row(
+            listing.state === 'NY' ? 'Application fee (NY caps it at $20)' : 'Application fee (typical)',
+            cost.moveInParts.applicationFee,
+          )}
+          {cost.possibleBrokerFee ? row('Broker fee, if you pay one (often one month)', cost.possibleBrokerFee) : null}
+          <Text style={styles.smallMuted}>
+            Utilities, internet and insurance are typical amounts for an apartment this size, not quotes; the deposit is the most a landlord
+            may ask.
+          </Text>
         </View>
       </Disclosure>
     </View>
@@ -208,23 +222,24 @@ export const Listing = memo(function Listing({
           : null;
   const longListed = !isNew && listed && !listedWithin(listing.listedAt, 21);
   // Where, then what: the place and the nearest train; then size, and what the badge did not already say.
-  const place = [
-    neighborhood && neighborhood !== city ? `${neighborhood}, ${city}` : (regionInfo?.label ?? city),
-    nearest ? `${nearest.minutes} min to ${nearest.routes.join(' ')}` : '',
-  ]
+  const place = [neighborhood && neighborhood !== city ? `${neighborhood}, ${city}` : (regionInfo?.label ?? city)]
     .filter(Boolean)
     .join(' · ');
   // Size, baths, then the commute to the person's destination (its name up to the first comma, kept short).
   const facts = discoveryFacts(listing);
   const baths = facts.bathrooms;
   const destination = workplace.label.split(',')[0]!.trim().slice(0, 28);
+  // No destination set yet: a question to answer, never minutes to a place the person did not choose.
+  const { known: commuteKnown, add: addCommute } = useContext(CommuteContext);
   const details = [
     presentation.bedsLabel,
     baths == null ? '' : `${baths} ${baths === 1 ? 'bath' : 'baths'}`,
     commute && transitSeconds != null
       ? `${Math.ceil(transitSeconds / 60)} min to ${destination}`
       : listing.insights?.transitMinutes
-        ? `≈ ${listing.insights.transitMinutes} min to ${destination}`
+        ? commuteKnown
+          ? `≈ ${listing.insights.transitMinutes} min to ${destination}`
+          : '? min to your job'
         : '',
     commute && drivingSeconds != null ? `${Math.ceil(drivingSeconds / 60)} min drive` : '',
     listing.building?.stabilized && photoBadge !== 'Rent-stabilized' ? 'Rent-stabilized' : '',
@@ -234,8 +249,8 @@ export const Listing = memo(function Listing({
     .filter(Boolean)
     .join(' · ');
   // What stands out, each as a heading and a line, as listing pages lead with theirs.
-  const highlights: [string, string][] = [
-    ...(listing.insights?.transitMinutes && !(commute && transitSeconds != null)
+  const highlights: [heading: string, detail: string, routes?: readonly string[]][] = [
+    ...(listing.insights?.transitMinutes && !(commute && transitSeconds != null) && commuteKnown
       ? [
           [
             `About ${listing.insights.transitMinutes} min by transit to ${workplace.label}`,
@@ -270,7 +285,7 @@ export const Listing = memo(function Listing({
       : []),
     ...(listing.insights?.subway ?? []).map(
       ({ station, routes, minutes, accessible }) =>
-        [`${station} · ${routes.join(' ')}`, `${minutes} min walk${accessible ? ' · accessible station' : ''}`] as [string, string],
+        [station, `${minutes} min walk${accessible ? ' · accessible station' : ''}`, routes] as [string, string, readonly string[]],
     ),
     ...(priceCut ? [[`Price cut ${formatRent(priceCut)}`, 'Its last price change was a cut.'] as [string, string]] : []),
     ...(listing.contact
@@ -335,9 +350,14 @@ export const Listing = memo(function Listing({
                 </Text>
               )}
             </View>
-            <Text numberOfLines={1} style={card.subtitle}>
-              {place}
-            </Text>
+            {/* The place, then the nearest train as the MTA draws its lines. */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+              <Text numberOfLines={1} style={[card.subtitle, { flexShrink: 1 }]}>
+                {place}
+                {nearest ? ` · ${nearest.minutes} min to` : ''}
+              </Text>
+              {nearest && <LineBullets routes={nearest.routes} size={18} />}
+            </View>
             <Text numberOfLines={2} style={card.subtitle}>
               {details}
             </Text>
@@ -437,17 +457,25 @@ export const Listing = memo(function Listing({
                 .filter(Boolean)
                 .join(' · ')}
             </Text>
+            {!commuteKnown && addCommute && (
+              <Pressable accessibilityRole="button" onPress={addCommute} style={{ paddingVertical: 4 }}>
+                <Text style={styles.linkText}>? min to your job · Add where you work</Text>
+              </Pressable>
+            )}
             {highlights.length > 0 && (
               <Section title="Highlights">
-                {highlights.map(([heading, detail]) => (
+                {highlights.map(([heading, detail, routes]) => (
                   <View key={heading} style={{ gap: 2 }}>
-                    <Text style={card.highlight}>{heading}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Text style={card.highlight}>{heading}</Text>
+                      {routes && <LineBullets routes={routes} />}
+                    </View>
                     <Text style={styles.smallMuted}>{detail}</Text>
                   </View>
                 ))}
               </Section>
             )}
-            <Section title="What it costs">
+            <Section title="What it costs (estimated)">
               <TypicalCost listing={listing} />
             </Section>
             <Section title="Getting there">

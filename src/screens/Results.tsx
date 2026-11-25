@@ -271,13 +271,21 @@ export function Results({
             {destination && (
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="Change destination"
+                accessibilityLabel={destination.label ? 'Change destination' : 'Add where you work'}
                 onPress={destination.onChange}
                 style={({ pressed }) => [{ alignSelf: 'flex-start', paddingVertical: 2 }, pressed && styles.pressed]}
               >
                 <Text numberOfLines={1} style={styles.smallMuted}>
-                  Commute times to <Text style={{ color: colors.ink, fontWeight: '600' }}>{destination.label}</Text> ·{' '}
-                  <Text style={styles.linkText}>Change</Text>
+                  {destination.label ? (
+                    <>
+                      Commute times to <Text style={{ color: colors.ink, fontWeight: '600' }}>{destination.label}</Text> ·{' '}
+                      <Text style={styles.linkText}>Change</Text>
+                    </>
+                  ) : (
+                    <>
+                      ? min to your job · <Text style={styles.linkText}>Add where you work</Text>
+                    </>
+                  )}
                 </Text>
               </Pressable>
             )}

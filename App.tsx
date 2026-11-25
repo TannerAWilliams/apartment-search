@@ -45,6 +45,7 @@ import {
 import { Marketplaces } from './src/screens/Marketplaces.tsx';
 import { Results } from './src/screens/Results.tsx';
 import { CommuteCard } from './src/components/CommuteCard.tsx';
+import { CommuteContext } from './src/components/commute-context.ts';
 import { useCommutePlace } from './src/hooks/use-commute-place.ts';
 import { useServer } from './src/hooks/use-server.ts';
 import { preloadable, preloadScreens } from './src/preloadable.tsx';
@@ -199,6 +200,11 @@ function ApartmentSearch() {
       .catch(() => {});
   });
   serverStateRef.current = serverState;
+  // Until the person says where they work, commute times ask for it rather than measure to a stand-in place.
+  const navigateRef = useRef(navigateTab);
+  navigateRef.current = navigateTab;
+  const commuteKnown = commute.place !== null;
+  const commuteAsk = useMemo(() => ({ known: commuteKnown, add: () => navigateRef.current('more') }), [commuteKnown]);
   activeTokenRef.current = activeToken;
   const defaults = () => ({ ...formDefaults(), ...commute.current.current });
   const savedByKey = useMemo(() => new Map(saved.map((listing) => [listingKey(listing), listing])), [saved]);
@@ -493,503 +499,509 @@ function ApartmentSearch() {
 
   return (
     <StreetViewContext.Provider value={streetViewAvailable}>
-      <SafeAreaView style={styles.safe}>
-        {topBar}
-        {(view === 'results' || view === 'saved') && (
-          <View style={mobileStyles.searchBar}>
-            {/* The search pill: where, and for what. On Search it opens the filters. */}
-            <Pressable
-              accessibilityRole={view === 'results' ? 'button' : undefined}
-              accessibilityLabel={view === 'results' ? 'Edit search: ' + marketArea : undefined}
-              disabled={view !== 'results'}
-              onPress={() => toggleFilter('more')}
-              style={mobileStyles.summary}
-            >
-              {view === 'results' ? <SearchIcon color={colors.ink} size={18} /> : <HeartIcon color={colors.green} size={18} filled />}
-              <View style={mobileStyles.summaryCopy}>
-                <Text numberOfLines={1} style={mobileStyles.summaryTitle}>
-                  {view === 'saved' ? 'Your saved apartments' : marketArea}
-                </Text>
-                <Text numberOfLines={1} style={mobileStyles.destinationText}>
-                  {view === 'saved'
-                    ? account
-                      ? 'Kept on your account'
-                      : 'Saved on this device'
-                    : bedroomsLabel(applied) + ' · ' + (applied.maxRent == null ? 'Any price' : 'Up to ' + formatRent(applied.maxRent))}
-                </Text>
-              </View>
-            </Pressable>
-            {view === 'results' && (
+      <CommuteContext.Provider value={commuteAsk}>
+        <SafeAreaView style={styles.safe}>
+          {topBar}
+          {(view === 'results' || view === 'saved') && (
+            <View style={mobileStyles.searchBar}>
+              {/* The search pill: where, and for what. On Search it opens the filters. */}
               <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Filters"
+                accessibilityRole={view === 'results' ? 'button' : undefined}
+                accessibilityLabel={view === 'results' ? 'Edit search: ' + marketArea : undefined}
+                disabled={view !== 'results'}
                 onPress={() => toggleFilter('more')}
-                style={({ pressed }) => [mobileStyles.iconButton, pressed && styles.pressed]}
+                style={mobileStyles.summary}
               >
-                <SlidersIcon color={colors.ink} />
+                {view === 'results' ? <SearchIcon color={colors.ink} size={18} /> : <HeartIcon color={colors.green} size={18} filled />}
+                <View style={mobileStyles.summaryCopy}>
+                  <Text numberOfLines={1} style={mobileStyles.summaryTitle}>
+                    {view === 'saved' ? 'Your saved apartments' : marketArea}
+                  </Text>
+                  <Text numberOfLines={1} style={mobileStyles.destinationText}>
+                    {view === 'saved'
+                      ? account
+                        ? 'Kept on your account'
+                        : 'Saved on this device'
+                      : bedroomsLabel(applied) + ' · ' + (applied.maxRent == null ? 'Any price' : 'Up to ' + formatRent(applied.maxRent))}
+                  </Text>
+                </View>
               </Pressable>
-            )}
-          </View>
-        )}
-        <Modal
-          visible={Boolean(expanded)}
-          transparent
-          // A sheet slides up on a phone; on a wide screen the centered dialog appears at once.
-          animationType={wide ? 'fade' : 'slide'}
-          onRequestClose={() => setExpanded('')}
-        >
-          <View style={[mobileStyles.overlay, wide && mobileStyles.overlayCentered]}>
-            <View style={[mobileStyles.sheet, wide && mobileStyles.wideSheet]} accessibilityViewIsModal>
-              <View style={mobileStyles.sheetHeader}>
+              {view === 'results' && (
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel="Cancel"
-                  onPress={() => setExpanded('')}
-                  style={({ pressed }) => [mobileStyles.sheetClose, pressed && styles.pressed]}
+                  accessibilityLabel="Filters"
+                  onPress={() => toggleFilter('more')}
+                  style={({ pressed }) => [mobileStyles.iconButton, pressed && styles.pressed]}
                 >
-                  <CloseIcon color={colors.ink} />
+                  <SlidersIcon color={colors.ink} />
                 </Pressable>
-                <Text accessibilityRole="header" style={mobileStyles.sheetTitle}>
-                  {expanded === 'commute' ? 'Commute destination' : 'Filters'}
-                </Text>
-                <View style={mobileStyles.sheetClose} />
-              </View>
-              <ScrollView keyboardShouldPersistTaps="handled">
-                {error !== '' && (
-                  <Text accessibilityRole="alert" style={styles.error}>
-                    {error}
-                  </Text>
-                )}
-                <Filters
-                  panel={expanded}
-                  draft={draft}
-                  setDraft={setDraft}
-                  submit={() => submit()}
-                  busy={busy}
-                  serverState={serverState}
-                  commuteConfigured={commuteConfigured}
-                  connect={connect}
-                  suggest={suggestPlaces}
-                />
-              </ScrollView>
+              )}
             </View>
-          </View>
-        </Modal>
-        <ScrollView
-          ref={scrollRef}
-          testID="main-scroll"
-          onScroll={(event) => {
-            if (scrollTab.current) scrollPositions.current[scrollTab.current] = event.nativeEvent.contentOffset.y;
-          }}
-          scrollEventThrottle={16}
-          keyboardShouldPersistTaps="handled"
-          contentContainerStyle={styles.scroll}
-        >
-          <View style={styles.shell}>
-            <View style={styles.results}>
-              <Suspense fallback={<Text style={styles.smallMuted}>Loading…</Text>}>
-                {error !== '' && (
-                  <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
-                    <Text accessibilityRole="alert" style={[styles.error, { flex: 1 }]}>
+          )}
+          <Modal
+            visible={Boolean(expanded)}
+            transparent
+            // A sheet slides up on a phone; on a wide screen the centered dialog appears at once.
+            animationType={wide ? 'fade' : 'slide'}
+            onRequestClose={() => setExpanded('')}
+          >
+            <View style={[mobileStyles.overlay, wide && mobileStyles.overlayCentered]}>
+              <View style={[mobileStyles.sheet, wide && mobileStyles.wideSheet]} accessibilityViewIsModal>
+                <View style={mobileStyles.sheetHeader}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Cancel"
+                    onPress={() => setExpanded('')}
+                    style={({ pressed }) => [mobileStyles.sheetClose, pressed && styles.pressed]}
+                  >
+                    <CloseIcon color={colors.ink} />
+                  </Pressable>
+                  <Text accessibilityRole="header" style={mobileStyles.sheetTitle}>
+                    {expanded === 'commute' ? 'Commute destination' : 'Filters'}
+                  </Text>
+                  <View style={mobileStyles.sheetClose} />
+                </View>
+                <ScrollView keyboardShouldPersistTaps="handled">
+                  {error !== '' && (
+                    <Text accessibilityRole="alert" style={styles.error}>
                       {error}
                     </Text>
+                  )}
+                  <Filters
+                    panel={expanded}
+                    draft={draft}
+                    setDraft={setDraft}
+                    submit={() => submit()}
+                    busy={busy}
+                    serverState={serverState}
+                    commuteConfigured={commuteConfigured}
+                    connect={connect}
+                    suggest={suggestPlaces}
+                  />
+                </ScrollView>
+              </View>
+            </View>
+          </Modal>
+          <ScrollView
+            ref={scrollRef}
+            testID="main-scroll"
+            onScroll={(event) => {
+              if (scrollTab.current) scrollPositions.current[scrollTab.current] = event.nativeEvent.contentOffset.y;
+            }}
+            scrollEventThrottle={16}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={styles.scroll}
+          >
+            <View style={styles.shell}>
+              <View style={styles.results}>
+                <Suspense fallback={<Text style={styles.smallMuted}>Loading…</Text>}>
+                  {error !== '' && (
+                    <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
+                      <Text accessibilityRole="alert" style={[styles.error, { flex: 1 }]}>
+                        {error}
+                      </Text>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel="Dismiss message"
+                        onPress={() => setError('')}
+                        hitSlop={8}
+                        style={({ pressed }) => [{ padding: 6 }, pressed && styles.pressed]}
+                      >
+                        <Text style={{ fontSize: 18, color: colors.muted }}>×</Text>
+                      </Pressable>
+                    </View>
+                  )}
+                  {/* Pages opened from Profile say where they came from and lead back to it. */}
+                  {PROFILE_PAGES.includes(tab) && (
                     <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel="Dismiss message"
-                      onPress={() => setError('')}
-                      hitSlop={8}
-                      style={({ pressed }) => [{ padding: 6 }, pressed && styles.pressed]}
+                      accessibilityRole="link"
+                      accessibilityLabel="Back to Profile"
+                      onPress={() => navigateTab('more')}
+                      style={({ pressed }) => [{ alignSelf: 'flex-start', paddingVertical: 6 }, pressed && styles.pressed]}
                     >
-                      <Text style={{ fontSize: 18, color: colors.muted }}>×</Text>
+                      <Text style={[styles.linkText, { fontSize: 15 }]}>‹ Profile</Text>
                     </Pressable>
-                  </View>
-                )}
-                {/* Pages opened from Profile say where they came from and lead back to it. */}
-                {PROFILE_PAGES.includes(tab) && (
-                  <Pressable
-                    accessibilityRole="link"
-                    accessibilityLabel="Back to Profile"
-                    onPress={() => navigateTab('more')}
-                    style={({ pressed }) => [{ alignSelf: 'flex-start', paddingVertical: 6 }, pressed && styles.pressed]}
-                  >
-                    <Text style={[styles.linkText, { fontSize: 15 }]}>‹ Profile</Text>
-                  </Pressable>
-                )}
-                {listMounted && (
-                  // Kept mounted after the first visit and hidden on other screens, so coming back to Search or Saved
-                  // shows the cards at once instead of building them all again.
-                  <View style={listMode ? undefined : { display: 'none' }}>
-                    <>
-                      {view === 'saved' && (
-                        <View style={styles.toolbar}>
-                          {!(view === 'saved' && saved.length === 0) ? (
-                            <Pressable
-                              accessibilityRole="button"
-                              accessibilityLabel="Change destination"
-                              disabled={busy}
-                              onPress={() => {
-                                setError('');
-                                toggleFilter('commute');
-                              }}
-                              style={{ flexShrink: 1, paddingVertical: 6 }}
-                            >
-                              <Text numberOfLines={1} style={mobileStyles.destinationText}>
-                                Commute times to <Text style={{ color: colors.ink, fontWeight: '600' }}>{result.workplace.label}</Text> ·{' '}
-                                <Text style={styles.linkText}>Change</Text>
-                              </Text>
-                            </Pressable>
-                          ) : (
-                            <View />
-                          )}
-                          <View style={[styles.chipRow, { flexShrink: 1 }]}>
-                            {TOOLS[view === 'saved' ? 'saved' : 'results']
-                              .filter(([id]) => id !== 'changes' || !staleInventory)
-                              .filter(() => view !== 'saved' || saved.length > 0)
-                              .map(([id, short, full]) => (
-                                <Chip key={id} label={full} selected={tool === id} onPress={() => setTool(tool === id ? '' : id)}>
-                                  {short}
-                                </Chip>
-                              ))}
+                  )}
+                  {listMounted && (
+                    // Kept mounted after the first visit and hidden on other screens, so coming back to Search or Saved
+                    // shows the cards at once instead of building them all again.
+                    <View style={listMode ? undefined : { display: 'none' }}>
+                      <>
+                        {view === 'saved' && (
+                          <View style={styles.toolbar}>
+                            {!(view === 'saved' && saved.length === 0) ? (
+                              <Pressable
+                                accessibilityRole="button"
+                                accessibilityLabel="Change destination"
+                                disabled={busy}
+                                onPress={() => {
+                                  setError('');
+                                  toggleFilter('commute');
+                                }}
+                                style={{ flexShrink: 1, paddingVertical: 6 }}
+                              >
+                                <Text numberOfLines={1} style={mobileStyles.destinationText}>
+                                  Commute times to <Text style={{ color: colors.ink, fontWeight: '600' }}>{result.workplace.label}</Text> ·{' '}
+                                  <Text style={styles.linkText}>Change</Text>
+                                </Text>
+                              </Pressable>
+                            ) : (
+                              <View />
+                            )}
+                            <View style={[styles.chipRow, { flexShrink: 1 }]}>
+                              {TOOLS[view === 'saved' ? 'saved' : 'results']
+                                .filter(([id]) => id !== 'changes' || !staleInventory)
+                                .filter(() => view !== 'saved' || saved.length > 0)
+                                .map(([id, short, full]) => (
+                                  <Chip key={id} label={full} selected={tool === id} onPress={() => setTool(tool === id ? '' : id)}>
+                                    {short}
+                                  </Chip>
+                                ))}
+                            </View>
                           </View>
-                        </View>
-                      )}
-                      {view === 'saved' && <SavedComparison listings={saved} open={tool === 'compare'} />}
-                      {view === 'saved' && <TourPlanner listings={saved} open={tool === 'tours'} />}
-                      {view === 'results' && (
-                        <SavedSearches
-                          open={tool === 'searches'}
-                          filters={applied}
-                          disabled={busy}
-                          apply={(filters) => {
-                            const next = { ...filters, includeMap: WEB_MAP };
-                            setDraft({ ...defaults(), ...next });
-                            submit(next);
-                          }}
-                          check={(filters) => {
-                            if (serverState !== 'ready')
-                              return Promise.reject(new Error('Connect to the inventory server before checking a saved search.'));
-                            return api('search-check', { body: filters, token: activeToken });
+                        )}
+                        {view === 'saved' && <SavedComparison listings={saved} open={tool === 'compare'} />}
+                        {view === 'saved' && <TourPlanner listings={saved} open={tool === 'tours'} />}
+                        {view === 'results' && (
+                          <SavedSearches
+                            open={tool === 'searches'}
+                            filters={applied}
+                            disabled={busy}
+                            apply={(filters) => {
+                              const next = { ...filters, includeMap: WEB_MAP };
+                              setDraft({ ...defaults(), ...next });
+                              submit(next);
+                            }}
+                            check={(filters) => {
+                              if (serverState !== 'ready')
+                                return Promise.reject(new Error('Connect to the inventory server before checking a saved search.'));
+                              return api('search-check', { body: filters, token: activeToken });
+                            }}
+                          />
+                        )}
+                        {view === 'results' && !staleInventory && <ObservedChanges listings={result.matches} open={tool === 'changes'} />}
+                        {view === 'results' && staleInventory && (
+                          <View style={styles.empty}>
+                            <Text accessibilityRole="header" style={styles.panelTitle}>
+                              These results need a fresh check
+                            </Text>
+                            <Text style={styles.bodyText}>
+                              Their source freshness window has expired. The old results and map are hidden rather than presented as current
+                              availability. Search again to read the server’s cached inventory, or review source status. No provider refresh
+                              runs automatically from this notice.
+                            </Text>
+                            <Button secondary onPress={() => navigateTab('sources')}>
+                              Review source status
+                            </Button>
+                          </View>
+                        )}
+                        {(view === 'saved' || !staleInventory) && (
+                          <View style={[styles.resultLayout, split && styles.resultLayoutWide]}>
+                            {listVisible && (
+                              <View style={styles.results}>
+                                <Results
+                                  searching={searching}
+                                  destination={
+                                    view === 'results'
+                                      ? commuteAsk.known
+                                        ? {
+                                            label: result.workplace.label,
+                                            onChange: () => {
+                                              setError('');
+                                              toggleFilter('commute');
+                                            },
+                                          }
+                                        : { label: '', onChange: commuteAsk.add }
+                                      : undefined
+                                  }
+                                  tools={
+                                    view === 'results'
+                                      ? TOOLS.results
+                                          .filter(([id]) => id !== 'changes' || !staleInventory)
+                                          .map(([id, label]) => [id, label, tool === id] as [string, string, boolean])
+                                      : []
+                                  }
+                                  onTool={(id) => setTool(tool === id ? '' : id)}
+                                  onCheckBuilding={serverState === 'ready' ? checkBuilding : undefined}
+                                  visible={visible}
+                                  setVisible={setVisible}
+                                  result={displayed}
+                                  applied={applied}
+                                  sort={scope === 'saved' ? SAVED_FILTERS.sort : applied.sort}
+                                  onSort={selectSort}
+                                  onCommute={view === 'results' ? (commuteAsk.known ? selectCommute : () => commuteAsk.add()) : undefined}
+                                  onPage={fetchPage}
+                                  paging={busy}
+                                  openCommute={() => setExpanded('commute')}
+                                  commuteConfigured={commuteConfigured}
+                                  checkingInventory={refreshing || serverState === 'checking' || busy}
+                                  columns={split ? 1 : width >= 1200 ? 3 : wide ? 2 : 1}
+                                  savedByKey={savedByKey}
+                                  showMarkets={() => navigateTab('marketplaces')}
+                                  showSources={() => navigateTab('sources')}
+                                  onAlert={() => navigateTab('alerts')}
+                                  onOpen={openListing}
+                                  onSave={saveListing}
+                                  onSaveLink={saveLink}
+                                  onRemove={(listing) =>
+                                    setSaved((current) => current.filter((item) => listingKey(item) !== listingKey(listing)))
+                                  }
+                                  onError={setError}
+                                  status={
+                                    view === 'results' ? (
+                                      <Pressable
+                                        accessibilityRole="button"
+                                        accessibilityLabel={freshness + ' · Where listings come from'}
+                                        onPress={() => navigateTab('sources')}
+                                        style={{ flexShrink: 1 }}
+                                      >
+                                        <Text style={styles.smallMuted}>
+                                          {freshness} · <Text style={styles.linkText}>Where listings come from</Text>
+                                        </Text>
+                                      </Pressable>
+                                    ) : undefined
+                                  }
+                                />
+                              </View>
+                            )}
+                            {WEB_MAP && mapView && listMode && (
+                              <View style={[styles.mapPanel, split && styles.mapPanelWide]}>
+                                <Suspense fallback={<Text style={styles.smallMuted}>Loading map…</Text>}>
+                                  <ListingMap
+                                    points={points}
+                                    total={displayed.total}
+                                    visible
+                                    onSave={(point) => saveListing(mapListing(point, displayed.matches))}
+                                    isSaved={(point) => savedKeys.has(listingKey(mapListing(point, displayed.matches)))}
+                                    onOpen={(point) => openListing(mapListing(point, displayed.matches))}
+                                  />
+                                </Suspense>
+                              </View>
+                            )}
+                          </View>
+                        )}
+                      </>
+                    </View>
+                  )}
+                  {view === 'more' && (
+                    <ProfilePage
+                      account={account}
+                      admin={admin}
+                      plan={plan}
+                      billingRequest={serverState === 'ready' && account ? billingRequest : undefined}
+                      accountRequest={serverState === 'ready' && account ? accountRequest : undefined}
+                      membersRequest={serverState === 'ready' ? membersRequest : undefined}
+                      savedCount={savedResults.total}
+                      onOpen={navigateTab}
+                      onSignOut={() => void signOut()}
+                      signInCard={member ? undefined : <AccountPrompt reason="save apartments and get alerts" onSignedIn={signedIn} />}
+                      commuteCard={
+                        <CommuteCard
+                          place={commute.place ?? { workplace: applied.workplace, customWorkplace: applied.customWorkplace }}
+                          signedIn={Boolean(account)}
+                          suggest={suggestPlaces}
+                          onSave={(place) => {
+                            commute.remember(place);
+                            setDraft((current) => ({ ...current, ...place }));
                           }}
                         />
-                      )}
-                      {view === 'results' && !staleInventory && <ObservedChanges listings={result.matches} open={tool === 'changes'} />}
-                      {view === 'results' && staleInventory && (
-                        <View style={styles.empty}>
-                          <Text accessibilityRole="header" style={styles.panelTitle}>
-                            These results need a fresh check
-                          </Text>
-                          <Text style={styles.bodyText}>
-                            Their source freshness window has expired. The old results and map are hidden rather than presented as current
-                            availability. Search again to read the server’s cached inventory, or review source status. No provider refresh
-                            runs automatically from this notice.
-                          </Text>
-                          <Button secondary onPress={() => navigateTab('sources')}>
-                            Review source status
-                          </Button>
-                        </View>
-                      )}
-                      {(view === 'saved' || !staleInventory) && (
-                        <View style={[styles.resultLayout, split && styles.resultLayoutWide]}>
-                          {listVisible && (
-                            <View style={styles.results}>
-                              <Results
-                                searching={searching}
-                                destination={
-                                  view === 'results'
-                                    ? {
-                                        label: result.workplace.label,
-                                        onChange: () => {
-                                          setError('');
-                                          toggleFilter('commute');
-                                        },
-                                      }
-                                    : undefined
-                                }
-                                tools={
-                                  view === 'results'
-                                    ? TOOLS.results
-                                        .filter(([id]) => id !== 'changes' || !staleInventory)
-                                        .map(([id, label]) => [id, label, tool === id] as [string, string, boolean])
-                                    : []
-                                }
-                                onTool={(id) => setTool(tool === id ? '' : id)}
-                                onCheckBuilding={serverState === 'ready' ? checkBuilding : undefined}
-                                visible={visible}
-                                setVisible={setVisible}
-                                result={displayed}
-                                applied={applied}
-                                sort={scope === 'saved' ? SAVED_FILTERS.sort : applied.sort}
-                                onSort={selectSort}
-                                onCommute={view === 'results' ? selectCommute : undefined}
-                                onPage={fetchPage}
-                                paging={busy}
-                                openCommute={() => setExpanded('commute')}
-                                commuteConfigured={commuteConfigured}
-                                checkingInventory={refreshing || serverState === 'checking' || busy}
-                                columns={split ? 1 : width >= 1200 ? 3 : wide ? 2 : 1}
-                                savedByKey={savedByKey}
-                                showMarkets={() => navigateTab('marketplaces')}
-                                showSources={() => navigateTab('sources')}
-                                onAlert={() => navigateTab('alerts')}
-                                onOpen={openListing}
-                                onSave={saveListing}
-                                onSaveLink={saveLink}
-                                onRemove={(listing) =>
-                                  setSaved((current) => current.filter((item) => listingKey(item) !== listingKey(listing)))
-                                }
-                                onError={setError}
-                                status={
-                                  view === 'results' ? (
-                                    <Pressable
-                                      accessibilityRole="button"
-                                      accessibilityLabel={freshness + ' · Where listings come from'}
-                                      onPress={() => navigateTab('sources')}
-                                      style={{ flexShrink: 1 }}
-                                    >
-                                      <Text style={styles.smallMuted}>
-                                        {freshness} · <Text style={styles.linkText}>Where listings come from</Text>
-                                      </Text>
-                                    </Pressable>
-                                  ) : undefined
-                                }
-                              />
-                            </View>
-                          )}
-                          {WEB_MAP && mapView && listMode && (
-                            <View style={[styles.mapPanel, split && styles.mapPanelWide]}>
-                              <Suspense fallback={<Text style={styles.smallMuted}>Loading map…</Text>}>
-                                <ListingMap
-                                  points={points}
-                                  total={displayed.total}
-                                  visible
-                                  onSave={(point) => saveListing(mapListing(point, displayed.matches))}
-                                  isSaved={(point) => savedKeys.has(listingKey(mapListing(point, displayed.matches)))}
-                                  onOpen={(point) => openListing(mapListing(point, displayed.matches))}
-                                />
-                              </Suspense>
-                            </View>
-                          )}
-                        </View>
-                      )}
-                    </>
-                  </View>
-                )}
-                {view === 'more' && (
-                  <ProfilePage
-                    account={account}
-                    admin={admin}
-                    plan={plan}
-                    billingRequest={serverState === 'ready' && account ? billingRequest : undefined}
-                    accountRequest={serverState === 'ready' && account ? accountRequest : undefined}
-                    membersRequest={serverState === 'ready' ? membersRequest : undefined}
-                    savedCount={savedResults.total}
-                    onOpen={navigateTab}
-                    onSignOut={() => void signOut()}
-                    signInCard={member ? undefined : <AccountPrompt reason="save apartments and get alerts" onSignedIn={signedIn} />}
-                    commuteCard={
-                      <CommuteCard
-                        place={commute.place ?? { workplace: applied.workplace, customWorkplace: applied.customWorkplace }}
-                        signedIn={Boolean(account)}
-                        suggest={suggestPlaces}
-                        onSave={(place) => {
-                          commute.remember(place);
-                          setDraft((current) => ({ ...current, ...place }));
-                        }}
-                      />
-                    }
-                    settingsRequest={serverState === 'ready' ? settingsRequest : undefined}
-                    onError={setError}
-                  />
-                )}
-                {view === 'chart' && (
-                  <RentChart
-                    initialRegion={applied.region}
-                    saved={saved}
-                    showSaved={showSaved}
-                    onError={setError}
-                    loadMarket={serverState === 'ready' ? loadMarket : undefined}
-                    loadHistory={serverState === 'ready' && dashboardAvailable ? loadHistory : undefined}
-                  />
-                )}
-                {view === 'sources' && (
-                  <>
-                    <Text accessibilityRole="header" style={styles.panelTitle}>
-                      Sources & sync
-                    </Text>
-                    {refreshError !== '' && (
-                      <Text accessibilityRole="alert" style={styles.noticeLine}>
-                        {refreshError}
-                      </Text>
-                    )}
-                    <SourcesPage
-                      catalog={sourceCatalog}
-                      refresh={refresh}
-                      refreshing={refreshing}
-                      cooldownSeconds={cooldownSeconds}
-                      onResync={(id) => checkSources(id ?? null)}
+                      }
+                      settingsRequest={serverState === 'ready' ? settingsRequest : undefined}
+                      onError={setError}
                     />
-                  </>
-                )}
-                {view === 'marketplaces' && (
-                  <Marketplaces
-                    filters={applied}
-                    sources={result.sources}
-                    configuredSources={configuredSources}
-                    companies={companies}
-                    onCompany={searchCompany}
-                    refresh={refresh}
-                    onError={setError}
-                  />
-                )}
-                {view === 'alerts' && (
-                  <AlertsPage
-                    request={alertRequest}
-                    filters={applied}
-                    loadNeighborhoods={serverState === 'ready' ? loadNeighborhoods : undefined}
-                    onError={setError}
-                  />
-                )}
-                {view === 'shared' && (
-                  <SharedListPage
-                    request={serverState === 'ready' && account ? householdRequest : undefined}
-                    saved={saved}
-                    lookUp={
-                      serverState === 'ready' ? (place) => api('geocode', { body: { address: place }, token: activeToken }) : undefined
-                    }
-                    onError={setError}
-                  />
-                )}
-                {view === 'apply' && <ApplyPage saved={saved} onError={setError} />}
-                {view === 'home' && (
-                  <HomePage
-                    signedIn={member}
-                    onOpen={navigateTab}
-                    // A search from the home page starts fresh, not from the filters of an earlier one.
-                    onSearch={(changes) => {
-                      const next = { ...defaults(), ...changes, maxRent: changes.maxRent == null ? '' : String(changes.maxRent) };
-                      setDraft(next);
-                      void submit(next);
-                    }}
-                    loadNeighborhoods={serverState === 'ready' ? loadNeighborhoods : undefined}
-                    preview={serverState === 'ready' ? previewListings : undefined}
-                    actions={{
-                      workplace: result.workplace,
-                      onOpen: openListing,
-                      onSave: saveListing,
-                      onSaveLink: saveLink,
-                      saved: (listing) => savedByKey.has(listingKey(listing)),
-                      onError: setError,
-                    }}
-                  />
-                )}
-                {view === 'account' && <AccountPrompt reason={ACCOUNT_TABS[tab] ?? 'save apartments'} onSignedIn={signedIn} />}
-                {view.startsWith('listing=') && (
-                  <ListingPage
-                    id={decodeURIComponent(view.slice('listing='.length))}
-                    load={serverState === 'ready' ? loadListingWithCommute : undefined}
-                    workplace={result.workplace}
-                    saved={(listing) => savedByKey.has(listingKey(listing))}
-                    onSave={saveListing}
-                    onSaveLink={saveLink}
-                    initial={openedListing ?? undefined}
-                    onCheckBuilding={serverState === 'ready' ? checkBuilding : undefined}
-                    // Back to the results the apartment was opened from, where they were left; from a shared link, to search.
-                    onBack={() => (openedListing && Platform.OS === 'web' ? window.history.back() : navigateTab('results'))}
-                    onError={setError}
-                  />
-                )}
-                {view === 'admin' && <AdminPage load={serverState === 'ready' && admin ? loadAdminStats : undefined} onError={setError} />}
-                {view === 'list' && (
-                  <DirectPage
-                    request={serverState === 'ready' && account ? directRequest : undefined}
-                    account={account}
-                    onError={setError}
-                  />
-                )}
-                {view === 'afford' && (
-                  <AffordPage
-                    onSearch={(maxRent) => {
-                      const next = { ...draft, maxRent };
-                      setDraft(next);
-                      void submit(next);
-                    }}
-                  />
-                )}
-                {view === 'terms' && <LegalPage kind="terms" />}
-                {view === 'privacy' && <LegalPage kind="privacy" />}
-                {view === 'neighborhoods' && (
-                  <NeighborhoodsPage
-                    loadNeighborhoods={serverState === 'ready' ? loadNeighborhoods : undefined}
-                    loadReport={serverState === 'ready' ? loadNeighborhoodReport : undefined}
-                    onError={setError}
-                    onShow={(neighborhood, borough) => {
-                      const next = { ...draft, neighborhood, region: (borough && boroughKey(borough)) || 'nyc', zip: '' };
-                      setDraft(next);
-                      void submit(next);
-                    }}
-                  />
-                )}
-                {view === 'renewal' && (
-                  <RenewalPage
-                    loadNeighborhoods={serverState === 'ready' ? loadNeighborhoods : undefined}
-                    loadReport={serverState === 'ready' ? loadNeighborhoodReport : undefined}
-                    onError={setError}
-                  />
-                )}
-                {view === 'affordable' && (
-                  <AffordableHousing
-                    region={applied.region}
-                    loadHousing={serverState === 'ready' ? loadHousing : undefined}
-                    onError={setError}
-                  />
-                )}
-              </Suspense>
+                  )}
+                  {view === 'chart' && (
+                    <RentChart
+                      initialRegion={applied.region}
+                      saved={saved}
+                      showSaved={showSaved}
+                      onError={setError}
+                      loadMarket={serverState === 'ready' ? loadMarket : undefined}
+                      loadHistory={serverState === 'ready' && dashboardAvailable ? loadHistory : undefined}
+                    />
+                  )}
+                  {view === 'sources' && (
+                    <>
+                      <Text accessibilityRole="header" style={styles.panelTitle}>
+                        Sources & sync
+                      </Text>
+                      {refreshError !== '' && (
+                        <Text accessibilityRole="alert" style={styles.noticeLine}>
+                          {refreshError}
+                        </Text>
+                      )}
+                      <SourcesPage
+                        catalog={sourceCatalog}
+                        refresh={refresh}
+                        refreshing={refreshing}
+                        cooldownSeconds={cooldownSeconds}
+                        onResync={(id) => checkSources(id ?? null)}
+                      />
+                    </>
+                  )}
+                  {view === 'marketplaces' && (
+                    <Marketplaces
+                      filters={applied}
+                      sources={result.sources}
+                      configuredSources={configuredSources}
+                      companies={companies}
+                      onCompany={searchCompany}
+                      refresh={refresh}
+                      onError={setError}
+                    />
+                  )}
+                  {view === 'alerts' && (
+                    <AlertsPage
+                      request={alertRequest}
+                      filters={applied}
+                      loadNeighborhoods={serverState === 'ready' ? loadNeighborhoods : undefined}
+                      onError={setError}
+                    />
+                  )}
+                  {view === 'shared' && (
+                    <SharedListPage
+                      request={serverState === 'ready' && account ? householdRequest : undefined}
+                      saved={saved}
+                      lookUp={
+                        serverState === 'ready' ? (place) => api('geocode', { body: { address: place }, token: activeToken }) : undefined
+                      }
+                      onError={setError}
+                    />
+                  )}
+                  {view === 'apply' && <ApplyPage saved={saved} onError={setError} />}
+                  {view === 'home' && (
+                    <HomePage
+                      signedIn={member}
+                      onOpen={navigateTab}
+                      // A search from the home page starts fresh, not from the filters of an earlier one.
+                      onSearch={(changes) => {
+                        const next = { ...defaults(), ...changes, maxRent: changes.maxRent == null ? '' : String(changes.maxRent) };
+                        setDraft(next);
+                        void submit(next);
+                      }}
+                      loadNeighborhoods={serverState === 'ready' ? loadNeighborhoods : undefined}
+                      preview={serverState === 'ready' ? previewListings : undefined}
+                      actions={{
+                        workplace: result.workplace,
+                        onOpen: openListing,
+                        onSave: saveListing,
+                        onSaveLink: saveLink,
+                        saved: (listing) => savedByKey.has(listingKey(listing)),
+                        onError: setError,
+                      }}
+                    />
+                  )}
+                  {view === 'account' && <AccountPrompt reason={ACCOUNT_TABS[tab] ?? 'save apartments'} onSignedIn={signedIn} />}
+                  {view.startsWith('listing=') && (
+                    <ListingPage
+                      id={decodeURIComponent(view.slice('listing='.length))}
+                      load={serverState === 'ready' ? loadListingWithCommute : undefined}
+                      workplace={result.workplace}
+                      saved={(listing) => savedByKey.has(listingKey(listing))}
+                      onSave={saveListing}
+                      onSaveLink={saveLink}
+                      initial={openedListing ?? undefined}
+                      onCheckBuilding={serverState === 'ready' ? checkBuilding : undefined}
+                      // Back to the results the apartment was opened from, where they were left; from a shared link, to search.
+                      onBack={() => (openedListing && Platform.OS === 'web' ? window.history.back() : navigateTab('results'))}
+                      onError={setError}
+                    />
+                  )}
+                  {view === 'admin' && (
+                    <AdminPage load={serverState === 'ready' && admin ? loadAdminStats : undefined} onError={setError} />
+                  )}
+                  {view === 'list' && (
+                    <DirectPage
+                      request={serverState === 'ready' && account ? directRequest : undefined}
+                      account={account}
+                      onError={setError}
+                    />
+                  )}
+                  {view === 'afford' && (
+                    <AffordPage
+                      onSearch={(maxRent) => {
+                        const next = { ...draft, maxRent };
+                        setDraft(next);
+                        void submit(next);
+                      }}
+                    />
+                  )}
+                  {view === 'terms' && <LegalPage kind="terms" />}
+                  {view === 'privacy' && <LegalPage kind="privacy" />}
+                  {view === 'neighborhoods' && (
+                    <NeighborhoodsPage
+                      loadNeighborhoods={serverState === 'ready' ? loadNeighborhoods : undefined}
+                      loadReport={serverState === 'ready' ? loadNeighborhoodReport : undefined}
+                      onError={setError}
+                      onShow={(neighborhood, borough) => {
+                        const next = { ...draft, neighborhood, region: (borough && boroughKey(borough)) || 'nyc', zip: '' };
+                        setDraft(next);
+                        void submit(next);
+                      }}
+                    />
+                  )}
+                  {view === 'renewal' && (
+                    <RenewalPage
+                      loadNeighborhoods={serverState === 'ready' ? loadNeighborhoods : undefined}
+                      loadReport={serverState === 'ready' ? loadNeighborhoodReport : undefined}
+                      onError={setError}
+                    />
+                  )}
+                  {view === 'affordable' && (
+                    <AffordableHousing
+                      region={applied.region}
+                      loadHousing={serverState === 'ready' ? loadHousing : undefined}
+                      onError={setError}
+                    />
+                  )}
+                </Suspense>
+              </View>
+              <View style={styles.footer}>
+                <Text style={styles.smallMuted}>Walkup · New York, New Jersey and Connecticut</Text>
+              </View>
             </View>
-            <View style={styles.footer}>
-              <Text style={styles.smallMuted}>Walkup · New York, New Jersey and Connecticut</Text>
-            </View>
-          </View>
-        </ScrollView>
-        {/* Map and list switch from a floating pill above the tab bar. */}
-        {WEB_MAP && (view === 'results' || (view === 'saved' && saved.length > 0)) && (
-          <View pointerEvents="box-none" style={mobileStyles.floatingRow}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={mapView ? 'List' : 'Map'}
-              onPress={() => {
-                const showing = !mapView;
-                setMapView(showing);
-                // The search ran without the map's points; ask again with them.
-                if (showing && !result.mapPoints && scope !== 'saved') void submit(applied, true);
-              }}
-              style={({ pressed }) => [mobileStyles.floatingPill, pressed && styles.pressed]}
-            >
-              <Text style={mobileStyles.floatingText}>{mapView ? 'Show list' : 'Show map'}</Text>
-              {mapView ? <ListIcon color={colors.white} /> : <MapIcon color={colors.white} />}
-            </Pressable>
-          </View>
-        )}
-        {toast !== '' && (
-          <View pointerEvents="box-none" style={[mobileStyles.floatingRow, { bottom: 150 }]}>
-            <View
-              accessibilityRole="alert"
-              style={[mobileStyles.floatingPill, { backgroundColor: colors.white, borderWidth: 1, borderColor: colors.border, gap: 16 }]}
-            >
-              <Text style={{ color: colors.ink, fontWeight: '600' }}>{toast}</Text>
+          </ScrollView>
+          {/* Map and list switch from a floating pill above the tab bar. */}
+          {WEB_MAP && (view === 'results' || (view === 'saved' && saved.length > 0)) && (
+            <View pointerEvents="box-none" style={mobileStyles.floatingRow}>
               <Pressable
                 accessibilityRole="button"
+                accessibilityLabel={mapView ? 'List' : 'Map'}
                 onPress={() => {
-                  setToast('');
-                  showSaved();
+                  const showing = !mapView;
+                  setMapView(showing);
+                  // The search ran without the map's points; ask again with them.
+                  if (showing && !result.mapPoints && scope !== 'saved') void submit(applied, true);
                 }}
+                style={({ pressed }) => [mobileStyles.floatingPill, pressed && styles.pressed]}
               >
-                <Text style={[styles.linkText, { fontWeight: '600' }]}>View</Text>
+                <Text style={mobileStyles.floatingText}>{mapView ? 'Show list' : 'Show map'}</Text>
+                {mapView ? <ListIcon color={colors.white} /> : <MapIcon color={colors.white} />}
               </Pressable>
             </View>
-          </View>
-        )}
-        {!wide && <View style={mobileStyles.bottomNav}>{navigation}</View>}
-      </SafeAreaView>
+          )}
+          {toast !== '' && (
+            <View pointerEvents="box-none" style={[mobileStyles.floatingRow, { bottom: 150 }]}>
+              <View
+                accessibilityRole="alert"
+                style={[mobileStyles.floatingPill, { backgroundColor: colors.white, borderWidth: 1, borderColor: colors.border, gap: 16 }]}
+              >
+                <Text style={{ color: colors.ink, fontWeight: '600' }}>{toast}</Text>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => {
+                    setToast('');
+                    showSaved();
+                  }}
+                >
+                  <Text style={[styles.linkText, { fontWeight: '600' }]}>View</Text>
+                </Pressable>
+              </View>
+            </View>
+          )}
+          {!wide && <View style={mobileStyles.bottomNav}>{navigation}</View>}
+        </SafeAreaView>
+      </CommuteContext.Provider>
     </StreetViewContext.Provider>
   );
 }

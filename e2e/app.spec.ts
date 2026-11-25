@@ -1089,11 +1089,16 @@ test('profile: a free member’s saved listings are kept on the account, and ale
 });
 
 test('cards show the building’s grade, rent stabilization, the price against similar apartments and warnings', async ({ page }) => {
+  await page.addInitScript(() =>
+    localStorage.setItem('walkup.commute-place', JSON.stringify({ workplace: 'rockefeller', customWorkplace: '' })),
+  );
   await mockApp(page, { insights: true });
   // One badge on the photo; the grade where a rating would be; the rest in short grey lines.
   await expect(page.getByText('Listed today', { exact: true }).first()).toBeVisible();
   await expect(page.getByText('Building A', { exact: true }).first()).toBeVisible();
-  await expect(page.getByText(/· 3 min to L$/).first()).toBeVisible();
+  // The nearest train as the MTA draws it: a bullet for each line.
+  await expect(page.getByText(/· 3 min to$/).first()).toBeVisible();
+  await expect(page.getByLabel('L train', { exact: true }).first()).toBeVisible();
   await expect(page.getByText(/1 bedroom · ≈ 35 min to Rockefeller Center · Rent-stabilized · Price cut \$150/).first()).toBeVisible();
   await expect(page.getByText(/· 25% below similar/).first()).toBeVisible();
   await expect(page.getByText('⚠ This unit is also listed at $2,100.', { exact: true }).first()).toBeVisible();

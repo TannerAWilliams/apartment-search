@@ -5,6 +5,7 @@ import { Pressable, Text, View } from 'react-native';
 import { REGIONS, WORKPLACES } from '../regions.ts';
 import { colors, styles } from '../styles.ts';
 import { Button, Chip, Field } from './ui.tsx';
+import { lineColors } from './LineBullet.tsx';
 import { type DraftFilters, SEARCH_DEFAULTS, BEDROOMS, formDefaults } from '../app-shared.ts';
 
 /** A filter section's heading, with a divider above it. */
@@ -18,20 +19,6 @@ const FILTER_HEADING = {
   paddingTop: 20,
   marginTop: 8,
 } as const;
-
-/** The MTA's bullet colors for each line, and the text color that reads on it. */
-function lineColors(line: string): [string, string] {
-  if ('123'.includes(line)) return ['#EE352E', '#ffffff'];
-  if ('456'.includes(line)) return ['#00933C', '#ffffff'];
-  if (line === '7') return ['#B933AD', '#ffffff'];
-  if ('ACE'.includes(line)) return ['#0039A6', '#ffffff'];
-  if ('BDFM'.includes(line)) return ['#FF6319', '#ffffff'];
-  if (line === 'G') return ['#6CBE45', '#ffffff'];
-  if ('JZ'.includes(line)) return ['#996633', '#ffffff'];
-  if (line === 'L') return ['#A7A9AC', '#222222'];
-  if ('NQRW'.includes(line)) return ['#FCCC0A', '#222222'];
-  return ['#808183', '#ffffff'];
-}
 
 /** The places offered, in one row: anywhere, the city and each borough, then the areas around it. */
 const AREA_CHOICES: (readonly [string, string])[] = [

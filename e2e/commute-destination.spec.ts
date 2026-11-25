@@ -1,8 +1,13 @@
-import { test, expect } from './fixtures.ts';
+import { test, expect, type Page } from './fixtures.ts';
 import { parseFilters, localWorkplace } from '../src/search.ts';
 import { localSearch } from '../src/market.ts';
 
+/** A visitor who has already said where they work (on this device). */
+const knownCommute = (page: Page) =>
+  page.addInitScript(() => localStorage.setItem('walkup.commute-place', JSON.stringify({ workplace: 'rockefeller', customWorkplace: '' })));
+
 test('destination editing stays local until Apply and remains accessible without routing', async ({ page }) => {
+  await knownCommute(page);
   const requests: { workplace: string; customWorkplace: string }[] = [];
   await page.route('**/*', async (route) => {
     const url = new URL(route.request().url());
@@ -50,6 +55,7 @@ test('destination editing stays local until Apply and remains accessible without
 });
 
 test('a typed destination suggests places from the map, and picking one fills it in', async ({ page }) => {
+  await knownCommute(page);
   const asked: string[] = [];
   await page.route('**/*', async (route) => {
     const url = new URL(route.request().url());
@@ -123,6 +129,7 @@ test('the commute destination is set once on the profile, kept on the device, an
 });
 
 test('a commute limit is chosen with the destination and sent with the search; there is no ZIP field', async ({ page }) => {
+  await knownCommute(page);
   const searched: Record<string, unknown>[] = [];
   await page.route('**/*', async (route) => {
     const url = new URL(route.request().url());
@@ -149,6 +156,7 @@ test('a commute limit is chosen with the destination and sent with the search; t
 });
 
 test('the commute limit is one tap from the results', async ({ page }) => {
+  await knownCommute(page);
   const searched: Record<string, unknown>[] = [];
   await page.route('**/*', async (route) => {
     const url = new URL(route.request().url());
@@ -170,4 +178,23 @@ test('the commute limit is one tap from the results', async ({ page }) => {
   await page.getByRole('button', { name: 'Commute: 45 min', exact: true }).click();
   await page.getByRole('menuitem', { name: 'Any commute', exact: true }).click();
   await expect.poll(() => searched.at(-1)?.maxCommuteMinutes ?? null).toBeNull();
+});
+
+test('before saying where they work, a visitor sees "? min to your job" and is taken to set it', async ({ page }) => {
+  await page.route('**/*', async (route) => {
+    const url = new URL(route.request().url());
+    if (url.origin !== 'http://127.0.0.1:4173') return route.abort();
+    if (!url.pathname.startsWith('/api/')) return route.continue();
+    if (url.pathname === '/api/config') return route.fulfill({ json: { sources: [], commuteConfigured: false } });
+    if (url.pathname === '/api/search') {
+      const filters = parseFilters(route.request().postDataJSON());
+      return route.fulfill({ json: localSearch([], filters, localWorkplace(filters), 'live') });
+    }
+    return route.abort();
+  });
+  await page.goto('/search');
+  await expect(page.getByText(/Commute times to Rockefeller Center/)).toHaveCount(0);
+  await page.getByRole('button', { name: 'Add where you work', exact: true }).click();
+  await expect(page).toHaveURL(/\/profile$/);
+  await expect(page.getByRole('heading', { name: 'Your commute', exact: true })).toBeVisible();
 });
