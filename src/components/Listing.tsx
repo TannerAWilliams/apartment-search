@@ -43,22 +43,14 @@ function TypicalCost({ listing }: { listing: ListingData }) {
     <View style={{ gap: 6 }}>
       {row('Each month, with utilities (estimate)', cost.monthly, true)}
       {row('To move in', cost.moveIn + cost.possibleBrokerFee, true)}
+      {/* Only the pieces of the two totals above, without the notes. */}
       <Disclosure title="See the breakdown">
         <View style={{ gap: 6 }}>
           {row('Rent', cost.parts.rent)}
-          {row('Electricity and gas (typical)', cost.parts.utilities)}
-          {row('Internet', cost.parts.internet)}
-          {row('Renter’s insurance', cost.parts.insurance)}
-          <Text style={[styles.fieldLabel, { marginTop: 8 }]}>To move in</Text>
-          {row('First month', cost.moveInParts.firstMonth)}
-          {row('Security deposit', cost.moveInParts.deposit)}
+          {row('Utilities, internet and insurance (typical)', cost.parts.utilities + cost.parts.internet + cost.parts.insurance)}
+          {row('First month and security deposit', cost.moveInParts.firstMonth + cost.moveInParts.deposit)}
           {row('Application fee', cost.moveInParts.applicationFee)}
           {cost.possibleBrokerFee ? row('Broker fee, if you pay one', cost.possibleBrokerFee) : null}
-          {cost.notes.map((note) => (
-            <Text key={note} style={styles.smallMuted}>
-              {note}
-            </Text>
-          ))}
         </View>
       </Disclosure>
     </View>
@@ -347,7 +339,7 @@ export const Listing = memo(function Listing({
             <Text numberOfLines={1} style={card.subtitle}>
               {place}
             </Text>
-            <Text numberOfLines={1} style={card.subtitle}>
+            <Text numberOfLines={2} style={card.subtitle}>
               {details}
             </Text>
             <Text style={[card.priceLine, defaultExpanded && card.pagePrice]}>

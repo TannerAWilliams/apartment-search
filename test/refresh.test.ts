@@ -439,6 +439,8 @@ test('a rate-limited feed retains cached data and waits until its Retry-After ti
   const filters = parseFilters({ bedrooms: 2, zip: '07302' });
   expect((await search(filters, env)).matches[0].kind).toBe('cached');
   expect((await search(parseFilters({ ...filters, liveOnly: true }), env)).total).toBe(0);
+  // Kept listings last checked over two days ago are not shown as available: they may well be rented.
+  expect((await search(parseFilters({ ...filters, liveOnly: true, includeCached: true }), env)).total).toBe(0);
 
   const deferred = await refreshSources(env, { fetcher, now: new Date(due - 1), onDemand: true });
   expect(deferred.sources.find(({ id }: { id: string }) => id === feed.id)).toStrictEqual(status);

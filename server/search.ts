@@ -61,6 +61,12 @@ async function withHousingLinks<T extends { matches: ListingData[] }>(result: T,
   };
 }
 
+/**
+ * How long a source's last good listings are still shown after its syncs start failing. Past this, apartments
+ * in them may well be rented, so they are dropped until the source syncs again.
+ */
+export const KEPT_MAX_MS = 2 * 86_400_000;
+
 async function storedSample(
   status: { sources: SourceStatus[] } | null,
   id: string,
@@ -71,8 +77,9 @@ async function storedSample(
 ) {
   const sourceStatus = status?.sources.find((source) => source.id === id);
   const recent = sourceRecent(status, id);
+  const keptAge = Date.now() - Date.parse(sourceStatus?.updatedAt ?? '');
   const data =
-    recent || ((!liveOnly || includeCached) && sourceStatus?.updatedAt)
+    recent || (!liveOnly && sourceStatus?.updatedAt) || (includeCached && keptAge <= KEPT_MAX_MS)
       ? await load().catch((error) => {
           if (strict) throw error;
           return null;
