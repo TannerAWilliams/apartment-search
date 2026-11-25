@@ -11,8 +11,9 @@ import { secureHeaders } from 'hono/secure-headers';
 export const securityHeaders = secureHeaders({
   contentSecurityPolicy: {
     defaultSrc: ["'self'"],
-    // Cloudflare Web Analytics, which Cloudflare adds to the page (no cookies, no personal data).
-    scriptSrc: ["'self'", 'https://static.cloudflareinsights.com'],
+    // Only the app's own scripts. Cloudflare Web Analytics is kept off the pages (no-transform, below): Safari's
+    // Private Browsing blocks its script as a tracker and then tells the visitor the page may be broken.
+    scriptSrc: ["'self'"],
     styleSrc: ["'self'", "'unsafe-inline'"],
     // OpenFreeMap's map style draws its streets in a worker and reads its tiles, fonts and icons from its own host.
     workerSrc: ["'self'", 'blob:'],
@@ -31,7 +32,6 @@ export const securityHeaders = secureHeaders({
       'https://raw.githubusercontent.com',
       'https://www.firstmovernyc.com',
       'https://data.cityofnewyork.us',
-      'https://cloudflareinsights.com',
       'https://tiles.openfreemap.org',
     ],
     fontSrc: ["'self'", 'data:'],
@@ -49,10 +49,11 @@ export const securityHeaders = secureHeaders({
 
 /**
  * Fingerprinted build files never change, so browsers keep them for a year; everything else is
- * revalidated on each load. Private, because the app is behind sign-in.
+ * revalidated on each load. Private, because the app is behind sign-in. no-transform keeps Cloudflare from
+ * adding its Web Analytics script to the pages.
  */
 export const cacheControl = (pathname: string) =>
-  pathname.startsWith('/_expo/static/') ? 'private, max-age=31536000, immutable' : 'private, no-cache';
+  pathname.startsWith('/_expo/static/') ? 'private, max-age=31536000, immutable' : 'private, no-cache, no-transform';
 
 /** A copy of a static-asset response, whose headers can then be changed, with the caching header above. */
 export function withCacheControl(response: Response, pathname: string) {

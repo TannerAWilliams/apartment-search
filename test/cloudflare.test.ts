@@ -65,7 +65,7 @@ test('the web app is served with its security policy, and only fingerprinted fil
   const page = await call(env, '/');
   expect(page.headers.get('Content-Security-Policy') ?? '').toMatch(/frame-ancestors 'none'/);
   expect(page.headers.get('Referrer-Policy')).toBe('no-referrer');
-  expect(page.headers.get('Cache-Control')).toBe('private, no-cache');
+  expect(page.headers.get('Cache-Control')).toBe('private, no-cache, no-transform');
   const bundle = await call(env, '/_expo/static/js/web/index-0123abcd.js');
   expect(bundle.headers.get('Cache-Control')).toBe('private, max-age=31536000, immutable');
   const missing = await call(
@@ -86,7 +86,7 @@ test('the app’s own addresses get the app, and other missing files stay missin
   };
   const screen = await call(onlyIndex, '/profile');
   expect(await screen.text()).toBe('the app');
-  expect(screen.headers.get('Cache-Control')).toBe('private, no-cache');
+  expect(screen.headers.get('Cache-Control')).toBe('private, no-cache, no-transform');
   expect(await (await call(onlyIndex, '/listing/abc')).text()).toBe('the app');
   expect((await call(onlyIndex, '/nothing-here.png')).status).toBe(404);
 });

@@ -154,7 +154,7 @@ export const publicPages = (env: AppEnv, fetcher: FetchTransport) =>
         'Median asking rents by size, rent-stabilized buildings and 311 complaints for every New York City neighborhood with apartments listed now.',
         `<h1>New York City rents by neighborhood</h1><p>Median asking rents, buildings and 311 complaints for ${pages.length} neighborhoods with apartments listed now.</p>${sections}`,
       );
-      return c.html(html, 200, { 'Cache-Control': 'public, max-age=3600' });
+      return c.html(html, 200, { 'Cache-Control': 'public, max-age=3600, no-transform' });
     })
     .get('/rents/:borough/:name', async (c) => {
       const origin = new URL(c.req.url).origin;
@@ -172,5 +172,5 @@ export const publicPages = (env: AppEnv, fetcher: FetchTransport) =>
           ),
           404,
         );
-      return c.html(html, 200, { 'Cache-Control': 'public, max-age=3600' });
+      return c.html(html, 200, { 'Cache-Control': 'public, max-age=3600, no-transform' });
     });

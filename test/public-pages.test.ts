@@ -52,7 +52,7 @@ test('neighborhood pages, their index, the sitemap and robots.txt are public', a
   await createD1Bucket(env.APARTMENTS).put('buildings/facts.json', JSON.stringify({ [buildingKey(listing)!]: facts }));
   const response = await get(env, '/rents/' + first.path);
   expect(response.status).toBe(200);
-  expect(response.headers.get('cache-control')).toBe('public, max-age=3600');
+  expect(response.headers.get('cache-control')).toBe('public, max-age=3600, no-transform');
   const html = await response.text();
   expect(html).toContain(`<h1>Apartments for rent in ${first.name}</h1>`);
   expect(html).toContain('311 complaints in the last year');
