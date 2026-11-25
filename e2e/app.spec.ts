@@ -511,8 +511,11 @@ test('saved notes and viewing status persist on this device without network writ
 
 test('observed timeline distinguishes historical checks from live availability and fee bases', async ({ page }) => {
   const { requests } = await mockApp(page, { priceHistory: true });
-  await page.getByRole('button', { name: 'Details for 12 Grove Street', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Observed price history', exact: true })).toBeVisible();
+  // The opening search can redraw the cards just as one is tapped, so the tap is tried until the page opens.
+  await expect(async () => {
+    await page.getByRole('button', { name: 'Details for 12 Grove Street', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Observed price history', exact: true })).toBeVisible({ timeout: 2000 });
+  }).toPass({ timeout: 15000 });
   await expect(page.getByText(/Seen on synthetic-fixture.*not proof/)).toBeVisible();
   await expect(page.getByText(/\$1,900\/mo · asking rent; fees not confirmed/)).toBeVisible();
   await expect(page.getByText(/\$1,800\/mo · includes reported fees/)).toBeVisible();
