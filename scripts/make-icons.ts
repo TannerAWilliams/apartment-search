@@ -3,9 +3,15 @@
 import { chromium } from 'playwright';
 
 /** The brownstone mark (public/icons/walkup.svg), on its own sky color, inset by `inset` so a maskable icon keeps it in the safe zone. */
-const mark = await Bun.file(new URL('../public/icons/walkup.svg', import.meta.url)).text();
-const drawing = mark.slice(mark.indexOf('>') + 1, mark.lastIndexOf('</svg>'));
+// The detailed drawing for home-screen sizes; the bolder one (walkup.svg) where an icon is tiny.
+const read = async (name: string) => {
+  const mark = await Bun.file(new URL(`../public/icons/${name}`, import.meta.url)).text();
+  return mark.slice(mark.indexOf('>') + 1, mark.lastIndexOf('</svg>'));
+};
+const detailed = await read('walkup-detailed.svg');
+const small = await read('walkup.svg');
 const svg = (size: number, { rounded = true, inset = 0 } = {}) => {
+  const drawing = size <= 64 ? small : detailed;
   const pad = size * inset;
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
     <rect width="${size}" height="${size}" rx="${rounded ? size * 0.22 : 0}" fill="#f1e4cc"/>

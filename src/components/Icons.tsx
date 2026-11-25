@@ -46,9 +46,9 @@ export function ChartIcon({ color, size = 22 }: IconProps) {
 }
 
 /**
- * Walkup's mark: a Brooklyn brownstone between its neighbors, with its bracketed cornice, tall windows under stone
- * hoods, and the parlor door at the top of a high stoop with its railing. The same drawing is the browser and
- * home-screen icon (public/icons/walkup.svg).
+ * Walkup's mark at small sizes: a Brooklyn brownstone between its neighbors, drawn bold enough to read in a browser
+ * tab: a heavy cornice, big windows, the red parlor door at the top of its stoop, and the railing. The same drawing
+ * is the tab icon (public/icons/walkup.svg); the home-screen icons use a more detailed one (walkup-detailed.svg).
  */
 export function BrandMark({ size = 30 }: { size?: number }) {
   return (
@@ -60,44 +60,20 @@ export function BrandMark({ size = 30 }: { size?: number }) {
       </Defs>
       <G clipPath="url(#r)">
         <Rect width={32} height={32} fill="#f1e4cc" />
-        <Rect x={0} y={6} width={6} height={26} fill="#c4997f" />
-        <Rect x={26} y={5} width={6} height={27} fill="#b68a72" />
-        <Rect x={1.2} y={9} width={3} height={4.2} fill="#f1e4cc" />
-        <Rect x={1.2} y={15.5} width={3} height={4.2} fill="#f1e4cc" />
-        <Rect x={27.8} y={8.5} width={3} height={4.2} fill="#f1e4cc" />
-        <Rect x={27.8} y={15} width={3} height={4.2} fill="#f1e4cc" />
-        <Rect x={6} y={4.2} width={20} height={27.8} fill="#7a3d22" />
-        <Rect x={5.2} y={2.6} width={21.6} height={2.6} rx={0.4} fill="#3a1a0c" />
-        <G fill="#3a1a0c">
-          <Rect x={7} y={5.2} width={1.2} height={1.3} />
-          <Rect x={12} y={5.2} width={1.2} height={1.3} />
-          <Rect x={18.8} y={5.2} width={1.2} height={1.3} />
-          <Rect x={23.8} y={5.2} width={1.2} height={1.3} />
+        <Rect x={0} y={8} width={6} height={24} fill="#c9a28a" />
+        <Rect x={26} y={7} width={6} height={25} fill="#bf9479" />
+        <Rect x={6} y={5.5} width={20} height={26.5} fill="#6f3418" />
+        <Rect x={4.5} y={2.8} width={23} height={3.6} rx={0.6} fill="#2b1206" />
+        <G fill="#f6ead2">
+          <Rect x={8.2} y={8.6} width={4.4} height={5.2} rx={0.4} />
+          <Rect x={14.4} y={8.6} width={4.4} height={5.2} rx={0.4} />
+          <Rect x={20.6} y={8.6} width={3.6} height={5.2} rx={0.4} />
+          <Rect x={8.2} y={16.2} width={4.4} height={6} rx={0.4} />
+          <Rect x={14.4} y={16.2} width={4.4} height={6} rx={0.4} />
         </G>
-        <G fill="#3a1a0c">
-          <Rect x={7.6} y={7.6} width={4.4} height={0.9} />
-          <Rect x={13.8} y={7.6} width={4.4} height={0.9} />
-          <Rect x={20} y={7.6} width={4.4} height={0.9} />
-          <Rect x={7.6} y={13.4} width={4.4} height={0.9} />
-          <Rect x={13.8} y={13.4} width={4.4} height={0.9} />
-          <Rect x={20} y={13.4} width={4.4} height={0.9} />
-        </G>
-        <G fill="#f1e4cc">
-          <Rect x={8} y={8.5} width={3.6} height={3.8} />
-          <Rect x={14.2} y={8.5} width={3.6} height={3.8} />
-          <Rect x={20.4} y={8.5} width={3.6} height={3.8} />
-          <Rect x={8} y={14.3} width={3.6} height={5.2} />
-          <Rect x={14.2} y={14.3} width={3.6} height={5.2} />
-        </G>
-        <Path d="M19.6 13.2h5.2l-0.6 1.1h-4z" fill="#3a1a0c" />
-        <Path d="M20.4 20.6v-5a1.8 1.8 0 0 1 3.6 0v5z" fill="#2a1208" />
-        <Path d="M19.6 20.6h5.4v1.5L14 31.4H6.6v-1.6z" fill="#a8603f" />
-        <Path d="M19.4 20.6 7 31.2" stroke="#1f0d05" strokeWidth={1} strokeLinecap="round" />
-        <Path d="M19.4 20.6v-2" stroke="#1f0d05" strokeWidth={1} strokeLinecap="round" />
-        <G fill="#f1e4cc">
-          <Rect x={8} y={22.2} width={2.6} height={3} />
-        </G>
-        <Rect x={0} y={31} width={32} height={1} fill="#5c5c5c" opacity={0.35} />
+        <Path d="M20.6 22.4v-4.6a1.8 1.8 0 0 1 3.6 0v4.6z" fill="#d62a52" />
+        <Path d="M19.8 22.4h5.4v2L15.4 32H8.4z" fill="#d9a882" />
+        <Path d="M19.4 22.6 8.6 31.6" stroke="#1a0a03" strokeWidth={1.4} strokeLinecap="round" />
       </G>
     </Svg>
   );
