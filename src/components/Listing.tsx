@@ -2,7 +2,6 @@ import type { ListingData, SourceLink, Workplace } from '../domain.ts';
 import { typicalCosts } from '../move-in.ts';
 import { buildingGrade, listedLabel, listedWithin, marketBadge, type BuildingFacts } from '../insights.ts';
 import type { CheckBuilding } from './BuildingReport.tsx';
-import { BuildingReport } from './BuildingReport.tsx';
 import { discoveryFacts, LAUNDRY_LABELS } from '../discovery.ts';
 import type React from 'react';
 import { memo, useState } from 'react';
@@ -12,9 +11,8 @@ import { directionsLink, formatRent } from '../search.ts';
 import { listingLinkLabel, listingPresentation, orderedListingLinks } from '../listings.ts';
 import { colors, styles } from '../styles.ts';
 import { Disclosure, ExternalLink, Link } from './ui.tsx';
-import { ListingSources } from './ListingSources.tsx';
 import { CommuteDetails } from './CommuteDetails.tsx';
-import { PriceHistory } from './PriceHistory.tsx';
+import { hasPriceChange, PriceHistory } from './PriceHistory.tsx';
 import { SavedNotes } from './SavedNotes.tsx';
 import { listingKey } from '../listings.ts';
 import { HeartIcon } from './Icons.tsx';
@@ -29,6 +27,8 @@ const CHECK_TIME = new Intl.DateTimeFormat('en-US', {
   timeZoneName: 'short',
 });
 /** About what the apartment costs each month and to move in, from typical amounts and the state's rules. */
+const POSTED_DAY = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', year: 'numeric' });
+
 function TypicalCost({ listing }: { listing: ListingData }) {
   if (!(listing.rent > 0)) return null;
   const cost = typicalCosts(listing);
@@ -150,11 +150,9 @@ export const Listing = memo(function Listing({
   workplace,
   commute,
   onSave,
-  onSaveLink,
   onRemove,
   onError,
   saved,
-  onCheckBuilding,
   defaultExpanded = false,
   onExpandedChange,
   onOpen,
@@ -430,7 +428,12 @@ export const Listing = memo(function Listing({
             </Pressable>
             <Text style={styles.smallMuted}>
               {/* A company given as a web address is not a name to show. */}
-              {[checked, listing.company && !/^https?:|\.(com|net|org)\b/i.test(listing.company) ? `Listed by ${listing.company}` : '']
+              {[
+                // When the listing site says it was posted, and where.
+                listing.listedAt ? `Posted ${POSTED_DAY.format(new Date(listing.listedAt))}${original ? ` on ${original.name}` : ''}` : '',
+                checked,
+                listing.company && !/^https?:|\.(com|net|org)\b/i.test(listing.company) ? `Listed by ${listing.company}` : '',
+              ]
                 .filter(Boolean)
                 .join(' · ')}
             </Text>
@@ -454,19 +457,14 @@ export const Listing = memo(function Listing({
                 <Link label="Driving directions" url={directionsLink(listing, workplace, 'driving')} onError={onError} />
               </View>
             </Section>
-            <Section title="About this listing">
-              {knownFacts.length > 0 && <Text style={styles.bodyText}>{knownFacts.join(' · ')}</Text>}
-              {listing.building && <BuildingSummary facts={listing.building} />}
-              <PriceHistory value={listing.priceHistory} />
-              <ListingSources listing={listing} onSaveLink={onSaveLink} onError={onError} />
-              {/* NYC's building records cover the five boroughs only; elsewhere there is nothing to check. */}
-              {searchBorough(listing) && (
-                // The report loads when opened: violations, ownership and rent stabilization from NYC's records.
-                <Disclosure title="NYC building records">
-                  <BuildingReport key={listingKey(listing)} listing={listing} onError={onError} onCheckBuilding={onCheckBuilding} />
-                </Disclosure>
-              )}
-            </Section>
+            {/* What the listing and the city's records say about the unit and building, when they say anything. */}
+            {(knownFacts.length > 0 || listing.building || hasPriceChange(listing.priceHistory)) && (
+              <Section title="The apartment and building">
+                {knownFacts.length > 0 && <Text style={styles.bodyText}>{knownFacts.join(' · ')}</Text>}
+                {listing.building && <BuildingSummary facts={listing.building} />}
+                <PriceHistory value={listing.priceHistory} />
+              </Section>
+            )}
             {saved && (
               <Section title="Your notes">
                 <SavedNotes key={listingKey(listing)} identity={listingKey(listing)} />

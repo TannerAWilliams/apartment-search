@@ -27,7 +27,9 @@ test('each rent is compared with the median of similar apartments in its neighbo
   expect(first.insights).toEqual({ marketMedian: 3300, comparedWith: 6, vsMarket: -0.09, warnings: [] });
   const flagged = result.find(({ id }) => id === 'cheap')!;
   expect(flagged.insights.vsMarket).toBe(-0.55);
-  expect(flagged.insights.warnings[0]).toMatch(/55% below similar apartments/);
+  // How far below is shown by the badge, not repeated as a warning.
+  expect(flagged.insights.warnings).toEqual([]);
+  expect(marketBadge(flagged.insights)).toBe('55% below similar');
   expect(result.find(({ id }) => id === 'lonely')!.insights, 'too few to compare').toEqual({ warnings: [] });
   expect(marketBadge(first.insights)).toBe('9% below similar');
   expect(marketBadge({ vsMarket: 0.2, warnings: [] })).toBe('20% above similar');

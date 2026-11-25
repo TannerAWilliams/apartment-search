@@ -593,34 +593,18 @@ test('local change checks opt in, seed baseline and show newer observed price ch
   expect(userRefreshes(requests)).toHaveLength(0);
 });
 
-test('NYC building records load when opened on the apartment’s page and reuse the completed session cache', async ({ page }) => {
-  const { requests, unexpected } = await mockApp(page, { nyc: true });
-  const details = page.getByRole('button', { name: 'Details for 12 Grove Street', exact: true });
-  const records = page.getByRole('button', { name: 'NYC building records', exact: true });
-  expect(requests.filter((item) => item.path === '/api/building-report')).toHaveLength(0);
-  await details.click();
-  // Details alone asks for nothing; the records load when opened.
-  expect(requests.filter((item) => item.path === '/api/building-report')).toHaveLength(0);
-  await records.click();
-  await expect(page.getByText('Official building report: matched', { exact: true })).toBeVisible();
-  await expect(page.getByText('311 service requests on this tax lot in the last 365 days: 5.', { exact: true })).toBeVisible();
-  await expect(page.getByText('EXAMPLE PROPERTY LLC · NYC PLUTO tax-lot owner · 26v2', { exact: true })).toBeVisible();
-  await expect(
-    page.getByText('State rent registration on this tax lot · latest filing year 2026 · 18 registered units reported.', { exact: true }),
-  ).toBeVisible();
-  await expect(page.getByText(/Apartment-level stabilization status: unverified/)).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Check official HPD records', exact: true })).toHaveCount(0);
-  expect(requests.filter((item) => item.path === '/api/building-report')).toHaveLength(1);
-  // Back to the results and into the same apartment again: the report comes from the session cache.
-  await page.goBack();
-  await details.click();
-  await records.click();
-  await expect(page.getByText('Official building report: matched', { exact: true })).toBeVisible();
-  expect(requests.filter((item) => item.path === '/api/building-report')).toHaveLength(1);
-  expect(userRefreshes(requests)).toHaveLength(0);
-  expect(unexpected).toEqual([]);
+test('an apartment’s page has no building-records report or wall of search links', async ({ page }) => {
+  await mockApp(page, { insights: true });
+  await page
+    .getByRole('button', { name: /^Details for 12 Grove Street/ })
+    .first()
+    .click();
+  await expect(page.getByRole('heading', { name: 'Highlights', exact: true })).toBeVisible();
+  await expect(page.getByText(/^Posted .* on /).first()).toBeVisible();
+  await expect(page.getByRole('button', { name: 'NYC building records', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /More places to look|Listing websites/ })).toHaveCount(0);
+  await expect(page.getByText('About this listing', { exact: true })).toHaveCount(0);
 });
-
 test('market history charts one area, compares another, and says when figures cannot be loaded', async ({ page }) => {
   await mockApp(page, { dashboardAvailable: true });
   const months = Array.from({ length: 34 }, (_, index) => {

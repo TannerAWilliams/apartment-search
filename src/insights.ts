@@ -2,7 +2,7 @@
  * What the app can tell about a listing beyond what its source says, from the rest of the inventory and from
  * official building records:
  * - how its rent compares with the median of similar apartments (same neighborhood, or ZIP code, and size);
- * - warnings: a price far below similar apartments, no street number, or the same unit listed at another rent;
+ * - warnings: no street number, or the same unit listed at another rent;
  * - the building, when its records have been checked: whether it registers rent-stabilized units, and a grade
  *   from its open violations, recent complaints, bedbug reports and flood zone.
  */
@@ -68,8 +68,6 @@ export const listedWithin = (listedAt: string | undefined, days: number, now = D
 
 /** Similar apartments needed before a median is shown. */
 export const MIN_COMPARABLES = 5;
-/** A rent this far below the median gets a warning. */
-export const FAR_BELOW = -0.4;
 /** A deal: a rent at least 20% below the median of similar apartments nearby. */
 export const DEAL_BELOW = -0.2;
 /** No whole apartment in the area rents for under this (listings.ts notes it on the card): a room, parking, a typo or a scam. */
@@ -144,8 +142,6 @@ export function withInsights<T extends ListingData>(
     const benchmark = benchmarks.get(placeKey(listing) + '|' + listing.bedrooms);
     const compared = benchmark && benchmark.count >= MIN_COMPARABLES ? benchmark : null;
     const vsMarket = compared ? Math.round(((listing.rent - compared.median) / compared.median) * 100) / 100 : undefined;
-    if (vsMarket !== undefined && vsMarket <= FAR_BELOW)
-      warnings.push(`Priced ${Math.round(-vsMarket * 100)}% below similar apartments nearby.`);
     if (!/^\s*\d/.test(listing.address)) warnings.push('No street number is given. Ask for the exact address before you tour.');
     const unit = unitOf(listing);
     const others = unit ? [...(rentsByUnit.get(unit) ?? [])].filter((rent) => rent !== listing.rent) : [];
