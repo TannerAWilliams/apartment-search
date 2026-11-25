@@ -2,38 +2,27 @@
 //   bun scripts/make-icons.ts
 import { chromium } from 'playwright';
 
-/** A building with lit windows, white on the app's navy. `inset` keeps the glyph in a maskable icon's safe zone. */
-const svg = (size: number, { rounded = true, inset = 0.18 } = {}) => {
-  const pad = size * inset,
-    w = size - pad * 2;
-  const x = (f: number) => pad + w * f,
-    y = (f: number) => pad + w * f;
-  const windows = [0.3, 0.5]
-    .flatMap((col) =>
-      [0.28, 0.46, 0.64].map(
-        (row) => `<rect x="${x(col)}" y="${y(row)}" width="${w * 0.12}" height="${w * 0.1}" rx="${w * 0.015}" fill="#0645c2"/>`,
-      ),
-    )
-    .join('');
+/** The brownstone mark (public/icons/walkup.svg), on its own brown, inset by `inset` so a maskable icon keeps it in the safe zone. */
+const mark = await Bun.file(new URL('../public/icons/walkup.svg', import.meta.url)).text();
+const drawing = mark.slice(mark.indexOf('>') + 1, mark.lastIndexOf('</svg>'));
+const svg = (size: number, { rounded = true, inset = 0 } = {}) => {
+  const pad = size * inset;
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
-    <rect width="${size}" height="${size}" rx="${rounded ? size * 0.22 : 0}" fill="#06174b"/>
-    <rect x="${x(0.2)}" y="${y(0.12)}" width="${w * 0.5}" height="${w * 0.78}" rx="${w * 0.03}" fill="#fff"/>
-    <rect x="${x(0.7)}" y="${y(0.42)}" width="${w * 0.14}" height="${w * 0.48}" rx="${w * 0.02}" fill="#c9d8f2"/>
-    ${windows}
-    <rect x="${x(0.38)}" y="${y(0.78)}" width="${w * 0.14}" height="${w * 0.12}" fill="#06174b"/>
+    <rect width="${size}" height="${size}" rx="${rounded ? size * 0.22 : 0}" fill="#8b4a2b"/>
+    <svg x="${pad}" y="${pad}" width="${size - pad * 2}" height="${size - pad * 2}" viewBox="0 0 32 32">${drawing}</svg>
   </svg>`;
 };
 
 const icons: [string, number, Parameters<typeof svg>[1]?][] = [
   ['icon-192.png', 192],
   ['icon-512.png', 512],
-  ['maskable-512.png', 512, { rounded: false, inset: 0.26 }],
+  ['maskable-512.png', 512, { rounded: false, inset: 0.14 }],
   ['apple-touch-icon.png', 180, { rounded: false }],
-  ['favicon-32.png', 32, { inset: 0.08 }],
+  ['favicon-32.png', 32],
 ];
 // PLAYWRIGHT_CHROMIUM_EXECUTABLE selects an installed Chromium, as in the browser tests.
 const browser = await chromium.launch(
-  Bun.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? { executablePath: Bun.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE } : {},
+  Bun.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? { executablePath: Bun.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE, args: ['--no-sandbox'] } : {},
 );
 const page = await browser.newPage();
 for (const [name, size, options] of icons) {

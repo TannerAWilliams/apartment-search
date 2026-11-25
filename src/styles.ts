@@ -37,7 +37,7 @@ export const styles = StyleSheet.create({
     borderColor: '#ebebeb',
   },
   brand: { ...row, gap: 9 },
-  brandText: { color: colors.green, fontSize: 23, fontWeight: '800', letterSpacing: -0.9 },
+  brandText: { color: '#7a3b22', fontSize: 23, fontWeight: '800', letterSpacing: -0.9 },
   topLabel: { ...eyebrow, color: colors.muted, textAlign: 'right' },
   resultLayout: { gap: 14 },
   resultLayoutWide: { flexDirection: 'row', alignItems: 'flex-start' },

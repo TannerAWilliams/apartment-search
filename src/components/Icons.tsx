@@ -1,5 +1,5 @@
 /** The app's few icons, drawn as SVG so they look the same on every device and size. Decorative: the label beside each says what it is. */
-import Svg, { Circle, Line, Path, Rect } from 'react-native-svg';
+import Svg, { Circle, Line, Path, Rect, G } from 'react-native-svg';
 
 type IconProps = { color: string; size?: number; filled?: boolean; fill?: string };
 
@@ -46,21 +46,42 @@ export function ChartIcon({ color, size = 22 }: IconProps) {
 }
 
 /**
- * Walkup's mark: a walk-up building, three rows of windows and a door, above its stoop. The same drawing is the
- * home-screen icon (public/icons/walkup.svg).
+ * Walkup's mark: a Brooklyn brownstone, with its cornice, windows under stone lintels, and the arched door at the
+ * top of a high stoop. The same drawing is the browser and home-screen icon (public/icons/walkup.svg).
  */
 export function BrandMark({ size = 30 }: { size?: number }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 32 32" aria-hidden>
-      <Rect x={0} y={0} width={32} height={32} rx={8} fill="#d62a52" />
-      <Rect x={9} y={5} width={14} height={17} rx={1.5} fill="#ffffff" />
-      {[7.5, 11, 14.5].flatMap((y) =>
-        [11.5, 17].map((x) => <Rect key={`${x}-${y}`} x={x} y={y} width={3.5} height={2.4} rx={0.5} fill="#d62a52" />),
-      )}
-      <Path d="M14.25 22V19.55a1.75 1.75 0 0 1 3.5 0V22Z" fill="#d62a52" />
-      <Rect x={12.5} y={22.6} width={7} height={1.4} rx={0.4} fill="#ffffff" />
-      <Rect x={11} y={24.4} width={10} height={1.4} rx={0.4} fill="#ffffff" />
-      <Rect x={9.5} y={26.2} width={13} height={1.4} rx={0.4} fill="#ffffff" />
+      <Rect width={32} height={32} rx={8} fill="#8b4a2b" />
+      <Rect x={2.5} y={3.6} width={27} height={2.6} rx={0.5} fill="#4a2414" />
+      <Rect x={3.5} y={6.2} width={25} height={0.9} fill="#b36a43" />
+      <G fill="#4a2414">
+        <Rect x={5} y={8.6} width={6} height={1} />
+        <Rect x={13} y={8.6} width={6} height={1} />
+        <Rect x={21} y={8.6} width={6} height={1} />
+        <Rect x={5} y={14.3} width={6} height={1} />
+        <Rect x={13} y={14.3} width={6} height={1} />
+      </G>
+      <G fill="#f6e7c8">
+        <Rect x={5.6} y={9.6} width={4.8} height={3.6} rx={0.3} />
+        <Rect x={13.6} y={9.6} width={4.8} height={3.6} rx={0.3} />
+        <Rect x={21.6} y={9.6} width={4.8} height={3.6} rx={0.3} />
+        <Rect x={5.6} y={15.3} width={4.8} height={5.4} rx={0.3} />
+        <Rect x={13.6} y={15.3} width={4.8} height={5.4} rx={0.3} />
+      </G>
+      <Path d="M21.4 21V16.6a2.6 2.6 0 0 1 5.2 0V21Z" fill="#2e150a" />
+      <Path d="M21 16.6a3 3 0 0 1 6 0" stroke="#4a2414" strokeWidth={1} fill="none" />
+      <G fill="#d8a07a">
+        <Rect x={19.6} y={21} width={8.2} height={1.3} rx={0.3} />
+        <Rect x={18.2} y={22.9} width={9.6} height={1.3} rx={0.3} />
+        <Rect x={16.8} y={24.8} width={11} height={1.3} rx={0.3} />
+        <Rect x={15.4} y={26.7} width={12.4} height={1.3} rx={0.3} />
+      </G>
+      <Path d="M20.6 18.6 15.2 27.6" stroke="#2e150a" strokeWidth={0.9} strokeLinecap="round" />
+      <Path d="M15.2 27.6v1.6" stroke="#2e150a" strokeWidth={0.9} strokeLinecap="round" />
+      <Rect x={4.2} y={22.2} width={9.4} height={0.9} fill="#4a2414" />
+      <Rect x={5.6} y={23.6} width={2} height={4.8} rx={0.3} fill="#f6e7c8" opacity={0.85} />
+      <Rect x={9.6} y={23.6} width={2} height={4.8} rx={0.3} fill="#f6e7c8" opacity={0.85} />
     </Svg>
   );
 }
