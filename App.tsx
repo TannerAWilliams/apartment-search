@@ -358,7 +358,13 @@ function ApartmentSearch() {
           ['more', 'Profile', ProfileIcon],
         ] as const
       ).map(([key, label, Icon]) => {
-        const selected = key === 'more' ? !['home', 'chart', 'results', 'saved'].includes(tab) : tab === key;
+        // An apartment's page belongs to Search; Profile's own pages to Profile.
+        const selected =
+          key === 'more'
+            ? !['home', 'chart', 'results', 'saved'].includes(tab) && !tab.startsWith('listing=')
+            : key === 'results'
+              ? tab === key || tab.startsWith('listing=')
+              : tab === key;
         return (
           <Pressable
             key={key}
@@ -463,7 +469,9 @@ function ApartmentSearch() {
                 </Text>
                 <Text numberOfLines={1} style={mobileStyles.destinationText}>
                   {view === 'saved'
-                    ? 'Saved on this device'
+                    ? account
+                      ? 'Kept on your account'
+                      : 'Saved on this device'
                     : bedroomsLabel(applied) + ' · ' + (applied.maxRent == null ? 'Any price' : 'Up to ' + formatRent(applied.maxRent))}
                 </Text>
               </View>
@@ -688,6 +696,7 @@ function ApartmentSearch() {
                                       accessibilityRole="button"
                                       accessibilityLabel={freshness + ' · Where listings come from'}
                                       onPress={() => navigateTab('sources')}
+                                      style={{ flexShrink: 1 }}
                                     >
                                       <Text style={styles.smallMuted}>
                                         {freshness} · <Text style={styles.linkText}>Where listings come from</Text>

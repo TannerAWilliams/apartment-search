@@ -132,6 +132,8 @@ const card = StyleSheet.create({
   grade: { fontSize: 14, lineHeight: 20, color: colors.ink },
   subtitle: { fontSize: 15, lineHeight: 20, color: colors.muted },
   priceLine: { fontSize: 15, lineHeight: 20, color: colors.ink, marginTop: 4 },
+  pageTitle: { fontSize: 26, lineHeight: 32, fontWeight: '700' },
+  pagePrice: { fontSize: 20, lineHeight: 28, marginTop: 8 },
   notice: { fontSize: 13, lineHeight: 18, color: '#805213' },
   details: { paddingTop: 4, gap: 12 },
   open: { flexDirection: 'row', alignItems: 'flex-start', gap: 40 },
@@ -314,7 +316,13 @@ export const Listing = memo(function Listing({
           </View>
           <View style={{ gap: 1 }}>
             <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
-              <Text accessibilityRole="header" numberOfLines={1} style={[card.title, { flex: 1 }]}>
+              {/* On its own page the address is the page's title, and the rent is large. */}
+              <Text
+                accessibilityRole="header"
+                aria-level={defaultExpanded ? 1 : undefined}
+                numberOfLines={defaultExpanded ? 2 : 1}
+                style={[card.title, { flex: 1 }, defaultExpanded && card.pageTitle]}
+              >
                 {title}
               </Text>
               {grade && (
@@ -329,7 +337,7 @@ export const Listing = memo(function Listing({
             <Text numberOfLines={1} style={card.subtitle}>
               {details}
             </Text>
-            <Text style={card.priceLine}>
+            <Text style={[card.priceLine, defaultExpanded && card.pagePrice]}>
               <Text style={styles.price}>{presentation.priceKnown ? formatRent(rent) : 'Price unavailable'}</Text>
               {presentation.priceKnown && ' month'}
               {(listing.kind === 'snapshot' || listing.priceIncludesFees) &&
