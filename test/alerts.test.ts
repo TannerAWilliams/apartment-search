@@ -402,7 +402,9 @@ test('each account sees and gets only its own alerts; older shared alerts go to 
     ['other@example.com'],
     ['first@example.com', 'second@example.com'],
   ]);
-  expect(pushed, 'each device gets its own account’s alert').toStrictEqual([renterPhone.endpoint, sharedPhone.endpoint]);
+  expect(pushed.toSorted(), 'each device gets its own account’s alert (sent together, in any order)').toStrictEqual(
+    [renterPhone.endpoint, sharedPhone.endpoint].toSorted(),
+  );
   expect(mine.owner).toBe('renter@example.com');
 
   const env = { BUCKET: bucket, ALERT_EMAIL_FROM: 'alerts@example.com', ALERT_EMAIL: { send: async () => undefined } };

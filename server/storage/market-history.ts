@@ -8,7 +8,11 @@ import { DASHBOARD_FILES, type DashboardFile } from '../../src/dashboard-data.ts
 import type { SourceFetch } from '../contracts.ts';
 import { archivedSeriesZip, type ArchiveLoader, dashboardFileUrl, parseSeriesZip, sha256Hex } from '../dashboard-snapshot.ts';
 import { DASHBOARD_AREAS, DASHBOARD_CATALOG } from '../data/dashboard-catalog.ts';
+import { mapLimit } from '../concurrency.ts';
 import { log } from '../log.ts';
+
+/** Series downloaded, parsed and written at once: each file is a few megabytes, so only a few. */
+const SERIES_AT_ONCE = 3;
 import { chunks, type D1Database } from './d1-bucket.ts';
 
 /** A series' number in the tables: its position in DASHBOARD_FILES, plus one. */
@@ -72,11 +76,12 @@ async function imports(database: D1Database) {
 export async function ensureMarketSeries(database: D1Database, names: readonly string[], loadArchive: ArchiveLoader, now = new Date()) {
   const loaded = await imports(database);
   const missing = names.filter((name) => !loaded.has(seriesId(name)));
-  for (const name of missing) {
+  // A few series at once: each is read from the archive, parsed and written in its own batch.
+  await mapLimit(missing, SERIES_AT_ONCE, async (name) => {
     const zip = await archivedSeriesZip(name, loadArchive);
     if (!zip) throw new Error('Unknown dashboard series.');
     await writeSeries(database, parseSeriesZip(name, zip), await sha256Hex(zip), 'archive', now);
-  }
+  });
   return missing.length;
 }
 
@@ -102,19 +107,20 @@ export async function refreshMarketHistory(database: D1Database, fetcher: Source
       return download(name, attempt + 1);
     }
   };
-  for (const { name } of DASHBOARD_CATALOG) {
+  // A few files at once; each failure is noted and the others still checked.
+  await mapLimit(DASHBOARD_CATALOG, SERIES_AT_ONCE, async ({ name }) => {
     try {
       const zip = await download(name);
       if (zip.byteLength > 8 * 1024 * 1024) throw new Error(`StreetEasy's ${name} download is larger than expected.`);
       const sha256 = await sha256Hex(zip);
-      if (loaded.get(seriesId(name))?.archive_sha256 === sha256) continue;
+      if (loaded.get(seriesId(name))?.archive_sha256 === sha256) return;
       values += await writeSeries(database, parseSeriesZip(name, zip), sha256, 'cdn', now);
       changed++;
     } catch (cause) {
       log.warn('market_series_refresh_failed', { series: name, error: cause instanceof Error ? cause.message : String(cause) });
       failed.push(name);
     }
-  }
+  });
   if (failed.length)
     throw new Error(
       `StreetEasy Data Dashboard: ${failed.length} of ${DASHBOARD_CATALOG.length} files could not be read (${failed.slice(0, 3).join(', ')}${failed.length > 3 ? '…' : ''}); the saved figures were kept.`,

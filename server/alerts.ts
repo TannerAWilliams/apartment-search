@@ -8,6 +8,11 @@ import { AlertDevicesSchema, AlertRulesSchema, checkedDocument, RecentAlertsSche
 import { offline, search } from './search.ts';
 import { sendPush, validSubscription, type PushSubscriptionJson, type VapidKeys } from './web-push.ts';
 import * as v from 'valibot';
+import { mapLimit } from './concurrency.ts';
+
+/** Saved searches checked at once (each is a search over the kept listings), and emails or notifications sent at once. */
+const RULES_AT_ONCE = 4;
+const SENDS_AT_ONCE = 4;
 
 /**
  * Saved-search alerts. Nothing runs on a schedule: after a resync you start, the sync Workflow, or the
@@ -248,19 +253,20 @@ export async function deliver(bucket: Bucket, alerts: Alert[], channels: AlertCh
   const delivered = { email: false, devices: 0 };
   if (!alerts.length) return delivered;
   const owners = [...new Set(alerts.map(({ owner }) => owner))];
-  for (const owner of owners) {
-    const to = owner ? [owner] : (channels.to ?? []);
-    if (
-      await sendEmail(
+  // Emails (one per account) and notifications go out together.
+  const [emailed, devices] = await Promise.all([
+    mapLimit(owners, SENDS_AT_ONCE, (owner) =>
+      sendEmail(
         alerts.filter((alert) => alert.owner === owner),
         channels,
-        to,
+        owner ? [owner] : (channels.to ?? []),
         origin,
-      )
-    )
-      delivered.email = true;
-  }
-  if (channels.vapid) delivered.devices = await sendPushes(bucket, alerts, channels.vapid, channels.pushFetcher);
+      ),
+    ),
+    channels.vapid ? sendPushes(bucket, alerts, channels.vapid, channels.pushFetcher) : 0,
+  ]);
+  delivered.email = emailed.some(Boolean);
+  delivered.devices = devices;
   return delivered;
 }
 
@@ -291,7 +297,8 @@ async function sendPushes(
   let sent = 0;
   const devices = await readDevices(bucket);
   const gone = new Set<string>();
-  for (const device of devices) {
+  // Devices are sent to together, a few at a time; one device's alerts go in order, and stop if it is gone.
+  await mapLimit(devices, SENDS_AT_ONCE, async (device) => {
     for (const alert of alerts.filter(({ owner }) => owner === device.owner)) {
       try {
         const result = await sendPush(device, { title: alert.title, body: alert.lines.join('\n'), tag: alert.ruleId, url: '/' }, vapid, {
@@ -299,7 +306,7 @@ async function sendPushes(
         });
         if (result.gone) {
           gone.add(device.endpoint);
-          break;
+          return;
         }
         if (result.ok) sent++;
         else log.warn('alert_push_failed', { status: result.status, device: device.label });
@@ -307,7 +314,7 @@ async function sendPushes(
         log.error('alert_push_failed', cause, { device: device.label });
       }
     }
-  }
+  });
   if (gone.size)
     await write(
       bucket,
@@ -336,26 +343,28 @@ export async function checkAlerts(
     paid?: Set<string>;
   },
 ) {
-  const alerts: Alert[] = [];
-  for (const rule of await readRules(bucket)) {
-    if (paid && rule.owner && !paid.has(rule.owner)) continue;
+  const rules = (await readRules(bucket)).filter((rule) => !paid || !rule.owner || paid.has(rule.owner));
+  // Each rule has its own baseline, so rules are checked together, a few at a time; alerts keep the rules' order.
+  const checked = await mapLimit(rules, RULES_AT_ONCE, async (rule): Promise<Alert | null> => {
     try {
-      const matches = matchesCriteria(await loadMatches(rule.filters), rule.criteria);
+      // The match search and the stored baseline do not depend on each other.
+      const key = BASELINE_PREFIX + rule.id + '.json';
+      const [found, baseline] = await Promise.all([loadMatches(rule.filters), readBaseline(bucket, key)]);
+      const matches = matchesCriteria(found, rule.criteria);
       if (matches.length > MAX_BASELINE_UNITS) {
         log.warn('alert_rule_too_broad', { rule: rule.id, matches: matches.length });
-        continue;
+        return null;
       }
-      const key = BASELINE_PREFIX + rule.id + '.json';
       // An unrecognized baseline is dropped, so the rule records a new one instead of sending a flood.
-      const baseline = await readBaseline(bucket, key);
       const result = checkObservedChanges(matches, baseline);
       await write(bucket, key, result.baseline);
-      const alert = baseline ? composeAlert(rule, result.changes, now) : null;
-      if (alert) alerts.push(alert);
+      return baseline ? composeAlert(rule, result.changes, now) : null;
     } catch (cause) {
       log.error('alert_check_failed', cause, { rule: rule.id });
+      return null;
     }
-  }
+  });
+  const alerts = checked.filter((alert): alert is Alert => alert !== null);
   if (!alerts.length) return { alerts, delivered: { email: false, devices: 0 } };
   await write(bucket, RECENT_KEY, [...alerts, ...(await readRecent(bucket))].slice(0, MAX_RECENT));
   const delivered = await deliver(bucket, alerts, channels, origin);

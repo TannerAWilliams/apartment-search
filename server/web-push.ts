@@ -116,8 +116,11 @@ export async function encryptPayload(
   const clientKey = await crypto.subtle.importKey('raw', clientPublic, { name: 'ECDH', namedCurve: 'P-256' }, false, []);
   const shared = new Uint8Array(await crypto.subtle.deriveBits({ name: 'ECDH', public: clientKey }, local.privateKey, 256));
   const ikm = await hkdf(auth, shared, concat(encoder.encode('WebPush: info\0'), clientPublic, localPublic), 32);
-  const contentKey = await hkdf(salt, ikm, encoder.encode('Content-Encoding: aes128gcm\0'), 16);
-  const nonce = await hkdf(salt, ikm, encoder.encode('Content-Encoding: nonce\0'), 12);
+  // The content key and the nonce come from the same secret independently, so they are derived together.
+  const [contentKey, nonce] = await Promise.all([
+    hkdf(salt, ikm, encoder.encode('Content-Encoding: aes128gcm\0'), 16),
+    hkdf(salt, ikm, encoder.encode('Content-Encoding: nonce\0'), 12),
+  ]);
   const key = await crypto.subtle.importKey('raw', contentKey, 'AES-GCM', false, ['encrypt']);
   // 0x02 marks the last (and only) record.
   const sealed = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv: nonce }, key, concat(payload, new Uint8Array([2]))));

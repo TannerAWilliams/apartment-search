@@ -7,7 +7,8 @@ export async function applicationModules(root: URL) {
     .flatMap((pattern) => [...new Bun.Glob(pattern).scanSync(root.pathname)])
     .filter((path) => !path.endsWith('.d.ts'))
     .sort();
-  const ui = new Set<string>();
-  for (const path of all) if (path.endsWith('.tsx') || isUiModule(await Bun.file(new URL(path, root)).text())) ui.add(path);
+  // Every file is read at once; Bun reads them in parallel.
+  const isUi = await Promise.all(all.map(async (path) => path.endsWith('.tsx') || isUiModule(await Bun.file(new URL(path, root)).text())));
+  const ui = new Set(all.filter((_, index) => isUi[index]));
   return { measured: all.filter((path) => !ui.has(path)), ui: all.filter((path) => ui.has(path)) };
 }

@@ -138,10 +138,10 @@ export function keptGathered(bucket: Bucket, key: string, now = Date.now()) {
 
 /** Every listing with its comparison with similar apartments and its building's facts. */
 async function score(listings: ListingData[], bucket: Bucket | undefined) {
-  const buildings = bucket ? await readBuildingFacts(bucket).catch(() => ({})) : {};
-  const lists = bucket ? await openData(bucket) : undefined;
-  // Owners' own no-fee listings join every search.
-  const direct = bucket ? await directListings(bucket).catch(() => []) : [];
+  // Three independent reads, read together. Owners' own no-fee listings join every search.
+  const [buildings, lists, direct] = bucket
+    ? await Promise.all([readBuildingFacts(bucket).catch(() => ({})), openData(bucket), directListings(bucket).catch(() => [])])
+    : [{}, undefined, []];
   return withInsights([...listings, ...direct], buildings, lists);
 }
 /** The scored listings of a kept set, worked out once while the set is kept. */

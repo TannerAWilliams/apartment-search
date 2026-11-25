@@ -11,6 +11,7 @@ import type { FetchTransport } from '../src/fetch-type.ts';
 import type { AppEnv, Bucket } from './contracts.ts';
 import { parseFilters } from '../src/search.ts';
 import { retrieveBuildingRecords } from './building-records.ts';
+import { mapLimit } from './concurrency.ts';
 import { checkedDocument } from './storage/stored-documents.ts';
 
 const FACTS_KEY = 'buildings/facts.json';
@@ -88,10 +89,13 @@ export async function fillBuildingFacts(
     wanted.set(key, listing);
     if (wanted.size >= limit) break;
   }
-  let checked = 0;
-  for (const [key, listing] of wanted) {
+  // A few buildings are checked at once; each check asks several city services itself.
+  const reports = await mapLimit([...wanted], 3, async ([key, listing]) => {
     // A report never throws: an unreachable city service reads as an unmatched building, checked again later.
-    const summary = summarizeReport(await retrieveBuildingRecords(listing, fetcher, now));
+    return [key, summarizeReport(await retrieveBuildingRecords(listing, fetcher, now))] as const;
+  });
+  let checked = 0;
+  for (const [key, summary] of reports) {
     // A building the city has no unique record for is remembered too, so it is not asked about every night.
     facts[key] = summary ?? {
       stabilized: null,
