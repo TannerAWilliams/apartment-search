@@ -773,7 +773,7 @@ test('market history charts one area, compares another, and says when figures ca
   await page.getByRole('tab', { name: /^Saved/ }).click();
   await page.getByRole('link', { name: 'Walkup, home', exact: true }).click();
   await expect(page).toHaveURL(/127\.0\.0\.1:4173\/$/);
-  await expect(page.getByRole('heading', { name: 'Find the good apartment before everyone else does.', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Find your next New York apartment', exact: true })).toBeVisible();
 });
 
 test('iPhone 17 portrait keeps primary controls inside the screen', async ({ page }, testInfo) => {
@@ -841,7 +841,7 @@ test('signing in with an email code opens the app', async ({ page }) => {
   await page.getByLabel('Sign-in code', { exact: true }).fill('123456');
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   // Signing in opens the home page, not the search filters.
-  await expect(page.getByRole('heading', { name: 'Find the good apartment before everyone else does.', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Find your next New York apartment', exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Filters', exact: true })).toHaveCount(0);
   await page.getByRole('tab', { name: 'Search', exact: true }).click();
   await expect(page.getByText('12 Grove Street', { exact: true })).toBeVisible();
@@ -1292,8 +1292,7 @@ test('results offer email alerts for the search, and newest and best-value sorti
 
 test('a visitor uses Walkup without an account, and is asked for one only to save or get alerts', async ({ page }) => {
   const { requests } = await mockApp(page, { admin: false, start: '/' });
-  await expect(page.getByRole('heading', { name: 'Find the good apartment before everyone else does.', exact: true })).toBeVisible();
-  await expect(page.getByText('12% below similar · median $3,920 for 28 nearby', { exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Find your next New York apartment', exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Plans', exact: true })).toBeVisible();
   // Search works signed out.
   await page.getByRole('tab', { name: 'Search', exact: true }).click();
@@ -1342,21 +1341,32 @@ test('an apartment has its own page from a shared link, with its details open', 
   await expect(page.getByRole('tab', { name: 'Search', exact: true })).toHaveAttribute('aria-selected', 'true');
 });
 
-test('the home page asks where, how big and what budget, then shows the matches and offers alerts', async ({ page }) => {
-  const { requests } = await mockApp(page, { account: 'renter@example.test', start: '/' });
-  await expect(page.getByRole('heading', { name: 'Three quick questions', exact: true })).toBeVisible();
-  // Its own page, at the site's address, not a sheet over the app; /welcome opens it too.
-  await expect(page.getByRole('dialog')).toHaveCount(0);
-  await page.getByRole('button', { name: 'Brooklyn', exact: true }).click();
+test('the home page searches by where, bedrooms and rent, and shows real apartments first', async ({ page }) => {
+  const { requests } = await mockApp(page, { account: 'renter@example.test', start: '/', nyc: true, insights: true });
+  await expect(page.getByRole('heading', { name: 'Find your next New York apartment', exact: true })).toBeVisible();
+  // Real apartments on the home page, opening their own page.
+  await expect(page.getByRole('heading', { name: 'New on Walkup today', exact: true })).toBeVisible();
+  await expect
+    .poll(() => requests.filter(({ path, body }) => path === '/api/search' && body?.belowMarket === true).length)
+    .toBeGreaterThan(0);
+  // Where is suggested as it is typed; several bedroom counts; the most rent.
+  await page.getByRole('textbox', { name: 'Where', exact: true }).fill('brook');
+  await page.getByRole('button', { name: 'Brooklyn, Area', exact: true }).click();
+  await page.getByRole('button', { name: '1 bedroom', exact: true }).click();
   await page.getByRole('button', { name: '2 bedrooms', exact: true }).click();
-  await page.getByRole('textbox', { name: 'Most you’d pay a month', exact: true }).fill('4000');
-  await page.getByRole('button', { name: 'Show them and get email alerts', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Max rent', exact: true }).fill('4000');
+  await expect(page.getByRole('textbox', { name: 'Max rent', exact: true })).toHaveValue('$4,000');
+  await page.getByRole('button', { name: 'Search apartments', exact: true }).click();
   await expect
     .poll(() => requests.filter(({ path }) => path === '/api/search').at(-1)?.body)
-    .toMatchObject({ region: 'brooklyn', bedrooms: 2, maxRent: 4000 });
-  await expect(page.getByRole('heading', { name: 'Alerts', exact: true })).toBeVisible();
+    .toMatchObject({ region: 'brooklyn', bedroomOptions: [1, 2], maxRent: 4000 });
+  await expect(page).toHaveURL(/\/search$/);
+  // A popular neighborhood searches in one tap; /welcome still opens the home page.
   await page.goto('/welcome');
-  await expect(page.getByRole('heading', { name: 'Three quick questions', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Astoria', exact: true }).click();
+  await expect
+    .poll(() => requests.filter(({ path }) => path === '/api/search').at(-1)?.body)
+    .toMatchObject({ region: 'queens', neighborhood: 'Astoria' });
 });
 
 test('an owner lists a no-fee apartment for review', async ({ page }) => {

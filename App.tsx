@@ -2,7 +2,7 @@ import { searchAvailabilityMessage } from './src/search-availability.ts';
 import { ErrorBoundary } from './src/components/ErrorBoundary.tsx';
 import { useAccountSaved, useHashNavigation, useInventoryClock, useSavedListings } from './src/hooks/app-hooks.ts';
 import { inventoryExpired } from './src/inventory-freshness.ts';
-import type { ListingData, SourceLink, SearchResult } from './src/domain.ts';
+import type { ListingData, SourceLink, SearchFilters, SearchResult } from './src/domain.ts';
 
 import { Modal, Platform, Pressable, ScrollView, StatusBar, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
@@ -47,7 +47,7 @@ import { Marketplaces } from './src/screens/Marketplaces.tsx';
 import { Results } from './src/screens/Results.tsx';
 import { useServer } from './src/hooks/use-server.ts';
 import { preloadable, preloadScreens } from './src/preloadable.tsx';
-import React, { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 // Screens off the first page load: downloaded while the app is idle (or on first use), so opening the app
 // downloads only what search needs and later screens open at once (src/preloadable.tsx).
@@ -151,6 +151,15 @@ function ApartmentSearch() {
     loadHousing,
     checkBuilding,
   } = useServer({ appliedFilters, searchVersion, submitted, setResult, setError });
+  /** A few apartments for a row on the home page. */
+  const previewListings = useCallback(
+    (changes: Partial<SearchFilters>) =>
+      api<SearchResult>('search', {
+        body: parseFilters({ ...SEARCH_DEFAULTS, liveOnly: true, ...changes, includeMap: false }),
+        token: activeToken,
+      }).then(({ matches }) => matches),
+    [activeToken],
+  );
   const suggestPlaces = useMemo(
     () =>
       serverState === 'ready'
@@ -786,13 +795,21 @@ function ApartmentSearch() {
                   <HomePage
                     signedIn={member}
                     onOpen={navigateTab}
-                    onDone={(changes, alerts) => {
-                      const next = { ...draft, ...changes };
+                    // A search from the home page starts fresh, not from the filters of an earlier one.
+                    onSearch={(changes) => {
+                      const next = { ...formDefaults(), ...changes, maxRent: changes.maxRent == null ? '' : String(changes.maxRent) };
                       setDraft(next);
-                      navigateTab('results');
-                      void submit(next).then(() => {
-                        if (alerts) navigateTab('alerts');
-                      });
+                      void submit(next);
+                    }}
+                    loadNeighborhoods={serverState === 'ready' ? loadNeighborhoods : undefined}
+                    preview={serverState === 'ready' ? previewListings : undefined}
+                    actions={{
+                      workplace: result.workplace,
+                      onOpen: openListing,
+                      onSave: saveListing,
+                      onSaveLink: saveLink,
+                      saved: (listing) => savedByKey.has(listingKey(listing)),
+                      onError: setError,
                     }}
                   />
                 )}

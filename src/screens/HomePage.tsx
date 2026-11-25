@@ -1,13 +1,14 @@
 /**
- * The home page, at the site's address, for everyone: three quick questions that open the matching apartments,
- * then what Walkup does, an example of what a listing shows, how it works, the plans and common questions.
- * Signing in is only needed to save apartments, get alerts or share a list.
+ * The home page, at the site's address, for everyone, laid out as listing sites lay theirs out: a search bar
+ * (where, bedrooms, the most rent), popular neighborhoods, then real apartments (today's best deals and what is
+ * new), then what Walkup does, plans and common questions. Signing in is only needed to save, get alerts or share.
  */
-import { Pressable, Text, useWindowDimensions, View } from 'react-native';
-import { ListingThumbnail } from '../components/ListingThumbnail.tsx';
+import { useEffect, useState } from 'react';
+import { Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native';
+import { HomeSearch, type NeighborhoodLoader } from '../components/HomeSearch.tsx';
+import { Listing } from '../components/Listing.tsx';
+import type { ListingData, SearchFilters, SourceLink, Workplace } from '../domain.ts';
 import { colors, styles } from '../styles.ts';
-import type { SearchFilters } from '../domain.ts';
-import { Welcome } from './Welcome.tsx';
 
 const FEATURES: [title: string, body: string][] = [
   ['Every listing, one search', 'Walkup reads more than 40 listing sites, brokerages and landlords, so you stop checking ten apps.'],
@@ -16,11 +17,6 @@ const FEATURES: [title: string, body: string][] = [
   ['Buildings graded A to D', 'Open violations, complaints, bedbug filings and flood zones from city records, before you tour.'],
   ['Alerts within hours', 'New matches are checked every two hours from 8 AM to 10 PM, so you hear first, not the next morning.'],
   ['Search together', 'Share a list with a partner or roommates, vote, leave notes and see everyone’s commute.'],
-];
-const STEPS: [title: string, body: string][] = [
-  ['Describe it', '“2 bedroom in Park Slope under $4k near the F.” Or use the filters.'],
-  ['Compare honestly', 'Price against the neighborhood, the building’s record, the subway, the real monthly cost.'],
-  ['Move first', 'Get an alert, send a ready-written message from your application kit, plan the tour.'],
 ];
 const QUESTIONS: [question: string, answer: string][] = [
   ['Is Walkup a broker?', 'No. Walkup is a search tool; it never charges a broker fee and doesn’t represent landlords.'],
@@ -35,112 +31,120 @@ const QUESTIONS: [question: string, answer: string][] = [
   ],
 ];
 
-/** An example card with the badges Walkup adds, drawn with the app's own styles. */
-function ExampleCard() {
-  const tags = ['New today', '3 min to L', 'Rent-stabilized building', 'Building A'];
+/** What a row of apartments on the home page needs to show and act on its cards. */
+export type ListingActions = {
+  workplace: Workplace;
+  onOpen: (listing: ListingData) => void;
+  onSave: (listing: ListingData) => void;
+  onSaveLink: (listing: ListingData, link: SourceLink) => void;
+  saved: (listing: ListingData) => boolean;
+  onError: (message: string) => void;
+};
+
+/** A titled row of apartments that scrolls sideways, with a link to all of them. */
+function ListingRow({
+  title,
+  filters,
+  preview,
+  actions,
+  onSeeAll,
+}: {
+  title: string;
+  filters: Partial<SearchFilters>;
+  preview: (filters: Partial<SearchFilters>) => Promise<ListingData[]>;
+  actions: ListingActions;
+  onSeeAll: () => void;
+}) {
+  const [listings, setListings] = useState<ListingData[] | null>(null);
+  useEffect(() => {
+    let current = true;
+    preview(filters)
+      .then((found) => current && setListings(found.slice(0, 10)))
+      .catch(() => current && setListings([]));
+    return () => {
+      current = false;
+    };
+    // biome-ignore lint/correctness/useExhaustiveDependencies: each row asks once
+  }, []);
+  if (listings && listings.length === 0) return null;
   return (
-    <View
-      aria-hidden
-      style={{
-        borderRadius: 16,
-        overflow: 'hidden',
-        backgroundColor: colors.white,
-        borderWidth: 1,
-        borderColor: colors.border,
-        maxWidth: 380,
-        width: '100%',
-      }}
-    >
-      <View
-        style={{
-          height: 170,
-          backgroundColor: colors.light,
-          padding: 12,
-          flexDirection: 'row',
-          flexWrap: 'wrap',
-          gap: 6,
-          alignContent: 'flex-start',
-        }}
-      >
-        <ListingThumbnail latitude={40.7172} longitude={-73.9567} />
-        {tags.map((tag) => (
-          <Text
-            key={tag}
-            style={{
-              fontSize: 12,
-              fontWeight: '600',
-              color: colors.ink,
-              backgroundColor: colors.white,
-              paddingHorizontal: 8,
-              paddingVertical: 4,
-              borderRadius: 999,
-              overflow: 'hidden',
-            }}
-          >
-            {tag}
-          </Text>
-        ))}
-      </View>
-      <View style={{ padding: 14, gap: 3 }}>
-        <Text style={{ fontSize: 16, fontWeight: '600', color: colors.ink }}>214 Bedford Avenue, Unit 3R</Text>
-        <Text style={styles.smallMuted}>Williamsburg · Brooklyn</Text>
-        <Text style={{ fontSize: 16, color: colors.ink }}>
-          <Text style={{ fontWeight: '600' }}>$3,450</Text> month
+    <View style={{ gap: 12, paddingVertical: 12 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
+        <Text accessibilityRole="header" style={{ fontSize: 22, fontWeight: '700', color: colors.ink }}>
+          {title}
         </Text>
-        <Text style={{ fontSize: 13, fontWeight: '600', color: colors.ink }}>12% below similar · median $3,920 for 28 nearby</Text>
-        <Text style={styles.smallMuted}>About $3,690 a month all in · no broker fee under the FARE Act</Text>
+        <Pressable accessibilityRole="link" accessibilityLabel={`See all: ${title}`} onPress={onSeeAll}>
+          <Text style={styles.linkText}>See all</Text>
+        </Pressable>
       </View>
+      {listings === null ? (
+        <Text style={styles.smallMuted}>Loading apartments…</Text>
+      ) : (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 16, paddingBottom: 4 }}>
+          {listings.map((listing) => (
+            <View key={listing.id} style={{ width: 260 }}>
+              <Listing
+                listing={listing}
+                workplace={actions.workplace}
+                onOpen={actions.onOpen}
+                onSave={actions.onSave}
+                onSaveLink={actions.onSaveLink}
+                onError={actions.onError}
+                saved={actions.saved(listing)}
+              />
+            </View>
+          ))}
+        </ScrollView>
+      )}
     </View>
   );
 }
 
 export function HomePage({
   signedIn,
-  onDone,
+  onSearch,
   onOpen,
+  loadNeighborhoods,
+  preview,
+  actions,
 }: {
   signedIn: boolean;
-  /** Searches with the answers to the three questions; `alerts` opens the alert form afterwards. */
-  onDone: (filters: Partial<SearchFilters>, alerts: boolean) => void;
+  /** Searches with these filters and opens the results. */
+  onSearch: (changes: Partial<SearchFilters>) => void;
   onOpen: (tab: string) => void;
+  loadNeighborhoods?: NeighborhoodLoader;
+  /** A few apartments for a row, from a search; none while the server cannot be reached. */
+  preview?: (filters: Partial<SearchFilters>) => Promise<ListingData[]>;
+  actions: ListingActions;
 }) {
   const { width } = useWindowDimensions();
   const wide = width >= 900;
-  const column = { width: '100%', maxWidth: 1080, alignSelf: 'center' } as const;
-  const heading = {
-    fontSize: wide ? 30 : 24,
-    lineHeight: wide ? 36 : 30,
-    fontWeight: '600',
-    color: colors.ink,
-    letterSpacing: -0.5,
-  } as const;
+  const column = { width: '100%', maxWidth: 1120, alignSelf: 'center' } as const;
+  const heading = { fontSize: wide ? 26 : 22, lineHeight: wide ? 32 : 28, fontWeight: '700', color: colors.ink } as const;
+  const deals: Partial<SearchFilters> = { region: 'nyc', belowMarket: true, sort: 'value' };
+  const fresh: Partial<SearchFilters> = { region: 'nyc', newWithinDays: 1, sort: 'newest' };
   return (
     <View style={{ paddingBottom: 20 }}>
-      <View
-        style={[
-          column,
-          { flexDirection: wide ? 'row' : 'column', gap: 28, paddingVertical: wide ? 32 : 8, alignItems: wide ? 'flex-start' : 'stretch' },
-        ]}
-      >
-        <View style={{ flex: wide ? 1.1 : undefined, gap: 16 }}>
-          <Text style={{ fontSize: 13, fontWeight: '700', letterSpacing: 1, color: colors.green }}>NEW YORK CITY APARTMENTS</Text>
-          <Text
-            accessibilityRole="header"
-            aria-level={1}
-            style={{ fontSize: wide ? 48 : 32, lineHeight: wide ? 54 : 38, fontWeight: '700', color: colors.ink, letterSpacing: -1.2 }}
-          >
-            Find the good apartment before everyone else does.
-          </Text>
-          <Text style={{ fontSize: wide ? 19 : 17, lineHeight: wide ? 28 : 25, color: colors.muted }}>
-            Walkup searches the whole city’s listings in one place, tells you which are a real deal, which buildings are well kept or
-            rent-stabilized, and alerts you within hours. Free to search, no account needed.
-          </Text>
-          <Welcome onDone={onDone} />
-        </View>
-        <View style={{ flex: wide ? 1 : undefined, alignItems: 'center', gap: 16, paddingTop: wide ? 40 : 0 }}>
-          <ExampleCard />
-        </View>
+      <View style={[column, { gap: 18, paddingTop: wide ? 28 : 8, paddingBottom: 8, zIndex: 5 }]}>
+        <Text
+          accessibilityRole="header"
+          aria-level={1}
+          style={{ fontSize: wide ? 40 : 28, lineHeight: wide ? 46 : 34, fontWeight: '700', color: colors.ink, letterSpacing: -1 }}
+        >
+          Find your next New York apartment
+        </Text>
+        <Text style={{ fontSize: wide ? 18 : 16, lineHeight: wide ? 26 : 23, color: colors.muted, maxWidth: 720 }}>
+          Every listing site in one search, with real deals, building grades and rent-stabilized apartments marked. Free, no account needed.
+        </Text>
+        <HomeSearch onSearch={onSearch} loadNeighborhoods={loadNeighborhoods} />
       </View>
+
+      {preview && (
+        <View style={column}>
+          <ListingRow title="Today’s best deals" filters={deals} preview={preview} actions={actions} onSeeAll={() => onSearch(deals)} />
+          <ListingRow title="New on Walkup today" filters={fresh} preview={preview} actions={actions} onSeeAll={() => onSearch(fresh)} />
+        </View>
+      )}
 
       <View style={[column, { gap: 18, paddingVertical: 24 }]}>
         <Text accessibilityRole="header" style={heading}>
@@ -154,34 +158,6 @@ export function HomePage({
             >
               <Text style={{ fontSize: 17, fontWeight: '600', color: colors.ink }}>{title}</Text>
               <Text style={styles.bodyText}>{body}</Text>
-            </View>
-          ))}
-        </View>
-      </View>
-
-      <View style={[column, { gap: 18, paddingVertical: 24 }]}>
-        <Text accessibilityRole="header" style={heading}>
-          How it works
-        </Text>
-        <View style={{ flexDirection: wide ? 'row' : 'column', gap: 18 }}>
-          {STEPS.map(([title, body], index) => (
-            <View key={title} style={{ flex: wide ? 1 : undefined, flexDirection: 'row', gap: 12 }}>
-              <View
-                style={{
-                  width: 34,
-                  height: 34,
-                  borderRadius: 17,
-                  backgroundColor: colors.ink,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <Text style={{ color: colors.white, fontWeight: '700' }}>{index + 1}</Text>
-              </View>
-              <View style={{ flex: 1, gap: 4 }}>
-                <Text style={{ fontSize: 17, fontWeight: '600', color: colors.ink }}>{title}</Text>
-                <Text style={styles.bodyText}>{body}</Text>
-              </View>
             </View>
           ))}
         </View>
