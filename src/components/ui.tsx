@@ -171,8 +171,8 @@ export function Disclosure({ title, children }: { title: string; children: React
             gap: 12,
             minHeight: 48,
             paddingVertical: 12,
+            // A line above only: what follows (the next row, or a section's own divider) closes it, so lines never double.
             borderTopWidth: 1,
-            borderBottomWidth: open ? 0 : 1,
             borderColor: colors.border,
           },
           pressed && styles.pressed,

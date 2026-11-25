@@ -34,9 +34,8 @@ export function ListingSources({
 
   return (
     <View style={styles.listingWebsites}>
-      {/* One website: link to it straight away; the rest (other sites, adding a link) stays folded away. */}
-      {count === 1 && <Link label={listingLinkLabel(direct[0]!)} url={direct[0]!.url} onError={onError} />}
       <Button secondary onPress={() => setExpanded(!expanded)}>
+        {/* One website is already the page's main button; more are listed here with other places to look. */}
         {`${count > 1 ? `Listing websites (${count})` : 'More places to look'} ${expanded ? '↑' : '↓'}`}
       </Button>
       {expanded && (

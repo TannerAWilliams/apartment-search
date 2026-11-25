@@ -41,7 +41,7 @@ function TypicalCost({ listing }: { listing: ListingData }) {
   // The two numbers people want first; the pieces and the rules behind them one tap away.
   return (
     <View style={{ gap: 6 }}>
-      {row('About, each month with utilities', cost.monthly, true)}
+      {row('Each month, with utilities (estimate)', cost.monthly, true)}
       {row('To move in', cost.moveIn + cost.possibleBrokerFee, true)}
       <Disclosure title="See the breakdown">
         <View style={{ gap: 6 }}>
