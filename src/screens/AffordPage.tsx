@@ -11,6 +11,20 @@ const dollars = (text: string) => {
   return Number.isFinite(amount) && amount > 0 ? amount : null;
 };
 
+/** A percentage as typed, "6" or "6.5", kept between 0 and 100 with at most one decimal. */
+const percentText = (text: string) => {
+  const cleaned = text.replace(/[^\d.]/g, '').replace(/(\..*)\./g, '$1');
+  const [whole = '', decimal] = cleaned.split('.');
+  const value = whole.slice(0, 3) + (decimal === undefined ? '' : '.' + decimal.slice(0, 1));
+  return Number(value) > 100 ? '100' : value;
+};
+const percent = (text: string) => {
+  const value = Number(text);
+  return text !== '' && Number.isFinite(value) && value > 0 ? value : null;
+};
+/** The 2025 limit on what an employee can put into a 401(k) (under 50). */
+const LIMIT_401K = 23_500;
+
 /** Shows an amount as it is typed, "$120,000", so a missing or extra zero is easy to see. */
 const money = (text: string) => {
   const digits = text.replace(/\D/g, '').slice(0, 7);
@@ -23,9 +37,14 @@ export function AffordPage({ onSearch }: { onSearch: (maxRent: number) => void }
   const [pretax, setPretax] = useState('');
   const [own, setOwn] = useState('');
   const gross = dollars(income);
-  const monthlyTakeHome = dollars(own) ?? undefined;
-  const result = gross ? affordability(gross, residence, { pretax: dollars(pretax) ?? 0, monthlyTakeHome }) : null;
-  const taxes = gross ? takeHome(gross, residence, dollars(pretax) ?? 0) : null;
+  // Both are percentages of yearly income before tax, as pay stubs and 401(k) plans put them.
+  const pretaxShare = percent(pretax);
+  const ownShare = percent(own);
+  const pretaxDollars = gross && pretaxShare ? Math.round((gross * pretaxShare) / 100) : 0;
+  const monthlyTakeHome = gross && ownShare ? Math.round((gross * ownShare) / 100 / 12) : undefined;
+  const result = gross ? affordability(gross, residence, { pretax: pretaxDollars, monthlyTakeHome }) : null;
+  const taxes = gross ? takeHome(gross, residence, pretaxDollars) : null;
+  const estimatedShare = gross && taxes ? Math.round((taxes.yearly / gross) * 100) : null;
   const card = (title: string, amount: number, detail: string, rule: string) => (
     <View style={[styles.chartCard, { gap: 6, flexGrow: 1, flexBasis: 260 }]}>
       <Text style={styles.smallMuted}>{title}</Text>
@@ -67,21 +86,28 @@ export function AffordPage({ onSearch }: { onSearch: (maxRent: number) => void }
           ))}
         </View>
         <Field
-          label="Yearly 401(k) or other pre-tax savings (optional)"
+          label="401(k) or other pre-tax savings, % of income (optional)"
           value={pretax}
-          onChangeText={(text) => setPretax(money(text))}
-          keyboardType="number-pad"
-          placeholder="$0"
-          maxLength={10}
+          onChangeText={(text) => setPretax(percentText(text))}
+          keyboardType="decimal-pad"
+          placeholder="e.g. 6"
+          maxLength={5}
         />
+        {pretaxDollars > 0 && (
+          <Text style={styles.smallMuted}>
+            {formatRent(pretaxDollars)} a year
+            {pretaxDollars > LIMIT_401K ? `, more than the ${formatRent(LIMIT_401K)} a 401(k) alone allows in 2025` : ''}
+          </Text>
+        )}
         <Field
-          label="Or your actual take-home pay a month (optional)"
+          label="Or the share of your pay you actually take home, % (optional)"
           value={own}
-          onChangeText={(text) => setOwn(money(text))}
-          keyboardType="number-pad"
-          placeholder="Estimated for you"
-          maxLength={10}
+          onChangeText={(text) => setOwn(percentText(text))}
+          keyboardType="decimal-pad"
+          placeholder={estimatedShare ? `Estimated: ${estimatedShare}` : 'Estimated for you'}
+          maxLength={5}
         />
+        {monthlyTakeHome !== undefined && <Text style={styles.smallMuted}>{formatRent(monthlyTakeHome)} a month</Text>}
       </View>
       {result && taxes && gross ? (
         <>
@@ -115,7 +141,7 @@ export function AffordPage({ onSearch }: { onSearch: (maxRent: number) => void }
                   -taxes.state,
                 ],
                 ...(residence === 'nyc' ? ([['New York City income tax', -taxes.city]] as const) : []),
-                ...(dollars(pretax) ? ([['Pre-tax savings', -(dollars(pretax) ?? 0)]] as const) : []),
+                ...(pretaxDollars ? ([['Pre-tax savings', -pretaxDollars]] as const) : []),
               ] as const
             ).map(([label, amount]) => (
               <View key={label} style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>

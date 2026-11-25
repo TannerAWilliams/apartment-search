@@ -1411,7 +1411,11 @@ test('the affordability calculator shows the landlord rule and Dave Ramsey’s 2
   await expect(page.getByText('What landlords approve', { exact: true })).toBeVisible();
   await expect(page.getByText(/^\$3,000 a month$/)).toBeVisible();
   await expect(page.getByText('New York City income tax', { exact: true })).toBeVisible();
-  await page.getByRole('textbox', { name: 'Or your actual take-home pay a month (optional)', exact: true }).fill('6000');
+  // Pre-tax savings and take-home pay are percentages of income, shown in dollars too.
+  await page.getByRole('textbox', { name: '401(k) or other pre-tax savings, % of income (optional)', exact: true }).fill('6');
+  await expect(page.getByText('$7,200 a year', { exact: true })).toBeVisible();
+  await page.getByRole('textbox', { name: 'Or the share of your pay you actually take home, % (optional)', exact: true }).fill('60');
+  await expect(page.getByText('$6,000 a month', { exact: true })).toBeVisible();
   await expect(page.getByText(/^\$1,500 a month$/)).toBeVisible();
   await page.getByRole('button', { name: 'Search up to $1,500 (25% rule)', exact: true }).click();
   await expect.poll(() => requests.filter(({ path }) => path === '/api/search').at(-1)?.body).toMatchObject({ maxRent: 1500 });
