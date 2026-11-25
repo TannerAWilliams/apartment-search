@@ -69,9 +69,8 @@ export const MIN_COMPARABLES = 5;
 export const FAR_BELOW = -0.4;
 /** No whole apartment in the area rents for under this (listings.ts notes it on the card): a room, parking, a typo or a scam. */
 export const IMPLAUSIBLE_RENT = 500;
-/** Whether a listing's rent is too low to trust: far below similar apartments, or below any real rent here. */
-export const suspiciousRent = (listing: Pick<ListingData, 'rent' | 'insights'>) =>
-  (listing.insights?.vsMarket ?? 0) <= FAR_BELOW || (listing.rent > 0 && listing.rent < IMPLAUSIBLE_RENT);
+/** Whether a listing's rent is below any real apartment's here (how far below similar ones is only noted, not judged). */
+export const suspiciousRent = (listing: Pick<ListingData, 'rent'>) => listing.rent > 0 && listing.rent < IMPLAUSIBLE_RENT;
 
 const placeKey = (listing: Pick<ListingData, 'neighborhood' | 'zip'>) =>
   listing.neighborhood
