@@ -28,6 +28,7 @@ import { STREETEASY_LIVE, STREETEASY_PUBLIC_COVERAGE, STREETEASY_PUBLIC_TRANSPOR
 import type { SourceFetch } from './contracts.ts';
 import { type SourceStatus, refreshStatus, sourceExpiresAt, sourceRecent } from './refresh/status.ts';
 import { refreshCatalog } from './refresh/sources.ts';
+import { timed, type Timings } from './timing.ts';
 import { storedDirectRentals, storedFeed, storedHousing, storedOpenigloo } from './refresh/snapshots.ts';
 import { storedMarket } from './refresh/market.ts';
 
@@ -137,24 +138,34 @@ export function keptGathered(bucket: Bucket, key: string, now = Date.now()) {
 }
 
 /** Every listing with its comparison with similar apartments and its building's facts. */
-async function score(listings: ListingData[], bucket: Bucket | undefined) {
+async function score(listings: ListingData[], bucket: Bucket | undefined, timings?: Timings) {
   // Three independent reads, read together. Owners' own no-fee listings join every search.
   const [buildings, lists, direct] = bucket
-    ? await Promise.all([readBuildingFacts(bucket).catch(() => ({})), openData(bucket), directListings(bucket).catch(() => [])])
+    ? await Promise.all([
+        timed(timings, 'facts', () => readBuildingFacts(bucket).catch(() => ({}))),
+        timed(timings, 'open-data', () => openData(bucket)),
+        timed(timings, 'owners', () => directListings(bucket).catch(() => [])),
+      ])
     : [{}, undefined, []];
   return withInsights([...listings, ...direct], buildings, lists);
 }
 /** The scored listings of a kept set, worked out once while the set is kept. */
 const scored = new WeakMap<Gathered, Promise<ListingData[]>>();
-function scoredOnce(found: Gathered, bucket: Bucket) {
+function scoredOnce(found: Gathered, bucket: Bucket, timings?: Timings) {
   const known = scored.get(found);
   if (known) return known;
-  const work = score(found.listings, bucket);
+  const work = score(found.listings, bucket, timings);
   // Scoring reads only stored lists, each of which falls back to empty, so it does not fail on its own.
   scored.set(found, work);
   return work;
 }
 
+type SearchExtra = {
+  /** The sources' status when the caller has already read it (cachedSearch), so it is not read twice. */
+  status?: Awaited<ReturnType<typeof refreshStatus>> | null;
+  /** Where the request's time goes, by phase (server/timing.ts). */
+  timings?: Timings;
+};
 type SearchResponse = SearchResult & { snapshotMonth?: string; commute?: boolean; commuteNotice?: string };
 type ObservationResponse = { matches: ListingData[]; sources: SearchSource[]; notices: string[] };
 /** Searches with checked filters (see SearchFiltersSchema). With observationsOnly, returns the matches alone, from saved inventory. */
@@ -163,7 +174,7 @@ export function search(
   env: AppEnv,
   fetcher?: SourceFetch,
   observationsOnly?: false,
-  known?: Awaited<ReturnType<typeof refreshStatus>> | null,
+  extra?: SearchExtra,
 ): Promise<SearchResponse>;
 export function search(
   filters: SearchFilters,
@@ -176,8 +187,7 @@ export async function search(
   env: AppEnv,
   fetcher: SourceFetch = fetch,
   observationsOnly = false,
-  /** The sources' status when the caller has already read it (cachedSearch), so it is not read twice. */
-  known?: Awaited<ReturnType<typeof refreshStatus>> | null,
+  { status: known, timings }: SearchExtra = {},
 ) {
   const requireCommute = needsCommute(filters);
   const credentials = routingCredentials(env);
@@ -196,8 +206,8 @@ export async function search(
   let kept: Gathered | null = null;
   async function finish(listings: ListingData[], mode: string, sources: SearchSource[], notices: string[], snapshotMonth?: string) {
     const [scoredListings, workplace] = await Promise.all([
-      kept && bucket ? scoredOnce(kept, bucket) : score(listings, bucket),
-      workplaceFound,
+      timed(timings, 'score', () => (kept && bucket ? scoredOnce(kept, bucket, timings) : score(listings, bucket, timings))),
+      timed(timings, 'destination', () => workplaceFound),
     ]);
     const matched = matchListings(scoredListings, filters, workplace).map(listingWithVerifiedLinks);
     let routed = matched;
@@ -269,7 +279,7 @@ export async function search(
       bucket,
     );
   }
-  const status = known === undefined ? (bucket ? await refreshStatus(bucket) : null) : known;
+  const status = known === undefined ? (bucket ? await timed(timings, 'status', () => refreshStatus(bucket)) : null) : known;
   const observedAt = new Date();
   const sourceRegion = parentRegion(filters.region);
   // Official-only searches leave out every source read from a listing site's own pages: Openigloo and the direct rental sources.
@@ -435,7 +445,10 @@ export async function search(
   // A narrower search (one area, a top rent) reuses every listing when they are already kept, such as by the
   // search the app runs on opening: the listings it does not match are left out after, by matchListings.
   const everything = bucket && key !== keyFor({}, 'all') ? keptGathered(bucket, keyFor({}, 'all')) : undefined;
-  const found = everything ? await everything : bucket && !observationsOnly ? await recentlyGathered(bucket, key, gather) : await gather();
+  if (bucket && !observationsOnly) timings?.note('listings', everything || keptGathered(bucket, key) ? 'kept' : 'read');
+  const found = await timed(timings, 'read', () =>
+    everything ? everything : bucket && !observationsOnly ? recentlyGathered(bucket, key, gather) : gather(),
+  );
   kept = bucket && !observationsOnly ? found : null;
   return finish(found.listings, found.mode, found.sources, [...found.notices], found.snapshotMonth);
 }
@@ -491,18 +504,21 @@ export async function cachedSearch(
   env: AppEnv,
   fetcher: SourceFetch,
   cache: SearchCache | undefined = (globalThis as { caches?: { default?: Cache } }).caches?.default,
+  timings?: Timings,
 ): Promise<SearchResponse> {
-  if (!cache || !env.BUCKET) return search(filters, env, fetcher);
-  const status = await refreshStatus(env.BUCKET);
+  if (!cache || !env.BUCKET) return search(filters, env, fetcher, false, { timings });
+  const bucket = env.BUCKET;
+  const status = await timed(timings, 'status', () => refreshStatus(bucket));
   // Kept per deployed version: a deploy that changes ranking or matching must not serve the old answers.
   const version = env.CF_VERSION_METADATA?.id ?? '';
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify({ filters, status, version })));
   const key = new Request(
     `https://search-cache.internal/${[...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('')}`,
   );
-  const hit = await cache.match(key);
+  const hit = await timed(timings, 'cache', () => cache.match(key));
+  timings?.note('answer', hit ? 'cached' : 'computed');
   if (hit) return (await hit.json()) as SearchResponse;
-  const result = await search(filters, env, fetcher, false, status);
+  const result = await search(filters, env, fetcher, false, { status, timings });
   await cache.put(
     key,
     new Response(JSON.stringify(result), {
