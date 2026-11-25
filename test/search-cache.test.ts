@@ -59,3 +59,21 @@ test('a search is answered from the data center’s cache until a source check c
   // Without a cache or storage, it searches directly.
   expect((await cachedSearch(filters, {}, offline, undefined)).total).toBeGreaterThan(0);
 });
+
+test('the companies in the app settings are counted once per saved state and deploy, then read from the cache', async () => {
+  const { appConfig, savedAppConfig } = await import('../server/app-config.ts');
+  const stored = new Map<string, Response>();
+  const cache = {
+    match: async (request: Request) => stored.get(request.url)?.clone(),
+    put: async (request: Request, response: Response) => void stored.set(request.url, response.clone()),
+  } as unknown as Cache;
+  const env = { BUCKET: createMemoryBucket() };
+  const first = await savedAppConfig(env, appConfig(env), cache);
+  expect(stored.size).toBe(1);
+  expect((await savedAppConfig(env, appConfig(env), cache)).companies).toEqual(first.companies);
+  expect(stored.size).toBe(1);
+  await savedAppConfig({ ...env, CF_VERSION_METADATA: { id: 'next-version' } }, appConfig(env), cache);
+  expect(stored.size).toBe(2);
+  // Without a cache it counts them directly.
+  expect((await savedAppConfig(env, appConfig(env), undefined)).companies).toEqual(first.companies);
+});
