@@ -201,7 +201,25 @@ function ApartmentSearch() {
   const savedByKey = useMemo(() => new Map(saved.map((listing) => [listingKey(listing), listing])), [saved]);
   const savedResults = useMemo(() => localSearch(saved, SAVED_FILTERS, result.workplace, 'saved'), [saved, result.workplace]);
 
+  /** A search asked for while the app was still connecting. */
+  const waitingSearch = useRef<[typeof draft | typeof applied, boolean] | null>(null);
+  useEffect(() => {
+    const waiting = waitingSearch.current;
+    if (!waiting || serverState === 'checking') return;
+    waitingSearch.current = null;
+    setBusy(false);
+    // Connected: run it. Offline or signed out: say so, as a search made now would.
+    void submit(...waiting);
+  }, [serverState]);
   async function submit(nextDraft: typeof draft | typeof applied = draft, withMap = mapView) {
+    // A search made in the first moment, before the server has answered, is held and run when it has
+    // (the effect below), rather than refused with a message to try again.
+    if (serverState === 'checking') {
+      waitingSearch.current = [nextDraft, withMap];
+      setError('');
+      setBusy(true);
+      return;
+    }
     const unavailable = searchAvailabilityMessage(serverState);
     if (unavailable) {
       setError(unavailable);

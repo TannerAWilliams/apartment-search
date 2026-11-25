@@ -4,7 +4,7 @@ import { normalizeListing } from '../src/listings.ts';
 import { parseFilters, localWorkplace } from '../src/search.ts';
 
 for (const initial of ['checking', 'offline'] as const) {
-  test(`search during ${initial} preserves startup loading and can be retried`, async ({ page }) => {
+  test(`a search made while ${initial} ${initial === 'checking' ? 'runs once connected' : 'can be retried'}`, async ({ page }) => {
     let release = () => {};
     const gate = new Promise<void>((resolve) => {
       release = resolve;
@@ -50,20 +50,21 @@ for (const initial of ['checking', 'offline'] as const) {
     await page.getByRole('button', { name: 'Filters', exact: true }).click();
     if (initial === 'offline') await expect(page.getByRole('button', { name: 'Retry connection', exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Show apartments', exact: true }).click();
-    await expect(
-      page
-        .getByRole('alert')
-        .filter({ hasText: initial === 'checking' ? 'Still connecting' : 'Retry the connection' })
-        .first(),
-    ).toBeVisible();
-    // Only the opening search, sent alongside the settings: the person's own search waited for the connection.
-    expect(searches).toHaveLength(1);
-    if (initial === 'checking') release();
-    else await page.getByRole('button', { name: 'Retry connection', exact: true }).click();
-    const opened = initial === 'checking' ? 1 : 2;
-    await expect.poll(() => searches.length).toBe(opened);
-    await page.getByRole('button', { name: 'Show apartments', exact: true }).click();
-    await expect.poll(() => searches.length).toBe(opened + 1);
+    if (initial === 'checking') {
+      // Still connecting: the person's search is held, with no error, and runs by itself once connected.
+      await expect(page.getByRole('alert').filter({ hasText: 'Still connecting' })).toHaveCount(0);
+      expect(searches).toHaveLength(1);
+      release();
+      await expect.poll(() => searches.length).toBe(2);
+    } else {
+      await expect(page.getByRole('alert').filter({ hasText: 'Retry the connection' }).first()).toBeVisible();
+      // Only the opening search, sent alongside the settings: the person's own search was not sent.
+      expect(searches).toHaveLength(1);
+      await page.getByRole('button', { name: 'Retry connection', exact: true }).click();
+      await expect.poll(() => searches.length).toBe(2);
+      await page.getByRole('button', { name: 'Show apartments', exact: true }).click();
+      await expect.poll(() => searches.length).toBe(3);
+    }
     await expect(page.getByText('12 Grove Street', { exact: true })).toBeVisible();
     await expect(page.getByRole('heading', { name: '1 matching apartment', exact: true })).toBeVisible();
   });

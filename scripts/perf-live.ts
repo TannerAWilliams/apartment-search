@@ -64,7 +64,8 @@ async function visit(browser: Browser, origin: string): Promise<Record<Measure, 
 
 if (import.meta.main) {
   const origin = (Bun.argv[2] ?? 'https://apartments.5thof6.com').replace(/\/$/, '');
-  const browser = await chromium.launch();
+  // A browser installed elsewhere can be named, as the Playwright configuration allows.
+  const browser = await chromium.launch({ executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE || undefined });
   const visits: Record<Measure, number>[] = [];
   // One visit after another, as visitors arrive; together they would slow each other.
   for (let index = 0; index < VISITS; index++) visits.push(await visit(browser, origin));
