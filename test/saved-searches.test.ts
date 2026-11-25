@@ -46,7 +46,7 @@ test('presets pick validated filters, ignore secrets and pagination, round-trip 
   expect(list[0].filters.includeCommute).toBe(false);
   expect(serializeSavedSearches(list)).not.toContain('never stored');
   expect(readSavedSearches(serializeSavedSearches(list))).toEqual(list);
-  expect(() => presetFilters({ minSquareFeet: -1 })).toThrow();
+  expect(() => presetFilters({ minSquareFeet: 'lots' })).toThrow();
   expect(() => addSavedSearch(list, 'brooklyn', {}, 'two')).toThrow();
   expect(() => addSavedSearch(list, 'Other', {}, 'one')).toThrow();
   expect(() => addSavedSearch([], ' ', {}, 'one')).toThrow();

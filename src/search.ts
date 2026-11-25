@@ -65,20 +65,38 @@ export const needsCommute = (filters: Loose<Pick<SearchFilters, 'maxTransitMinut
 
 export class SearchInputError extends Error {}
 
-/** A number field: blank means none, and digits typed as text count, as forms send them. */
-const optionalNumber = (label: string, min: number, max: number, whole = true) =>
+/** A number the app sends itself (a page offset, a weight): blank means none; out of range is refused. */
+const exactNumber = (label: string, min: number, max: number) =>
   v.optional(
     v.pipe(
       v.unknown(),
       v.transform((value) => (value === '' ? null : value)),
-      v.union(
-        [v.null(), v.number(), v.pipe(v.string(), v.trim(), v.regex(/^\d+(\.\d+)?$/), v.transform(Number))],
-        `Enter a number for ${label}.`,
-      ),
+      v.union([v.null(), v.number(), v.pipe(v.string(), v.trim(), v.regex(/^\d+$/), v.transform(Number))], `Enter a number for ${label}.`),
       v.check(
-        (value) => value === null || (Number.isFinite(value) && value >= min && value <= max && (!whole || Number.isInteger(value))),
-        `Enter ${label} between ${min} and ${max}${whole ? ' as a whole number' : ''}.`,
+        (value) => value === null || (Number.isInteger(value) && value >= min && value <= max),
+        `Enter ${label} between ${min} and ${max} as a whole number.`,
       ),
+    ),
+    null,
+  );
+/**
+ * A number a person typed: blank means none, and digits typed as text count, as forms send them ("$3,500" is 3500).
+ * A number out of range is corrected rather than refused, so a search never stops on one: above the most it
+ * becomes the most, a whole-number field is rounded, and below the least (a rent of 0) it means no limit.
+ */
+const optionalNumber = (label: string, min: number, max: number, whole = true) =>
+  v.optional(
+    v.pipe(
+      v.unknown(),
+      v.transform((value) => (typeof value === 'string' ? value.replace(/[$,\s]/g, '') : value)),
+      v.transform((value) => (value === '' ? null : value)),
+      v.union([v.null(), v.number(), v.pipe(v.string(), v.regex(/^\d+(\.\d+)?$/), v.transform(Number))], `Enter a number for ${label}.`),
+      v.check((value) => value === null || Number.isFinite(value), `Enter a number for ${label}.`),
+      v.transform((value) => {
+        if (value === null) return null;
+        const rounded = whole ? Math.round(value) : value;
+        return rounded < min ? null : Math.min(rounded, max);
+      }),
     ),
     null,
   );
@@ -102,10 +120,10 @@ export const SearchFiltersSchema = v.pipe(
     maxMinutes: v.nullish(v.literal('', 'Use the transit directions link on a listing to check travel time.')),
     laundry: v.nullish(v.picklist(['', ...LAUNDRY_OPTIONS], 'Choose a supported laundry option.'), ''),
     petsRequired: v.nullish(v.boolean('Choose whether pets must be allowed.'), false),
-    bestFitRentWeight: optionalNumber('rent ranking weight', 0, 100),
+    bestFitRentWeight: exactNumber('rent ranking weight', 0, 100),
     minBathrooms: optionalNumber('minimum bathrooms', 0.5, 20, false),
     minSquareFeet: optionalNumber('minimum square feet', 1, 100000),
-    offset: optionalNumber('result offset', 0, 1000000),
+    offset: exactNumber('result offset', 0, 1000000),
     bedrooms: optionalNumber('bedroom count', 0, 4),
     maxRent: optionalNumber('maximum rent', 1, 100000),
     maxMiles: optionalNumber('maximum distance', 0.1, 250, false),

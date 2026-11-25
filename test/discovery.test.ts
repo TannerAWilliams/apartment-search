@@ -52,14 +52,20 @@ test('normalization and actual search preserve facts without inferring them for 
   expect(matchListings([known, unknown], filters, null).map((l) => l.id)).toStrictEqual(['test:one']);
   expect(matchListings([known, unknown], parseFilters(), null).length).toBe(2);
 });
-test('invalid discovery filters reject rather than silently broaden search', () => {
+test('invalid discovery filters are refused, and numbers out of range are corrected', () => {
+  // A typed number is never an error: too big becomes the most, a fraction is rounded, zero means no minimum.
+  expect(parseFilters({ minBathrooms: 21 }).minBathrooms).toBe(20);
+  expect(parseFilters({ minBathrooms: -1 }).minBathrooms).toBeNull();
+  expect(parseFilters({ minSquareFeet: 0 }).minSquareFeet).toBeNull();
+  expect(parseFilters({ minSquareFeet: '5.5' }).minSquareFeet).toBe(6);
+  expect(parseFilters({ minSquareFeet: 100001 }).minSquareFeet).toBe(100000);
+  expect(parseFilters({ maxRent: '$3,500' }).maxRent).toBe(3500);
+  expect(parseFilters({ maxRent: 3333.33 }).maxRent).toBe(3333);
+  expect(parseFilters({ maxRent: 250000 }).maxRent).toBe(100000);
+  expect(parseFilters({ maxRent: 0 }).maxRent).toBeNull();
   for (const input of [
     { minBathrooms: 'many' },
-    { minBathrooms: -1 },
-    { minBathrooms: 21 },
-    { minSquareFeet: 0 },
-    { minSquareFeet: '5.5' },
-    { minSquareFeet: 100001 },
+    { maxRent: Number.POSITIVE_INFINITY },
     { laundry: 'yes' },
     { laundry: true },
     { petsRequired: 'true' },

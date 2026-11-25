@@ -1369,6 +1369,21 @@ test('the home page searches by where, bedrooms and rent, and shows real apartme
     .toMatchObject({ region: 'queens', neighborhood: 'Astoria' });
 });
 
+test('rent amounts are corrected as typed, never refused with an error', async ({ page }) => {
+  const { requests } = await mockApp(page, { start: '/' });
+  await page.getByRole('textbox', { name: 'Max rent', exact: true }).fill('250000');
+  await expect(page.getByRole('textbox', { name: 'Max rent', exact: true })).toHaveValue('$100,000');
+  await page.getByRole('button', { name: 'Search apartments', exact: true }).click();
+  await expect.poll(() => requests.filter(({ path }) => path === '/api/search').at(-1)?.body).toMatchObject({ maxRent: 100000 });
+  await page.getByRole('button', { name: 'Filters', exact: true }).click();
+  const rent = page.getByRole('textbox', { name: 'Max rent per month ($)', exact: true });
+  await rent.fill('$3,5OO');
+  await expect(rent).toHaveValue('35');
+  await rent.fill('0');
+  await expect(rent).toHaveValue('');
+  await expect(page.getByText(/as a whole number/)).toHaveCount(0);
+});
+
 test('an owner lists a no-fee apartment for review', async ({ page }) => {
   const { requests } = await mockApp(page, { account: 'landlord@example.test', admin: false });
   let mine: unknown[] = [];

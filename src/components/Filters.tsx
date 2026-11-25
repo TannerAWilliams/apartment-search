@@ -1,3 +1,4 @@
+import { wholeNumber } from '../whole-number.ts';
 import React, { useEffect, useRef, useState } from 'react';
 import { understand } from '../natural-search.ts';
 import { SUBWAY_LINES } from '../subway.ts';
@@ -445,10 +446,6 @@ export function Filters({
  * A number field's text kept to what the search accepts as it is typed: digits only, at most `max`, never 0, so
  * "$4,500" becomes 4500 and 250000 becomes 100000 instead of an error after searching.
  */
-export function wholeNumber(text: string, max: number) {
-  const digits = text.replace(/\D/g, '').replace(/^0+/, '');
-  return digits ? String(Math.min(Number(digits.slice(0, 9)), max)) : '';
-}
 
 type Place = { label: string; latitude: number; longitude: number };
 

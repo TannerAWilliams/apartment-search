@@ -320,6 +320,10 @@ function ApartmentSearch() {
   const listVisible = !WEB_MAP || !mapView || wide;
   const marketArea = Object.entries(REGIONS).find(([key]) => key === applied.region)?.[1].label ?? applied.region;
 
+  // A message belongs to the screen it was shown on; going to another one clears it.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs when the screen changes.
+  useEffect(() => setError(''), [tab]);
+
   // The browser tab names the screen, so tabs and history are told apart.
   useEffect(() => {
     if (Platform.OS !== 'web') return;
@@ -582,9 +586,20 @@ function ApartmentSearch() {
             <View style={styles.results}>
               <Suspense fallback={<Text style={styles.smallMuted}>Loading…</Text>}>
                 {error !== '' && (
-                  <Text accessibilityRole="alert" style={styles.error}>
-                    {error}
-                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
+                    <Text accessibilityRole="alert" style={[styles.error, { flex: 1 }]}>
+                      {error}
+                    </Text>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Dismiss message"
+                      onPress={() => setError('')}
+                      hitSlop={8}
+                      style={({ pressed }) => [{ padding: 6 }, pressed && styles.pressed]}
+                    >
+                      <Text style={{ fontSize: 18, color: colors.muted }}>×</Text>
+                    </Pressable>
+                  </View>
                 )}
                 {/* Pages opened from Profile say where they came from and lead back to it. */}
                 {PROFILE_PAGES.includes(view) && (

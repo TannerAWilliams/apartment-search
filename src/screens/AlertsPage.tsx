@@ -1,3 +1,4 @@
+import { wholeNumber } from '../whole-number.ts';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Text, View } from 'react-native';
 import type { SearchFilters } from '../domain.ts';
@@ -116,8 +117,7 @@ export function AlertsPage({
     () => places.filter(({ detail }) => !borough || detail === borough).sort((a, b) => b.count - a.count || a.label.localeCompare(b.label)),
     [places, borough],
   );
-  const rent = /^\d{3,6}$/.test(maxRent.trim()) ? Number(maxRent.trim()) : null;
-  const rentInvalid = maxRent.trim() !== '' && rent === null;
+  const rent = Number(maxRent) || null;
   const name = customName.trim() || alertName(area, picked, beds, rent);
   const toggle = <T,>(list: T[], value: T) => (list.includes(value) ? list.filter((item) => item !== value) : [...list, value]);
 
@@ -244,14 +244,13 @@ export function AlertsPage({
             <Field
               label="Max rent per month"
               value={maxRent}
-              onChangeText={(text) => setMaxRent(text.replace(/[^\d]/g, ''))}
+              onChangeText={(text) => setMaxRent(wholeNumber(text, 100000))}
               keyboardType="number-pad"
               placeholder="Any price"
               maxLength={6}
             />
-            {rentInvalid && <Text style={styles.smallMuted}>Enter a rent of at least $100, or leave it empty.</Text>}
             <Field label="Alert name" value={customName} onChangeText={setCustomName} maxLength={60} placeholder={name} />
-            <Button disabled={busy !== '' || rentInvalid} onPress={saveAlert}>
+            <Button disabled={busy !== ''} onPress={saveAlert}>
               Save alert
             </Button>
           </View>
