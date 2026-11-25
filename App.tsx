@@ -88,6 +88,8 @@ function ApartmentSearch() {
   /** The open tool panel below the commute box: one at a time. */
   const [tool, setTool] = useState('');
   const [mapView, setMapView] = useState(false);
+  const searchAbort = useRef<AbortController | null>(null);
+  const recentSearches = useRef(new Map<string, { at: number; result: SearchResult }>());
   const scrollRef = useRef<React.ElementRef<typeof ScrollView>>(null);
   const scrollPositions = useRef<Record<string, number>>({});
   /** The tab the scroll offset belongs to; null from a tab change until that tab's offset is restored. */
@@ -147,20 +149,26 @@ function ApartmentSearch() {
   const savedByKey = useMemo(() => new Map(saved.map((listing) => [listingKey(listing), listing])), [saved]);
   const savedResults = useMemo(() => localSearch(saved, SAVED_FILTERS, result.workplace, 'saved'), [saved, result.workplace]);
 
-  async function submit(nextDraft: typeof draft | typeof applied = draft) {
-    if (busy) return;
+  async function submit(nextDraft: typeof draft | typeof applied = draft, withMap = mapView) {
     const unavailable = searchAvailabilityMessage(serverState);
     if (unavailable) {
       setError(unavailable);
       return;
     }
     submitted.current = true;
-    searchVersion.current += 1;
+    // A new search replaces one still running (a second category tap is never ignored), and only the latest
+    // one's answer is shown.
+    const version = ++searchVersion.current;
+    searchAbort.current?.abort();
+    const controller = new AbortController();
+    searchAbort.current = controller;
     setError('');
     setBusy(true);
     const changingDestination = nextDraft.workplace !== applied.workplace || nextDraft.customWorkplace !== applied.customWorkplace;
+    const previous = applied;
     try {
-      const filters = parseFilters({ ...nextDraft, liveOnly: true, includeCommute: commuteConfigured });
+      // The map's points are asked for only while the map is showing; for every listing they are most of the answer.
+      const filters = parseFilters({ ...nextDraft, liveOnly: true, includeCommute: commuteConfigured, includeMap: WEB_MAP && withMap });
       if (needsCommute(filters) && serverState !== 'ready') {
         setExpanded('commute');
         throw new Error('Commute estimates need the online search server. Try again when it is available.');
@@ -169,14 +177,28 @@ function ApartmentSearch() {
         setExpanded('commute');
         throw new Error('Automatic commute estimates are currently unavailable.');
       }
-      const searchResult = await api('search', { body: filters, token: activeToken });
-      appliedFilters.current = filters;
+      // The chosen category or filter shows as chosen at once, and the results screen opens while they load.
       setApplied(filters);
-      setResult(searchResult);
       setScope('market');
       navigateTab('results');
       setExpanded('');
+      const key = JSON.stringify(filters);
+      const recent = recentSearches.current.get(key);
+      // Going back to a search from the last minute (All, then Deals, then All) shows its results at once.
+      const searchResult =
+        recent && Date.now() - recent.at < RECENT_SEARCH_MS
+          ? recent.result
+          : await api('search', { body: filters, token: activeToken, signal: controller.signal });
+      if (version !== searchVersion.current) return;
+      recentSearches.current.delete(key);
+      recentSearches.current.set(key, { at: recent?.result === searchResult ? recent.at : Date.now(), result: searchResult });
+      if (recentSearches.current.size > RECENT_SEARCHES) recentSearches.current.delete(recentSearches.current.keys().next().value!);
+      appliedFilters.current = filters;
+      setResult(searchResult);
     } catch (caught) {
+      // A search replaced by a newer one is not an error.
+      if (version !== searchVersion.current) return;
+      setApplied(previous);
       const failure = failureInfo(caught);
       if (failure.commuteError) setExpanded('commute');
       setError(
@@ -184,7 +206,7 @@ function ApartmentSearch() {
           (changingDestination ? ' Destination was not changed; previous results are still shown.' : ''),
       );
     } finally {
-      setBusy(false);
+      if (version === searchVersion.current) setBusy(false);
     }
   }
 
@@ -829,7 +851,12 @@ function ApartmentSearch() {
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={mapView ? 'List' : 'Map'}
-              onPress={() => setMapView(!mapView)}
+              onPress={() => {
+                const showing = !mapView;
+                setMapView(showing);
+                // The search ran without the map's points; ask again with them.
+                if (showing && !result.mapPoints && scope !== 'saved') void submit(applied, true);
+              }}
               style={({ pressed }) => [mobileStyles.floatingPill, pressed && styles.pressed]}
             >
               <Text style={mobileStyles.floatingText}>{mapView ? 'Show list' : 'Show map'}</Text>
@@ -907,6 +934,10 @@ const ACCOUNT_TABS: Record<string, string> = {
   shared: 'share a list',
   list: 'list your apartment',
 };
+
+/** Searches from the last minute, kept to show again at once when someone goes back to one. */
+const RECENT_SEARCH_MS = 60_000;
+const RECENT_SEARCHES = 8;
 
 export default function App() {
   useEffect(() => {

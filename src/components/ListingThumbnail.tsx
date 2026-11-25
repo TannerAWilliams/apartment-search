@@ -1,6 +1,6 @@
 /**
  * A listing card's image area. Listings carry no photos, so it shows where the apartment is: the OpenStreetMap
- * tile that contains it, with a pin on the spot. A listing without coordinates gets a plain tile with a building.
+ * tiles around it, with a pin on the spot in the middle. A listing without coordinates gets a plain tile with a building.
  */
 import { createContext, useContext, useState } from 'react';
 import { Image, Platform, StyleSheet, Text, View } from 'react-native';
@@ -12,7 +12,7 @@ const ZOOM = 15;
 /** Whether the server can show Street View images (server/street-view.ts); the app sets it from its config. */
 export const StreetViewContext = createContext(false);
 
-/** The map tile holding a point at ZOOM, and where in that tile (0 to 1 across and down) the point falls. */
+/** The map tile holding a point at ZOOM, where in that tile (0 to 1 across and down) the point falls, and any tile's address. */
 export function tileFor(latitude: number, longitude: number) {
   const scale = 2 ** ZOOM;
   const column = ((longitude + 180) / 360) * scale;
@@ -20,7 +20,13 @@ export function tileFor(latitude: number, longitude: number) {
   const row = ((1 - Math.log(Math.tan(radians) + 1 / Math.cos(radians)) / Math.PI) / 2) * scale;
   const x = Math.floor(column);
   const y = Math.floor(row);
-  return { url: `https://tile.openstreetmap.org/${ZOOM}/${x}/${y}.png`, across: column - x, down: row - y };
+  return {
+    x,
+    y,
+    url: (column: number, line: number) => `https://tile.openstreetmap.org/${ZOOM}/${column}/${line}.png`,
+    across: column - x,
+    down: row - y,
+  };
 }
 
 const thumbnail = StyleSheet.create({
@@ -98,23 +104,32 @@ export function ListingThumbnail({
       </View>
     );
   const tile = tileFor(latitude, longitude);
-  // The square tile is as wide as the card and slid up or down so the pin sits as near the middle as the tile allows.
+  // Four tiles, each as wide as the card, from the side the apartment is nearer to, so the pin sits in the
+  // middle of the card wherever it falls in its own tile.
   const { width, height } = size;
-  const top = Math.min(0, Math.max(height - width, height / 2 - tile.down * width));
+  const left = tile.across < 0.5 ? -1 : 0;
+  const up = tile.down < 0.5 ? -1 : 0;
+  const offsetX = width / 2 - (tile.across - left) * width;
+  const offsetY = height / 2 - (tile.down - up) * width;
   return (
     <View
-      style={StyleSheet.absoluteFill}
+      style={[StyleSheet.absoluteFill, { overflow: 'hidden' }]}
       aria-hidden
       onLayout={({ nativeEvent }) => setSize({ width: nativeEvent.layout.width, height: nativeEvent.layout.height })}
     >
       {width > 0 && (
         <>
-          <Image
-            source={{ uri: tile.url }}
-            onError={() => setFailed(true)}
-            style={{ position: 'absolute', left: 0, top, width, height: width }}
-          />
-          <View style={[thumbnail.pin, { left: tile.across * width, top: top + tile.down * width }]} />
+          {[0, 1].flatMap((dy) =>
+            [0, 1].map((dx) => (
+              <Image
+                key={`${dx}${dy}`}
+                source={{ uri: tile.url(tile.x + left + dx, tile.y + up + dy) }}
+                onError={() => setFailed(true)}
+                style={{ position: 'absolute', left: offsetX + dx * width, top: offsetY + dy * width, width, height: width }}
+              />
+            )),
+          )}
+          <View style={[thumbnail.pin, { left: width / 2, top: height / 2 }]} />
           <Text style={thumbnail.credit}>© OpenStreetMap</Text>
         </>
       )}
