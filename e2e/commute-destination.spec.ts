@@ -116,3 +116,29 @@ test('the commute destination is set once on the profile, kept on the device, an
   await page.getByRole('button', { name: 'Search apartments', exact: true }).click();
   await expect.poll(() => searched.at(-1)).toEqual({ workplace: 'penn', customWorkplace: '' });
 });
+
+test('a commute limit is chosen with the destination and sent with the search; there is no ZIP field', async ({ page }) => {
+  const searched: Record<string, unknown>[] = [];
+  await page.route('**/*', async (route) => {
+    const url = new URL(route.request().url());
+    if (url.origin !== 'http://127.0.0.1:4173') return route.abort();
+    if (!url.pathname.startsWith('/api/')) return route.continue();
+    if (url.pathname === '/api/config') return route.fulfill({ json: { sources: [], commuteConfigured: false } });
+    if (url.pathname === '/api/search') {
+      const filters = parseFilters(route.request().postDataJSON());
+      searched.push(filters as unknown as Record<string, unknown>);
+      return route.fulfill({ json: localSearch([], filters, localWorkplace(filters), 'live') });
+    }
+    return route.abort();
+  });
+  await page.goto('/search');
+  await page.getByRole('button', { name: 'Change destination', exact: true }).click();
+  await expect(page.getByText('By subway or PATH to Rockefeller Center, estimated.', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '30 min', exact: true }).click();
+  await page.getByRole('button', { name: 'Apply destination', exact: true }).click();
+  await expect.poll(() => searched.at(-1)?.maxCommuteMinutes).toBe(30);
+  await expect(page.getByText(/Commute ≤ 30 min/)).toBeVisible();
+  await page.getByRole('button', { name: 'Filters', exact: true }).click();
+  await expect(page.getByLabel('ZIP code (optional)')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '30 min', exact: true })).toHaveAttribute('aria-pressed', 'true');
+});

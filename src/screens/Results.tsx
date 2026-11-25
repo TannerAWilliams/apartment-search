@@ -228,6 +228,7 @@ export function Results({
         applied.maxRent === null ? null : `Up to ${formatRent(applied.maxRent)}`,
         applied.maxTransitMinutes == null ? null : `Transit ≤ ${applied.maxTransitMinutes} min`,
         applied.maxDrivingMinutes == null ? null : `Drive ≤ ${applied.maxDrivingMinutes} min`,
+        applied.maxCommuteMinutes == null ? null : `Commute ≤ ${applied.maxCommuteMinutes} min`,
       ]
         .filter(Boolean)
         .join(' · ');
@@ -247,7 +248,8 @@ export function Results({
                     ? 'Active inventory unavailable'
                     : `${result.total.toLocaleString('en-US')} ${savedView ? 'saved' : 'matching'} ${result.total === 1 ? 'apartment' : 'apartments'}`}
             </Text>
-            {!savedView && (applied.zip || applied.source || applied.maxTransitMinutes != null || applied.maxDrivingMinutes != null) && (
+            {!savedView &&
+              (applied.zip || applied.source || applied.maxTransitMinutes != null || applied.maxDrivingMinutes != null || applied.maxCommuteMinutes != null) && (
               <Text style={styles.smallMuted}>{summary}</Text>
             )}
             {destination && (

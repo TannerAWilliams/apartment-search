@@ -75,6 +75,8 @@ export interface SearchFilters {
   maxMiles: number | null;
   maxTransitMinutes: number | null;
   maxDrivingMinutes: number | null;
+  /** The longest estimated transit commute to the destination (no routing service needed); listings without an estimate are left out. */
+  maxCommuteMinutes?: number | null;
   liveOnly: boolean;
   includeCached?: boolean;
   sort: string;

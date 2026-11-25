@@ -129,6 +129,7 @@ export const SearchFiltersSchema = v.pipe(
     maxMiles: optionalNumber('maximum distance', 0.1, 250, false),
     maxTransitMinutes: optionalNumber('maximum transit time in minutes', 1, 180),
     maxDrivingMinutes: optionalNumber('maximum driving time in minutes', 1, 180),
+    maxCommuteMinutes: optionalNumber('maximum commute in minutes', 1, 180),
     liveOnly: flag,
     includeCached: flag,
     includeMap: flag,
@@ -198,6 +199,7 @@ export const SearchFiltersSchema = v.pipe(
       maxMiles: input.maxMiles,
       maxTransitMinutes: input.maxTransitMinutes,
       maxDrivingMinutes: input.maxDrivingMinutes,
+      ...(input.maxCommuteMinutes == null ? {} : { maxCommuteMinutes: input.maxCommuteMinutes }),
     }),
   ),
 );

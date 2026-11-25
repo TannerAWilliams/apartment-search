@@ -93,3 +93,43 @@ test('an apartment’s own page gets its estimate to the person’s destination'
   const { withTransitEstimate } = await import('../server/search.ts');
   expect(await withTransitEstimate(home, {}, { workplace: 'penn', customWorkplace: '' }, offline)).toBe(home);
 });
+
+test('a commute limit keeps only apartments whose estimated trip fits, across the whole search', async () => {
+  const bucket = createMemoryBucket();
+  const all = await search(parseFilters({ region: 'nyc', bedrooms: null, maxRent: null }), { BUCKET: bucket }, offline);
+  const near = all.matches.filter((listing) => typeof listing.latitude === 'number').slice(0, 3);
+  await bucket.put(
+    STATIONS_KEY,
+    JSON.stringify({
+      checkedAt: '2026-11-24T00:00:00Z',
+      stations: [
+        ...near.map((listing, index) => ({ name: `S${index}`, routes: ['A'], latitude: listing.latitude!, longitude: listing.longitude! })),
+        { name: 'Midtown', routes: ['A'], latitude: 40.7587, longitude: -73.9787 },
+      ],
+    }),
+  );
+  const { openData } = await import('../server/open-data.ts');
+  await openData(bucket, Date.now() + 10_800_000);
+  const limited = await search(
+    parseFilters({ region: 'nyc', bedrooms: null, maxRent: null, maxCommuteMinutes: 120 }),
+    { BUCKET: bucket },
+    offline,
+  );
+  expect(limited.total).toBeGreaterThan(0);
+  expect(limited.total).toBeLessThan(all.total);
+  expect(limited.matches.every((listing) => (listing.insights?.transitMinutes ?? Infinity) <= 120)).toBe(true);
+  expect(parseFilters({ maxCommuteMinutes: '45' }).maxCommuteMinutes).toBe(45);
+  expect(parseFilters({}).maxCommuteMinutes, 'none unless asked').toBeUndefined();
+  // A routed time counts when there is one.
+  const { formatSearch } = await import('../src/market.ts');
+  const routed = { ...near[0]!, transitSeconds: 600, insights: { warnings: [] } };
+  const kept = formatSearch(
+    [routed],
+    parseFilters({ region: 'all', maxCommuteMinutes: 15 }),
+    { label: 'x', latitude: 0, longitude: 0 },
+    'live',
+    [],
+    [],
+  );
+  expect(kept.total).toBe(1);
+});

@@ -38,6 +38,15 @@ function lineColors(line: string): [string, string] {
   return ['#808183', '#ffffff'];
 }
 
+/** Commute limits offered, in minutes; null is any. */
+const COMMUTE_LIMITS: [number | null, string][] = [
+  [null, 'Any'],
+  [20, '20 min'],
+  [30, '30 min'],
+  [45, '45 min'],
+  [60, '1 hour'],
+];
+
 export function Filters({
   draft,
   setDraft,
@@ -69,6 +78,26 @@ export function Filters({
     <K extends keyof DraftFilters>(field: K) =>
     (value: DraftFilters[K]) =>
       setDraft((previous) => ({ ...previous, [field]: value }));
+  const destinationLabel =
+    draft.workplace === 'custom'
+      ? draft.customWorkplace.split(',')[0] || 'your destination'
+      : (WORKPLACES[draft.workplace]?.label ?? 'work');
+  const commuteLimit = (
+    <>
+      {/* How long the trip to the destination may be, from the transit estimates (no routing service needed). */}
+      <Text accessibilityRole="header" style={FILTER_HEADING}>
+        Commute
+      </Text>
+      <Text style={styles.smallMuted}>By subway or PATH to {destinationLabel}, estimated.</Text>
+      <View style={styles.chipRow}>
+        {COMMUTE_LIMITS.map(([minutes, label]) => (
+          <Chip key={label} selected={(draft.maxCommuteMinutes ?? null) === minutes} onPress={() => set('maxCommuteMinutes')(minutes)}>
+            {label}
+          </Chip>
+        ))}
+      </View>
+    </>
+  );
 
   return (
     <View style={styles.sheetBody}>
@@ -155,15 +184,9 @@ export function Filters({
               </View>
             </React.Fragment>
           ))}
-          <Field
-            label="ZIP code (optional)"
-            placeholder="Any ZIP in this area"
-            value={draft.zip}
-            onChangeText={(text) => set('zip')(text.replace(/\D/g, '').slice(0, 5))}
-            keyboardType="number-pad"
-          />
         </>
       )}
+      {panel === 'more' && commuteLimit}
       {(panel === 'more' || panel === 'price') && (
         <>
           <Field
@@ -324,6 +347,7 @@ export function Filters({
           {draft.workplace === 'custom' && (
             <DestinationField value={draft.customWorkplace} onChange={set('customWorkplace')} suggest={suggest} />
           )}
+          {commuteLimit}
           {commuteConfigured ? (
             <>
               <Field

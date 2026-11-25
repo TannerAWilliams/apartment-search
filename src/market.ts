@@ -85,6 +85,12 @@ export function formatSearch(
         (filters.maxTransitMinutes == null || (transitSeconds ?? Infinity) <= filters.maxTransitMinutes * 60) &&
         (filters.maxDrivingMinutes == null || (drivingSeconds ?? Infinity) <= filters.maxDrivingMinutes * 60),
     )
+    // The commute limit: a routed time when there is one, else the estimate; without either, the listing is left out.
+    .filter(
+      ({ transitSeconds, insights }) =>
+        filters.maxCommuteMinutes == null ||
+        (transitSeconds != null ? transitSeconds / 60 : (insights?.transitMinutes ?? Infinity)) <= filters.maxCommuteMinutes,
+    )
     .map(listingWithVerifiedLinks)
     .map((listing) => ({ ...listing, bestFit: filters.sort === 'best' ? bestFit(listing, filters, workplace) : undefined }));
   const bySource = new Map();

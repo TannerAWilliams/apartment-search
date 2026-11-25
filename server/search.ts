@@ -223,6 +223,8 @@ export async function search(filters: SearchFilters, env: AppEnv, fetcher: Sourc
         sources,
         notices,
       };
+    // A commute limit needs every listing's estimate before the limit is applied, not only those shown.
+    if (filters.maxCommuteMinutes != null && !commute.commute && bucket) routed = await withTransitEstimates(routed, bucket, workplace!);
     const formatted = formatSearch(routed, filters, workplace!, mode, sources, notices);
     // Without a routing service, each listing shown gets an estimated transit time to the destination.
     const result =
