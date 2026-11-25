@@ -3,6 +3,7 @@ import { OPENIGLOO, OPENIGLOO_COVERAGE, OPENIGLOO_TRANSPORT } from './openigloo.
 import { ZUMPER_COVERAGE, ZUMPER_LIVE, ZUMPER_TRANSPORT } from './zumper.ts';
 import { BRODSKY_TRANSPORT } from './brodsky.ts';
 import { GLENWOOD_TRANSPORT } from './glenwood.ts';
+import { STONEHENGE_TRANSPORT } from './stonehenge.ts';
 import { STUYTOWN_TRANSPORT } from './stuytown.ts';
 
 /**
@@ -66,6 +67,7 @@ export const BACKGROUND_SYNCS: readonly BackgroundSync[] = [
   background('greystar-live', 'Greystar'),
   background('nooklyn-live', 'Nooklyn'),
   background('bondny-live', 'Bond New York'),
+  background('tribro-live', 'TriBro NYC'),
 ];
 
 /** Every source the sync Workflow runs, in its order: the quick background syncs first, then the complete ones. */
@@ -88,6 +90,8 @@ const VERIFIED_INVENTORIES: readonly { id: string; name: string; transport: stri
   { id: 'glenwood-live', name: 'Glenwood', transport: GLENWOOD_TRANSPORT },
   // Brodsky lists every apartment on one page but gives no separate total; see server/sources/brodsky.ts.
   { id: 'brodsky-live', name: 'Brodsky', transport: BRODSKY_TRANSPORT },
+  // Stonehenge also lists every apartment on one page with no separate total; see server/sources/stonehenge.ts.
+  { id: 'stonehenge-live', name: 'Stonehenge NYC', transport: STONEHENGE_TRANSPORT },
 ];
 
 /** The full-inventory rule a source follows, if any: a complete sync, or a verified inventory. */

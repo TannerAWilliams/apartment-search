@@ -32,9 +32,9 @@ const GROUP_BOROUGHS: Record<string, Borough> = {
   'Staten Island': 'Staten Island',
 };
 /** The kinds of home RealtyMX lists for rent (its others are retail, office, parking and the like). */
-const HOMES = new Set(['Apartment', 'Condo', 'Condop', 'Coop', 'House', 'Townhouse', 'Loft', 'Multi-Family']);
+export const REALTYMX_HOMES = new Set(['Apartment', 'Condo', 'Condop', 'Coop', 'House', 'Townhouse', 'Loft', 'Multi-Family']);
 
-const decode = (text: string) =>
+export const decodeRealtyMx = (text: string) =>
   text
     .replace(/<[^>]*>/g, ' ')
     .replace(/&#0*39;|&#x27;/g, "'")
@@ -55,16 +55,25 @@ export type RealtyMxCard = {
   bathrooms: number;
 };
 
+/**
+ * A card's street address and unit: "145 HENRY STREET, #2A". Cards that hide the building number show only the
+ * street ("1ST AVENUE"), which gives no street.
+ */
+export function realtyMxAddress(text: string) {
+  const [, street = '', unit = ''] = text.match(/^(\d+(?:-\d+)?[a-z]?\s[^,#]*?)\s*(?:[,#]\s*#?\s*(?:(?:apt|unit)\.?\s+)?(.*))?$/i) ?? [];
+  return { street, unit };
+}
+
 /** The neighborhoods of a RealtyMX search's filter, by name, with the borough of the group each is listed under. */
 export function parseRealtyMxAreas(html: string) {
   const groups = new Map<string, string>();
-  for (const [, id, name] of html.matchAll(/id="Cat_(\d+)" href="#cat\d+">([^<]+)</g)) groups.set(id, decode(name));
+  for (const [, id, name] of html.matchAll(/id="Cat_(\d+)" href="[^"#]*#cat\d+">([^<]+)</g)) groups.set(id, decodeRealtyMx(name));
   const areas = new Map<string, Borough>();
   for (const [, name, group] of html.matchAll(
     /aria-label="([^"]+)" type="checkbox" name="cat" value="\d+"\s*class="styled checkCat_(\d+)/g,
   )) {
     const borough = GROUP_BOROUGHS[groups.get(group) ?? ''];
-    if (borough) areas.set(decode(name), borough);
+    if (borough) areas.set(decodeRealtyMx(name), borough);
   }
   // A card can also name a whole group ("Brooklyn").
   for (const name of groups.values()) if (GROUP_BOROUGHS[name]) areas.set(name, GROUP_BOROUGHS[name]);
@@ -80,15 +89,13 @@ export function parseRealtyMxPage(html: string, listingUrl: (value: unknown) => 
     const id = card.match(/data-pid="(\d+)"/)?.[1];
     const link = card.match(/<h3>\s*<a\b[^>]*\bhref="([^"]+)"[^>]*>([\s\S]*?)<\/a>/);
     const url = listingUrl(link?.[1]);
-    const type = decode(card.match(/class="property-grid-type">([^<]*)</)?.[1] ?? '');
-    const area = decode(card.match(/class="property-grid-area"[^>]*>([^<]*)</)?.[1] ?? '');
+    const type = decodeRealtyMx(card.match(/class="property-grid-type">([^<]*)</)?.[1] ?? '');
+    const area = decodeRealtyMx(card.match(/class="property-grid-area"[^>]*>([^<]*)</)?.[1] ?? '');
     const rent = Number(card.match(/class="price">\s*<span>\$([\d,]+)<\/span>/)?.[1]?.replaceAll(',', ''));
-    const rooms = decode(card.match(/class="bedrooms"[^>]*>([\s\S]*?)<\/div>/)?.[1] ?? '');
+    const rooms = decodeRealtyMx(card.match(/class="bedrooms"[^>]*>([\s\S]*?)<\/div>/)?.[1] ?? '');
     const bedrooms = /^Studio\b/.test(rooms) ? 0 : Math.floor(Number(rooms.match(/(?:^|\| )([\d.]+) BR\b/)?.[1] ?? NaN));
-    // "145 HENRY STREET, #2A"; cards that hide the building number show only the street ("1ST AVENUE").
-    const [, street, unit = ''] =
-      decode(link?.[2] ?? '').match(/^(\d+(?:-\d+)?[a-z]?\s[^,#]*?)\s*(?:[,#]\s*#?\s*(?:(?:apt|unit)\.?\s+)?(.*))?$/i) ?? [];
-    if (!id || !url || !street || !HOMES.has(type) || !area || !Number.isFinite(rent) || !Number.isInteger(bedrooms)) continue;
+    const { street, unit } = realtyMxAddress(decodeRealtyMx(link?.[2] ?? ''));
+    if (!id || !url || !street || !REALTYMX_HOMES.has(type) || !area || !Number.isFinite(rent) || !Number.isInteger(bedrooms)) continue;
     cards.push({ id, url, street, unit, area, type, rent, bedrooms, bathrooms: Number(rooms.match(/([\d.]+) BT\b/)?.[1]) });
   }
   return { total, cards };
@@ -132,6 +139,8 @@ export type RealtyMxSite = {
   rowsPerPage: number;
   maxPages: number;
   listingUrl: (value: unknown) => string | null;
+  /** How the site's search template lays out its cards, when it is not RealtyMX's usual grid. */
+  parsePage?: typeof parseRealtyMxPage;
 };
 
 /** Every rental of a RealtyMX search, read a page at a time, with ZIP codes from the Census geocoder. */
@@ -143,18 +152,15 @@ export async function loadRealtyMx(site: RealtyMxSite, fetcher: FetchTransport, 
   const firstHtml = await fetchPublicHtml(fetcher, pageUrl(1), name, 30_000);
   const areas = parseRealtyMxAreas(firstHtml);
   if (!areas.size) throw new Error(name + ' did not list its neighborhoods.');
-  const first = parseRealtyMxPage(firstHtml, site.listingUrl, name);
+  const parsePage = site.parsePage ?? parseRealtyMxPage;
+  const first = parsePage(firstHtml, site.listingUrl, name);
   const pages = Math.max(1, Math.ceil(first.total / site.rowsPerPage));
   if (pages > site.maxPages) throw new Error(name + ' listed more rentals than expected.');
   const cards = [...first.cards];
   // One page at a time with a pause, as a person would browse the search.
   for (let page = 2; page <= pages; page++) {
     await new Promise((resolve) => setTimeout(resolve, pauseMs));
-    const next = parseRealtyMxPage(
-      await fetchPublicHtml(fetcher, pageUrl((page - 1) * site.rowsPerPage + 1), name, 30_000),
-      site.listingUrl,
-      name,
-    );
+    const next = parsePage(await fetchPublicHtml(fetcher, pageUrl((page - 1) * site.rowsPerPage + 1), name, 30_000), site.listingUrl, name);
     cards.push(...next.cards);
   }
   const homes = [...new Map(cards.map((card) => [card.id, card])).values()].flatMap((card) => {

@@ -29,7 +29,9 @@ import { REALNY_LIVE } from './realny.ts';
 import { RELATED_LIVE } from './related.ts';
 import { ROCKROSE_LIVE } from './rockrose.ts';
 import { SERHANT_LIVE } from './serhant.ts';
+import { STONEHENGE_LIVE } from './stonehenge.ts';
 import { TFC_LIVE } from './tfc.ts';
+import { TRIBRO_LIVE } from './tribro.ts';
 import { TWOTREES_LIVE } from './twotrees.ts';
 import { UDR_LIVE } from './udr.ts';
 
@@ -58,6 +60,7 @@ export const DIRECT_RENTAL_SOURCES = [
   BONDNY_LIVE,
   MNS_LIVE,
   NESTSEEKERS_LIVE,
+  TRIBRO_LIVE,
   // Landlords' own listings.
   STUYTOWN_LIVE,
   GLENWOOD_LIVE,
@@ -70,4 +73,5 @@ export const DIRECT_RENTAL_SOURCES = [
   ROCKROSE_LIVE,
   TWOTREES_LIVE,
   TFC_LIVE,
+  STONEHENGE_LIVE,
 ];
