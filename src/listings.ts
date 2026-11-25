@@ -92,6 +92,16 @@ export function sourceLink(url: unknown, kind: string, fallback: Pick<SourceLink
   };
 }
 
+/**
+ * The site's own posting date, as an ISO time: a date string or a time in milliseconds, kept only when it is a real
+ * date no later than a day from now (a listing cannot be posted in the future).
+ */
+export function postedDate(value: unknown): { listedAt?: string } {
+  const time = typeof value === 'number' ? value : typeof value === 'string' && value.trim() ? Date.parse(value.trim()) : NaN;
+  if (!Number.isFinite(time) || time < Date.UTC(2000, 0, 1) || time > Date.now() + 86_400_000) return {};
+  return { listedAt: new Date(time).toISOString() };
+}
+
 export function normalizeListing(
   input: unknown,
   source: { id: string; name: string; kind: string; maxBedrooms?: number; maxRent?: number },
@@ -144,6 +154,7 @@ export function normalizeListing(
     neighborhood: clean(row.neighborhood, 80),
     company: clean(row.company ?? row.brokerage),
     seenAt: Number.isFinite(Date.parse(clean(row.lastSeenDate ?? row.updatedAt))) ? clean(row.lastSeenDate ?? row.updatedAt) : null,
+    ...postedDate(row.listedAt),
     sources: link ? [link] : [],
     kind: source.kind,
   };

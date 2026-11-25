@@ -20,7 +20,7 @@ const AVAILABLE = new Set(['for lease', 'for rent', 'active']);
 
 const QUERY = `query Properties($companyId: String, $leaseProperty: Boolean, $addressState: [String!], $propertyTypeIds: [String!], $advancedFilters: JSON, $offset: Int, $limit: Int, $sort: String, $sortDir: SortDirectionEnum) {
   properties(companyId: $companyId, leaseProperty: $leaseProperty, addressState: $addressState, propertyTypeIds: $propertyTypeIds, advancedFilters: $advancedFilters, offset: $offset, limit: $limit, sort: $sort, sortDir: $sortDir) {
-    id slug status priceUponRequest leaseProperty leasePrice leasePeriod privateAddress bedroomCount bathCount addressLine1 addressLine2 addressState postalCode livingSpaceSize livingSpaceUnits latitude longitude types { name }
+    id slug status listDate priceUponRequest leaseProperty leasePrice leasePeriod privateAddress bedroomCount bathCount addressLine1 addressLine2 addressState postalCode livingSpaceSize livingSpaceUnits latitude longitude types { name }
   }
   propertiesCount(companyId: $companyId, leaseProperty: $leaseProperty, addressState: $addressState, propertyTypeIds: $propertyTypeIds, advancedFilters: $advancedFilters) { count }
 }`;
@@ -61,6 +61,7 @@ type Site = {
 
 type Property = {
   id?: unknown;
+  listDate?: unknown;
   slug?: unknown;
   status?: unknown;
   priceUponRequest?: unknown;
@@ -127,6 +128,8 @@ export function luxuryPresenceListing(site: Pick<Site, 'source' | 'origin'>, pro
       longitude: row.longitude,
       status: 'Active',
       updatedAt: checkedAt,
+      // The brokerage's own listing date.
+      listedAt: row.listDate,
     },
     site.source,
   );

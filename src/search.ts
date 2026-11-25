@@ -3,7 +3,7 @@ import { isRecord, type ListingData, type Loose, type Point, type SearchFilters 
 import { LAUNDRY_OPTIONS, matchesDiscovery } from './discovery.ts';
 import { companyMatches } from './companies.ts';
 import { REGIONS, WORKPLACES, matchesRegion, regionOf } from './regions.ts';
-import { buildingGrade, DEAL_BELOW, suspiciousRent } from './insights.ts';
+import { buildingGrade, DEAL_BELOW, listedWithin, suspiciousRent } from './insights.ts';
 import { nearbyLines, SUBWAY_LINES } from './subway.ts';
 
 export const DEFAULT_FILTERS: SearchFilters = {
@@ -49,7 +49,7 @@ export const RESULT_SORTS = {
   best: 'Best fit: rent + commute',
   recent: 'Recently checked',
   rent: 'Lowest rent',
-  newest: 'Newest on Walkup',
+  newest: 'Newest listed',
   value: 'Best value for the area',
   transit: 'Fastest transit',
   driving: 'Fastest drive',
@@ -249,11 +249,11 @@ export function distanceMiles(from: unknown, to: unknown) {
 }
 
 export function compareResults(
-  a: Pick<ListingData, 'id' | 'rent' | 'seenAt' | 'miles' | 'transitSeconds' | 'drivingSeconds' | 'insights'> & {
+  a: Pick<ListingData, 'id' | 'rent' | 'seenAt' | 'miles' | 'transitSeconds' | 'drivingSeconds' | 'insights' | 'listedAt'> & {
     kind?: string;
     bestFit?: { score: number };
   },
-  b: Pick<ListingData, 'id' | 'rent' | 'seenAt' | 'miles' | 'transitSeconds' | 'drivingSeconds' | 'insights'> & {
+  b: Pick<ListingData, 'id' | 'rent' | 'seenAt' | 'miles' | 'transitSeconds' | 'drivingSeconds' | 'insights' | 'listedAt'> & {
     kind?: string;
     bestFit?: { score: number };
   },
@@ -266,8 +266,8 @@ export function compareResults(
     if (difference) return difference;
   }
   if (sort === 'newest') {
-    const first = Date.parse(a.insights?.firstSeen ?? '') || 0;
-    const second = Date.parse(b.insights?.firstSeen ?? '') || 0;
+    const first = Date.parse(a.listedAt ?? '') || 0;
+    const second = Date.parse(b.listedAt ?? '') || 0;
     if (first !== second) return second - first;
   }
   if (sort === 'value') {
@@ -314,7 +314,7 @@ export function matchListings(listings: ListingData[], filters: SearchFilters, w
       (filters.neighborhood && placeName(listing.neighborhood ?? '') !== placeName(filters.neighborhood)) ||
       (filters.nearSubway && !listing.insights?.subway?.length) ||
       (filters.accessibleSubway && !listing.insights?.subway?.some(({ accessible }) => accessible)) ||
-      (filters.newWithinDays && !(Date.parse(listing.insights?.firstSeen ?? '') >= Date.now() - filters.newWithinDays * 86_400_000)) ||
+      (filters.newWithinDays && !listedWithin(listing.listedAt, filters.newWithinDays)) ||
       (filters.subwayLines?.length && !nearbyLines(listing.insights?.subway).some((line) => filters.subwayLines!.includes(line))) ||
       (filters.stabilizedOnly && listing.building?.stabilized !== true) ||
       (filters.goodBuildings && ['C', 'D'].includes(buildingGrade(listing.building) ?? '')) ||

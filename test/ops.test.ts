@@ -82,8 +82,8 @@ test('the Monday digest tells each paid account what is new for its alerts', asy
   const mail = mailbox();
   const env = { BUCKET: bucket, ALERT_EMAIL: mail.email, ALERT_EMAIL_FROM: 'alerts@example.test', APP_ORIGIN: 'https://walkup.test' };
   const fresh = (id: string) =>
-    testListing({ id, insights: { warnings: [], firstSeen: new Date(now.getTime() - 86_400_000).toISOString() } });
-  const old = (id: string) => testListing({ id, insights: { warnings: [], firstSeen: '2026-01-01T00:00:00Z' } });
+    testListing({ id, listedAt: new Date(now.getTime() - 86_400_000).toISOString(), insights: { warnings: [] } });
+  const old = (id: string) => testListing({ id, listedAt: '2026-01-01T00:00:00Z', insights: { warnings: [] } });
   const rule = { name: 'Brooklyn 1BR', filters: { region: 'brooklyn', bedrooms: 1, maxRent: 3500 } };
   await addRule(bucket, rule, async () => [], now, 'paid@example.test');
   await addRule(bucket, { ...rule, name: 'Quiet' }, async () => [], now, 'quiet@example.test');

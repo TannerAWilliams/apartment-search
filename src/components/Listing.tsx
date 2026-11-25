@@ -1,6 +1,6 @@
 import type { ListingData, SourceLink, Workplace } from '../domain.ts';
 import { typicalCosts } from '../move-in.ts';
-import { buildingGrade, listedLabel, marketBadge, type BuildingFacts } from '../insights.ts';
+import { buildingGrade, listedLabel, listedWithin, marketBadge, type BuildingFacts } from '../insights.ts';
 import type { CheckBuilding } from './BuildingReport.tsx';
 import { BuildingReport } from './BuildingReport.tsx';
 import { discoveryFacts, LAUNDRY_LABELS } from '../discovery.ts';
@@ -195,8 +195,9 @@ export const Listing = memo(function Listing({
   const grade = buildingGrade(listing.building);
   const badge = marketBadge(listing.insights);
   const nearest = listing.insights?.subway?.[0];
-  const listed = listedLabel(listing.insights?.firstSeen);
-  const isNew = listed?.startsWith('New') ?? false;
+  // When the listing site posted it (Walkup's own first sighting is never shown as a posting date).
+  const listed = listedLabel(listing.listedAt);
+  const isNew = listedWithin(listing.listedAt, 7);
   const priceCut = listing.insights?.priceCut;
   const photoBadge = listing.noFee
     ? 'No fee · Owner'
@@ -207,7 +208,7 @@ export const Listing = memo(function Listing({
         : listing.building?.stabilized
           ? 'Rent-stabilized'
           : null;
-  const longListed = !isNew && listed && Date.now() - Date.parse(listing.insights!.firstSeen!) >= 21 * 86_400_000;
+  const longListed = !isNew && listed && !listedWithin(listing.listedAt, 21);
   // Where, then what: the place and the nearest train; then size, and what the badge did not already say.
   const place = [
     neighborhood && neighborhood !== city ? `${neighborhood}, ${city}` : (regionInfo?.label ?? city),

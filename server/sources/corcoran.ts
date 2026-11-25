@@ -41,6 +41,7 @@ export const CORCORAN_LIVE = {
 
 type Card = {
   listingId?: unknown;
+  listedDate?: unknown;
   listingStatus?: unknown;
   transactionType?: unknown;
   propertyType?: unknown;
@@ -108,6 +109,8 @@ export function parseCorcoranSearch(html: string, _page: unknown, checkedAt: str
         longitude: card.location?.longitude,
         status: 'Active',
         updatedAt: checkedAt,
+        // Corcoran's own listing date.
+        listedAt: card.listedDate,
       },
       SOURCE,
     );

@@ -86,6 +86,8 @@ async function mockApp(
     });
   if (options.insights)
     Object.assign(listings[0], {
+      // The listing site's own posting date.
+      listedAt: new Date().toISOString(),
       building: { stabilized: true, openViolations: 0, complaints: 1, bedbugs: false, flood: false, checkedAt: now },
       insights: {
         marketMedian: 2400,
@@ -1086,7 +1088,7 @@ test('profile: a free member’s saved listings are kept on the account, and ale
 test('cards show the building’s grade, rent stabilization, the price against similar apartments and warnings', async ({ page }) => {
   await mockApp(page, { insights: true });
   // One badge on the photo; the grade where a rating would be; the rest in short grey lines.
-  await expect(page.getByText('New today', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('Listed today', { exact: true }).first()).toBeVisible();
   await expect(page.getByText('Building A', { exact: true }).first()).toBeVisible();
   await expect(page.getByText(/· 3 min to L$/).first()).toBeVisible();
   await expect(page.getByText(/1 bedroom · ≈ 35 min to Rockefeller Center · Rent-stabilized · Price cut \$150/).first()).toBeVisible();
@@ -1282,7 +1284,7 @@ test('results offer email alerts for the search, and newest and best-value sorti
   await mockApp(page, { account: 'owner@example.test', admin: true });
   // Sorting is one menu.
   await page.getByRole('button', { name: 'Sort: Lowest rent', exact: true }).click();
-  await expect(page.getByRole('menuitem', { name: 'Newest on Walkup', exact: true })).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: 'Newest listed', exact: true })).toBeVisible();
   await page.getByRole('menuitem', { name: 'Best value for the area', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Sort: Best value for the area', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Get email alerts for this search', exact: true }).click();
@@ -1349,7 +1351,7 @@ test('the home page searches by where, bedrooms and rent, and shows real apartme
   const { requests } = await mockApp(page, { account: 'renter@example.test', start: '/', nyc: true, insights: true });
   await expect(page.getByRole('heading', { name: 'Find your next New York apartment', exact: true })).toBeVisible();
   // Real apartments on the home page, opening their own page.
-  await expect(page.getByRole('heading', { name: 'New on Walkup today', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Listed today', exact: true })).toBeVisible();
   await expect
     .poll(() => requests.filter(({ path, body }) => path === '/api/search' && body?.belowMarket === true).length)
     .toBeGreaterThan(0);

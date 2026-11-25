@@ -142,7 +142,7 @@ export function HomePage({
       {preview && (
         <View style={column}>
           <ListingRow title="Today’s best deals" filters={deals} preview={preview} actions={actions} onSeeAll={() => onSearch(deals)} />
-          <ListingRow title="New on Walkup today" filters={fresh} preview={preview} actions={actions} onSeeAll={() => onSearch(fresh)} />
+          <ListingRow title="Listed today" filters={fresh} preview={preview} actions={actions} onSeeAll={() => onSearch(fresh)} />
         </View>
       )}
 

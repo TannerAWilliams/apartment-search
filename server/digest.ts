@@ -30,7 +30,7 @@ export async function runDigest(
   for (const rule of await readRules(env.BUCKET)) {
     if (!rule.owner || !paid.has(rule.owner)) continue;
     const matches: ListingData[] = matchesCriteria(await loadMatches(rule.filters), rule.criteria);
-    const fresh = matches.filter(({ insights }) => Date.parse(insights?.firstSeen ?? '') >= weekAgo).length;
+    const fresh = matches.filter(({ listedAt }) => Date.parse(listedAt ?? '') >= weekAgo).length;
     byOwner.set(rule.owner, [...(byOwner.get(rule.owner) ?? []), { name: rule.name, matching: matches.length, fresh }]);
   }
   const origin = env.APP_ORIGIN ?? '';

@@ -102,18 +102,24 @@ test('first seen, the last price cut, and newest and best-value sorting', async 
   const now = new Date('2026-11-24T12:00:00Z');
   const ago = (days: number) => new Date(now.getTime() - days * 86_400_000).toISOString();
   expect([0, 1, 3, 7, 13, 21, 90].map((days) => listedLabel(ago(days), now))).toEqual([
-    'New today',
-    'New yesterday',
-    'New 3 days ago',
-    'On Walkup 1 week',
-    'On Walkup 1 week',
-    'On Walkup 3 weeks',
-    'On Walkup 3 months',
+    'Listed today',
+    'Listed yesterday',
+    'Listed 3 days ago',
+    'Listed 1 week ago',
+    'Listed 1 week ago',
+    'Listed 3 weeks ago',
+    'Listed 3 months ago',
   ]);
   expect(listedLabel(undefined, now)).toBeNull();
 
-  const recent = testListing({ id: 'new', rent: 3000, insights: { warnings: [], firstSeen: new Date().toISOString(), vsMarket: 0.1 } });
-  const old = testListing({ id: 'old', rent: 2000, insights: { warnings: [], firstSeen: '2020-01-01T00:00:00Z', vsMarket: -0.2 } });
+  // New and newest go by the listing site's own posting date; Walkup's first sighting does not count.
+  const recent = testListing({ id: 'new', rent: 3000, listedAt: new Date().toISOString(), insights: { warnings: [], vsMarket: 0.1 } });
+  const old = testListing({
+    id: 'old',
+    rent: 2000,
+    listedAt: '2020-01-01T00:00:00Z',
+    insights: { warnings: [], firstSeen: new Date().toISOString(), vsMarket: -0.2 },
+  });
   const unknown = testListing({ id: 'unknown', rent: 1000 });
   const ids = (raw: Record<string, unknown>, sort = 'rent') =>
     matchListings([recent, old, unknown], parseFilters({ region: 'all', bedrooms: null, maxRent: null, ...raw }), null)

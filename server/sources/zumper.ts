@@ -1,3 +1,4 @@
+import { pathKey, postedDates } from './posted-dates.ts';
 import type { FetchTransport } from '../../src/fetch-type.ts';
 import { normalizeListing } from '../../src/listings.ts';
 import { boroughKey, NYC_SEARCH_AREAS, searchBorough } from '../../src/regions.ts';
@@ -79,6 +80,8 @@ type ZumperRow = {
   max_bedrooms?: unknown;
   neighborhood_name?: unknown;
   brokerage_name?: unknown;
+  /** Zumper's own posting date, from the page's structured data (added by searchState). */
+  date_posted?: string;
 };
 type ZumperState = { currentSearch?: { hasMoreListables?: unknown; listables?: { listables?: unknown } } } | null;
 const hasListingId = (row: ZumperRow): row is ZumperRow & { listing_id: number } =>
@@ -89,7 +92,11 @@ function searchState(html: string) {
   const search = state ? (JSON.parse(state[1]) as ZumperState)?.currentSearch : undefined;
   const rows = search?.listables?.listables;
   if (!Array.isArray(rows)) throw new Error('Zumper did not return a recognized rental page.');
-  return { rows: rows.filter(isRecord) as ZumperRow[], hasMore: search?.hasMoreListables !== false };
+  const posted = postedDates(html);
+  return {
+    rows: (rows.filter(isRecord) as ZumperRow[]).map((row): ZumperRow => ({ ...row, date_posted: posted.get(pathKey(row.url)) })),
+    hasMore: search?.hasMoreListables !== false,
+  };
 }
 
 export function parseZumperPage(
@@ -208,6 +215,7 @@ function zumperListings(
         company: row.brokerage_name,
         status: 'Active',
         updatedAt: checkedAt,
+        listedAt: row.date_posted,
       },
       SOURCE,
     );

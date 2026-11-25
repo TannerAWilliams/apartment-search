@@ -100,6 +100,8 @@ export function twoTreesListing(item: Record<string, unknown>, checkedAt: string
       company: 'Two Trees',
       status: 'Active',
       updatedAt: checkedAt,
+      // When Two Trees last put the unit on the market.
+      listedAt: item.last_listed_at,
     },
     SOURCE,
   );

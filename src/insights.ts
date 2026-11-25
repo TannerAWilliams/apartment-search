@@ -51,17 +51,20 @@ export function freshness(history: unknown) {
   };
 }
 
-/** "New on Walkup today", "On Walkup 3 weeks" and the like; null when the first sighting is unknown. */
-export function listedLabel(firstSeen: string | undefined, now = new Date()) {
-  const seen = firstSeen ? Date.parse(firstSeen) : NaN;
-  if (!Number.isFinite(seen)) return null;
-  const days = Math.max(0, Math.floor((now.getTime() - seen) / 86_400_000));
-  if (days === 0) return 'New today';
-  if (days === 1) return 'New yesterday';
-  if (days < 7) return `New ${days} days ago`;
-  if (days < 60) return `On Walkup ${Math.floor(days / 7)} week${days < 14 ? '' : 's'}`;
-  return `On Walkup ${Math.floor(days / 30)} months`;
+/** "Listed today", "Listed 3 weeks ago" and the like, from the listing site's own posting date; null without one. */
+export function listedLabel(listedAt: string | undefined, now = new Date()) {
+  const posted = listedAt ? Date.parse(listedAt) : NaN;
+  if (!Number.isFinite(posted)) return null;
+  const days = Math.max(0, Math.floor((now.getTime() - posted) / 86_400_000));
+  if (days === 0) return 'Listed today';
+  if (days === 1) return 'Listed yesterday';
+  if (days < 7) return `Listed ${days} days ago`;
+  if (days < 60) return `Listed ${Math.floor(days / 7)} week${days < 14 ? '' : 's'} ago`;
+  return `Listed ${Math.floor(days / 30)} months ago`;
 }
+/** Whether the site posted it within the last `days` days. */
+export const listedWithin = (listedAt: string | undefined, days: number, now = Date.now()) =>
+  Date.parse(listedAt ?? '') >= now - days * 86_400_000;
 
 /** Similar apartments needed before a median is shown. */
 export const MIN_COMPARABLES = 5;

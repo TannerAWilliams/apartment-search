@@ -39,6 +39,8 @@ export interface ListingData {
   latitude?: number | null;
   longitude?: number | null;
   seenAt?: string | null;
+  /** When the listing website says it was posted (only sites that give one); never Walkup's own first sighting. */
+  listedAt?: string;
   kind: string;
   sources: readonly SourceLink[];
   bathrooms?: number | null;

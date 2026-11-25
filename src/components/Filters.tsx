@@ -237,7 +237,7 @@ export function Filters({
             </Chip>
           </View>
           <Text accessibilityRole="header" style={FILTER_HEADING}>
-            New on Walkup
+            Newly listed
           </Text>
           <View style={styles.chipRow}>
             {([null, 1, 3, 7, 14] as const).map((days) => (

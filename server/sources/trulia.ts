@@ -1,3 +1,4 @@
+import { pathKey, postedDates } from './posted-dates.ts';
 import type { FetchTransport } from '../../src/fetch-type.ts';
 import { isRecord } from '../../src/domain.ts';
 import { normalizeListing } from '../../src/listings.ts';
@@ -73,6 +74,7 @@ export function parseTruliaPage(
   const script = html.match(/<script\b[^>]*\bid=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script\s*>/i);
   const rows = script ? (JSON.parse(script[1]) as { props?: { searchData?: { homes?: unknown } } } | null)?.props?.searchData?.homes : null;
   if (!Array.isArray(rows)) throw new Error('Trulia did not return a recognized rental page.');
+  const posted = postedDates(html);
   return (rows.filter(isRecord) as TruliaRow[]).flatMap((row) => {
     const url = listingUrl(row.url);
     const location = row.location;
@@ -113,6 +115,7 @@ export function parseTruliaPage(
         bedrooms,
         status: 'Active',
         updatedAt: checkedAt,
+        listedAt: posted.get(pathKey(url)),
       },
       SOURCE,
     );
