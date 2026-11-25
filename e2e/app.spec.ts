@@ -1412,13 +1412,21 @@ test('the affordability calculator shows the landlord rule and Dave Ramsey’s 2
   await expect(page.getByText(/^\$3,000 a month$/)).toBeVisible();
   await expect(page.getByText('New York City income tax', { exact: true })).toBeVisible();
   // Pre-tax savings and take-home pay are percentages of income, shown in dollars too.
-  await page.getByRole('textbox', { name: '401(k) or other pre-tax savings, % of income (optional)', exact: true }).fill('6');
+  await page.getByRole('textbox', { name: '401(k), HSA or other pre-tax savings, % of income (optional)', exact: true }).fill('6');
   await expect(page.getByText('$7,200 a year', { exact: true })).toBeVisible();
   await page.getByRole('textbox', { name: 'Or the share of your pay you actually take home, % (optional)', exact: true }).fill('60');
   await expect(page.getByText('$6,000 a month', { exact: true })).toBeVisible();
   await expect(page.getByText(/^\$1,500 a month$/)).toBeVisible();
   await page.getByRole('button', { name: 'Search up to $1,500 (25% rule)', exact: true }).click();
   await expect.poll(() => requests.filter(({ path }) => path === '/api/search').at(-1)?.body).toMatchObject({ maxRent: 1500 });
+  // Debt payments lower the 25% budget to keep rent plus debt within 36% of gross pay ($10,000 a month).
+  await page.goBack();
+  await page.getByRole('textbox', { name: 'Your yearly income before tax', exact: true }).fill('120000');
+  await page.getByRole('textbox', { name: 'Or the share of your pay you actually take home, % (optional)', exact: true }).fill('60');
+  await page.getByRole('textbox', { name: 'Monthly debt payments: car, student loans, credit cards (optional)', exact: true }).fill('2500');
+  await expect(page.getByText(/^\$1,100 a month$/)).toBeVisible();
+  await expect(page.getByText(/Lowered from \$1,500/)).toBeVisible();
+  await expect(page.getByText(/rent plus your debt payments would be 55% of your gross pay/)).toBeVisible();
 });
 
 test('each screen has its own address that opens it directly, and Back returns', async ({ page }) => {

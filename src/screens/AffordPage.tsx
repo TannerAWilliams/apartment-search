@@ -1,7 +1,7 @@
 /** What rent can I afford? Landlords' 40× rule, Dave Ramsey's 25% of take-home pay, and a guarantor's 80× (src/affordability.ts). */
 import { useState } from 'react';
 import { Text, View } from 'react-native';
-import { affordability, RESIDENCES, type Residence, takeHome } from '../affordability.ts';
+import { affordability, DEBT_TO_INCOME_LIMIT, RESIDENCES, type Residence, takeHome } from '../affordability.ts';
 import { Button, Chip, Field } from '../components/ui.tsx';
 import { formatRent } from '../search.ts';
 import { colors, styles } from '../styles.ts';
@@ -36,13 +36,15 @@ export function AffordPage({ onSearch }: { onSearch: (maxRent: number) => void }
   const [residence, setResidence] = useState<Residence>('nyc');
   const [pretax, setPretax] = useState('');
   const [own, setOwn] = useState('');
+  const [debtText, setDebtText] = useState('');
+  const debt = dollars(debtText) ?? 0;
   const gross = dollars(income);
   // Both are percentages of yearly income before tax, as pay stubs and 401(k) plans put them.
   const pretaxShare = percent(pretax);
   const ownShare = percent(own);
   const pretaxDollars = gross && pretaxShare ? Math.round((gross * pretaxShare) / 100) : 0;
   const monthlyTakeHome = gross && ownShare ? Math.round((gross * ownShare) / 100 / 12) : undefined;
-  const result = gross ? affordability(gross, residence, { pretax: pretaxDollars, monthlyTakeHome }) : null;
+  const result = gross ? affordability(gross, residence, { pretax: pretaxDollars, monthlyTakeHome, debt }) : null;
   const taxes = gross ? takeHome(gross, residence, pretaxDollars) : null;
   const estimatedShare = gross && taxes ? Math.round((taxes.yearly / gross) * 100) : null;
   const card = (title: string, amount: number, detail: string, rule: string) => (
@@ -86,7 +88,7 @@ export function AffordPage({ onSearch }: { onSearch: (maxRent: number) => void }
           ))}
         </View>
         <Field
-          label="401(k) or other pre-tax savings, % of income (optional)"
+          label="401(k), HSA or other pre-tax savings, % of income (optional)"
           value={pretax}
           onChangeText={(text) => setPretax(percentText(text))}
           keyboardType="decimal-pad"
@@ -99,6 +101,10 @@ export function AffordPage({ onSearch }: { onSearch: (maxRent: number) => void }
             {pretaxDollars > LIMIT_401K ? `, more than the ${formatRent(LIMIT_401K)} a 401(k) alone allows in 2025` : ''}
           </Text>
         )}
+        <Text style={styles.smallMuted}>
+          Only what comes out of your paycheck before tax. A Roth IRA and other after-tax savings come out of your take-home pay, so leave
+          them out.{residence === 'nj' ? ' New Jersey taxes HSA money, so the estimate is a little high there.' : ''}
+        </Text>
         <Field
           label="Or the share of your pay you actually take home, % (optional)"
           value={own}
@@ -108,6 +114,14 @@ export function AffordPage({ onSearch }: { onSearch: (maxRent: number) => void }
           maxLength={5}
         />
         {monthlyTakeHome !== undefined && <Text style={styles.smallMuted}>{formatRent(monthlyTakeHome)} a month</Text>}
+        <Field
+          label="Monthly debt payments: car, student loans, credit cards (optional)"
+          value={debtText}
+          onChangeText={(text) => setDebtText(money(text))}
+          keyboardType="number-pad"
+          placeholder="$0"
+          maxLength={8}
+        />
       </View>
       {result && taxes && gross ? (
         <>
@@ -115,13 +129,21 @@ export function AffordPage({ onSearch }: { onSearch: (maxRent: number) => void }
             {card(
               'What landlords approve',
               result.landlord,
-              `Most New York landlords want a yearly income of 40 times the rent, the same as rent at 30% of your gross pay.`,
+              `Most New York landlords want a yearly income of 40 times the rent, the same as rent at 30% of your gross pay.` +
+                (debt > 0
+                  ? ` The rule ignores debt, but landlords check your credit report${result.landlordDebtShare > DEBT_TO_INCOME_LIMIT ? `: at this rent, rent plus your debt payments would be ${Math.round(result.landlordDebtShare * 100)}% of your gross pay, above the ${DEBT_TO_INCOME_LIMIT * 100}% lenders treat as the limit` : ''}.`
+                  : ''),
               '40× rule',
             )}
             {card(
               'What Dave Ramsey recommends',
               result.ramsey,
-              `Housing at no more than 25% of your take-home pay of about ${formatRent(result.takeHome)} a month.`,
+              `Housing at no more than 25% of your take-home pay of about ${formatRent(result.takeHome)} a month.` +
+                (debt > 0 && result.ramsey < result.ramseyBeforeDebt
+                  ? ` Lowered from ${formatRent(result.ramseyBeforeDebt)} so rent plus your ${formatRent(debt)} of debt payments stays within ${DEBT_TO_INCOME_LIMIT * 100}% of your gross pay. Ramsey's own advice is to pay off consumer debt first.`
+                  : debt > 0
+                    ? ` Your debt payments still leave room: rent plus debt stays within ${DEBT_TO_INCOME_LIMIT * 100}% of your gross pay.`
+                    : ''),
               '25% rule',
             )}
           </View>

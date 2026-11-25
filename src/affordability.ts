@@ -2,7 +2,8 @@
  * What rent an income affords, three ways:
  * - landlords' rule: a yearly income of 40 times the monthly rent (the same as rent at 30% of gross pay);
  * - a guarantor's: 80 times the rent;
- * - Dave Ramsey's: housing at no more than 25% of take-home pay.
+ * - Dave Ramsey's: housing at no more than 25% of take-home pay;
+ * - with debt payments, lenders' common debt-to-income limit: housing plus debt at no more than 36% of gross pay.
  * Take-home pay is estimated for a single filer taking the standard deduction, with 2025 federal, Social Security,
  * Medicare, state and New York City income tax. It is an estimate for planning, not tax advice; someone who knows
  * their take-home pay can enter it instead.
@@ -96,18 +97,30 @@ export function takeHome(gross: number, residence: Residence, pretax = 0) {
 }
 
 /** The most rent by each rule, a month, rounded down to $25. */
+/** The share of gross monthly pay that housing plus debt payments should stay under, as lenders commonly use. */
+export const DEBT_TO_INCOME_LIMIT = 0.36;
+
 export function affordability(
   gross: number,
   residence: Residence,
-  { pretax = 0, monthlyTakeHome }: { pretax?: number; monthlyTakeHome?: number } = {},
+  { pretax = 0, monthlyTakeHome, debt = 0 }: { pretax?: number; monthlyTakeHome?: number; debt?: number } = {},
 ) {
   const round = (amount: number) => Math.max(0, Math.floor(amount / 25) * 25);
   const pay = monthlyTakeHome ?? takeHome(gross, residence, pretax).monthly;
+  const landlord = round(gross / 40);
+  /** The most rent that keeps rent plus debt payments within 36% of gross monthly pay. */
+  const debtLimit = round((gross / 12) * DEBT_TO_INCOME_LIMIT - debt);
   return {
-    landlord: round(gross / 40),
-    ramsey: round(pay * 0.25),
+    landlord,
+    // With debt payments, the 25% budget also stays within the debt-to-income limit.
+    ramsey: Math.min(round(pay * 0.25), debt > 0 ? debtLimit : Infinity),
+    /** The 25% budget before debt, to show what the debt payments cost. */
+    ramseyBeforeDebt: round(pay * 0.25),
     takeHome: Math.round(pay),
+    debtLimit,
+    /** Rent plus debt payments at the landlord-rule rent, as a share of gross monthly pay. */
+    landlordDebtShare: gross > 0 ? (landlord + debt) / (gross / 12) : 0,
     /** What a guarantor must earn for the landlord-rule rent. */
-    guarantorIncome: round(gross / 40) * 80,
+    guarantorIncome: landlord * 80,
   };
 }

@@ -39,3 +39,15 @@ test('what an income affords by the landlord rule, the guarantor rule and Dave R
   expect(result.ramsey % 25).toBe(0);
   expect(affordability(120_000, 'nyc', { monthlyTakeHome: 6_000 })).toMatchObject({ ramsey: 1_500, takeHome: 6_000 });
 });
+
+test('debt payments lower the budget to keep rent plus debt within 36% of gross pay', () => {
+  // $120,000 is $10,000 a month; 36% is $3,600; with $2,500 of debt, rent can be $1,100.
+  const heavy = affordability(120_000, 'nyc', { monthlyTakeHome: 6_000, debt: 2_500 });
+  expect(heavy).toMatchObject({ ramseyBeforeDebt: 1_500, ramsey: 1_100, debtLimit: 1_100, landlord: 3_000 });
+  expect(heavy.landlordDebtShare).toBeCloseTo(0.55);
+  // Light debt leaves the 25% budget as it is.
+  expect(affordability(120_000, 'nyc', { monthlyTakeHome: 6_000, debt: 300 })).toMatchObject({ ramsey: 1_500, debtLimit: 3_300 });
+  // More debt than the limit allows leaves nothing, never a negative rent.
+  expect(affordability(60_000, 'nyc', { debt: 2_000 })).toMatchObject({ ramsey: 0, debtLimit: 0 });
+  expect(affordability(0, 'nyc').landlordDebtShare).toBe(0);
+});
