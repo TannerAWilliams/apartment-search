@@ -2,7 +2,7 @@
 import { recordEvent } from '../ops.ts';
 import { vValidator } from '@hono/valibot-validator';
 import { readSaved, writeSaved } from '../saved.ts';
-import { apiBodies, factory, fail, needsStorage, refuse } from './context.ts';
+import { afterResponse, apiBodies, factory, fail, needsStorage, refuse } from './context.ts';
 import { SavedRequestSchema } from './inputs.ts';
 
 const STORAGE = 'Saved listings need saved storage.';
@@ -20,6 +20,6 @@ export const savedRoutes = factory
     if (!account) return fail(c, 404, NO_ACCOUNT);
     const before = (await readSaved(c.var.bucket, account)).length;
     const listings = await writeSaved(c.var.bucket, account, c.req.valid('json').listings);
-    if (listings.length > before) await recordEvent(c.var.bucket, 'save');
+    if (listings.length > before) await afterResponse(c.var.services, 'save_event', () => recordEvent(c.var.bucket, 'save'));
     return c.json({ listings }, 200);
   });

@@ -158,14 +158,27 @@ function scoredOnce(found: Gathered, bucket: Bucket) {
 type SearchResponse = SearchResult & { snapshotMonth?: string; commute?: boolean; commuteNotice?: string };
 type ObservationResponse = { matches: ListingData[]; sources: SearchSource[]; notices: string[] };
 /** Searches with checked filters (see SearchFiltersSchema). With observationsOnly, returns the matches alone, from saved inventory. */
-export function search(filters: SearchFilters, env: AppEnv, fetcher?: SourceFetch, observationsOnly?: false): Promise<SearchResponse>;
+export function search(
+  filters: SearchFilters,
+  env: AppEnv,
+  fetcher?: SourceFetch,
+  observationsOnly?: false,
+  known?: Awaited<ReturnType<typeof refreshStatus>> | null,
+): Promise<SearchResponse>;
 export function search(
   filters: SearchFilters,
   env: AppEnv,
   fetcher: SourceFetch | undefined,
   observationsOnly: true,
 ): Promise<ObservationResponse>;
-export async function search(filters: SearchFilters, env: AppEnv, fetcher: SourceFetch = fetch, observationsOnly = false) {
+export async function search(
+  filters: SearchFilters,
+  env: AppEnv,
+  fetcher: SourceFetch = fetch,
+  observationsOnly = false,
+  /** The sources' status when the caller has already read it (cachedSearch), so it is not read twice. */
+  known?: Awaited<ReturnType<typeof refreshStatus>> | null,
+) {
   const requireCommute = needsCommute(filters);
   const credentials = routingCredentials(env);
   if (requireCommute && !credentials)
@@ -174,14 +187,19 @@ export async function search(filters: SearchFilters, env: AppEnv, fetcher: Sourc
   const feeds = configured.filter(
     ({ id }) => id !== STREETEASY_LIVE.marketplace || (!env.BUCKET && env.STREETEASY_SYNC_ENABLED !== 'false'),
   );
-  const workplace = observationsOnly ? localWorkplace(filters) : await resolveWorkplace(filters, fetcher);
+  // A typed destination is looked up on a map while the listings are read; nothing waits for it until matching.
+  const workplaceFound = observationsOnly ? Promise.resolve(localWorkplace(filters)) : resolveWorkplace(filters, fetcher);
+  // Read later; a failed lookup is reported there, not as an unhandled rejection if reading fails first.
+  workplaceFound.catch(() => {});
   const bucket = env.BUCKET;
   /** The kept set being searched, whose scores are reused; none for a one-off read. */
   let kept: Gathered | null = null;
   async function finish(listings: ListingData[], mode: string, sources: SearchSource[], notices: string[], snapshotMonth?: string) {
-    const matched = matchListings(await (kept && bucket ? scoredOnce(kept, bucket) : score(listings, bucket)), filters, workplace).map(
-      listingWithVerifiedLinks,
-    );
+    const [scoredListings, workplace] = await Promise.all([
+      kept && bucket ? scoredOnce(kept, bucket) : score(listings, bucket),
+      workplaceFound,
+    ]);
+    const matched = matchListings(scoredListings, filters, workplace).map(listingWithVerifiedLinks);
     let routed = matched;
     const commute: { commute?: boolean; commuteNotice?: string } = {};
     if (credentials && (requireCommute || filters.includeCommute)) {
@@ -251,7 +269,7 @@ export async function search(filters: SearchFilters, env: AppEnv, fetcher: Sourc
       bucket,
     );
   }
-  const status = bucket ? await refreshStatus(bucket) : null;
+  const status = known === undefined ? (bucket ? await refreshStatus(bucket) : null) : known;
   const observedAt = new Date();
   const sourceRegion = parentRegion(filters.region);
   // Official-only searches leave out every source read from a listing site's own pages: Openigloo and the direct rental sources.
@@ -484,7 +502,7 @@ export async function cachedSearch(
   );
   const hit = await cache.match(key);
   if (hit) return (await hit.json()) as SearchResponse;
-  const result = await search(filters, env, fetcher);
+  const result = await search(filters, env, fetcher, false, status);
   await cache.put(
     key,
     new Response(JSON.stringify(result), {

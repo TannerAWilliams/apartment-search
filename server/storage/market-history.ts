@@ -72,16 +72,28 @@ async function imports(database: D1Database) {
   return new Map(results.map((row) => [row.series_id, row]));
 }
 
+/**
+ * What this server instance has already confirmed in the tables: series once loaded stay loaded and the areas once
+ * seeded stay seeded, so later requests skip asking the database again.
+ */
+const confirmed = new WeakMap<D1Database, Set<string>>();
+const seeded = new WeakSet<D1Database>();
+
 /** Loads, from the bundled archive, the named series the tables do not have yet. Returns how many it loaded. */
 export async function ensureMarketSeries(database: D1Database, names: readonly string[], loadArchive: ArchiveLoader, now = new Date()) {
+  const known = confirmed.get(database) ?? new Set<string>();
+  confirmed.set(database, known);
+  const unconfirmed = names.filter((name) => !known.has(name));
+  if (!unconfirmed.length) return 0;
   const loaded = await imports(database);
-  const missing = names.filter((name) => !loaded.has(seriesId(name)));
+  const missing = unconfirmed.filter((name) => !loaded.has(seriesId(name)));
   // A few series at once: each is read from the archive, parsed and written in its own batch.
   await mapLimit(missing, SERIES_AT_ONCE, async (name) => {
     const zip = await archivedSeriesZip(name, loadArchive);
     if (!zip) throw new Error('Unknown dashboard series.');
     await writeSeries(database, parseSeriesZip(name, zip), await sha256Hex(zip), 'archive', now);
   });
+  for (const name of unconfirmed) known.add(name);
   return missing.length;
 }
 
@@ -130,7 +142,10 @@ export async function refreshMarketHistory(database: D1Database, fetcher: Source
 
 /** What the catalog needs from the tables: each series' last month and source, and every area. */
 export async function marketHistoryState(database: D1Database) {
-  await database.prepare(SEED_AREAS).bind(AREAS_JSON).all();
+  if (!seeded.has(database)) {
+    await database.prepare(SEED_AREAS).bind(AREAS_JSON).all();
+    seeded.add(database);
+  }
   const [loaded, { results: areas }] = await Promise.all([
     imports(database),
     database

@@ -12,7 +12,7 @@ import { storedJerseyAffordable } from '../sources/jersey-affordable.ts';
 import { storedHomeSeeker } from '../sources/westchester-homeseeker.ts';
 import { storedHdcRerentals, storedHousing } from '../refresh/snapshots.ts';
 import { storedMarket, storedRentHistory } from '../refresh/market.ts';
-import { apiBodies, factory, fail, needsStorage, refuse } from './context.ts';
+import { afterResponse, apiBodies, factory, fail, needsStorage, refuse } from './context.ts';
 import { transitStops } from '../open-data.ts';
 import { BuildingAddressSchema, MarketQuerySchema, NeighborhoodQuerySchema, StreetViewQuerySchema } from './inputs.ts';
 import { neighborhoodReport } from '../neighborhoods.ts';
@@ -98,10 +98,8 @@ export const dataRoutes = factory
     // Kept so the building's cards show its grade from now on; a failure to keep it does not fail the report.
     const bucket = c.var.appEnv.BUCKET;
     if (bucket)
-      await recordBuildingReport(
-        bucket,
-        { address: address.address ?? '', state: address.state ?? 'NY', zip: address.zip ?? '' },
-        report,
-      ).catch((cause) => log.error('building_facts_write_failed', cause));
+      await afterResponse(c.var.services, 'building_facts_write', () =>
+        recordBuildingReport(bucket, { address: address.address ?? '', state: address.state ?? 'NY', zip: address.zip ?? '' }, report),
+      );
     return c.json(report, 200);
   });

@@ -6,7 +6,7 @@ import type { AppEnv, Bucket } from '../contracts.ts';
 import { addDevice, addRule, alertChannels, alertMatches, alertState, deleteRule, deliver, removeDevice } from '../alerts.ts';
 import { log } from '../log.ts';
 import { type Plan, planFor } from '../plans.ts';
-import { apiBodies, factory, fail, needsStorage, refuse } from './context.ts';
+import { afterResponse, apiBodies, factory, fail, needsStorage, refuse } from './context.ts';
 import { AlertRequestSchema } from './inputs.ts';
 
 async function alertAction(
@@ -18,7 +18,6 @@ async function alertAction(
   const bucket = env.BUCKET;
   if (body.action === 'add-rule') {
     await addRule(bucket, body.rule, alertMatches(env), new Date(), owner);
-    await recordEvent(bucket, 'alert');
   } else if (body.action === 'delete-rule') await deleteRule(bucket, body.id, owner);
   else if (body.action === 'add-device') await addDevice(bucket, body.subscription, body.label, new Date(), owner);
   else if (body.action === 'remove-device') await removeDevice(bucket, body.endpoint, owner);
@@ -59,8 +58,12 @@ export const alertRoutes = factory
     if (!c.var.services.privateAuthenticated && !c.var.services.admin) return fail(c, 401, NO_ACCOUNT);
     try {
       const env = { ...c.var.appEnv, BUCKET: c.var.bucket };
-      const plan: Plan = await planFor(env, c.var.bucket, c.var.services.account, c.var.services.admin);
-      return c.json({ ...(await alertState(env, ownerOf(c.var.services.account))), plan }, 200);
+      // The plan and the alerts are read together.
+      const [plan, state]: [Plan, Awaited<ReturnType<typeof alertState>>] = await Promise.all([
+        planFor(env, c.var.bucket, c.var.services.account, c.var.services.admin),
+        alertState(env, ownerOf(c.var.services.account)),
+      ]);
+      return c.json({ ...state, plan }, 200);
     } catch (cause) {
       log.error('storage_read_failed', cause, { path: c.req.path });
       return fail(c, 503, 'Alerts could not be read. Try again shortly.');
@@ -73,5 +76,7 @@ export const alertRoutes = factory
     const body = c.req.valid('json');
     const plan = await planFor(env, c.var.bucket, c.var.services.account, c.var.services.admin);
     if (plan === 'free' && !FREE_ACTIONS.has(body.action)) return fail(c, 402, PAID_ONLY);
-    return c.json({ ...(await alertAction(body, env, origin, ownerOf(c.var.services.account))), plan }, 200);
+    const result = await alertAction(body, env, origin, ownerOf(c.var.services.account));
+    if (body.action === 'add-rule') await afterResponse(c.var.services, 'alert_event', () => recordEvent(c.var.bucket, 'alert'));
+    return c.json({ ...result, plan }, 200);
   });

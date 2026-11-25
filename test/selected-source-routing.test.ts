@@ -179,7 +179,7 @@ test('inventory deadline survives expiry while awaiting routing', async () => {
   }
 });
 
-test('inventory refreshed during destination resolution retains its expiry', async () => {
+test('inventory refreshed while the destination is looked up is seen by the next search, with its expiry', async () => {
   const { createMemoryBucket } = await import('./fixtures/memory-bucket.ts');
   const { normalizeListing } = await import('../src/listings.ts');
   const bucket = createMemoryBucket();
@@ -188,32 +188,34 @@ test('inventory refreshed during destination resolution retains its expiry', asy
   const listing = normalizeListing(selectedRows[0], { id: 'openigloo', name: 'Openigloo', kind: 'feed' });
   await bucket.snapshots.write('openigloo', { summary: {}, listings: [listing], history: [] });
   setSystemTime(started);
+  const filters = parseFilters({ liveOnly: true, workplace: 'custom', customWorkplace: '350 Fifth Avenue, New York, NY 10118' });
+  const geocoded = () =>
+    Response.json({ result: { addressMatches: [{ matchedAddress: '350 Fifth Avenue', coordinates: { x: -73.9857, y: 40.7484 } }] } });
   try {
-    const result = await search(
-      parseFilters({ liveOnly: true, workplace: 'custom', customWorkplace: '350 Fifth Avenue, New York, NY 10118' }),
-      { BUCKET: bucket },
-      async (url) => {
-        expect(new URL(url).hostname).toBe('geocoding.geo.census.gov');
-        setSystemTime(refreshed);
-        await bucket.put(
-          'rentals/refresh.json',
-          JSON.stringify({
-            sources: [
-              {
-                id: 'openigloo',
-                name: 'Openigloo',
-                status: 'updated',
-                checkedAt: refreshed.toISOString(),
-                updatedAt: refreshed.toISOString(),
-              },
-            ],
-          }),
-        );
-        return Response.json({
-          result: { addressMatches: [{ matchedAddress: '350 Fifth Avenue', coordinates: { x: -73.9857, y: 40.7484 } }] },
-        });
-      },
-    );
+    // The listings and their status are read while the destination is looked up, so this search sees the
+    // inventory as it was when it started: nothing checked yet.
+    const during = await search(filters, { BUCKET: bucket }, async (url) => {
+      expect(new URL(url).hostname).toBe('geocoding.geo.census.gov');
+      setSystemTime(refreshed);
+      await bucket.put(
+        'rentals/refresh.json',
+        JSON.stringify({
+          sources: [
+            {
+              id: 'openigloo',
+              name: 'Openigloo',
+              status: 'updated',
+              checkedAt: refreshed.toISOString(),
+              updatedAt: refreshed.toISOString(),
+            },
+          ],
+        }),
+      );
+      return geocoded();
+    });
+    expect(during.total).toBe(0);
+    // The next search sees the refreshed inventory, which keeps its own expiry.
+    const result = await search(filters, { BUCKET: bucket }, async () => geocoded());
     expect(result.total).toBe(1);
     expect(result.inventoryExpiresAt).toBe(new Date(refreshed.getTime() + 24 * 60 * 60_000).toISOString());
   } finally {

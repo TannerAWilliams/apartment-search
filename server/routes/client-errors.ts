@@ -6,7 +6,7 @@ import { vValidator } from '@hono/valibot-validator';
 import * as v from 'valibot';
 import type { Bucket } from '../contracts.ts';
 import { log } from '../log.ts';
-import { apiBodies, factory, refuseWith } from './context.ts';
+import { afterResponse, apiBodies, factory, refuseWith } from './context.ts';
 
 export const CLIENT_ERRORS_KEY = 'ops/client-errors.json';
 const KEPT = 30;
@@ -33,6 +33,7 @@ export const clientErrorRoutes = factory
   .post('/client-error', apiBodies, vValidator('json', ClientErrorSchema, refuseWith(400)), async (c) => {
     const error = c.req.valid('json');
     log.error('client_crash', { message: error.message, path: error.path });
-    if (c.var.appEnv.BUCKET) await recordClientError(c.var.appEnv.BUCKET, error);
+    const bucket = c.var.appEnv.BUCKET;
+    if (bucket) await afterResponse(c.var.services, 'client_error_record', () => recordClientError(bucket, error));
     return c.body(null, 204);
   });

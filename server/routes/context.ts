@@ -10,6 +10,7 @@ import type { AppEnv, Bucket } from '../contracts.ts';
 import type { D1Database } from '../storage/d1-bucket.ts';
 import type { ArchiveLoader } from '../dashboard-snapshot.ts';
 import type { SourceFetch } from '../contracts.ts';
+import { log } from '../log.ts';
 
 export type SyncJob = { start(delay: boolean, sources?: string[]): Promise<void>; pending(): Promise<string | boolean | null> };
 /** What a request can use besides the settings and storage. The Worker entry passes the real ones; tests pass stand-ins. */
@@ -31,6 +32,17 @@ export type ApiServices = {
 };
 export type ApiVariables = { appEnv: AppEnv; services: ApiServices };
 export type ApiEnv = { Variables: ApiVariables };
+
+/**
+ * Bookkeeping (counting an event, keeping a report) that the reply does not need: run after the response is
+ * sent, where the Worker allows it, so nobody waits for it. Without waitUntil (tests, local runs) it runs before
+ * the reply. A failure is logged, never sent to the person.
+ */
+export async function afterResponse(services: Pick<ApiServices, 'waitUntil'>, what: string, work: () => Promise<unknown>) {
+  const run = work().catch((cause) => log.error(what + '_failed', cause));
+  if (services.waitUntil) services.waitUntil(run);
+  else await run;
+}
 
 /** Creates the API's route groups and middleware, typed with ApiEnv. */
 export const factory = createFactory<ApiEnv>();

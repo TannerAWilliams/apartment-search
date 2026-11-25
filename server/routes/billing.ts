@@ -2,7 +2,7 @@
 import { recordEvent } from '../ops.ts';
 import { vValidator } from '@hono/valibot-validator';
 import { billingFor, checkoutUrl, portalUrl } from '../billing.ts';
-import { apiBodies, factory, fail, needsStorage, refuse } from './context.ts';
+import { afterResponse, apiBodies, factory, fail, needsStorage, refuse } from './context.ts';
 import { BillingRequestSchema } from './inputs.ts';
 
 const STORAGE = 'Payments need saved storage.';
@@ -21,7 +21,7 @@ export const billingRoutes = factory
     const env = c.var.appEnv;
     const origin = env.APP_ORIGIN ?? new URL(c.req.url).origin;
     const body = c.req.valid('json');
-    if (body.action === 'checkout') await recordEvent(c.var.bucket, 'checkout');
+    if (body.action === 'checkout') await afterResponse(c.var.services, 'checkout_event', () => recordEvent(c.var.bucket, 'checkout'));
     const url =
       body.action === 'checkout'
         ? await checkoutUrl(env, account, body.plan, origin, c.var.services.fetcher)

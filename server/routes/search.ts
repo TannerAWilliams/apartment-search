@@ -5,14 +5,14 @@ import { SearchFiltersSchema } from '../../src/search.ts';
 import { geocodeAddress, suggestPlaces } from '../commute.ts';
 import { cachedSearch, offline, search } from '../search.ts';
 import { wholeSearchCheck } from '../whole-search-check.ts';
-import { apiBodies, factory, refuse } from './context.ts';
+import { afterResponse, apiBodies, factory, refuse } from './context.ts';
 import { GeocodeRequestSchema, PlacesRequestSchema } from './inputs.ts';
 
 export const searchRoutes = factory
   .createApp()
   .post('/search', apiBodies, vValidator('json', SearchFiltersSchema, refuse), async (c) => {
     const result = await cachedSearch(c.req.valid('json'), c.var.appEnv, c.var.services.fetcher);
-    await recordEvent(c.var.appEnv.BUCKET, 'search');
+    await afterResponse(c.var.services, 'search_event', () => recordEvent(c.var.appEnv.BUCKET, 'search'));
     return c.json(result, 200);
   })
   .post('/search-check', apiBodies, vValidator('json', SearchFiltersSchema, refuse), async (c) => {
