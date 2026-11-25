@@ -2,16 +2,16 @@
 import { recordEvent } from '../ops.ts';
 import { vValidator } from '@hono/valibot-validator';
 import { SearchFiltersSchema } from '../../src/search.ts';
-import { geocodeAddress } from '../commute.ts';
-import { offline, search } from '../search.ts';
+import { geocodeAddress, suggestPlaces } from '../commute.ts';
+import { cachedSearch, offline, search } from '../search.ts';
 import { wholeSearchCheck } from '../whole-search-check.ts';
 import { apiBodies, factory, refuse } from './context.ts';
-import { GeocodeRequestSchema } from './inputs.ts';
+import { GeocodeRequestSchema, PlacesRequestSchema } from './inputs.ts';
 
 export const searchRoutes = factory
   .createApp()
   .post('/search', apiBodies, vValidator('json', SearchFiltersSchema, refuse), async (c) => {
-    const result = await search(c.req.valid('json'), c.var.appEnv, c.var.services.fetcher);
+    const result = await cachedSearch(c.req.valid('json'), c.var.appEnv, c.var.services.fetcher);
     await recordEvent(c.var.appEnv.BUCKET, 'search');
     return c.json(result, 200);
   })
@@ -21,4 +21,8 @@ export const searchRoutes = factory
   })
   .post('/geocode', apiBodies, vValidator('json', GeocodeRequestSchema, refuse), async (c) =>
     c.json(await geocodeAddress(c.req.valid('json').address, c.var.services.fetcher), 200),
+  )
+  // Suggestions as a destination is typed; a failure is an empty list, so typing never shows an error.
+  .post('/places', apiBodies, vValidator('json', PlacesRequestSchema, refuse), async (c) =>
+    c.json({ places: await suggestPlaces(c.req.valid('json').query, c.var.services.fetcher).catch(() => []) }, 200),
   );

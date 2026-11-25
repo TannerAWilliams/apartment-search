@@ -104,11 +104,11 @@ const gathered = (listings: ListingData[], mode: string, sources: SearchSource[]
 });
 
 /** How long a search's listings are reused, and how many different sets (regions, rent limits) are kept. */
-export const GATHER_MS = 60_000;
+export const GATHER_MS = 15 * 60_000;
 const GATHERED_KEPT = 2;
 const recent = new WeakMap<Bucket, Map<string, { at: number; value: Promise<Gathered> }>>();
 
-/** The listings for this key from the last minute, or read now; a failed read is not kept. */
+/** The listings for this key from the last 15 minutes (a new source check changes the key sooner), or read now; a failed read is not kept. */
 export async function recentlyGathered(bucket: Bucket, key: string, gather: () => Promise<Gathered>, now = Date.now()) {
   const kept = recent.get(bucket) ?? new Map<string, { at: number; value: Promise<Gathered> }>();
   recent.set(bucket, kept);
@@ -384,7 +384,7 @@ export async function search(filters: SearchFilters, env: AppEnv, fetcher: Sourc
     return gathered(mergeListings(listings), 'live', sources, notices);
   }
   // The same listings serve every search that differs only in its filters (All, Deals, New), so they are kept
-  // for a minute: a second search re-filters them instead of reading and scoring every listing again.
+  // for 15 minutes, until a source check changes them: a second search re-filters them instead of reading and scoring every listing again.
   const key = JSON.stringify({
     narrow,
     sourceRegion,
@@ -396,4 +396,36 @@ export async function search(filters: SearchFilters, env: AppEnv, fetcher: Sourc
   const found = bucket && !observationsOnly ? await recentlyGathered(bucket, key, gather) : await gather();
   kept = bucket && !observationsOnly ? found : null;
   return finish(found.listings, found.mode, found.sources, [...found.notices], found.snapshotMonth);
+}
+
+/** The part of Cloudflare's Cache API a search uses. */
+type SearchCache = Pick<Cache, 'match' | 'put'>;
+
+/**
+ * A search answered from Cloudflare's cache in this data center when the same search ran in the last 15 minutes
+ * against the same source checks; every Worker instance there shares it, unlike the listings kept in memory.
+ * A new source check changes the key, so new listings show at once.
+ */
+export async function cachedSearch(
+  filters: SearchFilters,
+  env: AppEnv,
+  fetcher: SourceFetch,
+  cache: SearchCache | undefined = (globalThis as { caches?: { default?: Cache } }).caches?.default,
+): Promise<SearchResponse> {
+  if (!cache || !env.BUCKET) return search(filters, env, fetcher);
+  const status = await refreshStatus(env.BUCKET);
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify({ filters, status })));
+  const key = new Request(
+    `https://search-cache.internal/${[...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('')}`,
+  );
+  const hit = await cache.match(key);
+  if (hit) return (await hit.json()) as SearchResponse;
+  const result = await search(filters, env, fetcher);
+  await cache.put(
+    key,
+    new Response(JSON.stringify(result), {
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': `max-age=${GATHER_MS / 1000}` },
+    }),
+  );
+  return result;
 }

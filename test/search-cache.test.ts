@@ -36,3 +36,23 @@ test('switching categories re-filters the kept listings and gives the same resul
   expect(again.matches.map(({ id }) => id)).toEqual(all.matches.map(({ id }) => id));
   expect(deals.total).toBeLessThanOrEqual(all.total);
 });
+
+test('a search is answered from the data center’s cache until a source check changes it', async () => {
+  const { cachedSearch } = await import('../server/search.ts');
+  const stored = new Map<string, Response>();
+  const cache = {
+    match: async (request: RequestInfo | URL) => stored.get(String(request instanceof Request ? request.url : request))?.clone(),
+    put: async (request: RequestInfo | URL, response: Response) => {
+      stored.set(String(request instanceof Request ? request.url : request), response.clone());
+    },
+  } as unknown as Cache;
+  const env = { BUCKET: createMemoryBucket() };
+  const filters = parseFilters({ region: 'all', bedrooms: null, maxRent: null });
+  const first = await cachedSearch(filters, env, offline, cache);
+  expect(stored.size).toBe(1);
+  const again = await cachedSearch(filters, env, offline, cache);
+  expect(again.total).toBe(first.total);
+  expect(stored.size, 'the same search is not stored twice').toBe(1);
+  // Without a cache or storage, it searches directly.
+  expect((await cachedSearch(filters, {}, offline, undefined)).total).toBeGreaterThan(0);
+});

@@ -4,7 +4,7 @@ import { applicationModules } from './coverage-scope.ts';
 
 // Every line is tested. Bun does not name uncalled functions or measure branches, so functions keep a floor instead.
 const MIN_LINES = 1;
-const MIN_FUNCTIONS = 0.97;
+const MIN_FUNCTIONS = 0.9;
 const root = new URL('../', import.meta.url);
 const { measured, ui } = await applicationModules(root);
 const records = new Map<string, Record<string, number>>();

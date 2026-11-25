@@ -5,10 +5,10 @@ import type { ListingData, SourceLink, SearchFilters, SearchResult } from '../do
 import { Pressable, Text, View } from 'react-native';
 import { REGIONS } from '../regions.ts';
 import { MARKETPLACE_NAMES } from '../marketplaces.ts';
-import { RESULT_SORTS, bedroomLabel, formatRent, needsCommute } from '../search.ts';
+import { RESULT_SORTS, bedroomsLabel, formatRent, needsCommute } from '../search.ts';
 import { colors, styles } from '../styles.ts';
 import { listingKey, mergeSourceLinks } from '../listings.ts';
-import { Button, Chip } from '../components/ui.tsx';
+import { Button, Chip, toggleProps } from '../components/ui.tsx';
 import { Listing } from '../components/Listing.tsx';
 import { PAGE_SIZE } from '../app-shared.ts';
 
@@ -37,6 +37,59 @@ export function ResultNotices({ notices = [] }: { notices?: string[] }) {
   );
 }
 
+/** Sorting as one button that opens its choices, instead of a row of every sort. */
+function SortMenu({ options, sort, onSort }: { options: [string, string][]; sort: string; onSort: (sort: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const current = options.find(([id]) => id === sort)?.[1] ?? options[0]?.[1];
+  return (
+    <View style={{ position: 'relative' }}>
+      <Chip label={`Sort: ${current}`} selected={open} onPress={() => setOpen(!open)}>
+        {`Sort: ${current} ▾`}
+      </Chip>
+      {open && (
+        <View
+          accessibilityRole="menu"
+          style={{
+            position: 'absolute',
+            top: 44,
+            right: 0,
+            minWidth: 220,
+            backgroundColor: colors.white,
+            borderWidth: 1,
+            borderColor: colors.border,
+            borderRadius: 12,
+            paddingVertical: 6,
+            shadowColor: '#000',
+            shadowOpacity: 0.12,
+            shadowRadius: 12,
+            shadowOffset: { width: 0, height: 4 },
+            zIndex: 20,
+          }}
+        >
+          {options.map(([id, label]) => (
+            <Pressable
+              key={id}
+              accessibilityRole="menuitem"
+              accessibilityLabel={label}
+              {...toggleProps(sort === id)}
+              onPress={() => {
+                setOpen(false);
+                onSort(id);
+              }}
+              style={({ pressed }) => [{ paddingHorizontal: 14, paddingVertical: 10 }, pressed && styles.pressed]}
+            >
+              <Text style={{ fontSize: 15, color: colors.ink, fontWeight: sort === id ? '700' : '400' }}>
+                {sort === id ? '✓ ' : ''}
+                {label}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      )}
+    </View>
+  );
+}
+
 export function Results({
   visible,
   setVisible,
@@ -60,6 +113,7 @@ export function Results({
   onCheckBuilding,
   status,
   onAlert,
+  onOpen,
 }: {
   visible: number;
   setVisible: (value: number) => void;
@@ -86,18 +140,21 @@ export function Results({
   status?: React.ReactNode;
   /** Opens the alert form for this search. */
   onAlert?: () => void;
+  /** Opens an apartment's own page. */
+  onOpen?: (listing: ListingData) => void;
 }) {
   const [open, setOpen] = useState<Set<string>>(new Set());
   // The cards' actions keep one identity across renders, so memoized cards are not redrawn because the page
   // passed a new function; each call still reaches the latest handler.
-  const latest = useRef({ onSave, onSaveLink, onRemove, onError });
-  latest.current = { onSave, onSaveLink, onRemove, onError };
+  const latest = useRef({ onSave, onSaveLink, onRemove, onError, onOpen });
+  latest.current = { onSave, onSaveLink, onRemove, onError, onOpen };
   const actions = useMemo(
     () => ({
       onSave: (listing: ListingData) => latest.current.onSave(listing),
       onSaveLink: (listing: ListingData, link: SourceLink) => latest.current.onSaveLink(listing, link),
       onRemove: (listing: ListingData) => latest.current.onRemove(listing),
       onError: (message: string) => latest.current.onError(message),
+      onOpen: (listing: ListingData) => latest.current.onOpen?.(listing),
       onExpandedChange: (id: string, expanded: boolean) =>
         setOpen((current) => {
           const next = new Set(current);
@@ -125,7 +182,7 @@ export function Results({
     ? 'Saved on this device · All apartment sizes'
     : [
         Object.entries(REGIONS).find(([key]) => key === applied.region)?.[1].label ?? applied.region,
-        bedroomLabel(applied.bedrooms),
+        bedroomsLabel(applied),
         applied.zip,
         applied.company,
         MARKETPLACE_NAMES[applied.source],
@@ -139,7 +196,8 @@ export function Results({
   return (
     <>
       {!(savedView && matches.length === 0) && (
-        <View style={styles.resultHeading}>
+        // Above the cards, so the sort menu opens over them.
+        <View style={[styles.resultHeading, { zIndex: 10, position: 'relative' }]}>
           <View style={styles.headingCopy}>
             <Text accessibilityRole="header" style={{ fontSize: 17, lineHeight: 22, fontWeight: '600', color: colors.ink }}>
               {!savedView && checkingInventory && result.total === 0
@@ -151,22 +209,23 @@ export function Results({
             {!savedView && (applied.zip || applied.source || applied.maxTransitMinutes != null || applied.maxDrivingMinutes != null) && (
               <Text style={styles.smallMuted}>{summary}</Text>
             )}
+          </View>
+          {/* One row: the count, then sorting as a single menu and alerts as one small button. */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, zIndex: 10 }}>
+            {sortOptions.length > 1 && <SortMenu options={sortOptions} sort={sort} onSort={onSort} />}
             {!savedView && onAlert && result.total > 0 && (
-              <Pressable accessibilityRole="button" onPress={onAlert} style={{ paddingVertical: 4 }}>
-                <Text style={styles.linkText}>Get email alerts for this search</Text>
-              </Pressable>
+              <Chip label="Get email alerts for this search" onPress={onAlert}>
+                Get alerts
+              </Chip>
             )}
           </View>
-          {sortOptions.length > 1 && (
-            <View style={styles.chipRow}>
-              {sortOptions.map(([id, label]) => (
-                <Chip key={id} selected={sort === id} onPress={() => onSort(id)}>
-                  {label}
-                </Chip>
-              ))}
-            </View>
-          )}
         </View>
+      )}
+      {!savedView && applied.belowMarket && (
+        <Text style={styles.smallMuted}>
+          Deals: rents at least 5% below the median of similar apartments listed now, the same size in the same neighborhood (or ZIP code),
+          where at least 5 compare.
+        </Text>
       )}
       {result.commute && <Text style={styles.smallMuted}>Weekday-morning estimates from TravelTime.</Text>}
       {result.commuteNotice && <Text style={styles.smallMuted}>{result.commuteNotice}</Text>}
@@ -228,6 +287,7 @@ export function Results({
                 onRemove={savedView ? actions.onRemove : undefined}
                 saved={Boolean(saved)}
                 onExpandedChange={actions.onExpandedChange}
+                onOpen={onOpen ? actions.onOpen : undefined}
               />
             </View>
           );

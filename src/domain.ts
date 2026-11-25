@@ -109,6 +109,10 @@ export interface SearchFilters {
   goodBuildings?: boolean;
   /** Only rents at least 5% below similar apartments. */
   belowMarket?: boolean;
+  /** Any of these bedroom counts (0 is a studio, 4 is four or more); overrides `bedrooms` when given. */
+  bedroomOptions?: number[];
+  /** Any of these bathroom counts: 1 (1 to 1.5), 2 (2 to 2.5) or 3 (three or more). */
+  bathroomOptions?: number[];
 }
 export type { SourceStatus } from './source-status.ts';
 export type SearchResult = ReturnType<typeof import('./market.ts').formatSearch> & {

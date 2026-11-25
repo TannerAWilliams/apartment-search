@@ -241,6 +241,55 @@ async function nominatim(query: string, fetcher: SourceFetch) {
   return isPoint(point) ? point : null;
 }
 
+/**
+ * Suggestions while a destination is typed, from Photon (komoot's search over OpenStreetMap, made for
+ * search-as-you-type, which Nominatim's policy does not allow), within the NY, NJ and CT area. Answers are kept a
+ * month in Cloudflare's cache; the API's lookup limit bounds the rest.
+ */
+export async function suggestPlaces(query: string, fetcher: SourceFetch = fetch) {
+  const params = new URLSearchParams({ q: query.trim(), limit: '6', lang: 'en', bbox: '-75.6,39.9,-71.7,41.7' });
+  const url = `https://photon.komoot.io/api/?${params}`;
+  const cache = (globalThis as { caches?: { default?: Cache } }).caches?.default;
+  const cached = await cache?.match(url);
+  const response =
+    cached ??
+    (await fetcher(url, {
+      headers: { 'User-Agent': 'ApartmentSearch/1.0 (personal apartment search app)', Accept: 'application/json' },
+      redirect: 'manual',
+      signal: AbortSignal.timeout(6000),
+    }));
+  if (!response.ok) throw new Error('Place suggestions are temporarily unavailable.');
+  if (cache && !cached) {
+    const body = await response.clone().text();
+    await cache.put(url, new Response(body, { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'max-age=2592000' } }));
+  }
+  const data = (await response.json()) as { features?: unknown } | null;
+  const features = Array.isArray(data?.features) ? data.features : [];
+  const seen = new Set<string>();
+  return features.flatMap((feature) => {
+    const { geometry, properties } = (feature ?? {}) as {
+      geometry?: { coordinates?: unknown };
+      properties?: Record<string, unknown>;
+    };
+    const [longitude, latitude] = Array.isArray(geometry?.coordinates) ? (geometry.coordinates as unknown[]) : [];
+    const text = (key: string) => (typeof properties?.[key] === 'string' ? (properties[key] as string) : '');
+    const street = [text('housenumber'), text('street')].filter(Boolean).join(' ');
+    // "Empire State Building, 350 5th Avenue, New York" or "350 5th Avenue, New York, NY".
+    const label = [
+      text('name'),
+      street,
+      text('city') || text('district') || text('county'),
+      text('state') === 'New York' && !text('name') ? 'NY' : '',
+    ]
+      .filter((part, index, parts) => part && parts.indexOf(part) === index)
+      .join(', ');
+    const point = { label, latitude: Number(latitude), longitude: Number(longitude) };
+    if (!label || !isPoint(point) || seen.has(label)) return [];
+    seen.add(label);
+    return [point];
+  });
+}
+
 /** A destination typed as an address or a place name: OpenStreetMap first, then the U.S. Census geocoder. */
 export async function geocodeAddress(address: string, fetcher: SourceFetch = fetch) {
   return (await nominatim(address.trim(), fetcher).catch(() => null)) ?? censusAddress(address, fetcher);

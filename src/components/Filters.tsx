@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { understand } from '../natural-search.ts';
 import { SUBWAY_LINES } from '../subway.ts';
 import { type ConfigSource } from '../api-client.ts';
@@ -45,7 +45,7 @@ export function Filters({
   busy,
   serverState,
   connect,
-  lookUp,
+  suggest,
   panel,
   commuteConfigured,
   websites,
@@ -59,7 +59,8 @@ export function Filters({
   serverState: string;
   connect: () => void;
   /** Finds a typed destination, so it can be checked before it is applied. */
-  lookUp?: (place: string) => Promise<{ label: string; latitude: number; longitude: number }>;
+  /** Places matching what has been typed, for the destination field's suggestions. */
+  suggest?: (query: string) => Promise<{ label: string; latitude: number; longitude: number }[]>;
   panel: string;
   commuteConfigured: boolean;
   /** The listing-website filter, shown with the other filters. */
@@ -126,13 +127,53 @@ export function Filters({
           <Text accessibilityRole="header" style={FILTER_HEADING}>
             Bedrooms
           </Text>
+          {/* Several sizes at once: tap each one wanted; Any clears them. */}
           <View style={styles.chipRow}>
-            {BEDROOMS.map((beds) => (
-              <Chip key={String(beds)} selected={draft.bedrooms === beds} onPress={() => set('bedrooms')(beds)}>
-                {beds === null ? 'Any' : beds === 0 ? 'Studio' : `${beds} BR`}
-              </Chip>
-            ))}
+            {BEDROOMS.map((beds) => {
+              const chosen = draft.bedroomOptions?.length ? draft.bedroomOptions : draft.bedrooms === null ? [] : [draft.bedrooms];
+              const selected = beds === null ? chosen.length === 0 : chosen.includes(beds);
+              return (
+                <Chip
+                  key={String(beds)}
+                  selected={selected}
+                  onPress={() => {
+                    const next = beds === null ? [] : selected ? chosen.filter((item) => item !== beds) : [...chosen, beds].sort();
+                    setDraft((current) => ({ ...current, bedrooms: next.length === 1 ? next[0]! : null, bedroomOptions: next }));
+                  }}
+                >
+                  {beds === null ? 'Any' : beds === 0 ? 'Studio' : beds === 4 ? '4+ BR' : `${beds} BR`}
+                </Chip>
+              );
+            })}
           </View>
+          <Text accessibilityRole="header" style={FILTER_HEADING}>
+            Bathrooms
+          </Text>
+          <View style={styles.chipRow}>
+            {([null, 1, 2, 3] as const).map((baths) => {
+              const chosen = draft.bathroomOptions ?? [];
+              const selected = baths === null ? chosen.length === 0 : chosen.includes(baths);
+              return (
+                <Chip
+                  key={String(baths)}
+                  label={
+                    baths === null ? 'Any number of bathrooms' : `${baths === 3 ? '3 or more' : baths} bathroom${baths === 1 ? '' : 's'}`
+                  }
+                  selected={selected}
+                  onPress={() =>
+                    set('bathroomOptions')(
+                      baths === null ? [] : selected ? chosen.filter((item) => item !== baths) : [...chosen, baths].sort(),
+                    )
+                  }
+                >
+                  {baths === null ? 'Any' : baths === 3 ? '3+' : String(baths)}
+                </Chip>
+              );
+            })}
+          </View>
+          {(draft.bathroomOptions?.length ?? 0) > 0 && (
+            <Text style={styles.smallMuted}>Listings that do not say how many bathrooms they have are left out.</Text>
+          )}
         </>
       )}
       {(panel === 'more' || panel === 'area') && (
@@ -282,20 +323,13 @@ export function Filters({
             </Text>
           )}
           <Pressable accessibilityRole="button" accessibilityState={{ expanded: moreFilters }} onPress={() => setMoreFilters(!moreFilters)}>
-            <Text style={styles.linkText}>{moreFilters ? 'Fewer filters ▴' : 'More filters: bathrooms, size, pets, laundry ▾'}</Text>
+            <Text style={styles.linkText}>{moreFilters ? 'Fewer filters ▴' : 'More filters: size, pets, laundry ▾'}</Text>
           </Pressable>
         </>
       )}
       {panel === 'more' && moreFilters && (
         <>
           <Text style={styles.smallMuted}>Apartments whose listing does not say are left out when you require a feature.</Text>
-          <Field
-            label="Minimum bathrooms"
-            value={draft.minBathrooms == null ? '' : String(draft.minBathrooms)}
-            onChangeText={set('minBathrooms')}
-            placeholder="Any / unknown allowed"
-            keyboardType="decimal-pad"
-          />
           <Field
             label="Minimum square feet"
             value={draft.minSquareFeet == null ? '' : String(draft.minSquareFeet)}
@@ -333,7 +367,7 @@ export function Filters({
             </Chip>
           </View>
           {draft.workplace === 'custom' && (
-            <DestinationField value={draft.customWorkplace} onChange={set('customWorkplace')} lookUp={lookUp} />
+            <DestinationField value={draft.customWorkplace} onChange={set('customWorkplace')} suggest={suggest} />
           )}
           {commuteConfigured ? (
             <>
@@ -407,56 +441,68 @@ export function Filters({
   );
 }
 
-/** A typed destination: an address or a place name, with a check that shows what it was matched to. */
+type Place = { label: string; latitude: number; longitude: number };
+
+/** A typed destination: an address or a place name, with suggestions from the map as it is typed. */
 function DestinationField({
   value,
   onChange,
-  lookUp,
+  suggest,
 }: {
   value: string;
   onChange: (value: string) => void;
-  lookUp?: (place: string) => Promise<{ label: string; latitude: number; longitude: number }>;
+  suggest?: (query: string) => Promise<Place[]>;
 }) {
-  const [found, setFound] = useState<{ text: string; message: string; error: boolean } | null>(null);
-  const [busy, setBusy] = useState(false);
-  const check = async () => {
-    if (!lookUp || value.trim().length < 4) return;
-    setBusy(true);
-    try {
-      const place = await lookUp(value.trim());
-      setFound({
-        text: value,
-        message: `Found: ${place.label} (${place.latitude.toFixed(4)}, ${place.longitude.toFixed(4)})`,
-        error: false,
-      });
-    } catch (caught) {
-      setFound({ text: value, message: caught instanceof Error ? caught.message : 'That place could not be found.', error: true });
-    } finally {
-      setBusy(false);
+  const [places, setPlaces] = useState<{ query: string; list: Place[] }>({ query: '', list: [] });
+  const [picked, setPicked] = useState('');
+  // Asked once typing pauses, and only for the latest text; a choice closes the list.
+  useEffect(() => {
+    const query = value.trim();
+    if (!suggest || query.length < 3 || query === picked) {
+      setPlaces({ query: '', list: [] });
+      return;
     }
-  };
+    let current = true;
+    const timer = setTimeout(() => {
+      suggest(query)
+        .then((list) => current && setPlaces({ query, list }))
+        .catch(() => current && setPlaces({ query, list: [] }));
+    }, 300);
+    return () => {
+      current = false;
+      clearTimeout(timer);
+    };
+  }, [value, suggest, picked]);
   return (
     <View style={styles.tokenForm}>
       <Field
         label="Destination address or place"
         placeholder="Empire State Building, or 350 5th Ave, New York"
         value={value}
-        onChangeText={(text) => {
-          onChange(text);
-          setFound(null);
-        }}
+        onChangeText={onChange}
         maxLength={160}
       />
-      {lookUp && (
-        <Button secondary onPress={() => void check()} disabled={busy || value.trim().length < 4}>
-          {busy ? 'Looking up…' : 'Check address'}
-        </Button>
+      {places.list.length > 0 && (
+        <View accessibilityRole="list" style={styles.menu}>
+          {places.list.map((place, index) => (
+            <Pressable
+              key={place.label}
+              accessibilityRole="button"
+              accessibilityLabel={`Use ${place.label}`}
+              onPress={() => {
+                setPicked(place.label);
+                onChange(place.label);
+              }}
+              style={({ pressed }) => [styles.menuRow, index > 0 && styles.menuDivider, pressed && styles.pressed]}
+            >
+              <Text style={styles.bodyText} numberOfLines={2}>
+                {place.label}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
       )}
-      {found && found.text === value && (
-        <Text accessibilityRole={found.error ? 'alert' : undefined} style={found.error ? styles.error : styles.smallMuted}>
-          {found.message}
-        </Text>
-      )}
+      {picked !== '' && picked === value && <Text style={styles.smallMuted}>Commute times will be to {picked}.</Text>}
     </View>
   );
 }

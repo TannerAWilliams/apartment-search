@@ -7,7 +7,7 @@ import type { ListingData, SourceLink, SearchResult } from './src/domain.ts';
 import { Modal, Platform, Pressable, ScrollView, StatusBar, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { REGIONS, boroughKey } from './src/regions.ts';
-import { bedroomLabel, formatRent, localWorkplace, needsCommute, parseFilters } from './src/search.ts';
+import { bedroomsLabel, formatRent, localWorkplace, needsCommute, parseFilters } from './src/search.ts';
 import { mobileStyles } from './src/mobileStyles.ts';
 import { colors, styles } from './src/styles.ts';
 import { localSearch } from './src/market.ts';
@@ -89,6 +89,12 @@ function ApartmentSearch() {
   const [tool, setTool] = useState('');
   const [mapView, setMapView] = useState(false);
   const searchAbort = useRef<AbortController | null>(null);
+  /** The apartment opened from the results, shown on its page at once. */
+  const [openedListing, setOpenedListing] = useState<ListingData | null>(null);
+  function openListing(listing: ListingData) {
+    setOpenedListing(listing);
+    navigateTab('listing=' + encodeURIComponent(listing.id));
+  }
   const recentSearches = useRef(new Map<string, { at: number; result: SearchResult }>());
   const scrollRef = useRef<React.ElementRef<typeof ScrollView>>(null);
   const scrollPositions = useRef<Record<string, number>>({});
@@ -145,6 +151,17 @@ function ApartmentSearch() {
     loadHousing,
     checkBuilding,
   } = useServer({ appliedFilters, searchVersion, submitted, setResult, setError });
+  const suggestPlaces = useMemo(
+    () =>
+      serverState === 'ready'
+        ? (query: string) =>
+            api<{ places: { label: string; latitude: number; longitude: number }[] }>('places', {
+              body: { query },
+              token: activeToken,
+            }).then(({ places }) => places)
+        : undefined,
+    [serverState, activeToken],
+  );
   useAccountSaved(saved, setSaved, account, serverState === 'ready' ? savedRequest : undefined, setError);
   const savedByKey = useMemo(() => new Map(saved.map((listing) => [listingKey(listing), listing])), [saved]);
   const savedResults = useMemo(() => localSearch(saved, SAVED_FILTERS, result.workplace, 'saved'), [saved, result.workplace]);
@@ -184,7 +201,7 @@ function ApartmentSearch() {
       setExpanded('');
       const key = JSON.stringify(filters);
       const recent = recentSearches.current.get(key);
-      // Going back to a search from the last minute (All, then Deals, then All) shows its results at once.
+      // Going back to a search from the last 15 minutes (All, then Deals, then All) shows its results at once.
       const searchResult =
         recent && Date.now() - recent.at < RECENT_SEARCH_MS
           ? recent.result
@@ -438,9 +455,7 @@ function ApartmentSearch() {
                 <Text numberOfLines={1} style={mobileStyles.destinationText}>
                   {view === 'saved'
                     ? 'Saved on this device'
-                    : bedroomLabel(applied.bedrooms) +
-                      ' · ' +
-                      (applied.maxRent == null ? 'Any price' : 'Up to ' + formatRent(applied.maxRent))}
+                    : bedroomsLabel(applied) + ' · ' + (applied.maxRent == null ? 'Any price' : 'Up to ' + formatRent(applied.maxRent))}
                 </Text>
               </View>
             </Pressable>
@@ -512,7 +527,7 @@ function ApartmentSearch() {
                   serverState={serverState}
                   commuteConfigured={commuteConfigured}
                   connect={connect}
-                  lookUp={serverState === 'ready' ? (place) => api('geocode', { body: { address: place }, token: activeToken }) : undefined}
+                  suggest={suggestPlaces}
                   websites={
                     <WebsiteFilter
                       result={result}
@@ -651,6 +666,7 @@ function ApartmentSearch() {
                                 showMarkets={() => navigateTab('marketplaces')}
                                 showSources={() => navigateTab('sources')}
                                 onAlert={() => navigateTab('alerts')}
+                                onOpen={openListing}
                                 onSave={saveListing}
                                 onSaveLink={saveLink}
                                 onRemove={(listing) =>
@@ -789,7 +805,10 @@ function ApartmentSearch() {
                     saved={(listing) => savedByKey.has(listingKey(listing))}
                     onSave={saveListing}
                     onSaveLink={saveLink}
-                    onBack={() => navigateTab('results')}
+                    initial={openedListing ?? undefined}
+                    onCheckBuilding={serverState === 'ready' ? checkBuilding : undefined}
+                    // Back to the results the apartment was opened from, where they were left; from a shared link, to search.
+                    onBack={() => (openedListing && Platform.OS === 'web' ? window.history.back() : navigateTab('results'))}
                     onError={setError}
                   />
                 )}
@@ -935,8 +954,11 @@ const ACCOUNT_TABS: Record<string, string> = {
   list: 'list your apartment',
 };
 
-/** Searches from the last minute, kept to show again at once when someone goes back to one. */
-const RECENT_SEARCH_MS = 60_000;
+/**
+ * Searches from the last 15 minutes, kept to show again at once when someone goes back to one. Listings change
+ * every two hours at most during the day, so this is fresh enough, and the server keeps them as long.
+ */
+const RECENT_SEARCH_MS = 15 * 60_000;
 const RECENT_SEARCHES = 8;
 
 export default function App() {

@@ -29,6 +29,16 @@ export const DEFAULT_FILTERS: SearchFilters = {
 
 export const bedroomLabel = (count: number | null) =>
   count === null ? 'Any beds' : count === 0 ? 'Studio' : `${count} bedroom${count === 1 ? '' : 's'}`;
+/** The bedrooms a search asks for, in words: "2 bedrooms", "Studio or 1 BR", "1 BR, 2 BR or 4+ BR". */
+export function bedroomsLabel(filters: Pick<SearchFilters, 'bedrooms' | 'bedroomOptions'>) {
+  const options = filters.bedroomOptions ?? [];
+  if (options.length < 2) return bedroomLabel(filters.bedrooms);
+  const parts = options.map((count) => (count === 0 ? 'Studio' : count >= 4 ? '4+ BR' : `${count} BR`));
+  return parts.slice(0, -1).join(', ') + ' or ' + parts.at(-1);
+}
+/** A listing's bathrooms as the filter groups them: 1 (up to 1.5), 2 (2 to 2.5), 3 (three or more); 0 when unknown. */
+export const bathroomBucket = (bathrooms: number | null | undefined) =>
+  bathrooms == null || !(bathrooms > 0) ? 0 : bathrooms >= 3 ? 3 : bathrooms >= 2 ? 2 : 1;
 export const formatRent = new Intl.NumberFormat('en-US', {
   style: 'currency',
   currency: 'USD',
@@ -120,6 +130,8 @@ export const SearchFiltersSchema = v.pipe(
     stabilizedOnly: flag,
     goodBuildings: flag,
     belowMarket: flag,
+    bedroomOptions: v.fallback(v.pipe(v.array(v.picklist([0, 1, 2, 3, 4])), v.maxLength(5)), []),
+    bathroomOptions: v.fallback(v.pipe(v.array(v.picklist([1, 2, 3])), v.maxLength(3)), []),
     company: v.optional(
       v.pipe(
         text,
@@ -160,7 +172,10 @@ export const SearchFiltersSchema = v.pipe(
       ...(input.goodBuildings ? { goodBuildings: true } : {}),
       ...(input.belowMarket ? { belowMarket: true } : {}),
       company: input.company,
-      bedrooms: input.bedrooms,
+      // Several bedroom counts are a list; one is the plain bedroom filter, as saved searches and alerts use it.
+      ...(input.bedroomOptions.length > 1 ? { bedroomOptions: [...new Set(input.bedroomOptions)].sort() } : {}),
+      ...(input.bathroomOptions.length ? { bathroomOptions: [...new Set(input.bathroomOptions)].sort() } : {}),
+      bedrooms: input.bedroomOptions.length === 1 ? input.bedroomOptions[0]! : input.bedroomOptions.length > 1 ? null : input.bedrooms,
       maxRent: input.maxRent,
       maxMiles: input.maxMiles,
       maxTransitMinutes: input.maxTransitMinutes,
@@ -269,7 +284,10 @@ export function matchListings(listings: ListingData[], filters: SearchFilters, w
       (filters.liveOnly && !hasActiveLink) ||
       !matchesRegion(listing, filters.region, region) ||
       (filters.zip && listing.zip !== filters.zip) ||
-      (filters.bedrooms !== null && listing.bedrooms !== filters.bedrooms) ||
+      (filters.bedroomOptions?.length
+        ? !filters.bedroomOptions.includes(Math.min(listing.bedrooms, 4))
+        : filters.bedrooms !== null && listing.bedrooms !== filters.bedrooms) ||
+      (filters.bathroomOptions?.length && !filters.bathroomOptions.includes(bathroomBucket(listing.bathrooms))) ||
       (filters.maxRent !== null && listing.rent > filters.maxRent) ||
       (filters.neighborhood && placeName(listing.neighborhood ?? '') !== placeName(filters.neighborhood)) ||
       (filters.nearSubway && !listing.insights?.subway?.length) ||

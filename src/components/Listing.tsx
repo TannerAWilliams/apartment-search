@@ -17,7 +17,6 @@ import { CommuteDetails } from './CommuteDetails.tsx';
 import { PriceHistory } from './PriceHistory.tsx';
 import { SavedNotes } from './SavedNotes.tsx';
 import { listingKey } from '../listings.ts';
-import { HousingCost } from './HousingCost.tsx';
 import { HeartIcon } from './Icons.tsx';
 import { ListingThumbnail } from './ListingThumbnail.tsx';
 
@@ -160,6 +159,7 @@ export const Listing = memo(function Listing({
   onCheckBuilding,
   defaultExpanded = false,
   onExpandedChange,
+  onOpen,
 }: {
   listing: ListingData;
   selectedSource?: string;
@@ -175,6 +175,8 @@ export const Listing = memo(function Listing({
   defaultExpanded?: boolean;
   /** Told when the details open or close, so a grid can give the open card a whole row. */
   onExpandedChange?: (id: string, expanded: boolean) => void;
+  /** Opens the apartment's own page; without it, the card opens its details in place. */
+  onOpen?: (listing: ListingData) => void;
 }) {
   const [expanded, setExpandedState] = useState(defaultExpanded);
   const setExpanded = (value: boolean) => {
@@ -275,9 +277,7 @@ export const Listing = memo(function Listing({
     facts.laundry === null ? '' : LAUNDRY_LABELS[facts.laundry],
   ].filter(Boolean);
   const checkedAt = listing.checkedAt ?? listing.seenAt;
-  const checked = Number.isFinite(Date.parse(checkedAt ?? ''))
-    ? 'Checked ' + CHECK_TIME.format(new Date(checkedAt ?? ''))
-    : 'Check date unavailable';
+  const checked = Number.isFinite(Date.parse(checkedAt ?? '')) ? 'Updated ' + CHECK_TIME.format(new Date(checkedAt ?? '')) : '';
   return (
     <View style={[styles.rentalCard, sideBySide && card.open]}>
       <View style={[{ gap: 10 }, sideBySide && card.openSummary]}>
@@ -287,7 +287,8 @@ export const Listing = memo(function Listing({
           accessibilityLabel={'Details for ' + title}
           accessibilityState={{ expanded }}
           aria-expanded={expanded}
-          onPress={() => setExpanded(!expanded)}
+          // On the apartment's own page the details stay open.
+          onPress={() => (onOpen ? onOpen(listing) : defaultExpanded ? undefined : setExpanded(!expanded))}
           style={({ pressed }) => [{ gap: 10 }, pressed && { opacity: 0.85 }]}
         >
           <View style={card.media}>
@@ -402,11 +403,7 @@ export const Listing = memo(function Listing({
               <Text style={styles.linkText}>{shared || 'Share this apartment'}</Text>
             </Pressable>
             <Text style={styles.smallMuted}>
-              {checked}
-              {['snapshot', 'cached'].includes(listing.kind) ? ' · Previously saved data' : ''}
-              {listing.company
-                ? ` · ${listing.companyFromSnapshot || listing.kind === 'snapshot' ? 'Snapshot advertiser' : 'Listed by'} ${listing.company}`
-                : ''}
+              {[checked, listing.company ? `Listed by ${listing.company}` : ''].filter(Boolean).join(' · ')}
             </Text>
             {highlights.length > 0 && (
               <Section title="Highlights">
@@ -420,9 +417,6 @@ export const Listing = memo(function Listing({
             )}
             <Section title="What it costs">
               <TypicalCost listing={listing} />
-              <Disclosure title="Estimate the full cost of renting">
-                <HousingCost />
-              </Disclosure>
             </Section>
             <Section title="Getting there">
               <CommuteDetails listing={listing} />
@@ -449,9 +443,11 @@ export const Listing = memo(function Listing({
                 <SavedNotes key={listingKey(listing)} identity={listingKey(listing)} />
               </Section>
             )}
-            <Pressable accessibilityRole="button" onPress={() => setExpanded(false)} style={{ paddingVertical: 8 }}>
-              <Text style={styles.linkText}>Hide details</Text>
-            </Pressable>
+            {!defaultExpanded && (
+              <Pressable accessibilityRole="button" onPress={() => setExpanded(false)} style={{ paddingVertical: 8 }}>
+                <Text style={styles.linkText}>Hide details</Text>
+              </Pressable>
+            )}
           </View>
         )}
       </View>

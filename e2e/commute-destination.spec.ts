@@ -48,3 +48,34 @@ test('destination editing stays local until Apply and remains accessible without
   await expect(page.getByText('Custom workplace', { exact: true })).toBeVisible();
   expect(requests).toHaveLength(3);
 });
+
+test('a typed destination suggests places from the map, and picking one fills it in', async ({ page }) => {
+  const asked: string[] = [];
+  await page.route('**/*', async (route) => {
+    const url = new URL(route.request().url());
+    if (url.origin !== 'http://127.0.0.1:4173') return route.abort();
+    if (!url.pathname.startsWith('/api/')) return route.continue();
+    if (url.pathname === '/api/config') return route.fulfill({ json: { sources: [], commuteConfigured: false } });
+    if (url.pathname === '/api/places') {
+      asked.push(route.request().postDataJSON().query);
+      return route.fulfill({
+        json: { places: [{ label: 'Empire State Building, 350 5th Avenue, New York', latitude: 40.7484, longitude: -73.9857 }] },
+      });
+    }
+    if (url.pathname === '/api/search') {
+      const filters = parseFilters(route.request().postDataJSON());
+      return route.fulfill({ json: localSearch([], filters, localWorkplace(filters), 'live') });
+    }
+    return route.abort();
+  });
+  await page.goto('/search');
+  await page.getByRole('button', { name: 'Change destination', exact: true }).click();
+  await page.getByRole('button', { name: 'Custom', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Check address', exact: true })).toHaveCount(0);
+  await page.getByLabel('Destination address or place').fill('empire st');
+  await page.getByRole('button', { name: 'Use Empire State Building, 350 5th Avenue, New York', exact: true }).click();
+  await expect(page.getByLabel('Destination address or place')).toHaveValue('Empire State Building, 350 5th Avenue, New York');
+  await expect(page.getByText('Commute times will be to Empire State Building, 350 5th Avenue, New York.', { exact: true })).toBeVisible();
+  // Asked once typing paused, not once a letter.
+  expect(asked).toEqual(['empire st']);
+});

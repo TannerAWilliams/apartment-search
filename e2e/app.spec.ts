@@ -400,20 +400,23 @@ test('without Street View set up, cards never ask for it', async ({ page }) => {
   expect(asked).toEqual([]);
 });
 
-test('tapping a card opens its details, where the listing site opens in a new tab', async ({ page }) => {
+test('tapping a card opens the apartment’s own page, where the listing site opens in a new tab', async ({ page }) => {
   await mockApp(page);
-  const card = page.getByRole('button', { name: 'Details for 12 Grove Street', exact: true });
   await expect(page.getByRole('link', { name: /^Open on / })).toHaveCount(0);
-  await card.click();
-  await expect(card).toHaveAttribute('aria-expanded', 'true');
+  await page.getByRole('button', { name: 'Details for 12 Grove Street', exact: true }).click();
+  // Its own page, at its own address, not a card growing in the grid.
+  await expect(page).toHaveURL(/\/listing\/streeteasy%3Afixture-1$/);
   const link = page.getByRole('link', { name: /^Open on / }).first();
   await expect(link).toHaveAttribute('target', '_blank');
   await expect(link).toHaveAttribute('rel', 'noopener noreferrer');
-  // The heart saves without opening or closing the card.
+  await expect(page.getByRole('button', { name: 'Hide details', exact: true })).toHaveCount(0);
+  // The heart saves from the page too.
   await page.getByRole('button', { name: 'Save apartment', exact: true }).click();
-  await expect(card).toHaveAttribute('aria-expanded', 'true');
-  await page.getByRole('button', { name: 'Hide details', exact: true }).click();
-  await expect(page.getByRole('link', { name: /^Open on / })).toHaveCount(0);
+  await expect(page.getByRole('tab', { name: 'Saved (1)', exact: true })).toBeVisible();
+  // Back returns to the results.
+  await page.getByRole('button', { name: '← All apartments', exact: true }).click();
+  await expect(page).toHaveURL(/\/search$/);
+  await expect(page.getByRole('button', { name: 'Details for 12 Grove Street', exact: true })).toBeVisible();
 });
 
 test('portrait keeps first listing visible and filter cancellation does not search', async ({ page }, testInfo) => {
@@ -474,36 +477,6 @@ test('applied filters, expanded results and search scroll survive navigation', a
   await expect(page.getByRole('textbox', { name: 'Max rent per month ($)', exact: true })).toHaveValue('5000');
 });
 
-test('housing cost inputs require known amounts, calculate, reject invalid input and reset', async ({ page }) => {
-  await mockApp(page);
-  await page.getByRole('button', { name: 'Details for 12 Grove Street', exact: true }).click();
-  await page.getByRole('button', { name: 'Estimate the full cost of renting', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Housing cost estimate', exact: true })).toBeVisible();
-  await page.getByRole('textbox', { name: 'Gross monthly rent', exact: true }).fill('2400');
-  await expect(
-    page.getByText('Complete all eight amounts to compare costs; unknown costs are not treated as free.', { exact: true }),
-  ).toBeVisible();
-  const inputs = [
-    ['Lease length in months', '12'],
-    ['Total rent concessions over lease', '2400'],
-    ['Recurring monthly fees', '100'],
-    ['Nonrefundable upfront fees', '600'],
-    ['Refundable deposit', '2400'],
-    ['Rent due at signing', '2400'],
-    ['Recurring fees due at signing', '100'],
-  ];
-  for (const [name, value] of inputs) await page.getByRole('textbox', { name, exact: true }).fill(value);
-  await expect(page.getByText('Average lease cost: $2,350.00/mo', { exact: true })).toBeVisible();
-  await expect(page.getByText('Estimated cash at signing: $5,500.00', { exact: true })).toBeVisible();
-  await page.getByRole('textbox', { name: 'Lease length in months', exact: true }).fill('0');
-  await expect(page.getByRole('alert').filter({ hasText: '1–120 months' })).toBeVisible();
-  await expect(page.getByText('Average lease cost: $2,350.00/mo', { exact: true })).toHaveCount(0);
-  await page.getByRole('button', { name: 'Reset housing cost estimate', exact: true }).click();
-  await expect(page.getByRole('textbox', { name: 'Gross monthly rent', exact: true })).toHaveValue('');
-  await expect(page.getByRole('textbox', { name: 'Lease length in months', exact: true })).toHaveValue('');
-  await expect(page.getByRole('alert').filter({ hasText: '1–120 months' })).toHaveCount(0);
-});
-
 test('saved notes and viewing status persist on this device without network writes', async ({ page }) => {
   const { requests } = await mockApp(page);
   await page.getByRole('button', { name: 'Save apartment', exact: true }).click();
@@ -536,7 +509,11 @@ test('feature filters require reported facts rather than matching unknown detail
   const { requests } = await mockApp(page, { listingCount: 2, discovery: true });
   await page.getByRole('button', { name: 'Filters', exact: true }).click();
   await page.getByRole('button', { name: /^More filters/ }).click();
-  await page.getByRole('textbox', { name: 'Minimum bathrooms', exact: true }).fill('1.5');
+  // Several bedroom counts and bathroom counts at once.
+  await page.getByRole('dialog').getByRole('button', { name: '1 BR', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: '2 BR', exact: true }).click();
+  await page.getByRole('button', { name: '1 bathroom', exact: true }).click();
+  await page.getByRole('button', { name: '2 bathrooms', exact: true }).click();
   await page.getByRole('textbox', { name: 'Minimum square feet', exact: true }).fill('900');
   await page.getByRole('button', { name: 'Require pets allowed', exact: true }).click();
   await page.getByRole('dialog').getByRole('button', { name: 'In-unit laundry', exact: true }).click();
@@ -544,7 +521,8 @@ test('feature filters require reported facts rather than matching unknown detail
   await expect(page.getByText('12 Grove Street', { exact: true })).toBeVisible();
   await expect(page.getByText('13 Grove Street', { exact: true })).toHaveCount(0);
   const search = requests.filter((request) => request.path === '/api/search').at(-1)!;
-  expect(search.body?.minBathrooms).toBe(1.5);
+  expect(search.body?.bedroomOptions).toEqual([1, 2]);
+  expect(search.body?.bathroomOptions).toEqual([1, 2]);
   expect(search.body?.minSquareFeet).toBe(900);
   expect(search.body?.petsRequired).toBe(true);
   expect(search.body?.laundry).toBe('in_unit');
@@ -606,7 +584,7 @@ test('local change checks opt in, seed baseline and show newer observed price ch
   expect(userRefreshes(requests)).toHaveLength(0);
 });
 
-test('NYC building records load when opened in Details and reuse the completed session cache', async ({ page }) => {
+test('NYC building records load when opened on the apartment’s page and reuse the completed session cache', async ({ page }) => {
   const { requests, unexpected } = await mockApp(page, { nyc: true });
   const details = page.getByRole('button', { name: 'Details for 12 Grove Street', exact: true });
   const records = page.getByRole('button', { name: 'NYC building records', exact: true });
@@ -624,7 +602,8 @@ test('NYC building records load when opened in Details and reuse the completed s
   await expect(page.getByText(/Apartment-level stabilization status: unverified/)).toBeVisible();
   await expect(page.getByRole('button', { name: 'Check official HPD records', exact: true })).toHaveCount(0);
   expect(requests.filter((item) => item.path === '/api/building-report')).toHaveLength(1);
-  await details.click();
+  // Back to the results and into the same apartment again: the report comes from the session cache.
+  await page.goBack();
   await details.click();
   await records.click();
   await expect(page.getByText('Official building report: matched', { exact: true })).toBeVisible();
@@ -1302,8 +1281,11 @@ test('an account downloads its data, reads the terms, and deletes itself after t
 
 test('results offer email alerts for the search, and newest and best-value sorting', async ({ page }) => {
   await mockApp(page, { account: 'owner@example.test', admin: true });
-  await expect(page.getByRole('button', { name: 'Newest on Walkup', exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Best value for the area', exact: true })).toBeVisible();
+  // Sorting is one menu.
+  await page.getByRole('button', { name: 'Sort: Lowest rent', exact: true }).click();
+  await expect(page.getByRole('menuitem', { name: 'Newest on Walkup', exact: true })).toBeVisible();
+  await page.getByRole('menuitem', { name: 'Best value for the area', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Sort: Best value for the area', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Get email alerts for this search', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Alerts', exact: true })).toBeVisible();
 });

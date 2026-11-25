@@ -44,6 +44,7 @@ const LIMITED_ROUTES: Record<string, 'SEARCH_LIMIT' | 'LOOKUP_LIMIT'> = {
   '/api/search': 'SEARCH_LIMIT',
   '/api/search-check': 'SEARCH_LIMIT',
   '/api/geocode': 'LOOKUP_LIMIT',
+  '/api/places': 'LOOKUP_LIMIT',
   '/api/building-report': 'LOOKUP_LIMIT',
 };
 

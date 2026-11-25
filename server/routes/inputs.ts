@@ -128,6 +128,12 @@ export const GeocodeRequestSchema = v.object(
   FULL_ADDRESS,
 );
 
+/** POST /api/places: what has been typed so far. */
+export const PlacesRequestSchema = v.object(
+  { query: v.pipe(v.string('Type a place.'), v.trim(), v.minLength(3, 'Type at least three letters.'), v.maxLength(120, 'Too long.')) },
+  'Type a place.',
+);
+
 /** POST /api/building-report: whether this is one exact NYC building is decided by server/building-records.ts. */
 /** A point for a Street View image, rounded to about a meter so cards in one building share a browser-cached image. */
 const coordinate = (min: number, max: number) =>
