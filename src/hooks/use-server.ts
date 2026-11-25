@@ -60,8 +60,8 @@ export function useServer({ appliedFilters, searchVersion, submitted, setResult,
     : failedSources.length
       ? 'Partial coverage · Some sources unavailable'
       : refresh?.lastCheckedAt
-        ? 'Saved results · ' + CHECK_TIME.format(new Date(refresh.lastCheckedAt))
-        : 'Saved results · Not yet refreshed';
+        ? 'Listings updated ' + CHECK_TIME.format(new Date(refresh.lastCheckedAt))
+        : 'Listings not updated yet';
 
   const updateConfig = useCallback((config: ApiConfig) => {
     const catalog = config.sourceCatalog ?? [];

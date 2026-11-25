@@ -265,9 +265,71 @@ function ApartmentSearch() {
   const listVisible = !WEB_MAP || !mapView || wide;
   const marketArea = Object.entries(REGIONS).find(([key]) => key === applied.region)?.[1].label ?? applied.region;
 
+  // The browser tab names the screen, so tabs and history are told apart.
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const title = tab.startsWith('listing=') ? 'Apartment' : (PAGE_TITLES[tab] ?? 'Walkup');
+    document.title = tab === 'home' ? title : `${title} · Walkup`;
+  }, [tab]);
+
   // A visitor (no account, not the app's own admin token) uses everything except what belongs to an account.
   const member = Boolean(account) || admin;
   const view = !member && ACCOUNT_TABS[tab] ? 'account' : tab;
+
+  // The main screens. On a phone they are the tab bar at the bottom; on a wider screen, links in the header,
+  // as websites put them. Search comes first: it is what people come for.
+  const navigation = (
+    <View
+      accessibilityRole="tablist"
+      style={wide ? { flexDirection: 'row', gap: 4, alignItems: 'center' } : { flexDirection: 'row', flex: 1 }}
+    >
+      {(
+        [
+          ['results', 'Search', SearchIcon],
+          ['chart', 'Rents', ChartIcon],
+          ['saved', `Saved (${savedResults.total})`, HeartIcon],
+          ['more', 'Profile', ProfileIcon],
+        ] as const
+      ).map(([key, label, Icon]) => {
+        const selected = key === 'more' ? !['home', 'chart', 'results', 'saved'].includes(tab) : tab === key;
+        return (
+          <Pressable
+            key={key}
+            accessibilityRole="tab"
+            aria-selected={selected}
+            accessibilityState={{ selected }}
+            accessibilityLabel={label}
+            style={({ pressed }) => [
+              wide
+                ? {
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 6,
+                    paddingHorizontal: 12,
+                    paddingVertical: 8,
+                    borderRadius: 999,
+                    backgroundColor: selected ? colors.light : 'transparent',
+                  }
+                : [mobileStyles.navItem, selected && mobileStyles.navSelected],
+              pressed && styles.pressed,
+            ]}
+            onPress={() => navigateTab(key)}
+          >
+            <Icon color={selected ? colors.green : wide ? colors.ink : colors.muted} />
+            <Text
+              style={
+                wide
+                  ? { fontSize: 15, fontWeight: selected ? '700' : '500', color: colors.ink }
+                  : [styles.tabLabel, selected && mobileStyles.navTextSelected]
+              }
+            >
+              {label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
 
   const topBar = (
     <>
@@ -282,8 +344,11 @@ function ApartmentSearch() {
           <BrandMark />
           <Text style={styles.brandText}>walkup</Text>
         </Pressable>
+        {wide && navigation}
         {member ? (
-          <View />
+          wide ? null : (
+            <View />
+          )
         ) : (
           // Visitors use everything; an account is one tap away for saving and alerts.
           <Pressable
@@ -433,6 +498,17 @@ function ApartmentSearch() {
                     {error}
                   </Text>
                 )}
+                {/* Pages opened from Profile say where they came from and lead back to it. */}
+                {PROFILE_PAGES.includes(view) && (
+                  <Pressable
+                    accessibilityRole="link"
+                    accessibilityLabel="Back to Profile"
+                    onPress={() => navigateTab('more')}
+                    style={({ pressed }) => [{ alignSelf: 'flex-start', paddingVertical: 6 }, pressed && styles.pressed]}
+                  >
+                    <Text style={[styles.linkText, { fontSize: 15 }]}>‹ Profile</Text>
+                  </Pressable>
+                )}
                 {(view === 'results' || view === 'saved') && (
                   <>
                     {
@@ -449,7 +525,7 @@ function ApartmentSearch() {
                             style={{ flexShrink: 1, paddingVertical: 6 }}
                           >
                             <Text numberOfLines={1} style={mobileStyles.destinationText}>
-                              To <Text style={{ color: colors.ink, fontWeight: '600' }}>{result.workplace.label}</Text> ·{' '}
+                              Commute times to <Text style={{ color: colors.ink, fontWeight: '600' }}>{result.workplace.label}</Text> ·{' '}
                               <Text style={styles.linkText}>Change</Text>
                             </Text>
                           </Pressable>
@@ -535,11 +611,11 @@ function ApartmentSearch() {
                                 view === 'results' ? (
                                   <Pressable
                                     accessibilityRole="button"
-                                    accessibilityLabel={freshness + ' · Details: source freshness and coverage'}
+                                    accessibilityLabel={freshness + ' · Where listings come from'}
                                     onPress={() => navigateTab('sources')}
                                   >
                                     <Text style={styles.smallMuted}>
-                                      {freshness} · <Text style={styles.linkText}>Details</Text>
+                                      {freshness} · <Text style={styles.linkText}>Where listings come from</Text>
                                     </Text>
                                   </Pressable>
                                 ) : undefined
@@ -751,36 +827,49 @@ function ApartmentSearch() {
             </View>
           </View>
         )}
-        <View style={mobileStyles.bottomNav} accessibilityRole="tablist">
-          {(
-            [
-              ['chart', 'Market', ChartIcon],
-              ['results', 'Search', SearchIcon],
-              ['saved', `Saved (${savedResults.total})`, HeartIcon],
-              ['more', 'Profile', ProfileIcon],
-            ] as const
-          ).map(([key, label, Icon]) => {
-            const selected = key === 'more' ? !['home', 'chart', 'results', 'saved'].includes(tab) : tab === key;
-            return (
-              <Pressable
-                key={key}
-                accessibilityRole="tab"
-                aria-selected={selected}
-                accessibilityState={{ selected }}
-                accessibilityLabel={label}
-                style={[mobileStyles.navItem, selected && mobileStyles.navSelected]}
-                onPress={() => navigateTab(key)}
-              >
-                <Icon color={selected ? colors.green : colors.muted} />
-                <Text style={[styles.tabLabel, selected && mobileStyles.navTextSelected]}>{label}</Text>
-              </Pressable>
-            );
-          })}
-        </View>
+        {!wide && <View style={mobileStyles.bottomNav}>{navigation}</View>}
       </SafeAreaView>
     </StreetViewContext.Provider>
   );
 }
+
+/** Pages opened from Profile, which lead back to it. */
+const PROFILE_PAGES = [
+  'afford',
+  'apply',
+  'alerts',
+  'shared',
+  'list',
+  'neighborhoods',
+  'renewal',
+  'affordable',
+  'marketplaces',
+  'sources',
+  'admin',
+  'terms',
+  'privacy',
+];
+/** Each screen's name in the browser tab and history. */
+const PAGE_TITLES: Record<string, string> = {
+  home: 'Walkup · New York City apartments',
+  results: 'Search',
+  chart: 'Rent prices',
+  saved: 'Saved apartments',
+  more: 'Profile',
+  afford: 'What can I afford?',
+  apply: 'Application kit',
+  alerts: 'Email alerts',
+  shared: 'Shared list',
+  list: 'List your apartment',
+  neighborhoods: 'Neighborhoods',
+  renewal: 'Renewal check',
+  affordable: 'Affordable housing',
+  marketplaces: 'Rental platforms',
+  sources: 'Sources & sync',
+  admin: 'Dashboard',
+  terms: 'Terms of Service',
+  privacy: 'Privacy Policy',
+};
 
 /** Screens that belong to an account, and what a visitor is asked to create one for. */
 const ACCOUNT_TABS: Record<string, string> = {
