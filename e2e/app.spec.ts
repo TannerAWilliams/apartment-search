@@ -357,6 +357,10 @@ test('the map view loads its tiles under the Content Security Policy', async ({ 
   await mockApp(page);
   // Listing cards show a map tile each; the map then asks for its own.
   await expect(page.getByText('12 Grove Street', { exact: true })).toBeVisible();
+  // Cards ask for the Liberty style first (the browser's version, not the native app's stub); blocked here, they
+  // fall back to the street tiles.
+  if (await page.evaluate(() => Boolean(document.createElement('canvas').getContext('webgl'))))
+    await expect.poll(() => styles.length).toBeGreaterThan(0);
   await expect.poll(() => tiles.length).toBeGreaterThan(0);
   const before = tiles.length;
   await page.getByRole('button', { name: 'Map', exact: true }).click();

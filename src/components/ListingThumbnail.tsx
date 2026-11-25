@@ -4,7 +4,8 @@
  * spot in the middle. A listing without coordinates gets a plain tile with a building.
  */
 import { createContext, useContext, useEffect, useState } from 'react';
-import { libertySnapshot } from './liberty-snapshot.tsx';
+// No extension: the bundler picks liberty-snapshot.web.tsx in the browser and the stub elsewhere.
+import { libertySnapshot } from './liberty-snapshot';
 import { Image, Platform, StyleSheet, Text, View } from 'react-native';
 import Svg, { Path, Rect } from 'react-native-svg';
 import { colors } from '../styles.ts';
