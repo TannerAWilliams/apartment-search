@@ -954,11 +954,13 @@ test('an open result expires without a provider request and saved apartments rem
   const { requests } = await mockApp(page, { inventoryExpiresAt: '2026-11-17T12:00:00Z' });
   await expect(page.getByText('12 Grove Street', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Save apartment', exact: true }).first().click();
-  const count = requests.length;
+  // Only the Rents tab, read in the background, may ask for anything; no search and no source check.
+  const listingRequests = () => requests.filter(({ path }) => !path.startsWith('/api/market') && !path.startsWith('/api/history'));
+  const count = listingRequests().length;
   await page.clock.fastForward(60_001);
   await expect(page.getByRole('heading', { name: 'These results need a fresh check', exact: true })).toBeVisible();
   await expect(page.getByText('12 Grove Street', { exact: true })).toHaveCount(0);
-  expect(requests).toHaveLength(count);
+  expect(listingRequests()).toHaveLength(count);
   await page.getByRole('tab', { name: 'Saved (1)', exact: true }).click();
   await expect(page.getByText('12 Grove Street', { exact: true }).first()).toBeVisible();
   expect(userRefreshes(requests)).toHaveLength(0);
@@ -1485,4 +1487,20 @@ test('each screen has its own address that opens it directly, and Back returns',
   await page.getByRole('link', { name: 'Back to Profile', exact: true }).click();
   await expect(page).toHaveURL(/\/profile$/);
   await expect(page).toHaveTitle('Profile · Walkup');
+});
+
+test('Rents is read in the background after the home page, so the tab opens with its data already there', async ({ page }) => {
+  const markets: string[] = [];
+  page.on('request', (request) => {
+    if (new URL(request.url()).pathname === '/api/market') markets.push(request.url());
+  });
+  await mockApp(page, { start: '/', listingCount: 2 });
+  await expect(page.getByRole('heading', { name: 'Find your next New York apartment', exact: true })).toBeVisible();
+  // Read before the tab is opened, and nothing of it shows on the home page.
+  await expect.poll(() => markets.length).toBeGreaterThan(0);
+  await expect(page.getByRole('heading', { name: 'Rent prices', exact: true })).toHaveCount(0);
+  const before = markets.length;
+  await page.getByRole('tab', { name: 'Rents', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Rent prices', exact: true })).toBeVisible();
+  expect(markets.length).toBe(before);
 });

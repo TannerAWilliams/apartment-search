@@ -378,6 +378,17 @@ function ApartmentSearch() {
     return () => clearTimeout(later);
   }, []);
 
+  // Rents, the tab people open after searching, is built hidden a moment after the app is ready (below), on the
+  // web and not on a data-saving or very slow connection.
+  const [rentsReady, setRentsReady] = useState(false);
+  useEffect(() => {
+    if (Platform.OS !== 'web' || serverState !== 'ready' || rentsReady) return;
+    const connection = (navigator as { connection?: { saveData?: boolean; effectiveType?: string } }).connection;
+    if (connection?.saveData === true || /2g/.test(connection?.effectiveType ?? '')) return;
+    const timer = setTimeout(() => setRentsReady(true), 1200);
+    return () => clearTimeout(timer);
+  }, [serverState, rentsReady]);
+
   // A visitor (no account, not the app's own admin token) uses everything except what belongs to an account.
   const member = Boolean(account) || admin;
   const view = !member && ACCOUNT_TABS[tab] ? 'account' : tab;
@@ -801,15 +812,22 @@ function ApartmentSearch() {
                       onError={setError}
                     />
                   )}
-                  {view === 'chart' && (
-                    <RentChart
-                      initialRegion={applied.region}
-                      saved={saved}
-                      showSaved={showSaved}
-                      onError={setError}
-                      loadMarket={serverState === 'ready' ? loadMarket : undefined}
-                      loadHistory={serverState === 'ready' && dashboardAvailable ? loadHistory : undefined}
-                    />
+                  {/* Rents is built in the background once the app is idle and kept, hidden, so the tab opens at
+                      once with its data already read. A new search's area starts it again for that area. */}
+                  {(view === 'chart' || rentsReady) && (
+                    <View style={view === 'chart' ? undefined : { display: 'none' }}>
+                      <Suspense fallback={view === 'chart' ? <Text style={styles.smallMuted}>Loading…</Text> : null}>
+                        <RentChart
+                          key={applied.region}
+                          initialRegion={applied.region}
+                          saved={saved}
+                          showSaved={showSaved}
+                          onError={setError}
+                          loadMarket={serverState === 'ready' ? loadMarket : undefined}
+                          loadHistory={serverState === 'ready' && dashboardAvailable ? loadHistory : undefined}
+                        />
+                      </Suspense>
+                    </View>
                   )}
                   {view === 'sources' && (
                     <>
