@@ -124,3 +124,20 @@ test('first seen, the last price cut, and newest and best-value sorting', async 
   expect(ids({}, 'newest')).toEqual(['new', 'old', 'unknown']);
   expect(ids({}, 'value')).toEqual(['old', 'new', 'unknown']);
 });
+
+test('a rent too low to trust is never a deal, and comes after every other listing', () => {
+  const room = testListing({ id: 'room', rent: 300, address: '99 Columbia Ave' });
+  const scam = { ...testListing({ id: 'scam', rent: 800 }), insights: { warnings: [], vsMarket: -0.64 } };
+  const deal = { ...testListing({ id: 'deal', rent: 3000 }), insights: { warnings: [], vsMarket: -0.2 } };
+  const plain = testListing({ id: 'plain', rent: 3500 });
+  for (const sort of ['rent', 'value', 'newest'])
+    expect(
+      [room, scam, plain, deal]
+        .sort((a, b) => compareResults(a, b, sort))
+        .map(({ id }) => id)
+        .slice(-2)
+        .sort(),
+    ).toEqual(['room', 'scam']);
+  const deals = matchListings([scam, deal, plain] as never, parseFilters({ region: 'all', belowMarket: true }), null);
+  expect(deals.map(({ id }) => id)).toEqual(['deal']);
+});

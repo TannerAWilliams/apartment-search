@@ -3,7 +3,7 @@ import { isRecord, type ListingData, type Loose, type Point, type SearchFilters 
 import { LAUNDRY_OPTIONS, matchesDiscovery } from './discovery.ts';
 import { companyMatches } from './companies.ts';
 import { REGIONS, WORKPLACES, matchesRegion, regionOf } from './regions.ts';
-import { buildingGrade } from './insights.ts';
+import { buildingGrade, FAR_BELOW, suspiciousRent } from './insights.ts';
 import { nearbyLines, SUBWAY_LINES } from './subway.ts';
 
 export const DEFAULT_FILTERS: SearchFilters = {
@@ -257,6 +257,9 @@ export function compareResults(
   },
   sort = 'rent',
 ) {
+  // A rent far below similar apartments is the classic rental scam: such listings go after all the others in every
+  // order, so the cheapest or "best value" results never open on one.
+  if (suspiciousRent(a) !== suspiciousRent(b)) return suspiciousRent(a) ? 1 : -1;
   if (sort === 'best') {
     const difference = (b.bestFit?.score ?? -1) - (a.bestFit?.score ?? -1);
     if (difference) return difference;
@@ -314,7 +317,8 @@ export function matchListings(listings: ListingData[], filters: SearchFilters, w
       (filters.subwayLines?.length && !nearbyLines(listing.insights?.subway).some((line) => filters.subwayLines!.includes(line))) ||
       (filters.stabilizedOnly && listing.building?.stabilized !== true) ||
       (filters.goodBuildings && ['C', 'D'].includes(buildingGrade(listing.building) ?? '')) ||
-      (filters.belowMarket && !((listing.insights?.vsMarket ?? 0) <= -0.05))
+      // A deal is 5% or more below similar apartments, but not so far below that it is likely a scam.
+      (filters.belowMarket && !((listing.insights?.vsMarket ?? 0) <= -0.05 && (listing.insights?.vsMarket ?? 0) > FAR_BELOW))
     )
       return [];
 

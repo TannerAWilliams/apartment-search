@@ -203,9 +203,8 @@ export function Filters({
             label="ZIP code (optional)"
             placeholder="Any ZIP in this area"
             value={draft.zip}
-            onChangeText={set('zip')}
+            onChangeText={(text) => set('zip')(text.replace(/\D/g, '').slice(0, 5))}
             keyboardType="number-pad"
-            maxLength={5}
           />
         </>
       )}
@@ -217,7 +216,6 @@ export function Filters({
             value={String(draft.maxRent ?? '')}
             onChangeText={(text) => set('maxRent')(wholeNumber(text, 100000))}
             keyboardType="number-pad"
-            maxLength={6}
           />
         </>
       )}
@@ -378,7 +376,6 @@ export function Filters({
                 value={String(draft.maxTransitMinutes ?? '')}
                 onChangeText={(text) => set('maxTransitMinutes')(wholeNumber(text, 180))}
                 keyboardType="number-pad"
-                maxLength={3}
               />
               <Field
                 label="Max driving time (minutes)"
@@ -386,7 +383,6 @@ export function Filters({
                 value={String(draft.maxDrivingMinutes ?? '')}
                 onChangeText={(text) => set('maxDrivingMinutes')(wholeNumber(text, 180))}
                 keyboardType="number-pad"
-                maxLength={3}
               />
               <Text style={styles.smallMuted}>
                 Estimates are for arriving at your workplace on a weekday morning. Set both limits to require both.

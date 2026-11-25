@@ -247,7 +247,6 @@ export function AlertsPage({
               onChangeText={(text) => setMaxRent(wholeNumber(text, 100000))}
               keyboardType="number-pad"
               placeholder="Any price"
-              maxLength={6}
             />
             <Field label="Alert name" value={customName} onChangeText={setCustomName} maxLength={60} placeholder={name} />
             <Button disabled={busy !== ''} onPress={saveAlert}>

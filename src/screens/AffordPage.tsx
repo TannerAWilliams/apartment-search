@@ -71,7 +71,6 @@ export function AffordPage({ onSearch }: { onSearch: (maxRent: number) => void }
         onChangeText={(text) => setIncome(money(text))}
         keyboardType="number-pad"
         placeholder="$120,000"
-        maxLength={10}
       />
       <View style={{ gap: 8 }}>
         <Text style={styles.fieldLabel}>Where you live</Text>
@@ -91,7 +90,6 @@ export function AffordPage({ onSearch }: { onSearch: (maxRent: number) => void }
         onChangeText={(text) => setDebtText(money(text))}
         keyboardType="number-pad"
         placeholder="$0"
-        maxLength={8}
       />
       <Text style={[styles.smallMuted, { marginTop: -8 }]}>Car, student loans and credit card minimums.</Text>
       <Disclosure title="Fine-tune my take-home pay">
@@ -102,7 +100,6 @@ export function AffordPage({ onSearch }: { onSearch: (maxRent: number) => void }
             onChangeText={(text) => setPretax(percentText(text))}
             keyboardType="decimal-pad"
             placeholder="e.g. 6"
-            maxLength={5}
           />
           <Text style={styles.smallMuted}>
             {pretaxDollars > 0
@@ -117,7 +114,6 @@ export function AffordPage({ onSearch }: { onSearch: (maxRent: number) => void }
             onChangeText={(text) => setOwn(percentText(text))}
             keyboardType="decimal-pad"
             placeholder={estimatedShare ? `Estimated: ${estimatedShare}` : 'Estimated for you'}
-            maxLength={5}
           />
           {monthlyTakeHome !== undefined && <Text style={styles.smallMuted}>{formatRent(monthlyTakeHome)} a month</Text>}
         </View>

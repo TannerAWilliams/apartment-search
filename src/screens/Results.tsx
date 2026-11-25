@@ -114,7 +114,10 @@ export function Results({
   status,
   onAlert,
   onOpen,
+  searching = false,
 }: {
+  /** A new search is on its way: the count says so and the cards still shown are dimmed until it comes. */
+  searching?: boolean;
   visible: number;
   setVisible: (value: number) => void;
   result: SearchResult;
@@ -167,6 +170,12 @@ export function Results({
   );
   const { matches } = result;
   const shown = matches.slice(0, visible);
+  const coverage = (status || (result.notices?.length ?? 0) > 0) && (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: 10, rowGap: 2 }}>
+      {status}
+      <ResultNotices notices={result.notices} />
+    </View>
+  );
   // Cards after the last open one, which takes a whole row; they decide how full the last row is.
   const lastOpen = shown.findLastIndex(({ id }) => open.has(id));
   const cardsAfterOpen = shown.length - lastOpen - 1;
@@ -200,11 +209,13 @@ export function Results({
         <View style={[styles.resultHeading, { zIndex: 10, position: 'relative' }]}>
           <View style={styles.headingCopy}>
             <Text accessibilityRole="header" style={{ fontSize: 17, lineHeight: 22, fontWeight: '600', color: colors.ink }}>
-              {!savedView && checkingInventory && result.total === 0
-                ? 'Checking availability…'
-                : unavailable
-                  ? 'Active inventory unavailable'
-                  : `${result.total.toLocaleString('en-US')} ${savedView ? 'saved' : 'matching'} ${result.total === 1 ? 'apartment' : 'apartments'}`}
+              {!savedView && searching
+                ? 'Searching…'
+                : !savedView && checkingInventory && result.total === 0
+                  ? 'Checking availability…'
+                  : unavailable
+                    ? 'Active inventory unavailable'
+                    : `${result.total.toLocaleString('en-US')} ${savedView ? 'saved' : 'matching'} ${result.total === 1 ? 'apartment' : 'apartments'}`}
             </Text>
             {!savedView && (applied.zip || applied.source || applied.maxTransitMinutes != null || applied.maxDrivingMinutes != null) && (
               <Text style={styles.smallMuted}>{summary}</Text>
@@ -229,12 +240,8 @@ export function Results({
       )}
       {result.commute && <Text style={styles.smallMuted}>Weekday-morning estimates from TravelTime.</Text>}
       {result.commuteNotice && <Text style={styles.smallMuted}>{result.commuteNotice}</Text>}
-      {(status || (result.notices?.length ?? 0) > 0) && (
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: 10, rowGap: 2, marginTop: -6 }}>
-          {status}
-          <ResultNotices notices={result.notices} />
-        </View>
-      )}
+      {/* Where the listings come from explains an empty result, so it leads then; otherwise it follows the list. */}
+      {matches.length === 0 && coverage}
       {matches.length === 0 && (savedView || !checkingInventory) && (
         <View style={styles.empty}>
           <Text accessibilityRole="header" style={styles.panelTitle}>
@@ -266,7 +273,7 @@ export function Results({
           </Button>
         </View>
       )}
-      <View style={styles.listingGrid}>
+      <View style={[styles.listingGrid, !savedView && searching && { opacity: 0.45 }]} aria-busy={!savedView && searching}>
         {shown.map((listing) => {
           const saved = savedByKey.get(listingKey(listing));
           const withLinks = saved ? { ...listing, sources: mergeSourceLinks(listing.sources, saved.sources) } : listing;
@@ -317,6 +324,7 @@ export function Results({
           Show more ({Math.min(visible, matches.length)} of {matches.length})
         </Button>
       )}
+      {matches.length > 0 && coverage}
     </>
   );
 }

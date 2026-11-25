@@ -11,7 +11,8 @@ import { secureHeaders } from 'hono/secure-headers';
 export const securityHeaders = secureHeaders({
   contentSecurityPolicy: {
     defaultSrc: ["'self'"],
-    scriptSrc: ["'self'"],
+    // Cloudflare Web Analytics, which Cloudflare adds to the page (no cookies, no personal data).
+    scriptSrc: ["'self'", 'https://static.cloudflareinsights.com'],
     styleSrc: ["'self'", "'unsafe-inline'"],
     imgSrc: ["'self'", 'data:', 'https://tile.openstreetmap.org', ...PHOTO_HOSTS.map((host) => 'https://' + host)],
     connectSrc: [
@@ -20,6 +21,7 @@ export const securityHeaders = secureHeaders({
       'https://raw.githubusercontent.com',
       'https://www.firstmovernyc.com',
       'https://data.cityofnewyork.us',
+      'https://cloudflareinsights.com',
     ],
     fontSrc: ["'self'", 'data:'],
     objectSrc: ["'none'"],

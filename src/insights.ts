@@ -67,6 +67,11 @@ export function listedLabel(firstSeen: string | undefined, now = new Date()) {
 export const MIN_COMPARABLES = 5;
 /** A rent this far below the median gets a warning. */
 export const FAR_BELOW = -0.4;
+/** No whole apartment in the area rents for under this (listings.ts notes it on the card): a room, parking, a typo or a scam. */
+export const IMPLAUSIBLE_RENT = 500;
+/** Whether a listing's rent is too low to trust: far below similar apartments, or below any real rent here. */
+export const suspiciousRent = (listing: Pick<ListingData, 'rent' | 'insights'>) =>
+  (listing.insights?.vsMarket ?? 0) <= FAR_BELOW || (listing.rent > 0 && listing.rent < IMPLAUSIBLE_RENT);
 
 const placeKey = (listing: Pick<ListingData, 'neighborhood' | 'zip'>) =>
   listing.neighborhood

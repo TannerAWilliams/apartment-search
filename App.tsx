@@ -113,6 +113,8 @@ function ApartmentSearch() {
     return () => cancelAnimationFrame(frame);
   }, [tab]);
   const [busy, setBusy] = useState(false);
+  /** A new search (not the next page) is on its way. */
+  const [searching, setSearching] = useState(false);
   const [error, setError] = useState('');
   const [saved, setSaved] = useSavedListings(setError);
   const {
@@ -198,6 +200,7 @@ function ApartmentSearch() {
     searchAbort.current = controller;
     setError('');
     setBusy(true);
+    setSearching(true);
     const changingDestination = nextDraft.workplace !== applied.workplace || nextDraft.customWorkplace !== applied.customWorkplace;
     const previous = applied;
     try {
@@ -241,7 +244,10 @@ function ApartmentSearch() {
           (changingDestination ? ' Destination was not changed; previous results are still shown.' : ''),
       );
     } finally {
-      if (version === searchVersion.current) setBusy(false);
+      if (version === searchVersion.current) {
+        setBusy(false);
+        setSearching(false);
+      }
     }
   }
 
@@ -690,6 +696,7 @@ function ApartmentSearch() {
                           {listVisible && (
                             <View style={styles.results}>
                               <Results
+                                searching={searching}
                                 onCheckBuilding={serverState === 'ready' ? checkBuilding : undefined}
                                 visible={visible}
                                 setVisible={setVisible}
