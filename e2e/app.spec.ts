@@ -896,9 +896,23 @@ test('signing in with an email code opens the app', async ({ page }) => {
 test('Jersey City affordable notices show with official links and stay out of apartment search', async ({ page }) => {
   const { requests, unexpected } = await mockApp(page, {
     housing: {
-      publishedAt: null,
-      checkedAt: null,
-      opportunities: [],
+      publishedAt: now,
+      checkedAt: now,
+      opportunities: [
+        {
+          id: '7762',
+          name: '110 Maiden Lane Apartments',
+          borough: 'Manhattan',
+          closes: '2027-01-28',
+          sizes: [141, 27, 9, 3, 0],
+          addresses: ['110 Maiden Lane, Manhattan 10005'],
+          buildingKeys: [],
+          url: 'https://housingconnect.nyc.gov/PublicWeb/details/7762',
+          income: [40595, 135700],
+          rent: [1020, 2613],
+          household: [1, 7],
+        },
+      ],
       rerentals: null,
       jersey: {
         revision: '2026-11-16',
@@ -922,6 +936,11 @@ test('Jersey City affordable notices show with official links and stay out of ap
   await page.getByRole('tab', { name: 'Lotteries', exact: true }).click();
   // The tab opens on New York City, with its lists shown, not only links to them.
   await expect(page.getByRole('heading', { name: /^Open housing lotteries \(\d+\)$/ })).toBeVisible();
+  // Each lottery says what it asks, as Housing Connect states it.
+  await expect(page.getByText('110 Maiden Lane Apartments', { exact: true })).toBeVisible();
+  await expect(page.getByText('Rent $1,020 to $2,613 a month', { exact: true })).toBeVisible();
+  await expect(page.getByText('Household income $40,595 to $135,700 a year', { exact: true })).toBeVisible();
+  await expect(page.getByText('For 1 to 7 people', { exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Mitchell-Lama', exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Public housing (NYCHA)', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'New Jersey', exact: true }).click();

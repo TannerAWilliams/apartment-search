@@ -2,12 +2,20 @@ import type { HousingResponse } from '../../server/contracts.ts';
 import type React from 'react';
 import { useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
-import { INCOME_YEAR, RENT_YEAR, restrictionLines } from '../affordable-limits.ts';
 import { styles } from '../styles.ts';
 import { Button, Chip, Disclosure, Link } from '../components/ui.tsx';
 
 const SIZE_LABELS = ['Studio', '1 BR', '2 BR', '3 BR', '4+ BR'];
-const HOUSING_DATA = 'https://data.cityofnewyork.us/d/vy5i-a666';
+const dollars = (amount: number) => '$' + Math.round(amount).toLocaleString('en-US');
+const span = ([low, high]: number[], show: (value: number) => string) => (low === high ? show(low!) : `${show(low!)} to ${show(high!)}`);
+/** What a lottery asks, as Housing Connect states it: rent, household income and household size. */
+function terms({ rent, income, household }: { rent?: number[]; income?: number[]; household?: number[] }) {
+  return [
+    rent?.length === 2 && `Rent ${span(rent, dollars)} a month`,
+    income?.length === 2 && `Household income ${span(income, dollars)} a year`,
+    household?.length === 2 && `For ${span(household, String)} ${household[1] === 1 ? 'person' : 'people'}`,
+  ].filter((line): line is string => Boolean(line));
+}
 const HDC_PAGE = 'https://www.nychdc.com/find-re-rentals';
 const JERSEY_PAGE = 'https://www.jerseycitynj.gov/CityHall/HousingAndDevelopment/affordable_housing/recent_affordable_housing_postings';
 const JERSEY_APPLICATION = 'https://affordablehousingjc.com/';
@@ -143,14 +151,13 @@ export function AffordableHousing({
             {data &&
               (data.stale ? (
                 <Text style={styles.bodyText}>
-                  Walkup isn’t listing individual lotteries right now. The city’s published list is from {showDate(data.publishedAt)}, and
-                  lotteries can close before that list says they do. Housing Connect shows what is open today.
+                  Walkup isn’t listing individual lotteries right now: its last good copy of Housing Connect’s list is from{' '}
+                  {showDate(data.publishedAt)}, and lotteries close all the time. Housing Connect shows what is open today.
                 </Text>
               ) : (
                 <Text style={styles.smallMuted}>
-                  From the city’s list, published {showDate(data.publishedAt)}. Income limits are the city’s {INCOME_YEAR} ceilings for a
-                  household of one, and rents its {RENT_YEAR} ceilings for each income band; each lottery’s own page has its exact rents,
-                  its minimum income and whether it is still open.
+                  Housing Connect’s own list, checked {showDate(data.publishedAt)}. Incomes and rents are the lowest and highest across each
+                  lottery’s apartments; its page has the figures for your household size.
                 </Text>
               ))}
             <Rows
@@ -174,7 +181,7 @@ export function AffordableHousing({
                     );
                   })()}
                   <Sizes sizes={lottery.sizes} />
-                  {restrictionLines(lottery.bands, lottery.sizes).map((line) => (
+                  {terms(lottery).map((line) => (
                     <Text key={line} style={styles.bodyText}>
                       {line}
                     </Text>
@@ -189,7 +196,6 @@ export function AffordableHousing({
                 url="https://housingconnect.nyc.gov/PublicWeb/search-lotteries"
                 onError={onError}
               />
-              <Link label="NYC Open Data source" url={HOUSING_DATA} onError={onError} />
             </View>
           </Program>
 

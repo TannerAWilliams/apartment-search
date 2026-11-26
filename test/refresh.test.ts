@@ -140,17 +140,23 @@ test('the API refreshes active rentals, scopes cards and pins, and removes a ren
 const at = new Date('2026-11-10T00:25:00Z');
 const next = new Date('2026-11-10T01:00:00Z');
 const active = {
-  lottery_id: '7612',
-  lottery_name: 'Example Rental Lottery',
-  latitude: '40.848952',
-  longitude: '-73.922559',
-  applied_income_ami_low: '6',
-  lottery_status: 'Active',
-  development_type: 'Rental',
-  lottery_start_date: '2026-10-15T00:00:00.000',
-  lottery_end_date: '2026-11-09T00:00:00.000',
-  borough: 'BK',
-  unit_distribution_1bed: '7',
+  lotteryId: 7612,
+  lotteryName: ' Example Rental  Lottery ',
+  borough: 'Brooklyn\r\n',
+  lotteryEndDate: '2026-11-09T00:00:00',
+  minIncome: 40000,
+  maxIncome: 120000,
+  minHouseholdSize: 1,
+  maxHouseholdSize: 3,
+  rents: '2100,1500,1800',
+  oneBR: 7,
+  fourBR: 1,
+  fiveBR: 1,
+  markers: [
+    { lat: '40.848952', lng: '-73.922559', address: '28 EXAMPLE ST', zip: '11215' },
+    { lat: '40.848952', lng: '-73.922559', address: '30 EXAMPLE ST', zip: '' },
+    { address: '' },
+  ],
 };
 const feed = { id: 'zillow', url: 'https://feed.example.test/current' };
 const listing = {
@@ -180,15 +186,22 @@ function sources({ failure = false, conditional = false } = {}) {
       });
     }
     if (path.endsWith('/2026-10.csv') && !conditional) return new Response(CSV);
-    if (path === '/api/views/vy5i-a666') return Response.json({ rowsUpdatedAt: 1794153621 });
-    if (path === '/resource/vy5i-a666.json') {
-      expect(required(new URL(url).searchParams.get('$where'))).toMatch(/2026-11-09/);
-      return Response.json([active, { ...active, lottery_id: '1', lottery_status: 'Tenant Selection' }]);
+    if (path === '/HPDPublicAPI/api/Lottery/SearchLotteries') {
+      expect(options.method).toBe('POST');
+      return Response.json({
+        sales: [{ ...active, lotteryId: 9 }],
+        rentals: [
+          // Later to close, so listed after; no places and no stated terms.
+          { lotteryId: 7700, lotteryEndDate: '2026-12-01T00:00:00', markers: null, rents: null },
+          active,
+          // Left out: already closed, no closing date, and no number of its own.
+          { ...active, lotteryId: 1, lotteryEndDate: '2026-11-08T00:00:00' },
+          { ...active, lotteryId: 2, lotteryEndDate: null },
+          { ...active, lotteryId: 'x' },
+          'not a lottery',
+        ],
+      });
     }
-    if (path === '/resource/nibs-na6y.json')
-      return Response.json([
-        { lottery_id: '7612', house_number: '28', street_name: 'Example St', borough: 'BK', address_zipcode: '11215' },
-      ]);
     if (url === feed.url) return Response.json([listing]);
     expect.unreachable('Unexpected network request: ' + url);
   };
@@ -214,7 +227,34 @@ test('an hourly refresh persists each source, makes charts use the imported reco
     ['zillow', 'updated'],
   ]);
   expect((await storedFeed(env.BUCKET, feed)).listings[0].rent).toBe(2400);
-  expect((await storedHousing(env.BUCKET, at)).opportunities[0].addresses[0]).toBe('28 Example St, Brooklyn 11215');
+  // Housing Connect's own open lotteries, soonest to close first, with what each asks.
+  expect((await storedHousing(env.BUCKET, at)).opportunities).toEqual([
+    {
+      id: '7612',
+      name: 'Example Rental Lottery',
+      borough: 'Brooklyn',
+      closes: '2026-11-09',
+      sizes: [0, 7, 0, 0, 2],
+      addresses: ['28 Example St, Brooklyn 11215', '30 Example St, Brooklyn'],
+      buildingKeys: [expect.any(String)],
+      url: 'https://housingconnect.nyc.gov/PublicWeb/details/7612',
+      latitude: 40.848952,
+      longitude: -73.922559,
+      income: [40000, 120000],
+      rent: [1500, 2100],
+      household: [1, 3],
+    },
+    {
+      id: '7700',
+      name: 'Housing Connect lottery',
+      borough: '',
+      closes: '2026-12-01',
+      sizes: [0, 0, 0, 0, 0],
+      addresses: [],
+      buildingKeys: [],
+      url: 'https://housingconnect.nyc.gov/PublicWeb/details/7700',
+    },
+  ]);
 
   const api = await handleApi(new Request('https://private.test/api/market?region=nyc'), env);
   const chart = await readJson<RentMarket>(api);
@@ -242,9 +282,9 @@ test('failed sources preserve the last data and expired lotteries are removed at
       .every(({ status, updatedAt }) => status === 'failed' && updatedAt === at.toISOString()),
   ).toBeTruthy();
   expect((await storedMarket(env.BUCKET)).listings[0].rent).toBe(1900);
-  expect((await storedHousing(env.BUCKET, at)).opportunities.length).toBe(1);
+  expect((await storedHousing(env.BUCKET, at)).opportunities.length).toBe(2);
   expect(housingDate(new Date('2026-11-10T05:00:00Z'))).toBe('2026-11-10');
-  expect((await storedHousing(env.BUCKET, new Date('2026-11-10T05:00:00Z'))).opportunities.length).toBe(0);
+  expect((await storedHousing(env.BUCKET, new Date('2026-11-10T05:00:00Z'))).opportunities.map(({ id }) => id)).toEqual(['7700']);
   expect(await refreshStatus(env.BUCKET)).toStrictEqual({ lastCheckedAt: next.toISOString(), sources: failure.sources });
 });
 
@@ -257,7 +297,7 @@ test('only one overlapping refresh can claim the hourly write', async () => {
   };
   const results = await Promise.all([refreshSources(env, { fetcher, now: at }), refreshSources(env, { fetcher, now: at })]);
   expect(results.map(({ state }) => state).sort()).toStrictEqual(['complete', 'running']);
-  expect(calls).toBe(5);
+  expect(calls).toBe(3);
 });
 
 test('the private writer imports a completed public check without publisher access', async () => {
@@ -273,7 +313,7 @@ test('the private writer imports a completed public check without publisher acce
   const response = await handleApi(request, env);
   expect(response.status).toBe(200);
   expect((await readJson<RefreshInfo>(response)).state).toBe('complete');
-  expect((await storedHousing(env.BUCKET, at)).opportunities.length).toBe(1);
+  expect((await storedHousing(env.BUCKET, at)).opportunities.length).toBe(2);
   expect((await storedMarket(env.BUCKET)).listings.length).toBe(2);
 });
 
@@ -392,7 +432,7 @@ test('a manual refresh fetches new source data even within the same hour', async
     requests.push(url);
     expect(new Headers(options.headers).get('Cache-Control')).toBe('no-cache');
     if (host === 'www.zumper.com') return zumperPage(price);
-    if (['www.firstmovernyc.com', 'raw.githubusercontent.com', 'data.cityofnewyork.us'].includes(host))
+    if (['www.firstmovernyc.com', 'raw.githubusercontent.com', 'a806-housingconnectapi.nyc.gov'].includes(host))
       return publishedCatalog(url, options);
     return new Response(null, { status: 404 });
   };
@@ -615,7 +655,7 @@ test('a resync reads StreetEasy v6 each time and checks Apartments.com in both b
       return Response.json({ data: { searchRentals: { totalCount: edges.length, edges: edges.slice(offset, offset + 500) } } });
     }
     if (parsed.hostname !== 'www.apartments.com') {
-      if (url === csvUrl || ['www.firstmovernyc.com', 'data.cityofnewyork.us'].includes(parsed.hostname)) {
+      if (url === csvUrl || ['www.firstmovernyc.com', 'a806-housingconnectapi.nyc.gov'].includes(parsed.hostname)) {
         return publishedCatalog(url, options);
       }
       return new Response(null, { status: 404 });

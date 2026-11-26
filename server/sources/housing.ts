@@ -1,123 +1,105 @@
+/**
+ * NYC Housing Connect's open rental lotteries, from the search its own website runs, read once a
+ * day with the nightly resync. It is the list people see on housingconnect.nyc.gov: the city's open-data copy of it
+ * is republished about monthly, and named lotteries as open weeks after they had closed.
+ */
 import type { SourceFetch } from '../contracts.ts';
 import { isRecord } from '../../src/domain.ts';
 import { buildingKey } from '../../src/listings.ts';
 
-const NYC_OPEN_DATA = 'https://data.cityofnewyork.us';
-const LOTTERY_DATASET = 'vy5i-a666';
-const BUILDING_DATASET = 'nibs-na6y';
-const BOROUGHS: Record<string, string> = { BK: 'Brooklyn', BX: 'Bronx', MN: 'Manhattan', QN: 'Queens', SI: 'Staten Island' };
+const SEARCH = 'https://a806-housingconnectapi.nyc.gov/HPDPublicAPI/api/Lottery/SearchLotteries';
+/** The website's search with nothing chosen: every open lottery. */
+const EVERYTHING = {
+  UnitTypes: [],
+  NearbyPlaces: [],
+  NearbySubways: [],
+  Amenities: [],
+  Applied: null,
+  HPDUserId: null,
+  Boroughs: [],
+  Neighborhoods: [],
+  HouseholdSize: null,
+  Income: null,
+  HouseholdType: 1,
+  OwnerTypes: [],
+  PreferanceTypes: [],
+  LotteryTypes: [],
+  Min: null,
+  Max: null,
+  RentalSubsidy: null,
+};
 const DATE = new Intl.DateTimeFormat('en-CA', {
   timeZone: 'America/New_York',
   year: 'numeric',
   month: '2-digit',
   day: '2-digit',
 });
-const SIZE_FIELDS = ['studio', '1bed', '2bed', '3bed', '4bed'];
+const SIZE_FIELDS = ['studios', 'oneBR', 'twoBR', 'threeBR'];
+const LARGER_FIELDS = ['fourBR', 'fiveBR', 'sixBR'];
 
 export const housingDate = (now: Date) => DATE.format(now);
 
-/** NYC Open Data rows as this reader uses them; values are checked before they are shown. */
-type LotteryRow = {
-  [field: string]: unknown;
-  lottery_id?: unknown;
-  lottery_start_date?: unknown;
-  lottery_end_date?: unknown;
-  borough?: string;
-};
-type ActiveLottery = LotteryRow & { lottery_id: string; lottery_end_date: string };
-type BuildingRow = { lottery_id?: string; house_number?: string; street_name?: string; borough?: string; address_zipcode?: string };
-
-/** The income bands the city counts apartments in, lowest first; src/affordable-limits.ts has what each allows. */
-const BAND_FIELDS = ['ext_low', 'very_low', 'low', 'moderate', 'middle'];
-/** A coordinate from the city's text, or nothing when it gave none. */
-const coordinate = (value: unknown) => (typeof value === 'string' && Number.isFinite(Number(value)) ? Number(value) : undefined);
-
-async function readJson(path: string, fetcher: SourceFetch) {
-  const response = await fetcher(NYC_OPEN_DATA + path, {
-    redirect: 'manual',
-    headers: { Accept: 'application/json' },
-    signal: AbortSignal.timeout(12000),
-  });
-  if (!response.ok) throw new Error('NYC Open Data returned HTTP ' + response.status + '.');
-  return response.json();
-}
-
-function query(id: string, params: Record<string, string>, fetcher: SourceFetch) {
-  return readJson('/resource/' + id + '.json?' + new URLSearchParams(params), fetcher);
-}
+const text = (value: unknown) => (typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '');
+const count = (value: unknown) => (typeof value === 'number' && value > 0 ? Math.round(value) : 0);
+/** The lowest and highest of two amounts, when both are amounts. */
+const range = (low: unknown, high: unknown): [number, number] | undefined =>
+  typeof low === 'number' && typeof high === 'number' && low >= 0 && high >= low ? [low, high] : undefined;
+const titled = (words: string) =>
+  words.toLowerCase().replace(/(^|[\s-])([a-z])/g, (_all, gap: string, letter: string) => gap + letter.toUpperCase());
 
 export async function loadHousingConnect(fetcher: SourceFetch, now: Date) {
+  const response = await fetcher(SEARCH, {
+    method: 'POST',
+    redirect: 'manual',
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: JSON.stringify(EVERYTHING),
+    signal: AbortSignal.timeout(20000),
+  });
+  if (!response.ok) throw new Error('Housing Connect returned HTTP ' + response.status + '.');
+  const answer: unknown = await response.json();
+  if (!isRecord(answer) || !Array.isArray(answer.rentals)) throw new Error('The Housing Connect data was invalid.');
   const today = housingDate(now);
-  const date = `'${today}T00:00:00'`;
-  const [meta, rows] = await Promise.all([
-    readJson('/api/views/' + LOTTERY_DATASET, fetcher),
-    query(
-      LOTTERY_DATASET,
+  const opportunities = answer.rentals.filter(isRecord).flatMap((row) => {
+    const id = typeof row.lotteryId === 'number' && Number.isInteger(row.lotteryId) && row.lotteryId > 0 ? String(row.lotteryId) : '';
+    const closes = text(row.lotteryEndDate).slice(0, 10);
+    if (!id || !/^\d{4}-\d\d-\d\d$/.test(closes) || closes < today) return [];
+    const borough = text(row.borough);
+    const places = (Array.isArray(row.markers) ? row.markers : []).filter(isRecord).filter((place) => text(place.address));
+    const [latitude, longitude] = [Number(places[0]?.lat), Number(places[0]?.lng)];
+    const rents = text(row.rents)
+      .split(',')
+      .map(Number)
+      .filter((rent) => rent > 0);
+    return [
       {
-        $where: `development_type = 'Rental' and lottery_status = 'Active' and lottery_start_date <= ${date} and lottery_end_date >= ${date}`,
-        $order: 'lottery_end_date ASC, lottery_id ASC',
-        $limit: '250',
+        id,
+        name: (text(row.lotteryName) || 'Housing Connect lottery').slice(0, 180),
+        borough,
+        closes,
+        sizes: [...SIZE_FIELDS.map((field) => count(row[field])), LARGER_FIELDS.reduce((sum, field) => sum + count(row[field]), 0)],
+        addresses: [
+          ...new Set(places.map((place) => [titled(text(place.address)), [borough, text(place.zip)].filter(Boolean).join(' ')].join(', '))),
+        ].sort(),
+        buildingKeys: [
+          ...new Set(
+            places.flatMap((place) => {
+              const zip = text(place.zip);
+              const key = /^\d{5}$/.test(zip) ? buildingKey({ address: text(place.address), zip, state: 'NY' }) : null;
+              return key ? [key] : [];
+            }),
+          ),
+        ],
+        url: 'https://housingconnect.nyc.gov/PublicWeb/details/' + id,
+        // Where it is, for the distance to someone's work.
+        ...(Number.isFinite(latitude) && Number.isFinite(longitude) && latitude !== 0 ? { latitude, longitude } : {}),
+        // What it asks, across all its apartments: yearly household income, monthly rent and household size.
+        income: range(row.minIncome, row.maxIncome),
+        rent: rents.length ? ([Math.min(...rents), Math.max(...rents)] as [number, number]) : undefined,
+        household: range(row.minHouseholdSize, row.maxHouseholdSize),
       },
-      fetcher,
-    ),
-  ]);
-  if (!Array.isArray(rows)) throw new Error('The Housing Connect data was invalid.');
-  const active = (rows.filter(isRecord) as LotteryRow[]).filter(
-    (row): row is ActiveLottery =>
-      typeof row.lottery_id === 'string' &&
-      /^\d{1,12}$/.test(row.lottery_id) &&
-      row.lottery_status === 'Active' &&
-      row.development_type === 'Rental' &&
-      typeof row.lottery_start_date === 'string' &&
-      row.lottery_start_date.slice(0, 10) <= today &&
-      typeof row.lottery_end_date === 'string' &&
-      row.lottery_end_date.slice(0, 10) >= today,
-  );
-  const ids = [...new Set(active.map((row) => row.lottery_id))];
-  const buildings = ids.length
-    ? await query(
-        BUILDING_DATASET,
-        {
-          $select: 'lottery_id,house_number,street_name,borough,address_zipcode',
-          $where: `lottery_id in (${ids.join(',')})`,
-          $limit: '1000',
-        },
-        fetcher,
-      )
-    : [];
-  if (!Array.isArray(buildings)) throw new Error('The Housing Connect building data was invalid.');
-
-  const byId = new Map<string, { addresses: Set<string>; keys: Set<string> }>();
-  for (const row of buildings.filter(isRecord) as BuildingRow[]) {
-    const id = row.lottery_id;
-    if (!id || !row.house_number || !row.street_name) continue;
-    const address = `${row.house_number} ${row.street_name}`;
-    const place = [BOROUGHS[row.borough ?? ''], row.address_zipcode].filter(Boolean).join(' ');
-    const building = byId.get(id) ?? { addresses: new Set<string>(), keys: new Set<string>() };
-    byId.set(id, building);
-    building.addresses.add([address, place].filter(Boolean).join(', '));
-    if (row.address_zipcode && /^\d{5}$/.test(row.address_zipcode)) {
-      const key = buildingKey({ address, zip: row.address_zipcode, state: 'NY' });
-      if (key) building.keys.add(key);
-    }
-  }
-
-  const updatedAt = isRecord(meta) ? meta.rowsUpdatedAt : undefined;
-  return {
-    publishedAt: typeof updatedAt === 'number' && Number.isFinite(updatedAt) ? new Date(updatedAt * 1000).toISOString() : null,
-    opportunities: active.map((row) => ({
-      id: row.lottery_id,
-      name: String(row.lottery_name || 'Housing Connect lottery').slice(0, 180),
-      borough: BOROUGHS[row.borough ?? ''] ?? '',
-      closes: row.lottery_end_date.slice(0, 10),
-      sizes: SIZE_FIELDS.map((size) => Number(row['unit_distribution_' + size]) || 0),
-      addresses: [...(byId.get(row.lottery_id)?.addresses ?? [])].sort(),
-      buildingKeys: [...(byId.get(row.lottery_id)?.keys ?? [])],
-      url: 'https://housingconnect.nyc.gov/PublicWeb/details/' + row.lottery_id,
-      // Where it is, for the distance to someone's work, and how many apartments are in each income band.
-      latitude: coordinate(row.latitude),
-      longitude: coordinate(row.longitude),
-      bands: BAND_FIELDS.map((field) => Number(row['applied_income_ami_' + field]) || 0),
-    })),
-  };
+    ];
+  });
+  opportunities.sort((a, b) => a.closes.localeCompare(b.closes) || Number(a.id) - Number(b.id));
+  // The list is the site's own, as of this check.
+  return { publishedAt: now.toISOString(), opportunities };
 }

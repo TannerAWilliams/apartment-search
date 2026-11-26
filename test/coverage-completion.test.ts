@@ -154,15 +154,16 @@ test('an Openigloo search below borough level that cannot be split further is co
   expect(crawl.unresolved).toBe(5);
 });
 
-test('Housing Connect with no open lotteries needs no building lookup', async () => {
+test('Housing Connect answering with something other than its list is a failure, not an empty list', async () => {
   const { loadHousingConnect } = await import('../server/sources/housing.ts');
-  const requests: string[] = [];
-  const result = await loadHousingConnect(async (url) => {
-    requests.push(url);
-    return url.includes('/api/views/') ? Response.json({ rowsUpdatedAt: 1_795_000_000 }) : Response.json([]);
-  }, new Date('2026-11-23T12:00:00Z'));
-  expect(result.opportunities).toEqual([]);
-  expect(requests).toHaveLength(2);
+  const now = new Date('2026-11-23T12:00:00Z');
+  expect(loadHousingConnect(async () => Response.json({ message: 'An unhandled error occurred.' }), now)).rejects.toThrow(/invalid/);
+  expect(loadHousingConnect(async () => Response.json(null), now)).rejects.toThrow(/invalid/);
+  expect(loadHousingConnect(async () => new Response('busy', { status: 500 }), now)).rejects.toThrow(/HTTP 500/);
+  expect(await loadHousingConnect(async () => Response.json({ rentals: [] }), now)).toEqual({
+    publishedAt: now.toISOString(),
+    opportunities: [],
+  });
 });
 
 test('a refresh with no options checks the public sources over the network', async () => {

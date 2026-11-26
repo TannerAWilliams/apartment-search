@@ -64,12 +64,17 @@ async function refreshHousing(
     result.opportunities.length > 250 ||
     result.opportunities.some(({ id, url }) => !/^\d{1,12}$/.test(id) || url !== 'https://housingconnect.nyc.gov/PublicWeb/details/' + id)
   ) {
-    throw new Error('NYC Open Data could not be imported.');
+    throw new Error('Housing Connect could not be imported.');
   }
   const data = JSON.stringify(result);
   const previous = await bucket.get(HOUSING_KEY);
-  if (previous && (await previous.text()) === data) {
-    return { status: 'current', updatedAt: previous.customMetadata.updatedAt };
+  const before = previous ? ((await previous.json().catch(() => null)) as { opportunities?: unknown } | null) : null;
+  if (previous && JSON.stringify(before?.opportunities) === JSON.stringify(result.opportunities)) {
+    // The same lotteries as before: nothing new to tell, but the copy is kept with the time it was last seen to
+    // be right, so it is not taken for an old one (server/refresh/snapshots.ts).
+    const updatedAt = previous.customMetadata.updatedAt;
+    await bucket.put(HOUSING_KEY, data, { customMetadata: { updatedAt } });
+    return { status: 'current', updatedAt };
   }
   await bucket.put(HOUSING_KEY, data, { customMetadata: { updatedAt: checkedAt } });
   return { status: 'updated', updatedAt: checkedAt };

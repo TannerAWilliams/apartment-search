@@ -32,7 +32,7 @@ export const securityHeaders = secureHeaders({
       'https://api.github.com',
       'https://raw.githubusercontent.com',
       'https://www.firstmovernyc.com',
-      'https://data.cityofnewyork.us',
+      'https://a806-housingconnectapi.nyc.gov',
       'https://tiles.openfreemap.org',
     ],
     fontSrc: ["'self'", 'data:'],
