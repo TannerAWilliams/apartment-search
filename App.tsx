@@ -652,7 +652,11 @@ function ApartmentSearch() {
               }}
               scrollEventThrottle={16}
               keyboardShouldPersistTaps="handled"
-              contentContainerStyle={styles.scroll}
+              // Room under the last line for the floating map pill, so it never covers the footer.
+              contentContainerStyle={[
+                styles.scroll,
+                WEB_MAP && (view === 'results' || (view === 'saved' && saved.length > 0)) && { paddingBottom: 88 },
+              ]}
             >
               <View style={styles.shell}>
                 <View style={styles.results}>
@@ -1113,7 +1117,6 @@ const PROFILE_PAGES = [
   'list',
   'neighborhoods',
   'renewal',
-  'affordable',
   'marketplaces',
   'sources',
   'admin',
