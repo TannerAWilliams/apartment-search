@@ -4,7 +4,7 @@ import { checkObservedChanges, MAX_BASELINE_UNITS, parseChangeBaseline, type Obs
 import { localWorkplace, needsCommute, parseFilters, SearchInputError } from '../src/search.ts';
 import type { AppEnv, Bucket } from './contracts.ts';
 import { log } from './log.ts';
-import { AlertDevicesSchema, AlertRulesSchema, checkedDocument, RecentAlertsSchema } from './storage/stored-documents.ts';
+import { AlertDevicesSchema, AlertRulesSchema, checkedDocument, HeldAlertsSchema, RecentAlertsSchema } from './storage/stored-documents.ts';
 import { offline, search } from './search.ts';
 import { sendPush, validSubscription, type PushSubscriptionJson, type VapidKeys } from './web-push.ts';
 import * as v from 'valibot';
@@ -25,6 +25,14 @@ const DEVICES_KEY = 'alerts/devices.json';
 const RECENT_KEY = 'alerts/recent.json';
 const BASELINE_PREFIX = 'alerts/baselines/';
 export const MAX_RULES = 10;
+/**
+ * The free plan: one alert, each sent three hours after its apartments were found, and at most three a day. The
+ * paid plan sends every alert as soon as it is found.
+ */
+export const FREE_RULES = 1;
+export const FREE_DELAY_HOURS = 3;
+export const FREE_ALERTS_A_DAY = 3;
+const HELD_KEY = 'alerts/held.json';
 const MAX_DEVICES = 10;
 const MAX_RECENT = 30;
 const SHOWN_UNITS = 4;
@@ -244,12 +252,49 @@ export function composeAlert(rule: AlertRule, changes: ObservedChange[], now: Da
 
 const escapeHtml = (text: string) => text.replace(/[&<>"']/g, (char) => `&#${char.charCodeAt(0)};`);
 
+/** The calendar day in New York, which the free plan's daily limit counts by. */
+const newYorkDay = (now: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(now);
+
+/**
+ * Holds free accounts' new alerts for three hours, and returns the ones to send now: those whose wait is over,
+ * up to three a day for each account (the rest of that day's are dropped), and everything waiting for an account
+ * that has since upgraded.
+ */
+async function releaseHeld(bucket: Bucket, fresh: Alert[], paid: Set<string>, now: Date) {
+  const held = await read(bucket, HELD_KEY, HeldAlertsSchema, { waiting: [], sent: {} });
+  if (!fresh.length && !held.waiting.length) return [];
+  const day = newYorkDay(now);
+  const dueAt = new Date(now.getTime() + FREE_DELAY_HOURS * 3_600_000).toISOString();
+  const sent = Object.fromEntries(Object.entries(held.sent).filter(([, count]) => count.day === day));
+  const release: Alert[] = [];
+  const waiting: typeof held.waiting = [];
+  for (const item of [...held.waiting, ...fresh.map((alert) => ({ ...alert, dueAt }))]) {
+    const { dueAt: due, ...alert } = item;
+    const owner = alert.owner ?? '';
+    if (paid.has(owner)) release.push(alert);
+    else if (due > now.toISOString()) waiting.push(item);
+    else if ((sent[owner]?.count ?? 0) < FREE_ALERTS_A_DAY) {
+      sent[owner] = { day, count: (sent[owner]?.count ?? 0) + 1 };
+      release.push(alert);
+    }
+  }
+  await write(bucket, HELD_KEY, { waiting, sent });
+  return release;
+}
+
 /**
  * Sends the alerts by email (one message per account, to that account's address only) and to each device of the
  * account the alert belongs to (one notification per alert). Alerts made before accounts had their own go to every
  * allowed address and to devices added the same way.
  */
-export async function deliver(bucket: Bucket, alerts: Alert[], channels: AlertChannels, origin: string) {
+export async function deliver(
+  bucket: Bucket,
+  alerts: Alert[],
+  channels: AlertChannels,
+  origin: string,
+  /** Accounts on the free plan, whose email says how the paid plan differs. */
+  free: Set<string> = new Set(),
+) {
   const delivered = { email: false, devices: 0 };
   if (!alerts.length) return delivered;
   const owners = [...new Set(alerts.map(({ owner }) => owner))];
@@ -261,6 +306,7 @@ export async function deliver(bucket: Bucket, alerts: Alert[], channels: AlertCh
         channels,
         owner ? [owner] : (channels.to ?? []),
         origin,
+        Boolean(owner && free.has(owner)),
       ),
     ),
     channels.vapid ? sendPushes(bucket, alerts, channels.vapid, channels.pushFetcher) : 0,
@@ -270,15 +316,21 @@ export async function deliver(bucket: Bucket, alerts: Alert[], channels: AlertCh
   return delivered;
 }
 
-async function sendEmail(alerts: Alert[], channels: AlertChannels, to: string[], origin: string) {
+async function sendEmail(alerts: Alert[], channels: AlertChannels, to: string[], origin: string, free = false) {
   if (!channels.email || !channels.from || !to.length) return false;
   const subject = alerts.length === 1 ? alerts[0].title : `${alerts.length} apartment alerts`;
+  // What a free account's email was held for, and what the paid plan changes.
+  const plan = `Free alerts are sent ${FREE_DELAY_HOURS} hours after a match is found, up to ${FREE_ALERTS_A_DAY} a day. The paid plan sends every match as soon as it is found`;
   const text =
-    alerts.map((alert) => [alert.title, ...alert.lines.map((line) => '• ' + line)].join('\n')).join('\n\n') + `\n\nOpen Walkup: ${origin}/`;
+    alerts.map((alert) => [alert.title, ...alert.lines.map((line) => '• ' + line)].join('\n')).join('\n\n') +
+    `\n\nOpen Walkup: ${origin}/` +
+    (free ? `\n\n${plan}: ${origin}/pricing` : '');
   const html =
     alerts
       .map((alert) => `<h3>${escapeHtml(alert.title)}</h3><ul>${alert.lines.map((line) => `<li>${escapeHtml(line)}</li>`).join('')}</ul>`)
-      .join('') + `<p><a href="${escapeHtml(origin)}/">Open Walkup</a></p>`;
+      .join('') +
+    `<p><a href="${escapeHtml(origin)}/">Open Walkup</a></p>` +
+    (free ? `<p>${plan}. <a href="${escapeHtml(origin)}/pricing">See pricing</a></p>` : '');
   try {
     await channels.email.send({ from: channels.from, to, subject, text, html });
     return true;
@@ -340,11 +392,14 @@ export async function checkAlerts(
   }: {
     origin: string;
     now?: Date;
-    /** Accounts on the paid plan; another account's alerts are skipped. Alerts made before accounts always run. */
+    /**
+     * Accounts on the paid plan, whose alerts are sent at once; another account's wait (the free plan). Alerts
+     * made before accounts, and every alert where no plans are given, are sent at once.
+     */
     paid?: Set<string>;
   },
 ) {
-  const rules = (await readRules(bucket)).filter((rule) => !paid || !rule.owner || paid.has(rule.owner));
+  const rules = await readRules(bucket);
   // Each rule has its own baseline, so rules are checked together, a few at a time; alerts keep the rules' order.
   const checked = await mapLimit(rules, RULES_AT_ONCE, async (rule): Promise<Alert | null> => {
     try {
@@ -365,10 +420,15 @@ export async function checkAlerts(
       return null;
     }
   });
-  const alerts = checked.filter((alert): alert is Alert => alert !== null);
+  const found = checked.filter((alert): alert is Alert => alert !== null);
+  const onFreePlan = ({ owner }: Alert) => Boolean(paid && owner && !paid.has(owner));
+  // A free account's alerts wait; what goes now is everyone else's, and the held ones whose wait is over.
+  const released = paid ? await releaseHeld(bucket, found.filter(onFreePlan), paid, now) : [];
+  const alerts = [...found.filter((alert) => !onFreePlan(alert)), ...released];
   if (!alerts.length) return { alerts, delivered: { email: false, devices: 0 } };
   await write(bucket, RECENT_KEY, [...alerts, ...(await readRecent(bucket))].slice(0, MAX_RECENT));
-  const delivered = await deliver(bucket, alerts, channels, origin);
+  const free = new Set(released.filter(onFreePlan).map(({ owner }) => owner ?? ''));
+  const delivered = await deliver(bucket, alerts, channels, origin, free);
   log.info('alerts_sent', { alerts: alerts.length, email: delivered.email, devices: delivered.devices });
   return { alerts, delivered };
 }
@@ -437,4 +497,7 @@ export async function forgetAlerts(bucket: Bucket, owner: string) {
     RECENT_KEY,
     recent.filter((alert) => alert.owner !== owner),
   );
+  const held = await read(bucket, HELD_KEY, HeldAlertsSchema, { waiting: [], sent: {} });
+  const { [owner]: _sent, ...sent } = held.sent;
+  await write(bucket, HELD_KEY, { waiting: held.waiting.filter((alert) => alert.owner !== owner), sent });
 }

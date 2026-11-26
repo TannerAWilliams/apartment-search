@@ -93,9 +93,10 @@ function PlanCard({ plan, request, onError }: { plan: 'free' | 'paid'; request: 
   if (plan === 'paid' || !billing.available) return null;
   return (
     <View style={[styles.menu, { padding: 16, gap: 10 }]}>
-      <Text style={styles.menuLabel}>Upgrade for email alerts</Text>
+      <Text style={styles.menuLabel}>Upgrade to hear first</Text>
       <Text style={styles.smallMuted}>
-        Hear about new apartments that match within a couple of hours, checked all day. Cancel anytime; payments are handled by Stripe.
+        Every new match and price drop as soon as it is found, checked every two hours, instead of three hours later; up to ten alerts and
+        notifications on your phone. Cancel anytime; payments are handled by Stripe.
       </Text>
       <View style={styles.chipRow}>
         <Button disabled={busy} onPress={() => void go({ action: 'checkout', plan: 'monthly' })}>
@@ -395,7 +396,9 @@ export function ProfilePage({
           [
             'alerts',
             'Email alerts',
-            plan === 'paid' ? 'Hear about new apartments that match, like West Village 2 BR under $5,000' : 'Part of the paid plan',
+            plan === 'paid'
+              ? 'Hear about new apartments that match, like West Village 2 BR under $5,000'
+              : 'One alert on the free plan; every match at once on the paid plan',
           ],
         ]}
       />

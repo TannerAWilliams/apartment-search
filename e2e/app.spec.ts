@@ -1093,17 +1093,21 @@ test('profile: a free member’s saved listings are kept on the account, and ale
   expect(stored.listings.map(({ address }) => address)).toEqual(['12 Grove Street']);
   await page.getByRole('tab', { name: 'Profile', exact: true }).click();
   await expect(page.getByText('Free plan', { exact: true })).toBeVisible();
-  await expect(page.getByText('Part of the paid plan', { exact: true })).toBeVisible();
-  await expect(page.getByText('Upgrade for email alerts', { exact: true })).toBeVisible();
+  await expect(page.getByText('One alert on the free plan; every match at once on the paid plan', { exact: true })).toBeVisible();
+  await expect(page.getByText('Upgrade to hear first', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: '$35 for 3 months', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Saved listings (1)', exact: true })).toBeVisible();
   await expect(page.getByRole('switch', { name: 'Nightly resync' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Sources & sync', exact: true })).toHaveCount(0);
   await expect(page.getByRole('switch', { name: /^Paid plan for/ })).toHaveCount(0);
-  // A free account sees what the paid plan adds instead of the alert form.
+  // A free account sets one alert, and sees what the paid plan adds, with the way to it.
   await page.getByRole('button', { name: 'Email alerts', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Alerts are part of the paid plan', exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Save alert', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Free plan: one alert, by email', exact: true })).toBeVisible();
+  await expect(page.getByText(/emailed three hours after a match is found, up to three a day/)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Save alert', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Turn on notifications on this device', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Upgrade', exact: true }).click();
+  await expect(page.getByText('Upgrade to hear first', { exact: true })).toBeVisible();
 });
 
 test('cards show the building’s grade, rent stabilization, the price against similar apartments and warnings', async ({ page }) => {
@@ -1335,7 +1339,7 @@ test('a visitor uses Walkup without an account, and is asked for one only to sav
   await expect(page.getByText('or $35 for three months, paid once', { exact: true })).toBeVisible();
   await expect(page.getByRole('tab', { name: 'Profile', exact: true })).toHaveAttribute('aria-selected', 'false');
   // Pricing ends on the paid feature, which asks a visitor for an account.
-  await page.getByRole('button', { name: 'Get email alerts', exact: true }).click();
+  await page.getByRole('button', { name: 'Get a free alert', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Create a free account to get email alerts', exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Pricing', exact: true })).toBeVisible();
   // Search works signed out.

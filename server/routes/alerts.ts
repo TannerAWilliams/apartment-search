@@ -3,7 +3,7 @@ import { recordEvent } from '../ops.ts';
 import { vValidator } from '@hono/valibot-validator';
 import type * as v from 'valibot';
 import type { AppEnv, Bucket } from '../contracts.ts';
-import { addDevice, addRule, alertChannels, alertMatches, alertState, deleteRule, deliver, removeDevice } from '../alerts.ts';
+import { addDevice, addRule, alertChannels, alertMatches, alertState, deleteRule, deliver, FREE_RULES, removeDevice } from '../alerts.ts';
 import { log } from '../log.ts';
 import { type Plan, planFor } from '../plans.ts';
 import { afterResponse, apiBodies, factory, fail, needsStorage, refuse } from './context.ts';
@@ -47,10 +47,13 @@ async function alertAction(
 const STORAGE = 'Alerts need saved storage.';
 /** The signed-in account an alert belongs to, in lower case; none for the app's own token or a public app. */
 const ownerOf = (account: string | null | undefined) => (account ? account.toLowerCase() : undefined);
-const PAID_ONLY = 'Email alerts are part of the paid plan. Upgrade on your Profile page.';
 const NO_ACCOUNT = 'Create a free account or sign in to get email alerts.';
-/** Actions a free account may still take: removing what it set up before. */
-const FREE_ACTIONS = new Set(['delete-rule', 'remove-device']);
+/**
+ * What the free plan leaves out, by action: more than one alert, and notifications on a phone. A free account's
+ * one alert is emailed three hours after a match is found (server/alerts.ts).
+ */
+const ONE_ALERT = 'A free account keeps one alert. The paid plan keeps up to ten and sends each match as soon as it is found.';
+const PAID_NOTIFICATIONS = 'Notifications on your phone are part of the paid plan. Free alerts come by email.';
 
 export const alertRoutes = factory
   .createApp()
@@ -75,8 +78,11 @@ export const alertRoutes = factory
     const origin = env.APP_ORIGIN ?? new URL(c.req.url).origin;
     const body = c.req.valid('json');
     const plan = await planFor(env, c.var.bucket, c.var.services.account, c.var.services.admin);
-    if (plan === 'free' && !FREE_ACTIONS.has(body.action)) return fail(c, 402, PAID_ONLY);
-    const result = await alertAction(body, env, origin, ownerOf(c.var.services.account));
+    const owner = ownerOf(c.var.services.account);
+    if (plan === 'free' && body.action === 'add-device') return fail(c, 402, PAID_NOTIFICATIONS);
+    if (plan === 'free' && body.action === 'add-rule' && (await alertState(env, owner)).rules.length >= FREE_RULES)
+      return fail(c, 402, ONE_ALERT);
+    const result = await alertAction(body, env, origin, owner);
     if (body.action === 'add-rule') await afterResponse(c.var.services, 'alert_event', () => recordEvent(c.var.bucket, 'alert'));
     return c.json({ ...result, plan }, 200);
   });

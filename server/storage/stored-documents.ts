@@ -107,16 +107,20 @@ export const AlertRulesSchema = v.array(
 export const AlertDevicesSchema = v.array(
   v.object({ endpoint: text, keys: v.object({ p256dh: text, auth: text }), label: text, createdAt: text, owner: v.optional(text) }),
 );
+const alert = {
+  id: text,
+  at: text,
+  ruleId: text,
+  title: text,
+  lines: v.array(text),
+  newCount: v.number(),
+  dropCount: v.number(),
+  owner: v.optional(text),
+};
 /** The most recent alerts sent. */
-export const RecentAlertsSchema = v.array(
-  v.object({
-    id: text,
-    at: text,
-    ruleId: text,
-    title: text,
-    lines: v.array(text),
-    newCount: v.number(),
-    dropCount: v.number(),
-    owner: v.optional(text),
-  }),
-);
+export const RecentAlertsSchema = v.array(v.object(alert));
+/** Free accounts' alerts waiting to be sent, and how many each account has been sent on its latest day. */
+export const HeldAlertsSchema = v.object({
+  waiting: v.array(v.object({ ...alert, dueAt: text })),
+  sent: v.record(text, v.object({ day: text, count: v.number() })),
+});

@@ -47,7 +47,10 @@ export type AlertState = {
   recent: { id: string; at: string; title: string; lines: string[] }[];
   channels: { email: boolean; push: { publicKey: string } | null };
   delivered?: { email: boolean; devices: number };
-  /** Email alerts are for paid accounts; a free one sees what it set up before and can remove it. */
+  /**
+   * A free account keeps one alert, emailed three hours after a match is found and at most three a day; a paid
+   * one keeps ten, sent at once, with notifications on a phone (server/alerts.ts).
+   */
   plan?: 'free' | 'paid';
 };
 
@@ -58,12 +61,15 @@ export function AlertsPage({
   filters,
   loadNeighborhoods,
   onError,
+  onUpgrade,
 }: {
   request: (body?: unknown) => Promise<AlertState>;
   filters: SearchFilters;
   /** New York City's neighborhoods with listings, from the market figures. */
   loadNeighborhoods?: (signal: AbortSignal) => Promise<{ areas?: Neighborhood[] }>;
   onError: (message: string) => void;
+  /** Opens where a free account upgrades. */
+  onUpgrade?: () => void;
 }) {
   const [state, setState] = useState<AlertState | null>(null);
   // The new alert starts from the current search where it can.
@@ -158,6 +164,7 @@ export function AlertsPage({
           ? 'This browser cannot show notifications.'
           : null;
 
+  const free = state?.plan === 'free';
   return (
     <View style={styles.marketplacePanel}>
       <View style={styles.chartIntro}>
@@ -171,66 +178,66 @@ export function AlertsPage({
       </View>
       {!state ? (
         <Text style={styles.smallMuted}>{busy === 'load' ? 'Loading alerts…' : 'Alerts are unavailable.'}</Text>
-      ) : state.plan === 'free' ? (
-        <View style={styles.chartCard}>
-          <Text accessibilityRole="header" style={styles.fieldLabel}>
-            Alerts are part of the paid plan
-          </Text>
-          <Text style={styles.bodyText}>
-            On the paid plan, Walkup emails you when a new apartment matches what you want, like a West Village 2 BR under $5,000, or 1 to 3
-            bedrooms anywhere in Brooklyn under $2,500. Upgrade on your Profile page.
-          </Text>
-          {state.rules.map((rule) => (
-            <View key={rule.id} style={styles.chipRow}>
-              <Text style={styles.bodyText}>{rule.name} (paused)</Text>
-              <Button secondary disabled={busy !== ''} onPress={() => act('rule', { action: 'delete-rule', id: rule.id })}>
-                {'Remove ' + rule.name}
-              </Button>
-            </View>
-          ))}
-        </View>
       ) : (
         <>
-          <View style={styles.chartCard}>
-            <Text accessibilityRole="header" style={styles.fieldLabel}>
-              New alert
-            </Text>
-            <Text style={styles.smallMuted}>Where</Text>
-            <View style={styles.chipRow}>
-              {AREAS.map(([key, label]) => (
-                <Chip
-                  key={key}
-                  selected={area === key}
-                  onPress={() => {
-                    setArea(key);
-                    setPicked([]);
-                  }}
-                >
-                  {label}
-                </Chip>
-              ))}
+          {free && (
+            <View style={[styles.chartCard, { gap: 8 }]}>
+              <Text accessibilityRole="header" style={styles.fieldLabel}>
+                Free plan: one alert, by email
+              </Text>
+              <Text style={styles.bodyText}>
+                Your alert is emailed three hours after a match is found, up to three a day. The paid plan sends every match as soon as it
+                is found, keeps up to ten alerts and adds notifications on your phone.
+              </Text>
+              {onUpgrade && (
+                <View style={styles.chipRow}>
+                  <Button onPress={onUpgrade}>Upgrade</Button>
+                </View>
+              )}
             </View>
-            {choices.length > 0 && <NeighborhoodPicker choices={choices} picked={picked} onChange={setPicked} showBorough={!borough} />}
-            <Text style={styles.smallMuted}>Bedrooms (choose any; none means any size)</Text>
-            <View style={styles.chipRow}>
-              {BEDS.map(([count, label]) => (
-                <Chip key={count} selected={beds.includes(count)} onPress={() => setBeds((current) => toggle(current, count))}>
-                  {label}
-                </Chip>
-              ))}
+          )}
+          {free && state.rules.length > 0 ? null : (
+            <View style={styles.chartCard}>
+              <Text accessibilityRole="header" style={styles.fieldLabel}>
+                New alert
+              </Text>
+              <Text style={styles.smallMuted}>Where</Text>
+              <View style={styles.chipRow}>
+                {AREAS.map(([key, label]) => (
+                  <Chip
+                    key={key}
+                    selected={area === key}
+                    onPress={() => {
+                      setArea(key);
+                      setPicked([]);
+                    }}
+                  >
+                    {label}
+                  </Chip>
+                ))}
+              </View>
+              {choices.length > 0 && <NeighborhoodPicker choices={choices} picked={picked} onChange={setPicked} showBorough={!borough} />}
+              <Text style={styles.smallMuted}>Bedrooms (choose any; none means any size)</Text>
+              <View style={styles.chipRow}>
+                {BEDS.map(([count, label]) => (
+                  <Chip key={count} selected={beds.includes(count)} onPress={() => setBeds((current) => toggle(current, count))}>
+                    {label}
+                  </Chip>
+                ))}
+              </View>
+              <Field
+                label="Max rent per month"
+                value={maxRent}
+                onChangeText={(text) => setMaxRent(wholeNumber(text, 100000))}
+                keyboardType="number-pad"
+                placeholder="Any price"
+              />
+              <Field label="Alert name" value={customName} onChangeText={setCustomName} maxLength={60} placeholder={name} />
+              <Button disabled={busy !== ''} onPress={saveAlert}>
+                Save alert
+              </Button>
             </View>
-            <Field
-              label="Max rent per month"
-              value={maxRent}
-              onChangeText={(text) => setMaxRent(wholeNumber(text, 100000))}
-              keyboardType="number-pad"
-              placeholder="Any price"
-            />
-            <Field label="Alert name" value={customName} onChangeText={setCustomName} maxLength={60} placeholder={name} />
-            <Button disabled={busy !== ''} onPress={saveAlert}>
-              Save alert
-            </Button>
-          </View>
+          )}
           {state.rules.length > 0 && (
             <View style={styles.chartCard}>
               <Text accessibilityRole="header" style={styles.fieldLabel}>
@@ -260,7 +267,7 @@ export function AlertsPage({
                   : 'Notifications: no devices yet.'}
               </Text>
             )}
-            {pushText ? (
+            {free ? null : pushText ? (
               <Text style={styles.smallMuted}>{pushText}</Text>
             ) : (
               <Button secondary disabled={busy !== ''} onPress={turnOnNotifications}>

@@ -65,11 +65,12 @@ export function HomePage({
             </Text>
           </View>
           <Text style={styles.bodyText}>
-            Tell Walkup what you’re looking for and get an email when a match is listed, checked every two hours.
+            Tell Walkup what you’re looking for and get an email when a match is listed. One alert is free; the paid plan sends every match
+            as soon as it is found.
           </Text>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-          <Button onPress={() => onOpen('alerts')}>Get email alerts</Button>
+          <Button onPress={() => onOpen('alerts')}>Get a free alert</Button>
           <Pressable accessibilityRole="link" onPress={() => onOpen('pricing')} style={{ paddingVertical: 6 }}>
             <Text style={styles.linkText}>Pricing</Text>
           </Pressable>

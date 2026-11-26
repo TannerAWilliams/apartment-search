@@ -925,6 +925,7 @@ function ApartmentSearch() {
                       filters={applied}
                       loadNeighborhoods={serverState === 'ready' ? loadNeighborhoods : undefined}
                       onError={setError}
+                      onUpgrade={() => navigateTab('more')}
                     />
                   )}
                   {view === 'shared' && (
