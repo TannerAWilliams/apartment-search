@@ -9,6 +9,7 @@ import { formatRent } from '../search.ts';
 import { styles } from '../styles.ts';
 import { Button, Chip, Field } from '../components/ui.tsx';
 import { NeighborhoodPicker } from '../components/NeighborhoodPicker.tsx';
+import { MANHATTAN_PARTS, type MapArea, type Shape, type Spot, manhattanPart, mapAreas, toggleNames } from '../neighborhood-areas.ts';
 
 /** The areas an alert can watch: all of New York City or one borough, as the search names them. */
 const AREAS: [string, string, string | null][] = [
@@ -67,6 +68,8 @@ export function AlertsPage({
   loadNeighborhoods,
   workplace,
   renderMap,
+  loadShapes,
+  loadSpots,
   onError,
   onUpgrade,
 }: {
@@ -75,7 +78,10 @@ export function AlertsPage({
   /** Where the person works, when they have said: an alert can then be limited by commute, and says each one. */
   workplace?: { label: string; latitude: number; longitude: number };
   /** Draws the apartments an alert would match on a map (the app's map, which this page does not load itself). */
-  renderMap?: (points: MapPoint[], total: number) => React.ReactNode;
+  renderMap?: (points: MapPoint[], total: number, areas?: MapArea[], onArea?: (area: MapArea) => void) => React.ReactNode;
+  /** The city's neighborhoods as outlines for the map, and where each named neighborhood's apartments are. */
+  loadShapes?: () => Promise<Shape[]>;
+  loadSpots?: () => Promise<Record<string, Spot>>;
   /** New York City's neighborhoods with listings, from the market figures. */
   loadNeighborhoods?: (signal: AbortSignal) => Promise<{ areas?: Neighborhood[] }>;
   onError: (message: string) => void;
@@ -89,6 +95,8 @@ export function AlertsPage({
   const [maxRent, setMaxRent] = useState(filters.maxRent == null ? '' : String(filters.maxRent));
   const [picked, setPicked] = useState<string[]>([]);
   const [places, setPlaces] = useState<Neighborhood[]>([]);
+  const [shapes, setShapes] = useState<Shape[]>([]);
+  const [spots, setSpots] = useState<Record<string, Spot>>({});
   const [customName, setCustomName] = useState('');
   const [commute, setCommute] = useState<number | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -129,7 +137,48 @@ export function AlertsPage({
     return () => controller.abort();
   }, [loadNeighborhoods]);
 
+  // The map of neighborhoods to tap: without it, the form works as before.
+  useEffect(() => {
+    let current = true;
+    void Promise.all([loadShapes?.() ?? [], loadSpots?.() ?? {}])
+      .then(([outlines, where]) => {
+        if (!current) return;
+        setShapes(outlines);
+        setSpots(where);
+      })
+      .catch(() => {});
+    return () => {
+      current = false;
+    };
+  }, [loadShapes, loadSpots]);
+
   const borough = AREAS.find(([key]) => key === area)?.[2] ?? null;
+  // The chosen borough's outlines (or the city's), each with the neighborhood names found inside it.
+  const areas = useMemo(
+    () =>
+      mapAreas(
+        shapes.filter((shape) => !borough || shape.borough === borough),
+        Object.keys(spots),
+        spots,
+        picked,
+      ),
+    [shapes, spots, borough, picked],
+  );
+  // Downtown, midtown and uptown Manhattan, each as the neighborhoods in it.
+  const parts = useMemo(() => {
+    if (borough && borough !== 'Manhattan') return [];
+    const names = mapAreas(
+      shapes.filter((shape) => shape.borough === 'Manhattan'),
+      Object.keys(spots),
+      spots,
+      [],
+    ).flatMap((entry) => entry.names);
+    return MANHATTAN_PARTS.map(([key, label]) => ({
+      label: `${label} Manhattan`,
+      names: names.filter((name) => manhattanPart(spots[name]!) === key),
+    })).filter((part) => part.names.length > 0);
+  }, [shapes, spots, borough]);
+  const whole = (names: string[]) => names.every((name) => picked.includes(name));
   // The chosen borough's neighborhoods (or the city's), those with the most listings first.
   const choices = useMemo(
     () =>
@@ -139,7 +188,11 @@ export function AlertsPage({
     [places, borough],
   );
   const rent = Number(maxRent) || null;
-  const name = customName.trim() || alertName(area, picked, beds, rent);
+  // Whole parts of Manhattan are named as such: "Downtown Manhattan", not thirty neighborhoods.
+  const chosenParts = parts.filter((part) => whole(part.names));
+  const inParts = new Set(chosenParts.flatMap((part) => part.names));
+  const named = [...chosenParts.map((part) => part.label), ...picked.filter((entry) => !inParts.has(entry))];
+  const name = customName.trim() || alertName(area, named, beds, rent);
   const toggle = <T,>(list: T[], value: T) => (list.includes(value) ? list.filter((item) => item !== value) : [...list, value]);
 
   const destination = workplace?.label.split(',')[0]!.trim().slice(0, 80);
@@ -264,7 +317,22 @@ export function AlertsPage({
                   </Chip>
                 ))}
               </View>
-              {choices.length > 0 && <NeighborhoodPicker choices={choices} picked={picked} onChange={setPicked} showBorough={!borough} />}
+              {parts.length > 0 && (
+                <View style={styles.chipRow}>
+                  {parts.map((part) => (
+                    <Chip
+                      key={part.label}
+                      selected={whole(part.names)}
+                      onPress={() => setPicked((current) => toggleNames(current, part.names))}
+                    >
+                      {part.label}
+                    </Chip>
+                  ))}
+                </View>
+              )}
+              {(choices.length > 0 || picked.length > 0) && (
+                <NeighborhoodPicker choices={choices} picked={picked} onChange={setPicked} showBorough={!borough} />
+              )}
               {/* What is chosen, on the map: the apartments this alert matches now. */}
               {preview && (
                 <Text accessibilityRole="text" style={styles.bodyText}>
@@ -273,7 +341,15 @@ export function AlertsPage({
                     : `${preview.count.toLocaleString('en-US')} ${preview.count === 1 ? 'apartment matches' : 'apartments match'} this right now, shown on the map.`}
                 </Text>
               )}
-              {preview && preview.points.length > 0 && renderMap?.(preview.points, preview.count)}
+              {areas.length > 0 && (
+                <Text style={styles.smallMuted}>
+                  Not sure of the names? Tap a shaded area on the map to add its neighborhoods; tap it again to remove them.
+                </Text>
+              )}
+              {(areas.length > 0 || (preview && preview.points.length > 0)) &&
+                renderMap?.(preview?.points ?? [], preview?.count ?? 0, areas, (tapped) =>
+                  setPicked((current) => toggleNames(current, tapped.names)),
+                )}
               <Text style={styles.smallMuted}>Bedrooms (choose any; none means any size)</Text>
               <View style={styles.chipRow}>
                 {BEDS.map(([count, label]) => (

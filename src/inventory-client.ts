@@ -130,9 +130,18 @@ export function createInventorySearch({
     return destination ? withTransitEstimates([found], inventory.stations, destination)[0]! : found;
   }
 
+  /** Every listing in the file, or none when there is no file here. */
+  async function listings() {
+    if (!enabled) return [];
+    const known = await currentHead();
+    const mine = known && inventoryOf(known);
+    return (mine ? (mine.loaded ?? (await mine.loading)) : null)?.listings ?? [];
+  }
+
   return {
     search,
     listing,
+    listings,
     /** Starts downloading the file, so the first search made does not wait for it. */
     preload: () => void (enabled && currentHead().then((known) => known && inventoryOf(known))),
   };

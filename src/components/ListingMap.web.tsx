@@ -18,6 +18,7 @@ export { default as maplibregl } from 'maplibre-gl';
 import { safeListingUrl } from '../marketplaces.ts';
 import { bedroomLabel, formatRent } from '../search.ts';
 import { colors } from '../styles.ts';
+import { type MapArea, areaAt } from '../neighborhood-areas.ts';
 // The map and its pictures keep their own light colors in either theme.
 import { palette } from '../palette.ts';
 
@@ -302,7 +303,12 @@ export function ListingMap({
   onSave,
   isSaved,
   onOpen,
+  areas,
+  onArea,
 }: {
+  /** Outlined neighborhoods under the pins: shaded, darker when chosen, and chosen or cleared with a tap. */
+  areas?: MapArea[];
+  onArea?: (area: MapArea) => void;
   /** Opens a listing's own page from its pop-up. */
   onOpen?: (point: MapPoint) => void;
   points: MapPoint[];
@@ -315,7 +321,19 @@ export function ListingMap({
   // Pop-ups are built when opened, so they read the latest save state through this ref.
   const actions = useRef<SaveActions>({});
   actions.current = { save: onSave, isSaved, open: onOpen };
-  const instance = useRef<{ map: L.Map; clusters: L.MarkerClusterGroup; dots: L.LayerGroup; transit: L.LayerGroup } | null>(null);
+  // The map's taps and pointer read the latest areas through this ref.
+  const shown = useRef({ areas, onArea });
+  shown.current = { areas, onArea };
+  // The areas' outlines are the same from one choice to the next; only their shading changes.
+  const areaKeys = areas?.map(({ key }) => key).join('|') ?? '';
+  const instance = useRef<{
+    map: L.Map;
+    clusters: L.MarkerClusterGroup;
+    dots: L.LayerGroup;
+    transit: L.LayerGroup;
+    shading: L.LayerGroup;
+  } | null>(null);
+  const shaded = useRef(new Map<string, L.Polygon>());
   const [unavailable, setUnavailable] = useState(false);
   // Subway, PATH, NJ Transit and Metro-North stops under the pins, on by default and one tap to hide.
   const [transitShown, setTransitShown] = useState(true);
@@ -391,7 +409,25 @@ export function ListingMap({
     showForZoom();
     // Stops are drawn on a canvas below the pins, so hundreds of them stay quick.
     const transit = L.layerGroup().addTo(map);
-    instance.current = { map, clusters, dots, transit };
+    // Neighborhood shading sits under the stops and the pins.
+    map.createPane('areas').style.zIndex = '350';
+    const shading = L.layerGroup().addTo(map);
+    // The pins and stops are drawn on sheets that cover the whole map, so a tap never reaches the shading under
+    // them: the map itself works out which area was tapped or is under the pointer, and names it.
+    const naming = L.tooltip({ direction: 'top', offset: [0, -6] });
+    const under = (event: L.LeafletMouseEvent) =>
+      shown.current.areas && areaAt(shown.current.areas, { latitude: event.latlng.lat, longitude: event.latlng.lng });
+    map.on('click', (event) => {
+      const area = under(event);
+      if (area) shown.current.onArea?.(area);
+    });
+    map.on('mousemove', (event) => {
+      const area = under(event);
+      if (area) naming.setLatLng(event.latlng).setContent(area.label).addTo(map);
+      else naming.remove();
+    });
+    map.on('mouseout', () => naming.remove());
+    instance.current = { map, clusters, dots, transit, shading };
     const resize = new ResizeObserver(() => map.invalidateSize({ pan: false }));
     resize.observe(container.current);
     return () => {
@@ -424,13 +460,48 @@ export function ListingMap({
         weight: 1.5,
         fillColor: colors.accent,
         fillOpacity: 0.9,
+        // A tapped home opens its pop-up; it does not also choose the neighborhood under it.
+        bubblingMouseEvents: false,
       })
         .bindPopup(() => popupContent(listings, actions.current), { maxWidth: 280 })
         .addTo(dots);
     }
     clusters.addLayers(pins);
-    if (pins.length) map.fitBounds(L.latLngBounds(pins.map((pin) => pin.getLatLng())), { padding: [32, 32], maxZoom: 15, animate: false });
-  }, [locations, visible]);
+    // With neighborhoods to choose, the map stays on them instead of jumping to each new set of matches.
+    if (pins.length && !areaKeys)
+      map.fitBounds(L.latLngBounds(pins.map((pin) => pin.getLatLng())), { padding: [32, 32], maxZoom: 15, animate: false });
+  }, [locations, visible, areaKeys]);
+
+  const areaStyle = (selected: boolean): L.PathOptions => ({
+    pane: 'areas',
+    interactive: false,
+    color: selected ? colors.accent : palette.gray[7],
+    weight: selected ? 2 : 1,
+    fillColor: selected ? colors.accent : palette.gray[6],
+    fillOpacity: selected ? 0.45 : 0.12,
+  });
+  // The outlines, drawn when the set of areas changes; the map then shows all of them.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: redrawn for a new set of areas, not for each choice
+  useEffect(() => {
+    if (!instance.current) return;
+    const { map, shading } = instance.current;
+    shading.clearLayers();
+    shaded.current.clear();
+    if (!areas?.length) return;
+    for (const area of areas) {
+      const rings = area.rings.map((ring) => {
+        const corners: L.LatLngTuple[] = [];
+        for (let at = 0; at < ring.length; at += 2) corners.push([ring[at]!, ring[at + 1]!]);
+        return [corners];
+      });
+      shaded.current.set(area.key, L.polygon(rings, areaStyle(area.selected)).addTo(shading));
+    }
+    map.fitBounds(L.featureGroup([...shaded.current.values()]).getBounds(), { padding: [12, 12], animate: false });
+  }, [areaKeys, visible]);
+  // Each choice changes the shading only.
+  useEffect(() => {
+    for (const area of areas ?? []) shaded.current.get(area.key)?.setStyle(areaStyle(area.selected));
+  });
 
   useEffect(() => {
     if (!instance.current) return;
@@ -475,7 +546,9 @@ export function ListingMap({
           fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
         }}
       >
-        {`${points.length.toLocaleString()} mapped${total > points.length ? ` · ${total - points.length} without coordinates` : ''}`}
+        {areas?.length
+          ? `Tap a shaded area to add or remove its neighborhoods${points.length ? ` · ${points.length.toLocaleString()} matching now` : ''}`
+          : `${points.length.toLocaleString()} mapped${total > points.length ? ` · ${total - points.length} without coordinates` : ''}`}
         {points.length > 0 && ' · Zoom in for prices; tap a home to see it'}
         {unavailable && ' · Some street tiles could not load'}
       </div>

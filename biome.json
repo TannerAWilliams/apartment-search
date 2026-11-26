@@ -6,7 +6,7 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["**/*.ts", "**/*.tsx", "**/*.json", "**/*.jsonc", "!server/data", "!src/data", "!web-build", "!bun.lock"]
+    "includes": ["**/*.ts", "**/*.tsx", "**/*.json", "**/*.jsonc", "!server/data", "!src/data", "!public/maps", "!web-build", "!bun.lock"]
   },
   "formatter": {
     "enabled": true,

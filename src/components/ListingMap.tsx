@@ -5,6 +5,8 @@ export function ListingMap(_props: {
   onSave?: (point: never) => void;
   isSaved?: (point: never) => boolean;
   onOpen?: (point: never) => void;
+  areas?: unknown[];
+  onArea?: (area: never) => void;
 }) {
   return null;
 }

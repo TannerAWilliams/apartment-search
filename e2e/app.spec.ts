@@ -4,6 +4,9 @@ import { normalizeListing } from '../src/listings.ts';
 import { parseFilters, localWorkplace } from '../src/search.ts';
 import type { ListingData } from '../src/domain.ts';
 import type { HousingResponse } from '../server/contracts.ts';
+import { answerSearch, type Inventory } from '../src/answer.ts';
+import { openingSearchBody } from '../src/early-requests.ts';
+import { encodeInventory, INVENTORY_FORMAT } from '../src/inventory-format.ts';
 
 const fixtures = (count = 1) =>
   Array.from({ length: count }, (_, index) =>
@@ -46,6 +49,8 @@ async function mockApp(
     /** The server can show Street View images on cards. */
     streetView?: boolean;
     inventoryExpiresAt?: string;
+    /** An inventory file the app searches itself, as the real server publishes one. */
+    inventory?: { head: object; file: string };
     housing?: HousingResponse;
     /** The server asks for sign-in until the email-code sign-in succeeds. */
     signIn?: boolean;
@@ -239,6 +244,10 @@ async function mockApp(
     } else if (url.pathname === '/api/listing/stored') {
       // The quick copy of an apartment; this stand-in server leaves that to its full lookup.
       return route.fulfill({ json: { listing: null } });
+    } else if (options.inventory && url.pathname === '/api/inventory') {
+      return route.fulfill({ json: options.inventory.head });
+    } else if (options.inventory && url.pathname.startsWith('/api/inventory/')) {
+      return route.fulfill({ body: options.inventory.file, contentType: 'text/plain' });
     } else if (url.pathname === '/api/inventory') {
       // This stand-in server keeps no inventory file, so the app searches through it (e2e/perf.spec.ts has one).
       return route.fulfill({ status: 404, json: { error: 'This server keeps no inventory file.' } });
@@ -250,7 +259,8 @@ async function mockApp(
   });
   await page.goto(options.start ?? '/search');
   // Signed out, the app searches only after sign-in.
-  if (!options.signIn) await expect.poll(() => requests.filter((r) => r.path === '/api/search').length).toBeGreaterThan(0);
+  if (!options.signIn && !options.inventory)
+    await expect.poll(() => requests.filter((r) => r.path === '/api/search').length).toBeGreaterThan(0);
   return { requests, unexpected, listings };
 }
 
@@ -1682,4 +1692,78 @@ test('a member’s hidden apartments are kept on the account and follow them to 
   await expect(page.getByText('13 Grove Street', { exact: true })).toBeVisible();
   await expect(page.getByText('12 Grove Street', { exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: /1 hidden by you/ })).toBeVisible();
+});
+
+test('alerts: parts of Manhattan are chosen in one tap, and neighborhoods by tapping the map', async ({ page }) => {
+  // An inventory file with apartments in three Manhattan neighborhoods: where each is on the map comes from these.
+  const home = (id: string, neighborhood: string, latitude: number, longitude: number) => {
+    const listing = normalizeListing(
+      {
+        id,
+        addressLine1: id,
+        city: 'Manhattan',
+        state: 'NY',
+        zipCode: '10014',
+        neighborhood,
+        latitude,
+        longitude,
+        bedrooms: 1,
+        price: 3000,
+        status: 'Active',
+        url: 'https://www.zillow.com/homedetails/' + id.replaceAll(' ', '-') + '/',
+      },
+      { id: 'zillow', name: 'Zillow', kind: 'feed' },
+    );
+    if (!listing) throw new Error('Invalid fixture');
+    return listing;
+  };
+  const listings = [
+    home('1 Bank Street', 'West Village', 40.7348, -74.0048),
+    home('200 West 20th Street', 'Chelsea', 40.7455, -73.9975),
+    home('100 West 86th Street', 'Upper West Side', 40.7859, -73.9764),
+  ];
+  const inventory: Inventory = { listings, stations: [], mode: 'live', sources: [], notices: [] };
+  const { listings: _rows, ...header } = inventory;
+  const opening = parseFilters(JSON.parse(openingSearchBody()));
+  const head = { format: INVENTORY_FORMAT, version: 'b'.repeat(24), opening: answerSearch(inventory, opening, localWorkplace(opening)!) };
+  await mockApp(page, { inventory: { head, file: encodeInventory(header, listings as unknown as Record<string, unknown>[]) } });
+  const state = { rules: [], devices: [], recent: [], channels: { email: true, push: null } };
+  const previews: { criteria?: { neighborhoods?: string[] } }[] = [];
+  await page.route('**/api/alerts', (route) => {
+    const body = route.request().postDataJSON();
+    if (body?.action === 'preview-rule') previews.push(body.rule);
+    return route.fulfill({ json: body?.action === 'preview-rule' ? { ...state, preview: { count: 0, points: [] } } : state });
+  });
+  await page.getByRole('tab', { name: 'Profile', exact: true }).click();
+  await page.getByRole('button', { name: 'Email alerts', exact: true }).click();
+  await page.getByRole('button', { name: 'Manhattan', exact: true }).click();
+  // Downtown is below 14th Street, midtown to 59th, uptown above: each is every neighborhood in it.
+  await page.getByRole('button', { name: 'Downtown Manhattan', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Remove West Village', exact: true })).toBeVisible();
+  await expect(page.getByRole('textbox', { name: 'Alert name', exact: true })).toHaveAttribute(
+    'placeholder',
+    'Downtown Manhattan · Any size · any price',
+  );
+  await page.getByRole('button', { name: 'Uptown Manhattan', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Remove Upper West Side', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Downtown Manhattan', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Remove West Village', exact: true })).toHaveCount(0);
+  // The map shades every neighborhood with apartments; tapping one chooses it, tapping again clears it.
+  const map = page.getByRole('region', { name: 'Map of matching apartments' });
+  await expect(map.getByText('Tap a shaded area to add or remove its neighborhoods', { exact: false })).toBeVisible();
+  const shapes = map.locator('.leaflet-areas-pane path');
+  await expect(shapes).toHaveCount(3);
+  const chosen = () => page.getByRole('button', { name: /^Remove / }).allTextContents();
+  // The shape with the most room around its middle: the Upper West Side is already chosen, so tap another.
+  const tap = async () => {
+    const shape = shapes.and(map.locator('[fill-opacity="0.12"], [fill-opacity="0.45"]')).first();
+    await shape.scrollIntoViewIfNeeded();
+    const box = (await shape.boundingBox())!;
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  };
+  await tap();
+  await expect.poll(async () => (await chosen()).length).toBe(2);
+  await tap();
+  await expect.poll(chosen).toEqual(['Upper West Side ✕']);
+  await expect.poll(() => previews.at(-1)?.criteria?.neighborhoods).toEqual(['Upper West Side']);
 });

@@ -29,6 +29,8 @@ import {
   api,
   searchApartments,
   inventory,
+  loadNeighborhoodShapes,
+  loadNeighborhoodSpots,
 } from './src/app-shared.ts';
 import { Filters } from './src/components/Filters.tsx';
 import { HomePage, type SiteStats } from './src/screens/HomePage.tsx';
@@ -967,16 +969,18 @@ function ApartmentSearch() {
                         workplace={commuteKnown ? result.workplace : undefined}
                         renderMap={
                           WEB_MAP
-                            ? (mapped, total) => (
+                            ? (mapped, total, areas, onArea) => (
                                 <View style={styles.mapPanel}>
                                   <Suspense fallback={<Text style={styles.smallMuted}>Loading map…</Text>}>
-                                    <ListingMap points={mapped} total={total} visible />
+                                    <ListingMap points={mapped} total={total} visible areas={areas} onArea={onArea} />
                                   </Suspense>
                                 </View>
                               )
                             : undefined
                         }
                         loadNeighborhoods={serverState === 'ready' ? loadNeighborhoods : undefined}
+                        loadShapes={WEB_MAP ? loadNeighborhoodShapes : undefined}
+                        loadSpots={WEB_MAP ? loadNeighborhoodSpots : undefined}
                         onError={setError}
                         onUpgrade={() => navigateTab('more')}
                       />

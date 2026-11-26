@@ -300,6 +300,16 @@ test('an apartment’s page reads the listing from the file and its price histor
   // A listing the file does not have, or no file at all: the server is asked.
   expect(await app.listing('gone', { workplace: 'penn', customWorkplace: '' })).toBeUndefined();
   expect(await client(false).listing(wanted.id, { workplace: 'penn', customWorkplace: '' })).toBeUndefined();
+  // Every listing in the file, for what the app works out itself; none where there is no file.
+  expect((await app.listings()).length).toBe(inventory.listings.length);
+  expect(await client(false).listings()).toEqual([]);
+  const none = createInventorySearch({
+    api: (async () => Promise.reject(new Error('down'))) as typeof api,
+    origin: '',
+    enabled: true,
+    fetcher: async () => new Response(''),
+  });
+  expect(await none.listings()).toEqual([]);
 
   // The listing as stored comes from the database by ID, without reading the others: shown first, and the source
   // of the recorded rents the file leaves out.

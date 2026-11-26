@@ -7,6 +7,7 @@ import { REGIONS } from './regions.ts';
 import type { EarlyRequests } from './early-key.ts';
 import { WEB_SEARCH_DEFAULTS, withEarlyRequests } from './early-requests.ts';
 import { createInventorySearch } from './inventory-client.ts';
+import { type Shape, neighborhoodSpots } from './neighborhood-areas.ts';
 import { LONG_SYNC_LIMITS, LONG_SYNC_POLL_MS } from './source-status.ts';
 
 export type DraftFilters = Omit<
@@ -95,6 +96,16 @@ export const inventory = createInventorySearch({
   pause: () => new Promise((resolve) => setTimeout(resolve)),
 });
 export const searchApartments = inventory.search;
+
+/** The city's neighborhood outlines (scripts/make-neighborhood-shapes.ts), fetched when a map first needs them. */
+let neighborhoodShapes: Promise<Shape[]> | null = null;
+export const loadNeighborhoodShapes = () =>
+  (neighborhoodShapes ??= fetch('/maps/nyc-neighborhoods.json').then((response) =>
+    response.ok ? (response.json() as Promise<Shape[]>) : [],
+  ));
+/** Where each New York City neighborhood's apartments are, from the listings in hand. */
+export const loadNeighborhoodSpots = () =>
+  inventory.listings().then((listings) => neighborhoodSpots(listings.filter(({ region }) => region === 'nyc')));
 
 export async function finishSourceCheck(
   check: RefreshInfo,
