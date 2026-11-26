@@ -364,6 +364,10 @@ function zumperPage(rent: number) {
     max_price: rent,
     min_bedrooms: 1,
     max_bedrooms: 1,
+    min_bathrooms: 1,
+    max_bathrooms: 1,
+    min_square_feet: 650,
+    max_square_feet: 650,
   };
   const listables = [
     rental,

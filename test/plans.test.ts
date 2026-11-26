@@ -54,8 +54,8 @@ test('a free account keeps one alert, by email, and an admin upgrades it', async
   expect(second.status).toBe(402);
   expect((await readJson<{ error: string }>(second)).error).toMatch(/free account keeps one alert/);
   const phone = await handleApi(post('alerts', { action: 'add-device', subscription: {}, label: 'Phone' }), appEnv, renter);
-  expect(phone.status).toBe(402);
-  expect((await readJson<{ error: string }>(phone)).error).toMatch(/Notifications on your phone are part of the paid plan/);
+  // Notifications on a phone are free too; this one is refused only for its empty subscription.
+  expect(phone.status).not.toBe(402);
   expect((await handleApi(post('alerts', { action: 'test' }), appEnv, renter)).status).toBe(200);
   expect((await handleApi(post('alerts', { action: 'delete-rule', id: 'x' }), appEnv, renter)).status).toBe(200);
 

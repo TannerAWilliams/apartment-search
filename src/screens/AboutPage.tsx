@@ -120,7 +120,8 @@ export function PricingPage({ signedIn, onOpen }: { signedIn: boolean; onOpen: (
             <Text style={{ fontSize: 28, fontWeight: '700', color: colors.ink }}>$0</Text>
             <Text style={styles.bodyText}>
               Search every source, deals and warnings, building grades, rent-stabilized buildings and market data, no account needed. A free
-              account adds saved apartments, shared lists and one email alert, sent three hours after a match is found, up to three a day.
+              account adds saved apartments, shared lists and one alert, by email and on your phone, sent three hours after a match is
+              found, up to three a day.
             </Text>
           </View>
           <View style={{ flex: wide ? 1 : undefined, gap: 8, padding: 20, borderRadius: 16, borderWidth: 2, borderColor: colors.ink }}>
@@ -130,8 +131,8 @@ export function PricingPage({ signedIn, onOpen }: { signedIn: boolean; onOpen: (
             </Text>
             <Text style={styles.smallMuted}>or $35 for three months, paid once</Text>
             <Text style={styles.bodyText}>
-              Everything in Free, plus every new match and price drop emailed as soon as it is found (checked every two hours), up to ten
-              alerts, and notifications on your phone.
+              Everything in Free, plus every new match and price drop sent as soon as it is found (checked every two hours), by email and on
+              your phone, and up to ten alerts.
             </Text>
           </View>
         </View>

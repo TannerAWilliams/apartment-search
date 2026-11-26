@@ -49,11 +49,10 @@ const STORAGE = 'Alerts need saved storage.';
 const ownerOf = (account: string | null | undefined) => (account ? account.toLowerCase() : undefined);
 const NO_ACCOUNT = 'Create a free account or sign in to get email alerts.';
 /**
- * What the free plan leaves out, by action: more than one alert, and notifications on a phone. A free account's
- * one alert is emailed three hours after a match is found (server/alerts.ts).
+ * What the free plan leaves out: more than one alert. A free account's one alert comes by email and to its
+ * phone three hours after a match is found (server/alerts.ts); text messages are for a higher plan, not built yet.
  */
 const ONE_ALERT = 'A free account keeps one alert. The paid plan keeps up to ten and sends each match as soon as it is found.';
-const PAID_NOTIFICATIONS = 'Notifications on your phone are part of the paid plan. Free alerts come by email.';
 
 export const alertRoutes = factory
   .createApp()
@@ -79,7 +78,6 @@ export const alertRoutes = factory
     const body = c.req.valid('json');
     const plan = await planFor(env, c.var.bucket, c.var.services.account, c.var.services.admin);
     const owner = ownerOf(c.var.services.account);
-    if (plan === 'free' && body.action === 'add-device') return fail(c, 402, PAID_NOTIFICATIONS);
     if (plan === 'free' && body.action === 'add-rule' && (await alertState(env, owner)).rules.length >= FREE_RULES)
       return fail(c, 402, ONE_ALERT);
     const result = await alertAction(body, env, origin, owner);

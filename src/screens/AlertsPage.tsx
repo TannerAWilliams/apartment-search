@@ -183,11 +183,11 @@ export function AlertsPage({
           {free && (
             <View style={[styles.chartCard, { gap: 8 }]}>
               <Text accessibilityRole="header" style={styles.fieldLabel}>
-                Free plan: one alert, by email
+                Free plan: one alert
               </Text>
               <Text style={styles.bodyText}>
-                Your alert is emailed three hours after a match is found, up to three a day. The paid plan sends every match as soon as it
-                is found, keeps up to ten alerts and adds notifications on your phone.
+                Your alert comes by email, and to your phone if you turn notifications on, three hours after a match is found and up to
+                three a day. The paid plan sends every match as soon as it is found and keeps up to ten alerts.
               </Text>
               {onUpgrade && (
                 <View style={styles.chipRow}>
@@ -267,7 +267,7 @@ export function AlertsPage({
                   : 'Notifications: no devices yet.'}
               </Text>
             )}
-            {free ? null : pushText ? (
+            {pushText ? (
               <Text style={styles.smallMuted}>{pushText}</Text>
             ) : (
               <Button secondary disabled={busy !== ''} onPress={turnOnNotifications}>

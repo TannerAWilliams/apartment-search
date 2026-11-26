@@ -45,6 +45,7 @@ import {
   ProfileIcon,
   SearchIcon,
   SlidersIcon,
+  TicketIcon,
 } from './src/components/Icons.tsx';
 import { Marketplaces } from './src/screens/Marketplaces.tsx';
 import { Results } from './src/screens/Results.tsx';
@@ -463,6 +464,7 @@ function ApartmentSearch() {
         [
           ['results', 'Search', SearchIcon],
           ['chart', 'Rents', ChartIcon],
+          ['affordable', 'Lotteries', TicketIcon],
           ['saved', `Saved (${savedResults.total})`, HeartIcon],
           // The same place for everyone: a visitor signs in there, a member finds their profile.
           ['more', member ? 'Profile' : 'Log in', ProfileIcon],
@@ -471,7 +473,7 @@ function ApartmentSearch() {
         // An apartment's page belongs to Search; Profile's own pages to Profile.
         const selected =
           key === 'more'
-            ? !['home', 'chart', 'results', 'saved', 'about', 'pricing'].includes(tab) && !/^(listing|link)=/.test(tab)
+            ? !['home', 'chart', 'results', 'saved', 'affordable', 'about', 'pricing'].includes(tab) && !/^(listing|link)=/.test(tab)
             : key === 'results'
               ? tab === key || tab.startsWith('listing=')
               : tab === key;
@@ -1132,7 +1134,7 @@ const PAGE_TITLES: Record<string, string> = {
   list: 'List your apartment',
   neighborhoods: 'Neighborhoods',
   renewal: 'Renewal check',
-  affordable: 'Affordable housing',
+  affordable: 'Lotteries and public housing',
   marketplaces: 'Rental platforms',
   sources: 'Sources & sync',
   admin: 'Dashboard',

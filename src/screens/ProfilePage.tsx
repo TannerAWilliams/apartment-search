@@ -128,8 +128,8 @@ function PlanCard({ plan, request, onError }: { plan: 'free' | 'paid'; request: 
     <View style={[styles.menu, { padding: 16, gap: 10 }]}>
       <Text style={styles.menuLabel}>Upgrade to hear first</Text>
       <Text style={styles.smallMuted}>
-        Every new match and price drop as soon as it is found, checked every two hours, instead of three hours later; up to ten alerts and
-        notifications on your phone. Cancel anytime; payments are handled by Stripe.
+        Every new match and price drop as soon as it is found, checked every two hours, instead of three hours later, and up to ten alerts.
+        Cancel anytime; payments are handled by Stripe.
       </Text>
       <View style={styles.chipRow}>
         <Button disabled={busy} onPress={() => void go({ action: 'checkout', plan: 'monthly' })}>
@@ -448,7 +448,6 @@ export function ProfilePage({
           ['list', 'List your apartment', 'Owners and managers: list a no-fee apartment, renters email you directly'],
           ['neighborhoods', 'Neighborhoods', 'Rents by size, buildings and 311 complaints for any NYC neighborhood'],
           ['renewal', 'Renewal check', 'What your apartment would rent for today, before you renew'],
-          ['affordable', 'Affordable housing', 'Open lotteries and income-restricted rentals'],
           ['marketplaces', 'Rental platforms', 'Search StreetEasy, Zillow and other sites directly'],
         ]}
       />

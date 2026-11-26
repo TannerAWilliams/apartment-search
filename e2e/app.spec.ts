@@ -567,7 +567,12 @@ test('feature filters require reported facts rather than matching unknown detail
   // Baths on the card with the size; the page lists the other facts.
   await expect(page.getByText(/1 bedroom · 1.5 baths/).first()).toBeVisible();
   await page.getByRole('button', { name: 'Details for 12 Grove Street', exact: true }).click();
-  await expect(page.getByText(/900 sq ft/).first()).toBeVisible();
+  await expect(
+    page
+      .getByText(/900 sq ft/)
+      .filter({ visible: true })
+      .first(),
+  ).toBeVisible();
 });
 
 test('saved comparison caps four, enables replacements and clears without removing saved apartments', async ({ page }) => {
@@ -814,7 +819,7 @@ test('iPhone 17 portrait keeps primary controls inside the screen', async ({ pag
     expect(dimensions.contentWidth, label + ' must not overflow horizontally').toBeLessThanOrEqual(dimensions.width + 1);
     if (checkNavigation) {
       const controls = page.getByRole('tab');
-      await expect(controls).toHaveCount(4);
+      await expect(controls).toHaveCount(5);
       for (const control of await controls.all()) {
         const box = await control.boundingBox();
         expect(box, label + ': navigation remains rendered').not.toBeNull();
@@ -904,8 +909,7 @@ test('Jersey City affordable notices show with official links and stay out of ap
     },
   });
   await expect(page.getByText('Example affordable building', { exact: true })).toHaveCount(0);
-  await page.getByRole('tab', { name: 'Profile', exact: true }).click();
-  await page.getByRole('button', { name: 'Affordable housing', exact: true }).click();
+  await page.getByRole('tab', { name: 'Lotteries', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Jersey City affordable housing applications' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Example affordable building', exact: true })).toBeVisible();
   await expect(page.getByText('1 BR · 2', { exact: true })).toBeVisible();
@@ -923,9 +927,8 @@ for (const width of [320, 375, 390]) {
   test(`narrow ${width}px navigation keeps Affordable housing fully reachable`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width, height: 740 });
     await mockApp(page);
-    await expect(page.getByRole('tab')).toHaveCount(4);
-    await page.getByRole('tab', { name: 'Profile', exact: true }).click();
-    const affordable = page.getByRole('button', { name: 'Affordable housing', exact: true });
+    await expect(page.getByRole('tab')).toHaveCount(5);
+    const affordable = page.getByRole('tab', { name: 'Lotteries', exact: true });
     await expect(affordable).toBeVisible();
     const measure = await affordable.evaluate((element) => {
       const rect = element.getBoundingClientRect();
@@ -947,7 +950,7 @@ for (const width of [320, 375, 390]) {
     expect(measure.textRight).toBeLessThanOrEqual(measure.right);
     expect(measure.content).toBeLessThanOrEqual(measure.viewport + 1);
     await affordable.click();
-    await expect(page.getByRole('heading', { name: 'Affordable housing', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Lotteries and public housing', exact: true })).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath(`affordable-${width}.png`), fullPage: true });
     await page.getByRole('tab', { name: 'Search', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Filters', exact: true })).toBeVisible();
@@ -1102,10 +1105,9 @@ test('profile: a free member’s saved listings are kept on the account, and ale
   await expect(page.getByRole('switch', { name: /^Paid plan for/ })).toHaveCount(0);
   // A free account sets one alert, and sees what the paid plan adds, with the way to it.
   await page.getByRole('button', { name: 'Email alerts', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Free plan: one alert, by email', exact: true })).toBeVisible();
-  await expect(page.getByText(/emailed three hours after a match is found, up to three a day/)).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Free plan: one alert', exact: true })).toBeVisible();
+  await expect(page.getByText(/three hours after a match is found and up to\s+three a day/)).toBeVisible();
   await expect(page.getByRole('button', { name: 'Save alert', exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Turn on notifications on this device', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Upgrade', exact: true }).click();
   await expect(page.getByText('Upgrade to hear first', { exact: true })).toBeVisible();
 });
@@ -1119,7 +1121,7 @@ test('cards show the building’s grade, rent stabilization, the price against s
   await expect(page.getByText('Listed today', { exact: true }).first()).toBeVisible();
   await expect(page.getByText('Building A', { exact: true }).first()).toBeVisible();
   // The nearest train as the MTA draws it: a bullet for each line.
-  await expect(page.getByText(/· 3 min to$/).first()).toBeVisible();
+  await expect(page.getByText(/· 3 min walk to$/).first()).toBeVisible();
   await expect(page.getByLabel('L train', { exact: true }).first()).toBeVisible();
   await expect(page.getByText(/1 bedroom · ≈ 35 min to Rockefeller Center · Rent-stabilized · Price cut \$150/).first()).toBeVisible();
   await expect(page.getByText(/· 25% below similar/).first()).toBeVisible();

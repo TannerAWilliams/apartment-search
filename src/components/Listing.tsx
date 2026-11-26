@@ -251,6 +251,7 @@ export const Listing = memo(function Listing({
   const details = [
     presentation.bedsLabel,
     baths == null ? '' : `${baths} ${baths === 1 ? 'bath' : 'baths'}`,
+    facts.squareFeet == null ? '' : `${facts.squareFeet.toLocaleString('en-US')} sq ft`,
     commute && transitSeconds != null
       ? `${Math.ceil(transitSeconds / 60)} min to ${destination}`
       : listing.insights?.transitMinutes
@@ -323,7 +324,6 @@ export const Listing = memo(function Listing({
   ];
   // Only what the listing says; unknown details are simply not listed.
   const knownFacts = [
-    facts.squareFeet === null ? '' : `${facts.squareFeet.toLocaleString('en-US')} sq ft`,
     facts.petsAllowed === null ? '' : facts.petsAllowed ? 'Pets allowed; verify restrictions' : 'Pets not allowed per source',
     facts.laundry === null ? '' : LAUNDRY_LABELS[facts.laundry],
   ].filter(Boolean);
@@ -372,7 +372,7 @@ export const Listing = memo(function Listing({
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
               <Text numberOfLines={1} style={[card.subtitle, { flexShrink: 1 }]}>
                 {place}
-                {nearest ? ` · ${nearest.minutes} min to` : ''}
+                {nearest ? ` · ${nearest.minutes} min walk to` : ''}
               </Text>
               {nearest && <LineBullets routes={nearest.routes} size={18} />}
             </View>

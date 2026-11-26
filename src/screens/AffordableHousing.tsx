@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
 import { NYC_SEARCH_DEFAULT } from '../regions.ts';
 import { styles } from '../styles.ts';
-import { Button, Disclosure, Link } from '../components/ui.tsx';
+import { Button, Chip, Disclosure, Link } from '../components/ui.tsx';
 
 const SIZE_LABELS = ['Studio', '1 BR', '2 BR', '3 BR', '4+ BR'];
 const HOUSING_PORTAL = 'https://housingconnect.nyc.gov/PublicWeb/';
@@ -19,6 +19,97 @@ const DATE = new Intl.DateTimeFormat('en-US', {
   year: 'numeric',
 });
 const showDate = (date?: string) => (date ? DATE.format(new Date(date)) : 'unknown');
+
+/** Where each program is applied for, by area. The links are the agencies' own pages. */
+const PROGRAMS: [area: string, programs: [name: string, about: string, links: [label: string, url: string][]][]][] = [
+  [
+    'New York City',
+    [
+      [
+        'Housing lotteries',
+        'New income-restricted apartments, filled by lottery on Housing Connect. Open lotteries are listed below.',
+        [['Housing Connect: open lotteries', 'https://housingconnect.nyc.gov/PublicWeb/search-lotteries']],
+      ],
+      [
+        'Mitchell-Lama',
+        'Middle-income rentals and co-ops with regulated costs. Most waiting lists are closed and reopen by lottery; a few are open and you apply to the building’s manager. Expect a wait of years.',
+        [
+          ['Waiting-list lotteries on Housing Connect', 'https://housingconnect.nyc.gov/PublicWeb/search-lotteries'],
+          [
+            'Developments with open waiting lists (PDF)',
+            'https://www.nyc.gov/assets/hpd/downloads/pdfs/services/ML-waiting-Lists-Status.pdf',
+          ],
+          ['How Mitchell-Lama works (HPD)', 'https://www.nyc.gov/site/hpd/services-and-information/mitchell-lama-program.page'],
+        ],
+      ],
+      [
+        'Public housing (NYCHA)',
+        'Apartments owned by the city’s housing authority, with rent set by income. One application covers every development; the wait is long.',
+        [
+          ['Apply for public housing', 'https://www.nyc.gov/site/nycha/eligibility/apply.page'],
+          ['Check an application', 'https://selfserve.nycha.info/'],
+        ],
+      ],
+    ],
+  ],
+  [
+    'New Jersey',
+    [
+      [
+        'Affordable and subsidized rentals',
+        'The state’s free registry of affordable and accessible apartments, searchable by town and rent.',
+        [['New Jersey Housing Resource Center', 'https://www.nj.gov/njhrc/find-housing/']],
+      ],
+    ],
+  ],
+  [
+    'Long Island',
+    [
+      [
+        'Affordable rental lotteries',
+        'Income-restricted apartments in Nassau and Suffolk, each filled by its own lottery.',
+        [['Long Island Housing Partnership: rentals', 'https://www.lihp.org/rentals/']],
+      ],
+    ],
+  ],
+  [
+    'Connecticut',
+    [
+      [
+        'Affordable and subsidized rentals',
+        'The state’s housing search, from market-rate to affordable, accessible, senior and veteran housing.',
+        [['CT Housing Search', 'https://cthousingsearch.org/']],
+      ],
+    ],
+  ],
+];
+
+function Programs({ onError }: { onError: (message: string) => void }) {
+  const [area, setArea] = useState(PROGRAMS[0]![0]);
+  const programs = PROGRAMS.find(([name]) => name === area)![1];
+  return (
+    <View style={{ gap: 10 }}>
+      <View style={styles.chipRow}>
+        {PROGRAMS.map(([name]) => (
+          <Chip key={name} selected={name === area} onPress={() => setArea(name)}>
+            {name}
+          </Chip>
+        ))}
+      </View>
+      {programs.map(([name, about, links]) => (
+        <View key={name} style={[styles.chartCard, { gap: 6 }]}>
+          <Text accessibilityRole="header" style={styles.listingTitle}>
+            {name}
+          </Text>
+          <Text style={styles.bodyText}>{about}</Text>
+          {links.map(([label, url]) => (
+            <Link key={label} label={label} url={url} onError={onError} />
+          ))}
+        </View>
+      ))}
+    </View>
+  );
+}
 
 export function AffordableHousing({
   region,
@@ -57,9 +148,13 @@ export function AffordableHousing({
   return (
     <View style={styles.marketplacePanel}>
       <Text accessibilityRole="header" style={styles.panelTitle}>
-        Affordable housing
+        Lotteries and public housing
       </Text>
-      <Text style={styles.bodyText}>Check lotteries, waitlists, and voucher listings separately from market-rate apartments.</Text>
+      <Text style={styles.bodyText}>
+        Housing lotteries, Mitchell-Lama, public housing and income-restricted rentals, apart from market-rate apartments. Each is applied
+        for on its own official site; Walkup links you to the right one.
+      </Text>
+      <Programs onError={onError} />
       {showWestchester && (
         <View style={styles.chartCard}>
           <Text accessibilityRole="header" style={styles.listingTitle}>

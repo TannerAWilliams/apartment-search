@@ -78,6 +78,10 @@ type ZumperRow = {
   max_price?: unknown;
   min_bedrooms?: unknown;
   max_bedrooms?: unknown;
+  min_bathrooms?: unknown;
+  max_bathrooms?: unknown;
+  min_square_feet?: unknown;
+  max_square_feet?: unknown;
   neighborhood_name?: unknown;
   brokerage_name?: unknown;
   /** Zumper's own posting date, from the page's structured data (added by searchState). */
@@ -211,6 +215,9 @@ function zumperListings(
         longitude: row.lng,
         bedrooms: row.min_bedrooms,
         rent: row.min_price,
+        // One apartment has one count; a range belongs to a building's page, which is skipped above.
+        bathrooms: row.min_bathrooms === row.max_bathrooms && Number(row.min_bathrooms) > 0 ? row.min_bathrooms : undefined,
+        squareFeet: row.min_square_feet === row.max_square_feet && Number(row.min_square_feet) > 0 ? row.min_square_feet : undefined,
         neighborhood: row.neighborhood_name,
         company: row.brokerage_name,
         status: 'Active',

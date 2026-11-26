@@ -122,6 +122,25 @@ export function ListIcon({ color, size = 16 }: IconProps) {
 }
 
 /** Close: an X. */
+/** A ticket: lotteries and public housing. */
+export function TicketIcon({ color, size = 22 }: IconProps) {
+  return (
+    <Svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={color}
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <Path d="M3 9V7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v2a3 3 0 0 0 0 6v2a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-2a3 3 0 0 0 0-6z" />
+      <Path d="M14 6v2M14 11v2M14 16v2" />
+    </Svg>
+  );
+}
+
 export function BellIcon({ color, size = 16 }: IconProps) {
   return (
     <Svg
