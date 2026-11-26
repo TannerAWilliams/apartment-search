@@ -95,6 +95,10 @@ function BuildingSummary({ facts }: { facts: BuildingFacts }) {
       `${count(facts.courtCases ?? 0, 'Housing Court case', 'Housing Court cases')} in two years${facts.harassment ? ', one alleging harassment' : ''}`,
     ),
     facts.unregistered ? 'No current registration with HPD' : null,
+    facts.vacate ? 'The city has ordered part or all of it vacated' : null,
+    facts.averageSquareFeet
+      ? `Apartments average about ${facts.averageSquareFeet.toLocaleString('en-US')} sq ft (estimated from tax records)`
+      : null,
   ].filter(Boolean);
   return (
     <Text style={styles.smallMuted}>

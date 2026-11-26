@@ -1337,11 +1337,13 @@ test('a visitor uses Walkup without an account, and is asked for one only to sav
   await expect(page).toHaveURL(/\/pricing$/);
   await expect(page.getByRole('heading', { name: 'Pricing', exact: true })).toBeVisible();
   await expect(page.getByText('or $35 for three months, paid once', { exact: true })).toBeVisible();
-  await expect(page.getByRole('tab', { name: 'Profile', exact: true })).toHaveAttribute('aria-selected', 'false');
+  // A visitor's last tab says what it is for them.
+  await expect(page.getByRole('tab', { name: 'Log in', exact: true })).toHaveAttribute('aria-selected', 'false');
+  await expect(page.getByRole('tab', { name: 'Profile', exact: true })).toHaveCount(0);
   // Pricing ends on the paid feature, which asks a visitor for an account.
   await page.getByRole('button', { name: 'Get a free alert', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Create a free account to get email alerts', exact: true })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Pricing', exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Pricing', exact: true }).first()).toBeVisible();
   // Search works signed out.
   await page.getByRole('tab', { name: 'Search', exact: true }).click();
   await expect(page.getByText('12 Grove Street', { exact: true })).toBeVisible();
@@ -1355,7 +1357,7 @@ test('a visitor uses Walkup without an account, and is asked for one only to sav
   // Other tools need no account.
   await page.goto('/afford');
   await expect(page.getByRole('heading', { name: 'What can I afford?', exact: true })).toBeVisible();
-  await page.getByRole('tab', { name: 'Profile', exact: true }).click();
+  await page.getByRole('tab', { name: 'Log in', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Create a free account to save apartments and get alerts', exact: true })).toBeVisible();
 });
 

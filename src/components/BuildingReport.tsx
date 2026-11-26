@@ -160,6 +160,52 @@ export function BuildingReport({
             A case or an eviction is a record of a dispute, not a finding against the owner; evictions the city could not place on a tax lot
             are not counted.
           </Text>
+          <Text style={styles.smallMuted}>
+            {result.vacateOrders
+              ? result.vacateOrders.active
+                ? `Order to vacate in force since ${result.vacateOrders.latest?.since}: ${[result.vacateOrders.latest?.kind, result.vacateOrders.latest?.reason].filter(Boolean).join(', ')}. Ask before applying.`
+                : result.vacateOrders.orders
+                  ? `No order to vacate in force; ${result.vacateOrders.orders} in the past, since rescinded.`
+                  : 'No order to vacate on record.'
+              : 'Orders to vacate: unknown.'}
+          </Text>
+          {result.taxLotOwner?.averageSquareFeet ? (
+            <Text style={styles.smallMuted}>
+              Apartments in this building average about {result.taxLotOwner.averageSquareFeet.toLocaleString('en-US')} sq ft: its
+              residential floor area in the tax records divided by its {result.taxLotOwner.units} apartments, halls included. An estimate,
+              not this apartment’s size.
+            </Text>
+          ) : null}
+          <Text style={styles.fieldLabel}>The block</Text>
+          {result.block ? (
+            <>
+              <Text style={styles.smallMuted}>
+                {result.block.crime
+                  ? `Crimes reported to the NYPD this year within about two blocks: ${result.block.crime.violent} violent, ${result.block.crime.property} property, ${result.block.crime.other} other.`
+                  : 'Reported crime nearby: unknown.'}
+              </Text>
+              <Text style={styles.smallMuted}>
+                {result.block.parks
+                  ? result.block.parks.length
+                    ? `Parks within a five-minute walk: ${result.block.parks.map(({ name, acres }) => `${name} (${acres < 10 ? acres.toFixed(1) : Math.round(acres)} acres)`).join(' · ')}.`
+                    : 'No park within a five-minute walk.'
+                  : 'Parks nearby: unknown.'}
+              </Text>
+              <Text style={styles.smallMuted}>
+                {result.block.groceries
+                  ? result.block.groceries.length
+                    ? `Grocery stores within a five-minute walk: ${result.block.groceries.join(' · ')}.`
+                    : 'No grocery store within a five-minute walk.'
+                  : 'Grocery stores nearby: unknown.'}
+              </Text>
+              <Text style={styles.smallMuted}>
+                Counts and distances from city and state records, measured from the building. A busy corner has more reports than a quiet
+                street whatever its safety.
+              </Text>
+            </>
+          ) : (
+            <Text style={styles.smallMuted}>Unknown: the records give no location for this building.</Text>
+          )}
           <Text style={styles.fieldLabel}>DOB records by matched BIN</Text>
           {result.dob ? (
             result.dob.map((source) => (

@@ -66,3 +66,24 @@ test('a chosen theme is shown at once and kept; matching the device forgets it',
   off.theme.apply('dark');
   expect(off.page.documentElement.dataset.theme).toBe('dark');
 });
+
+test('the dark theme keeps the palette’s contrast: text five levels from its surface passes, as in the light theme', () => {
+  const luminance = (hex: string) => {
+    const [r, g, b] = [1, 3, 5]
+      .map((at) => Number.parseInt(hex.slice(at, at + 2), 16) / 255)
+      .map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
+    return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!;
+  };
+  const contrast = (a: string, b: string) => (Math.max(luminance(a), luminance(b)) + 0.05) / (Math.min(luminance(a), luminance(b)) + 0.05);
+  const dark = Object.fromEntries(Object.entries(light).map(([hue, levels]) => [hue, levels.toReversed()])) as Record<string, string[]>;
+  for (const [hue, levels] of Object.entries(dark)) {
+    // Text at level 5 or beyond on the page, as the light theme's rule has it.
+    for (const level of [5, 6, 7, 8, 9])
+      expect(contrast(levels[level]!, '#141312'), `${hue} ${level} on the dark page`).toBeGreaterThanOrEqual(4.5);
+    // And on the quiet fill (level 0), five levels apart.
+    for (const level of [6, 7, 8, 9])
+      expect(contrast(levels[level]!, dark.gray![0]!), `${hue} ${level} on the dark fill`).toBeGreaterThanOrEqual(4.5);
+    // The page's own color on the accent levels buttons use (level 5), as white is in the light theme.
+    expect(contrast('#141312', levels[5]!), `the page color on ${hue} 5`).toBeGreaterThanOrEqual(4.5);
+  }
+});

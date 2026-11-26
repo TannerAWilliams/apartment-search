@@ -12,6 +12,30 @@ const quote = (value: string) => "'" + value.replaceAll("'", "''") + "'";
 const text = (value: unknown) => (typeof value === 'string' ? value : '');
 const validCount = (value: unknown) => typeof value === 'string' && /^(0|[1-9]\d{0,8})$/.test(value);
 
+/** A point the records give, as numbers, when it is inside New York City; null otherwise. */
+function pointInCity(latitude: unknown, longitude: unknown) {
+  const lat = Number(latitude);
+  const lon = Number(longitude);
+  return typeof latitude === 'string' &&
+    typeof longitude === 'string' &&
+    Number.isFinite(lat) &&
+    Number.isFinite(lon) &&
+    lat >= 40.45 &&
+    lat <= 40.95 &&
+    lon >= -74.3 &&
+    lon <= -73.65
+    ? { latitude: lat, longitude: lon }
+    : null;
+}
+const NEW_YORK_STATE = 'https://data.ny.gov/resource/';
+/** How far "near" reaches: reported crime within about two blocks, parks and food stores within a five-minute walk. */
+const CRIME_METERS = 200;
+const WALK_METERS = 400;
+/** A food store this large or larger is counted as a grocery store, not a deli or a kiosk. */
+const GROCERY_SQUARE_FEET = 4000;
+const VIOLENT = /MURDER|HOMICIDE|RAPE|ROBBERY|ASSAULT|SEX CRIMES|KIDNAPPING/;
+const PROPERTY = /LARCENY|BURGLARY|THEFT|CRIMINAL MISCHIEF|ARSON|STOLEN|FRAUD/;
+
 /** A row from an official dataset: untrusted until each field is checked. */
 type OfficialRow = Record<string, unknown>;
 
@@ -140,6 +164,8 @@ export async function retrieveBuildingRecords(
     rentRegistration: null,
     bedbugs: null,
     rodents: null,
+    vacateOrders: null,
+    block: null,
     evictions: null,
     housingCourt: null,
     hpdRegistration: null,
@@ -235,6 +261,172 @@ export async function retrieveBuildingRecords(
   );
   const until = `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}`;
   const errors: string[] = [];
+  const bedbugsRead = (async () => {
+    try {
+      const data = await readRows(
+        'wz6d-d3jb',
+        {
+          $select:
+            'building_id,bin,latitude,longitude,of_dwelling_units,infested_dwelling_unit_count,eradicated_unit_count,re_infested_dwelling_unit,filing_date,filing_period_start_date,filling_period_end_date',
+          $where: `building_id=${quote(String(row.buildingid))} AND filing_date <= '${until}' AND filling_period_end_date <= '${until}'`,
+          $order: 'filling_period_end_date DESC,filing_date DESC',
+          $limit: '2',
+        },
+        fetcher,
+        signal,
+      );
+      const latest = data[0];
+      const date = (value: unknown) => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value) && Number.isFinite(Date.parse(value));
+      const count = (value: unknown) => typeof value === 'string' && /^(0|[1-9]\d{0,5})$/.test(value);
+      if (
+        data.length < 1 ||
+        data.length > 2 ||
+        latest.building_id !== row.buildingid ||
+        (latest.bin && identity.bin && latest.bin !== identity.bin) ||
+        !['filing_date', 'filing_period_start_date', 'filling_period_end_date'].every((key) => date(latest[key])) ||
+        text(latest.filing_period_start_date) > text(latest.filling_period_end_date) ||
+        text(latest.filing_date) > until ||
+        text(latest.filling_period_end_date) > until ||
+        !['of_dwelling_units', 'infested_dwelling_unit_count', 'eradicated_unit_count', 're_infested_dwelling_unit'].every((key) =>
+          count(latest[key]),
+        ) ||
+        ['infested_dwelling_unit_count', 'eradicated_unit_count', 're_infested_dwelling_unit'].some(
+          (key) => Number(latest[key]) > Number(latest.of_dwelling_units),
+        ) ||
+        (data[1] && data[1].filling_period_end_date === latest.filling_period_end_date && data[1].filing_date === latest.filing_date)
+      )
+        throw new Error('No unambiguous latest filing');
+      const point = pointInCity(latest.latitude, latest.longitude);
+      return {
+        point,
+        periodStart: text(latest.filing_period_start_date).slice(0, 10),
+        periodEnd: text(latest.filling_period_end_date).slice(0, 10),
+        filedAt: text(latest.filing_date),
+        units: Number(latest.of_dwelling_units),
+        infested: Number(latest.infested_dwelling_unit_count),
+        eradicated: Number(latest.eradicated_unit_count),
+        reinfested: Number(latest.re_infested_dwelling_unit),
+      };
+    } catch {
+      errors.push('Latest owner-filed bedbug report unavailable or ambiguous; infestation status is unknown.');
+      return null;
+    }
+  })();
+  const taxLotRead = (async () => {
+    if (!bbl) return null;
+    try {
+      const rows = await readRows(
+        '64uk-42ks',
+        { $select: 'bbl,ownername,version,unitsres,resarea,latitude,longitude', $where: `bbl=${bbl}`, $limit: '2' },
+        fetcher,
+        signal,
+      );
+      const record = rows[0];
+      if (
+        rows.length !== 1 ||
+        typeof record?.bbl !== 'string' ||
+        record.bbl.replace(/\.0+$/, '') !== bbl ||
+        typeof record.ownername !== 'string' ||
+        !record.ownername.trim() ||
+        record.ownername.length > 240
+      )
+        throw new Error('Tax lot owner unavailable.');
+      return {
+        bbl,
+        name: record.ownername.trim(),
+        edition: typeof record.version === 'string' && /^\d{2}v\d+(?:\.\d+)?$/i.test(record.version) ? record.version : null,
+        // Apartments on the lot, which what follows is weighed against; unknown when the lot does not say.
+        units: validCount(record.unitsres) && Number(record.unitsres) > 0 ? Number(record.unitsres) : null,
+        // The lot's residential floor area over its apartments: a rough average size, halls and lobbies included.
+        averageSquareFeet:
+          validCount(record.unitsres) && Number(record.unitsres) > 0 && validCount(record.resarea) && Number(record.resarea) > 0
+            ? Math.round(Number(record.resarea) / Number(record.unitsres))
+            : null,
+        point: pointInCity(record.latitude, record.longitude),
+      };
+    } catch {
+      errors.push('The owner listed in the city tax lot records could not be verified.');
+      return null;
+    }
+  })();
+  // The block: what is reported and what is within a short walk, measured from the tax lot (or the building's
+  // bedbug filing, which also carries a point), never from the neighborhood's middle.
+  // It starts as soon as either gives a point, alongside the rest of the report.
+  const blockRead = (async () => {
+    const at = (await taxLotRead)?.point ?? (await bedbugsRead)?.point ?? null;
+    if (!at) return null;
+    const circle = (column: string, meters: number) => `within_circle(${column}, ${at.latitude}, ${at.longitude}, ${meters})`;
+    return (async () => {
+      const [crime, parks, groceries] = await Promise.all([
+        (async () => {
+          try {
+            const data = await readRows(
+              '5uac-w243',
+              {
+                $select: 'ofns_desc as status,count(*) as count',
+                $where: circle('lat_lon', CRIME_METERS),
+                $group: 'ofns_desc',
+                $limit: '101',
+              },
+              fetcher,
+              signal,
+            );
+            const offenses = grouping(data, 100);
+            const total = (list: typeof offenses) => list.reduce((sum, { count }) => sum + count, 0);
+            const violent = offenses.filter(({ status }) => VIOLENT.test(status));
+            const property = offenses.filter(({ status }) => !VIOLENT.test(status) && PROPERTY.test(status));
+            return { violent: total(violent), property: total(property), other: total(offenses) - total(violent) - total(property) };
+          } catch {
+            errors.push('Reported crime nearby could not be retrieved.');
+            return null;
+          }
+        })(),
+        (async () => {
+          try {
+            const data = await readRows(
+              'enfh-gkve',
+              { $select: 'signname,acres', $where: circle('multipolygon', WALK_METERS), $limit: '21' },
+              fetcher,
+              signal,
+            );
+            return data
+              .filter((park) => text(park.signname) && Number(park.acres) > 0)
+              .map((park) => ({ name: text(park.signname).slice(0, 80), acres: Number(park.acres) }))
+              .sort((a, b) => b.acres - a.acres)
+              .slice(0, 5);
+          } catch {
+            errors.push('Parks nearby could not be retrieved.');
+            return null;
+          }
+        })(),
+        (async () => {
+          try {
+            const stores = await readOfficialJson(
+              NEW_YORK_STATE +
+                '9a8c-vfzj.json?' +
+                new URLSearchParams({ $select: 'dba_name,square_footage', $where: circle('georeference', WALK_METERS), $limit: '201' }),
+              fetcher,
+              signal,
+            );
+            if (!Array.isArray(stores) || !stores.every(isRecord) || stores.length > 200)
+              throw new Error('Food stores were not recognized.');
+            return (
+              stores
+                .filter((store) => text(store.dba_name) && Number(store.square_footage) >= GROCERY_SQUARE_FEET)
+                // Drugstores are licensed to sell food and are large, and are not where the week's shopping is done.
+                .filter((store) => !/PHARMACY|DRUG|CVS|WALGREENS|DUANE READE|RITE AID/i.test(text(store.dba_name)))
+                .map((store) => text(store.dba_name).slice(0, 80))
+                .slice(0, 8)
+            );
+          } catch {
+            errors.push('Food stores nearby could not be retrieved.');
+            return null;
+          }
+        })(),
+      ]);
+      return { point: at, crime, parks, groceries };
+    })();
+  })();
   const [
     openViolations,
     complaintsLast365Days,
@@ -246,6 +438,8 @@ export async function retrieveBuildingRecords(
     rodents,
     housingCourt,
     hpdRegistration,
+    vacateOrders,
+    block,
   ] = await Promise.all([
     (async () => {
       try {
@@ -288,70 +482,7 @@ export async function retrieveBuildingRecords(
         return null;
       }
     })(),
-    (async () => {
-      try {
-        const data = await readRows(
-          'wz6d-d3jb',
-          {
-            $select:
-              'building_id,bin,latitude,longitude,of_dwelling_units,infested_dwelling_unit_count,eradicated_unit_count,re_infested_dwelling_unit,filing_date,filing_period_start_date,filling_period_end_date',
-            $where: `building_id=${quote(String(row.buildingid))} AND filing_date <= '${until}' AND filling_period_end_date <= '${until}'`,
-            $order: 'filling_period_end_date DESC,filing_date DESC',
-            $limit: '2',
-          },
-          fetcher,
-          signal,
-        );
-        const latest = data[0];
-        const date = (value: unknown) =>
-          typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value) && Number.isFinite(Date.parse(value));
-        const count = (value: unknown) => typeof value === 'string' && /^(0|[1-9]\d{0,5})$/.test(value);
-        if (
-          data.length < 1 ||
-          data.length > 2 ||
-          latest.building_id !== row.buildingid ||
-          (latest.bin && identity.bin && latest.bin !== identity.bin) ||
-          !['filing_date', 'filing_period_start_date', 'filling_period_end_date'].every((key) => date(latest[key])) ||
-          text(latest.filing_period_start_date) > text(latest.filling_period_end_date) ||
-          text(latest.filing_date) > until ||
-          text(latest.filling_period_end_date) > until ||
-          !['of_dwelling_units', 'infested_dwelling_unit_count', 'eradicated_unit_count', 're_infested_dwelling_unit'].every((key) =>
-            count(latest[key]),
-          ) ||
-          ['infested_dwelling_unit_count', 'eradicated_unit_count', 're_infested_dwelling_unit'].some(
-            (key) => Number(latest[key]) > Number(latest.of_dwelling_units),
-          ) ||
-          (data[1] && data[1].filling_period_end_date === latest.filling_period_end_date && data[1].filing_date === latest.filing_date)
-        )
-          throw new Error('No unambiguous latest filing');
-        const lat = Number(latest.latitude),
-          lon = Number(latest.longitude);
-        const point =
-          typeof latest.latitude === 'string' &&
-          typeof latest.longitude === 'string' &&
-          Number.isFinite(lat) &&
-          Number.isFinite(lon) &&
-          lat >= 40.45 &&
-          lat <= 40.95 &&
-          lon >= -74.3 &&
-          lon <= -73.65
-            ? { latitude: lat, longitude: lon }
-            : null;
-        return {
-          point,
-          periodStart: text(latest.filing_period_start_date).slice(0, 10),
-          periodEnd: text(latest.filling_period_end_date).slice(0, 10),
-          filedAt: text(latest.filing_date),
-          units: Number(latest.of_dwelling_units),
-          infested: Number(latest.infested_dwelling_unit_count),
-          eradicated: Number(latest.eradicated_unit_count),
-          reinfested: Number(latest.re_infested_dwelling_unit),
-        };
-      } catch {
-        errors.push('Latest owner-filed bedbug report unavailable or ambiguous; infestation status is unknown.');
-        return null;
-      }
-    })(),
+    bedbugsRead,
     (async () => {
       const bin = identity.bin;
       if (!bin) return null;
@@ -408,37 +539,7 @@ export async function retrieveBuildingRecords(
         return null;
       }
     })(),
-    (async () => {
-      if (!bbl) return null;
-      try {
-        const rows = await readRows(
-          '64uk-42ks',
-          { $select: 'bbl,ownername,version,unitsres', $where: `bbl=${bbl}`, $limit: '2' },
-          fetcher,
-          signal,
-        );
-        const record = rows[0];
-        if (
-          rows.length !== 1 ||
-          typeof record?.bbl !== 'string' ||
-          record.bbl.replace(/\.0+$/, '') !== bbl ||
-          typeof record.ownername !== 'string' ||
-          !record.ownername.trim() ||
-          record.ownername.length > 240
-        )
-          throw new Error('Tax lot owner unavailable.');
-        return {
-          bbl,
-          name: record.ownername.trim(),
-          edition: typeof record.version === 'string' && /^\d{2}v\d+(?:\.\d+)?$/i.test(record.version) ? record.version : null,
-          // Apartments on the lot, which what follows is weighed against; unknown when the lot does not say.
-          units: validCount(record.unitsres) && Number(record.unitsres) > 0 ? Number(record.unitsres) : null,
-        };
-      } catch {
-        errors.push('The owner listed in the city tax lot records could not be verified.');
-        return null;
-      }
-    })(),
+    taxLotRead,
     (async () => {
       if (!bbl) return null;
       try {
@@ -560,7 +661,44 @@ export async function retrieveBuildingRecords(
         return null;
       }
     })(),
+    // Orders to vacate, which the city issues when a building or part of one is unsafe to live in.
+    (async () => {
+      try {
+        const data = await readRows(
+          'tb8q-a3ar',
+          {
+            $select: 'vacate_type,primary_vacate_reason,vacate_effective_date,actual_rescind_date',
+            $where: `building_id=${quote(String(row.buildingid))}`,
+            $order: 'vacate_effective_date DESC',
+            $limit: '21',
+          },
+          fetcher,
+          signal,
+        );
+        if (data.length > 20 || data.some((order) => !/^\d{4}-\d{2}-\d{2}T/.test(text(order.vacate_effective_date))))
+          throw new Error('Vacate orders were not recognized.');
+        // An order with no date of rescission is still in force.
+        const active = data.filter((order) => !text(order.actual_rescind_date));
+        const latest = active[0] ?? data[0];
+        return {
+          orders: data.length,
+          active: active.length,
+          latest: latest
+            ? {
+                since: text(latest.vacate_effective_date).slice(0, 10),
+                kind: text(latest.vacate_type).slice(0, 40),
+                reason: text(latest.primary_vacate_reason).slice(0, 80),
+              }
+            : null,
+        };
+      } catch {
+        errors.push('Vacate orders could not be retrieved; unknown, not none.');
+        return null;
+      }
+    })(),
+    blockRead,
   ]);
+
   // A lot the loaded list does not name had none; without the list, or the lot, it is unknown.
   const evictions = evictionsByLot && bbl ? (evictionsByLot.lots[bbl] ?? 0) : null;
   let flood = null;
@@ -615,6 +753,8 @@ export async function retrieveBuildingRecords(
     evictions,
     housingCourt,
     hpdRegistration,
+    vacateOrders,
+    block,
     dob,
     flood,
     since: since.slice(0, 10),

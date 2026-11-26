@@ -46,35 +46,27 @@ export function HomePage({
         <HomeSearch onSearch={onSearch} loadNeighborhoods={loadNeighborhoods} />
       </View>
 
-      {/* What the paid plan is for, said where everyone sees it: the good apartments go to whoever hears first. */}
+      {/* The one thing Walkup charges for, said in a line: the good apartments go to whoever hears first. */}
       <View
         style={{
-          flexDirection: wide ? 'row' : 'column',
-          alignItems: wide ? 'center' : 'flex-start',
-          gap: 14,
-          padding: wide ? 20 : 16,
-          borderRadius: 16,
+          flexDirection: 'row',
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          gap: 12,
+          paddingVertical: 12,
+          paddingHorizontal: 16,
+          borderRadius: 14,
           backgroundColor: colors.light,
         }}
       >
-        <View style={{ flex: wide ? 1 : undefined, gap: 4 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <BellIcon color={colors.green} size={18} />
-            <Text accessibilityRole="header" style={{ fontSize: 18, fontWeight: '700', color: colors.ink }}>
-              Hear about a new apartment before it’s gone
-            </Text>
-          </View>
-          <Text style={styles.bodyText}>
-            Tell Walkup what you’re looking for and get an email when a match is listed. One alert is free; the paid plan sends every match
-            as soon as it is found.
+        <BellIcon color={colors.green} size={20} />
+        <View style={{ flexGrow: 1, flexShrink: 1, flexBasis: 220, gap: 2 }}>
+          <Text accessibilityRole="header" style={{ fontSize: 16, fontWeight: '600', color: colors.ink }}>
+            New listings, emailed to you
           </Text>
+          <Text style={styles.smallMuted}>Free for one search. The paid plan tells you first.</Text>
         </View>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-          <Button onPress={() => onOpen('alerts')}>Get a free alert</Button>
-          <Pressable accessibilityRole="link" onPress={() => onOpen('pricing')} style={{ paddingVertical: 6 }}>
-            <Text style={styles.linkText}>Pricing</Text>
-          </Pressable>
-        </View>
+        <Button onPress={() => onOpen('alerts')}>Get a free alert</Button>
       </View>
 
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 14 }}>

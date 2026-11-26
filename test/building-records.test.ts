@@ -43,6 +43,10 @@ type Overrides = {
     | 'owner'
     | 'registration'
     | 'rodents'
+    | 'vacate'
+    | 'crime'
+    | 'parks'
+    | 'stores'
     | 'court'
     | 'hpdRegistration'
     | 'flood'
@@ -63,13 +67,55 @@ function source(override: Overrides = {}) {
       expect(options?.redirect).toBe('manual');
       return Response.json(override.registration ?? { features: [registered] });
     }
+    // The block: read around the tax lot's own point.
+    if (u.hostname === 'data.ny.gov') {
+      expect(u.searchParams.get('$where')).toBe('within_circle(georeference, 40.7, -73.99, 400)');
+      return Response.json(
+        override.stores ?? [
+          { dba_name: 'KEY FOOD', square_footage: '12000' },
+          { dba_name: 'CORNER DELI', square_footage: '900' },
+          { dba_name: 'TRADER JOES', square_footage: '15000' },
+          { dba_name: 'CVS PHARMACY 02036', square_footage: '11000' },
+          { square_footage: '9000' },
+        ],
+      );
+    }
     expect(u.origin).toBe('https://data.cityofnewyork.us');
+    if (u.pathname.includes('5uac-w243')) {
+      expect(u.searchParams.get('$where')).toBe('within_circle(lat_lon, 40.7, -73.99, 200)');
+      return Response.json(
+        override.crime ?? [
+          { status: 'GRAND LARCENY', count: '6' },
+          { status: 'ROBBERY', count: '2' },
+          { status: 'ASSAULT 3 & RELATED OFFENSES', count: '1' },
+          { status: 'HARRASSMENT 2', count: '4' },
+        ],
+      );
+    }
+    if (u.pathname.includes('enfh-gkve'))
+      return Response.json(
+        override.parks ?? [{ signname: 'Pocket Park', acres: '0.4' }, { signname: 'Big Park', acres: '85' }, { acres: '3' }],
+      );
+    if (u.pathname.includes('tb8q-a3ar')) {
+      expect(u.searchParams.get('$where')).toBe("building_id='12345'");
+      return Response.json(override.vacate ?? []);
+    }
     expect(options?.redirect).toBe('manual');
     if (u.pathname.includes('kj4p')) return Response.json(override.buildings ?? [building]);
     if (u.pathname.includes('64uk-42ks')) {
       expect(u.searchParams.get('$where')).toBe(`bbl=${bbl}`);
       return Response.json(
-        override.owner ?? [{ bbl: bbl + '.00000000', ownername: 'EXAMPLE PROPERTY LLC', version: '26v2', unitsres: '20' }],
+        override.owner ?? [
+          {
+            bbl: bbl + '.00000000',
+            ownername: 'EXAMPLE PROPERTY LLC',
+            version: '26v2',
+            unitsres: '20',
+            resarea: '15000',
+            latitude: '40.7',
+            longitude: '-73.99',
+          },
+        ],
       );
     }
     if (u.pathname.includes('erm2-nwe9')) {
@@ -137,7 +183,14 @@ test('exact active building match joins HPD ID and distinguishes open violations
       { problem: 'Noise', count: 2 },
     ],
   });
-  expect(report.taxLotOwner).toEqual({ bbl, name: 'EXAMPLE PROPERTY LLC', edition: '26v2', units: 20 });
+  expect(report.taxLotOwner).toEqual({
+    bbl,
+    name: 'EXAMPLE PROPERTY LLC',
+    edition: '26v2',
+    units: 20,
+    averageSquareFeet: 750,
+    point: { latitude: 40.7, longitude: -73.99 },
+  });
   expect(report.rentRegistration).toEqual({ matched: true, latestYear: 2026, registeredUnits: 18 });
 });
 test('missing state registrations and invalid matched tax lot responses never imply apartment status', async () => {
@@ -270,8 +323,9 @@ test('complaint window uses NYC calendar dates and excludes future timestamps', 
     },
     new Date('2026-11-17T02:00:00Z'),
   );
-  expect(queries[2]).toContain("received_date <= '2026-11-16T21:00:00'");
-  expect(queries[2]).toContain("received_date >= '2025-11-17T00:00:00'");
+  const complaints = queries.find((where) => where.includes('received_date'))!;
+  expect(complaints).toContain("received_date <= '2026-11-16T21:00:00'");
+  expect(complaints).toContain("received_date >= '2025-11-17T00:00:00'");
 });
 
 test('latest annual filing is owner reported, not summed, with same-date ambiguity unknown', async () => {
@@ -571,4 +625,89 @@ test('a request the city refuses while busy is asked once more, and a second ref
   expect((await retrieveBuildingRecords(address, busy(2), now)).status, 'refused twice: the building is not identified').toBe(
     'unavailable',
   );
+});
+
+test('the block, vacate orders and an average apartment size come from the tax lot and the building', async () => {
+  const report = await retrieveBuildingRecords(address, source(), now);
+  expect(report.status).toBe('matched');
+  // Crime split into violent and property; stores large enough to be groceries; parks, the largest first.
+  expect(report.block).toEqual({
+    point: { latitude: 40.7, longitude: -73.99 },
+    crime: { violent: 3, property: 6, other: 4 },
+    parks: [
+      { name: 'Big Park', acres: 85 },
+      { name: 'Pocket Park', acres: 0.4 },
+    ],
+    groceries: ['KEY FOOD', 'TRADER JOES'],
+  });
+  expect(report.vacateOrders).toEqual({ orders: 0, active: 0, latest: null });
+
+  // An order with no date of rescission is in force, and the building is graded D whatever else it shows.
+  const { summarizeReport } = await import('../server/building-facts.ts');
+  const { buildingGrade } = await import('../src/insights.ts');
+  const vacated = await retrieveBuildingRecords(
+    address,
+    source({
+      vacate: [
+        { vacate_type: 'Partial', primary_vacate_reason: 'Fire Damage', vacate_effective_date: '2026-03-20T00:00:00.000' },
+        {
+          vacate_type: 'Entire Building',
+          primary_vacate_reason: 'Illegal Occupancy',
+          vacate_effective_date: '2020-01-05T00:00:00.000',
+          actual_rescind_date: '2021-02-01T00:00:00.000',
+        },
+      ],
+    }),
+    now,
+  );
+  expect(vacated.vacateOrders).toEqual({ orders: 2, active: 1, latest: { since: '2026-03-20', kind: 'Partial', reason: 'Fire Damage' } });
+  const facts = summarizeReport(vacated)!;
+  expect(facts).toMatchObject({ vacate: true, averageSquareFeet: 750 });
+  expect(buildingGrade(facts)).toBe('D');
+  expect(
+    buildingGrade({ stabilized: null, openViolations: 0, complaints: 0, bedbugs: false, flood: false, vacate: true, checkedAt: '' }),
+  ).toBe('D');
+  // Orders all rescinded: none in force, the latest still named.
+  const past = await retrieveBuildingRecords(
+    address,
+    source({
+      vacate: [
+        {
+          vacate_type: 'Partial',
+          primary_vacate_reason: 'Fire Damage',
+          vacate_effective_date: '2020-01-05T00:00:00.000',
+          actual_rescind_date: '2021-02-01T00:00:00.000',
+        },
+      ],
+    }),
+    now,
+  );
+  expect(past.vacateOrders).toMatchObject({ orders: 1, active: 0, latest: { since: '2020-01-05' } });
+
+  // What cannot be trusted is unknown, each on its own.
+  const broken = await retrieveBuildingRecords(
+    address,
+    source({ vacate: [{ vacate_effective_date: 'soon' }], crime: { error: 1 }, parks: { error: 1 }, stores: { error: 1 } }),
+    now,
+  );
+  expect(broken).toMatchObject({ status: 'partial', vacateOrders: null, block: { crime: null, parks: null, groceries: null } });
+  expect(summarizeReport(broken)).toMatchObject({ vacate: null });
+  expect(broken.errors.toSorted()).toEqual([
+    'Food stores nearby could not be retrieved.',
+    'Parks nearby could not be retrieved.',
+    'Reported crime nearby could not be retrieved.',
+    'Vacate orders could not be retrieved; unknown, not none.',
+  ]);
+  // A lot with no location, or outside the city, has no block; one with no floor area has no average size.
+  const nowhere = {
+    bbl: bbl + '.00000000',
+    ownername: 'EXAMPLE PROPERTY LLC',
+    version: '26v2',
+    unitsres: '20',
+    latitude: '10',
+    longitude: '10',
+  };
+  const unplaced = await retrieveBuildingRecords(address, source({ owner: [nowhere], bedbugs: [] }), now);
+  expect(unplaced.block).toBeNull();
+  expect(unplaced.taxLotOwner).toMatchObject({ averageSquareFeet: null, point: null });
 });

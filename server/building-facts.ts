@@ -36,6 +36,8 @@ const FactsSchema = v.record(
     harassment: v.optional(nullable(v.boolean())),
     unregistered: v.optional(nullable(v.boolean())),
     units: v.optional(nullable(v.number())),
+    vacate: v.optional(nullable(v.boolean())),
+    averageSquareFeet: v.optional(nullable(v.number())),
     checkedAt: v.string(),
   }),
 );
@@ -73,6 +75,8 @@ export function summarizeReport(report: Report): BuildingFacts | null {
     // Only a building known to have three or more apartments must register.
     unregistered: report.hpdRegistration && units !== null && units >= 3 ? !report.hpdRegistration.current : null,
     units,
+    vacate: report.vacateOrders ? report.vacateOrders.active > 0 : null,
+    averageSquareFeet: report.taxLotOwner?.averageSquareFeet ?? null,
     checkedAt: report.checkedAt,
   };
 }
@@ -102,7 +106,7 @@ export async function fillBuildingFacts(
     const key = buildingKey(listing);
     if (listing.region !== 'nyc' || !key || wanted.has(key)) continue;
     // Fresh, and kept since rats, evictions and court cases were read (facts from before are checked again).
-    if (facts[key] && facts[key].checkedAt >= staleBefore && facts[key].rats !== undefined) continue;
+    if (facts[key] && facts[key].checkedAt >= staleBefore && facts[key].rats !== undefined && facts[key].vacate !== undefined) continue;
     wanted.set(key, listing);
     if (wanted.size >= limit) break;
   }
@@ -121,6 +125,7 @@ export async function fillBuildingFacts(
       bedbugs: null,
       flood: null,
       rats: null,
+      vacate: null,
       checkedAt: now.toISOString(),
     };
     checked++;

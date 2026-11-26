@@ -462,7 +462,8 @@ function ApartmentSearch() {
           ['results', 'Search', SearchIcon],
           ['chart', 'Rents', ChartIcon],
           ['saved', `Saved (${savedResults.total})`, HeartIcon],
-          ['more', 'Profile', ProfileIcon],
+          // The same place for everyone: a visitor signs in there, a member finds their profile.
+          ['more', member ? 'Profile' : 'Log in', ProfileIcon],
         ] as const
       ).map(([key, label, Icon]) => {
         // An apartment's page belongs to Search; Profile's own pages to Profile.
@@ -528,16 +529,13 @@ function ApartmentSearch() {
             <View />
           )
         ) : (
-          // Visitors use everything; an account is one tap away for saving and alerts.
+          // A visitor's header has the one page they ask for before signing up; "Log in" is with the other tabs.
           <Pressable
-            accessibilityRole="button"
-            onPress={() => navigateTab('more')}
-            style={({ pressed }) => [
-              { borderWidth: 1, borderColor: colors.ink, borderRadius: 999, paddingHorizontal: 16, paddingVertical: 8 },
-              pressed && styles.pressed,
-            ]}
+            accessibilityRole="link"
+            onPress={() => navigateTab('pricing')}
+            style={({ pressed }) => [{ paddingHorizontal: 8, paddingVertical: 8 }, pressed && styles.pressed]}
           >
-            <Text style={{ fontWeight: '600', color: colors.ink }}>Log in</Text>
+            <Text style={{ fontWeight: '600', color: colors.ink }}>Pricing</Text>
           </Pressable>
         )}
       </View>

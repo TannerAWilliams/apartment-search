@@ -29,6 +29,10 @@ export type BuildingFacts = {
   unregistered?: boolean | null;
   /** Apartments on the tax lot, which evictions are weighed against. */
   units?: number | null;
+  /** An order to vacate is in force on the building. */
+  vacate?: boolean | null;
+  /** The lot's residential floor area over its apartments: a rough average apartment size. */
+  averageSquareFeet?: number | null;
   checkedAt: string;
 };
 export type BuildingGrade = 'A' | 'B' | 'C' | 'D';
@@ -128,6 +132,8 @@ export function rentBenchmarks(listings: Pick<ListingData, 'neighborhood' | 'zip
 /** A grade from the building's records; null when nothing was checked. */
 export function buildingGrade(facts: BuildingFacts | undefined): BuildingGrade | null {
   if (!facts || [facts.openViolations, facts.complaints, facts.bedbugs, facts.flood].every((value) => value === null)) return null;
+  // A building the city has ordered vacated, in whole or in part, is graded D whatever else its records say.
+  if (facts.vacate) return 'D';
   const violations = facts.openViolations ?? 0;
   const complaints = facts.complaints ?? 0;
   const evictions = facts.evictions ?? 0;
