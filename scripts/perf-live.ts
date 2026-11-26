@@ -16,7 +16,7 @@ const LIMITS_MS = {
   'home page ready': 1000,
   'results after tapping Search': 400,
   'results opening /search': 1300,
-  'Rents after tapping it': 150,
+  'Market after tapping it': 150,
 };
 const VISITS = 3;
 type Measure = keyof typeof LIMITS_MS;
@@ -33,7 +33,7 @@ async function visit(browser: Browser, origin: string): Promise<Record<Measure, 
   // As long as it takes to read the page and choose.
   await home.waitForTimeout(3000);
   from = Date.now();
-  await home.getByRole('tab', { name: 'Rents', exact: true }).click();
+  await home.getByRole('tab', { name: 'Market', exact: true }).click();
   await home.getByRole('heading', { name: 'Median rent', exact: true }).waitFor();
   const rents = Date.now() - from;
   await home.goto(origin + '/');
@@ -60,7 +60,7 @@ async function visit(browser: Browser, origin: string): Promise<Record<Measure, 
     'home page ready': homeReady,
     'results after tapping Search': afterTap,
     'results opening /search': direct,
-    'Rents after tapping it': rents,
+    'Market after tapping it': rents,
   };
 }
 

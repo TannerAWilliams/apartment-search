@@ -7,7 +7,7 @@ import type { ListingData, SourceLink, SearchResult } from './src/domain.ts';
 import { Modal, Platform, Pressable, ScrollView, StatusBar, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { REGIONS, boroughKey } from './src/regions.ts';
-import { bedroomsLabel, formatRent, localWorkplace, needsCommute, parseFilters } from './src/search.ts';
+import { bedroomsLabel, distanceMiles, formatRent, localWorkplace, needsCommute, parseFilters } from './src/search.ts';
 import { mobileStyles } from './src/mobileStyles.ts';
 import { colors, styles } from './src/styles.ts';
 import { localSearch } from './src/market.ts';
@@ -209,6 +209,11 @@ function ApartmentSearch() {
   /** Takes someone who has not said where they work to where they can (set below, once the screens are known). */
   const askCommute = useRef(() => {});
   const commuteAsk = useMemo(() => ({ known: commuteKnown, add: () => askCommute.current() }), [commuteKnown]);
+  // For the Lotteries tab: the destination's name and the straight-line miles to it.
+  const housingWorkplace = useMemo(
+    () => ({ label: result.workplace.label, miles: (place: unknown) => distanceMiles(place, result.workplace) }),
+    [result.workplace],
+  );
   activeTokenRef.current = activeToken;
   const defaults = () => ({ ...formDefaults(), ...commute.current.current });
   const savedByKey = useMemo(() => new Map(saved.map((listing) => [listingKey(listing), listing])), [saved]);
@@ -463,7 +468,7 @@ function ApartmentSearch() {
       {(
         [
           ['results', 'Search', SearchIcon],
-          ['chart', 'Rents', ChartIcon],
+          ['chart', 'Market', ChartIcon],
           ['affordable', 'Lotteries', TicketIcon],
           ['saved', `Saved (${savedResults.total})`, HeartIcon],
           // The same place for everyone: a visitor signs in there, a member finds their profile.
@@ -1033,6 +1038,7 @@ function ApartmentSearch() {
                     {view === 'affordable' && (
                       <AffordableHousing
                         region={applied.region}
+                        workplace={commuteKnown ? housingWorkplace : undefined}
                         loadHousing={serverState === 'ready' ? loadHousing : undefined}
                         onError={setError}
                       />
@@ -1042,7 +1048,7 @@ function ApartmentSearch() {
                 <View style={styles.footer}>
                   <Text style={styles.smallMuted}>Walkup · New York, New Jersey and Connecticut</Text>
                   {/* What Walkup is and costs, and the monthly market reports, which are pages of their own written
-                    from the same figures as the Rents tab. */}
+                    from the same figures as the Market tab. */}
                   <View style={[styles.chipRow, { alignItems: 'center' }]}>
                     <Pressable accessibilityRole="link" onPress={() => navigateTab('about')} style={{ paddingVertical: 6 }}>
                       <Text style={styles.linkText}>About</Text>

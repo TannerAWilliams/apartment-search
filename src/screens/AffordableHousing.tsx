@@ -2,6 +2,7 @@ import type { HousingResponse } from '../../server/contracts.ts';
 import type React from 'react';
 import { useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
+import { INCOME_YEAR, RENT_YEAR, restrictionLines } from '../affordable-limits.ts';
 import { styles } from '../styles.ts';
 import { Button, Chip, Disclosure, Link } from '../components/ui.tsx';
 
@@ -77,10 +78,13 @@ const Sizes = ({ sizes }: { sizes: number[] }) => (
 
 export function AffordableHousing({
   region,
+  workplace,
   loadHousing,
   onError,
 }: {
   region: string;
+  /** Where the person works, when they have said, and the miles to it: each lottery then shows how far it is. */
+  workplace?: { label: string; miles: (place: unknown) => number | null };
   loadHousing?: (signal: AbortSignal) => Promise<HousingResponse>;
   onError: (message: string) => void;
 }) {
@@ -139,7 +143,8 @@ export function AffordableHousing({
             {data && (
               <Text style={styles.smallMuted}>
                 From the city’s list, published {showDate(data.publishedAt)}. The city updates it about monthly, so Housing Connect may show
-                newer lotteries.
+                newer lotteries. Income limits are the city’s {INCOME_YEAR} ceilings for a household of one, and rents its {RENT_YEAR}{' '}
+                ceilings for each income band; each lottery’s own page has its exact rents and its minimum income.
               </Text>
             )}
             <Rows
@@ -154,7 +159,20 @@ export function AffordableHousing({
                     {[lottery.borough, `Apply by ${showDate(lottery.closes)}`].filter(Boolean).join(' · ')}
                   </Text>
                   {lottery.addresses.length > 0 && <Text style={styles.smallMuted}>{lottery.addresses.join(' · ')}</Text>}
+                  {(() => {
+                    const miles = workplace ? workplace.miles(lottery) : null;
+                    return miles === null ? null : (
+                      <Text style={styles.bodyText}>
+                        {miles.toFixed(1)} miles from {workplace!.label.split(',')[0]}, in a straight line
+                      </Text>
+                    );
+                  })()}
                   <Sizes sizes={lottery.sizes} />
+                  {restrictionLines(lottery.bands, lottery.sizes).map((line) => (
+                    <Text key={line} style={styles.bodyText}>
+                      {line}
+                    </Text>
+                  ))}
                   <Link label="View lottery and apply" url={lottery.url} onError={onError} />
                 </View>
               )}

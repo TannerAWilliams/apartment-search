@@ -732,7 +732,7 @@ test('market history charts one area, compares another, and says when figures ca
     return route.fulfill({ json: { month: '2026-10', areas, history: [] } });
   });
   // One page: pick an area and a size once; the chart, its time range and the area list follow.
-  await page.getByRole('tab', { name: 'Rents', exact: true }).click();
+  await page.getByRole('tab', { name: 'Market', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Rent prices', exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Median rent', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Connecticut', exact: true })).toBeVisible();
@@ -855,7 +855,7 @@ test('iPhone 17 portrait keeps primary controls inside the screen', async ({ pag
 
 test('without dashboard access the Market page shows recent months only, without requesting history', async ({ page }) => {
   const { requests } = await mockApp(page);
-  await page.getByRole('tab', { name: 'Rents', exact: true }).click();
+  await page.getByRole('tab', { name: 'Market', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Rent prices', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: /^Listings with a price cut/ })).toHaveCount(0);
   expect(requests.filter((request) => request.path.startsWith('/api/history'))).toHaveLength(0);
@@ -975,7 +975,7 @@ test('an open result expires without a provider request and saved apartments rem
   const { requests } = await mockApp(page, { inventoryExpiresAt: '2026-11-17T12:00:00Z' });
   await expect(page.getByText('12 Grove Street', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Save apartment', exact: true }).first().click();
-  // Only the Rents tab, read in the background, may ask for anything; no search and no source check.
+  // Only the Market tab, read in the background, may ask for anything; no search and no source check.
   const listingRequests = () => requests.filter(({ path }) => !path.startsWith('/api/market') && !path.startsWith('/api/history'));
   const count = listingRequests().length;
   await page.clock.fastForward(60_001);
@@ -1476,7 +1476,7 @@ test('main screens have no serious accessibility problems (axe)', async ({ page 
     expect(serious).toEqual([]);
   };
   await check('search');
-  await page.getByRole('tab', { name: 'Rents', exact: true }).click();
+  await page.getByRole('tab', { name: 'Market', exact: true }).click();
   await check('market');
   await page.getByRole('tab', { name: 'Profile', exact: true }).click();
   await check('profile');
@@ -1516,7 +1516,7 @@ test('each screen has its own address that opens it directly, and Back returns',
     ['/profile', 'Profile'],
     ['/saved', /^Saved/],
     ['/search', 'Search'],
-    ['/market', 'Rents'],
+    ['/market', 'Market'],
   ] as const) {
     await page.goto(path);
     await expect(page.getByRole('tab', { name: tab, exact: typeof tab === 'string' })).toHaveAttribute('aria-selected', 'true');
@@ -1547,7 +1547,7 @@ test('Rents is read in the background after the home page, so the tab opens with
   await expect.poll(() => markets.length).toBeGreaterThan(0);
   await expect(page.getByRole('heading', { name: 'Rent prices', exact: true })).toHaveCount(0);
   const before = markets.length;
-  await page.getByRole('tab', { name: 'Rents', exact: true }).click();
+  await page.getByRole('tab', { name: 'Market', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Rent prices', exact: true })).toBeVisible();
   expect(markets.length).toBe(before);
 });

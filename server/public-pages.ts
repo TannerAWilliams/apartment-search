@@ -65,21 +65,25 @@ function page(origin: string, path: string, title: string, description: string, 
       : ''
   }
 <style>
-body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:#222;background:#fff;line-height:1.5}
+:root{color-scheme:light dark;--ink:#222;--muted:#5f5b59;--page:#fff;--line:#ddd;--soft:#eee;--brand:#773516;--accent:#db164e}
+@media (prefers-color-scheme:dark){:root{--ink:#f2f0ee;--muted:#b3aeab;--page:#141312;--line:#3a3735;--soft:#2a2826;--brand:#f8a47e;--accent:#f43f6b}}
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--ink);background:var(--page);line-height:1.5}
 header,main,footer{max-width:880px;margin:0 auto;padding:16px 20px}
-header{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #ddd}
-a{color:#222}.brand{color:#db164e;font-weight:800;font-size:22px;text-decoration:none;letter-spacing:-.5px}
-h1{font-size:34px;line-height:1.15;letter-spacing:-.6px;margin:24px 0 8px}h2{font-size:22px;margin:32px 0 12px}
-.muted{color:#5f5b59}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
-.tile{border:1px solid #ddd;border-radius:12px;padding:14px}.tile b{display:block;font-size:24px}
-.cta{display:inline-block;background:#db164e;color:#fff;text-decoration:none;font-weight:600;padding:12px 20px;border-radius:10px;margin:16px 0}
-ul.links{columns:2;padding-left:18px}ul.articles{list-style:none;padding:0}ul.articles li{padding:10px 0;border-bottom:1px solid #eee}
-table{border-collapse:collapse;width:100%;margin:8px 0 16px}th,td{text-align:left;padding:8px 10px;border-bottom:1px solid #eee}th{font-size:14px;color:#5f5b59}
-footer{border-top:1px solid #ddd;margin-top:40px;font-size:14px}
+header{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line)}
+a{color:var(--ink)}.brand{display:flex;align-items:center;gap:9px;color:var(--brand);font-weight:800;font-size:23px;text-decoration:none;letter-spacing:-.9px}.brand img{width:32px;height:32px;border-radius:8px}
+main{padding-top:8px;padding-bottom:32px}main>:last-child{margin-bottom:0}
+h1{font-size:34px;line-height:1.15;letter-spacing:-.6px;margin:24px 0 8px}h2{font-size:22px;margin:32px 0 8px}p{margin:0 0 16px}
+.muted{color:var(--muted)}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.tile{border:1px solid var(--line);border-radius:12px;padding:14px}.tile b{display:block;font-size:24px}
+.cta{display:inline-block;background:var(--accent);color:#fff;text-decoration:none;font-weight:600;padding:12px 20px;border-radius:10px;margin:8px 0 0}
+ul.links{columns:2;padding-left:18px}ul.articles{list-style:none;padding:0;margin:0 0 16px}ul.articles li{padding:10px 0;border-bottom:1px solid var(--soft)}
+table{border-collapse:collapse;width:100%;margin:8px 0 16px}th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--soft)}th{font-size:14px;color:var(--muted)}
+td:not(:first-child),th:not(:first-child){text-align:right;white-space:nowrap}
+footer{border-top:1px solid var(--line);font-size:14px;padding-top:20px;padding-bottom:28px}footer p{margin:0 0 8px}footer nav{display:flex;flex-wrap:wrap;gap:6px 18px}
 </style></head><body>
-<header><a class="brand" href="/">walkup</a><a href="/">Sign in</a></header>
+<header><a class="brand" href="/"><img src="/icons/walkup.svg" alt="">walkup</a><a href="/profile">Log in</a></header>
 <main>${body}</main>
-<footer class="muted">Walkup searches New York City apartments across listing sites, brokerages and landlords. Figures are medians of asking rents listed now; 311 complaints come from NYC Open Data. · <a href="/rents">All neighborhoods</a> · <a href="/blog">Market reports</a></footer>
+<footer class="muted"><p>Walkup searches New York City apartments across listing sites, brokerages and landlords. Figures are medians of asking rents; 311 complaints come from NYC Open Data.</p><nav><a href="/search">Search apartments</a><a href="/rents">All neighborhoods</a><a href="/blog">Market reports</a></nav></footer>
 </body></html>`;
 }
 

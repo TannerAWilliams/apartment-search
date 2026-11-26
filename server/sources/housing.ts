@@ -27,6 +27,11 @@ type LotteryRow = {
 type ActiveLottery = LotteryRow & { lottery_id: string; lottery_end_date: string };
 type BuildingRow = { lottery_id?: string; house_number?: string; street_name?: string; borough?: string; address_zipcode?: string };
 
+/** The income bands the city counts apartments in, lowest first; src/affordable-limits.ts has what each allows. */
+const BAND_FIELDS = ['ext_low', 'very_low', 'low', 'moderate', 'middle'];
+/** A coordinate from the city's text, or nothing when it gave none. */
+const coordinate = (value: unknown) => (typeof value === 'string' && Number.isFinite(Number(value)) ? Number(value) : undefined);
+
 async function readJson(path: string, fetcher: SourceFetch) {
   const response = await fetcher(NYC_OPEN_DATA + path, {
     redirect: 'manual',
@@ -109,6 +114,10 @@ export async function loadHousingConnect(fetcher: SourceFetch, now: Date) {
       addresses: [...(byId.get(row.lottery_id)?.addresses ?? [])].sort(),
       buildingKeys: [...(byId.get(row.lottery_id)?.keys ?? [])],
       url: 'https://housingconnect.nyc.gov/PublicWeb/details/' + row.lottery_id,
+      // Where it is, for the distance to someone's work, and how many apartments are in each income band.
+      latitude: coordinate(row.latitude),
+      longitude: coordinate(row.longitude),
+      bands: BAND_FIELDS.map((field) => Number(row['applied_income_ami_' + field]) || 0),
     })),
   };
 }

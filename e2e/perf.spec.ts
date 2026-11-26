@@ -89,7 +89,7 @@ test('the home page shows from one script, and asks the server for settings and 
   expect(count('/api/search')).toBe(1);
   // The opening search does not ask for the map's points, which are most of a response.
   expect(api.find(({ path }) => path === '/api/search')?.body?.includeMap).toBe(false);
-  // Everything the first visit asks of the server, with the Rents tab made ready in the background.
+  // Everything the first visit asks of the server, with the Market tab made ready in the background.
   expect(api.length).toBeLessThanOrEqual(8);
 });
 
@@ -131,7 +131,7 @@ test('a tap costs at most one request: sorting searches once, opening filters an
   await expect.poll(() => count('/api/market')).toBeGreaterThan(0);
   await settled(page);
   const beforeRents = api.length;
-  await page.getByRole('tab', { name: 'Rents', exact: true }).click();
+  await page.getByRole('tab', { name: 'Market', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Rent prices', exact: true })).toBeVisible();
   await settled(page);
   expect(api.length).toBe(beforeRents);

@@ -28,6 +28,9 @@ test('each month has three articles, for the latest month with figures and the e
 
 test('the rent report states the month’s figures, by borough and by size, with their source', async () => {
   const article = (await composeArticle(d1, archive, 'nyc-rent-report-2026-10'))!;
+  // Every neighborhood is ranked by rent under the boroughs, with how many rentals its median is of.
+  expect(article.html).toMatch(/<h2>All \d+ neighborhoods, by rent<\/h2>/);
+  expect(article.html).toContain('Rentals listed');
   expect(article.title).toBe('New York City rent report: October 2026');
   expect(article.description).toBe('The median asking rent in New York City was $4,100 in October 2026, up 3.8% from a year earlier.');
   expect(article.html).toContain('27,084 rentals were listed, down 15.2% from a year earlier.');

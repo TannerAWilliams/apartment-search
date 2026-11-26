@@ -64,6 +64,11 @@ const HousingOpportunitySchema = v.object({
   addresses: v.array(text),
   buildingKeys: v.array(text),
   url: text,
+  // Added later: a lottery saved before them has neither.
+  latitude: v.optional(v.number()),
+  longitude: v.optional(v.number()),
+  /** Apartments in each income band, lowest first (src/affordable-limits.ts). */
+  bands: v.optional(v.array(v.number())),
 });
 /** NYC Housing Connect's open lotteries, as saved (the check time is kept in the document's metadata). */
 export const StoredHousingSchema = v.object({ publishedAt: v.nullable(text), opportunities: v.array(HousingOpportunitySchema) });

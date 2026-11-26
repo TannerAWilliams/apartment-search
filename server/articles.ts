@@ -116,6 +116,9 @@ export async function composeArticle(database: D1Database, loadArchive: ArchiveL
       const figure = bySize[index]!.find(({ type }) => type === 'city');
       return figure && figure.value !== null ? [[label, formatRent(figure.value), signed(figure)]] : [];
     });
+    const everyNeighborhood = rents!
+      .filter((figure): figure is Figure & { value: number } => figure.type === 'neighborhood' && figure.value !== null)
+      .toSorted((x, y) => y.value - x.value);
     const lead = `The median asking rent in New York City was ${formatRent(city.value)} in ${monthName(month)}${against(city)}.`;
     const html = [
       `<p>${escape(lead)}</p>`,
@@ -131,6 +134,18 @@ export async function composeArticle(database: D1Database, loadArchive: ArchiveL
       ),
       '<h2>By size</h2>',
       table(['Size', 'Median asking rent', 'From a year earlier'], sizes),
+      // Every neighborhood with a median that month, dearest first; a median of few rentals moves a lot, so the count is shown.
+      `<h2>${escape(`All ${everyNeighborhood.length} neighborhoods, by rent`)}</h2>`,
+      table(
+        ['', 'Neighborhood', 'Median asking rent', 'From a year earlier', 'Rentals listed'],
+        everyNeighborhood.map((figure, index) => [
+          String(index + 1),
+          place(figure),
+          formatRent(figure.value),
+          signed(figure),
+          Math.round(listed.get(`neighborhood|${figure.borough}|${figure.name}`) ?? 0).toLocaleString('en-US'),
+        ]),
+      ),
       source(month),
     ].join('\n');
     return { slug, month, title, description: lead, html };

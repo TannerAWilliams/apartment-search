@@ -193,7 +193,6 @@ export const styles = StyleSheet.create({
   chartSource: { backgroundColor: colors.light, borderRadius: 12, padding: 14, gap: 4 },
   chartControls: { ...panel, padding: 14, gap: 8 },
   chartCard: { ...panel, padding: 14, gap: 10 },
-  chartCompare: { gap: 6, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 10 },
   trendHeadline: { ...wrap, justifyContent: 'space-between', alignItems: 'center', paddingVertical: 3 },
   trendPrice: { fontSize: 32, lineHeight: 38, fontWeight: '600', color: colors.ink, letterSpacing: -0.9, fontVariant: ['tabular-nums'] },
   trendChange: {

@@ -142,6 +142,9 @@ const next = new Date('2026-11-10T01:00:00Z');
 const active = {
   lottery_id: '7612',
   lottery_name: 'Example Rental Lottery',
+  latitude: '40.848952',
+  longitude: '-73.922559',
+  applied_income_ami_low: '6',
   lottery_status: 'Active',
   development_type: 'Rental',
   lottery_start_date: '2026-10-15T00:00:00.000',

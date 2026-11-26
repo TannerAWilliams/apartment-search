@@ -111,7 +111,6 @@ export function RentChart({
   // The open answer card; its chart shows under the cards.
   const [insight, setInsight] = useState('rent');
   const [bedrooms, setBedrooms] = useState(1);
-  const [pinned, setPinned] = useState<string[]>([]);
   const [visible, setVisible] = useState(PAGE_SIZE);
   const [loaded, setLoaded] = useState<Record<string, RentMarket | 'failed'>>({});
 
@@ -182,7 +181,6 @@ export function RentChart({
   const selected = byId.get(choice.id);
   const stateLabel = STATES.find(([id]) => id === state)![1];
   const displayed = selected && choice.level === 'state' ? { ...selected, label: state === 'all' ? 'All areas' : stateLabel } : selected;
-  const pinnedAreas = pinned.map((id) => byId.get(id)).filter((area): area is RentArea => Boolean(area));
   // The table lists the level below the choice: cities in a state, neighborhoods in a city, ZIP codes for a ZIP.
   const tableAreas =
     choice.level === 'zip'
@@ -199,7 +197,6 @@ export function RentChart({
   }
   function chooseState(next: State) {
     setState(next);
-    setPinned([]);
     setAllNeighborhoods(false);
     choose(STATE_CHOICE);
   }
@@ -338,29 +335,10 @@ export function RentChart({
         </Text>
         {range === SNAPSHOT_RANGE || dataset === 'saved' ? (
           <>
-            <RentTrend
-              areas={[displayed, ...pinnedAreas.filter(({ id }) => id !== displayed.id)]}
-              bedrooms={bedrooms}
-              month={month}
-              history={history}
-              compact
-            />
+            <RentTrend areas={[displayed]} bedrooms={bedrooms} month={month} history={history} compact />
             <Text style={styles.smallMuted}>
               Source: {dataset === 'saved' ? 'your saved apartments' : snapshotSource}. Monthly medians of asking rents.
             </Text>
-            <View style={styles.chartCompare}>
-              <View style={styles.chipRow}>
-                {!pinned.includes(displayed.id) && pinned.length < 2 && (
-                  <Chip onPress={() => setPinned([...pinned, displayed.id])}>+ Compare {displayed.label}</Chip>
-                )}
-                {pinnedAreas.map(({ id, label }) => (
-                  <Chip key={id} selected onPress={() => setPinned(pinned.filter((item) => item !== id))}>
-                    {label} ×
-                  </Chip>
-                ))}
-              </View>
-              {pinned.length > 0 && <Text style={styles.smallMuted}>Now choose another area above to see both.</Text>}
-            </View>
           </>
         ) : loadHistory ? (
           <LongTrend load={loadHistory} area={historyArea(choice, state, displayed.label)} bedrooms={bedrooms} months={range} />
