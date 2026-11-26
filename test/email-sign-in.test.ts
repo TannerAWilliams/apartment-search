@@ -63,10 +63,15 @@ test('an allowed email signs in with a code, and the session opens the API', asy
   const { cookie, token } = await signIn(env, sent);
   expect(sent).toHaveLength(1);
   expect(sent[0]?.to).toEqual([ALLOWED]);
-  expect((await call(env, '/api/config', { headers: { Cookie: cookie } })).status).toBe(200);
+  // The session is looked up only for a request that carries one; the browser's cookie is one.
+  expect(cookie).toContain('session_token');
+  const member = await call(env, '/api/config', { headers: { Cookie: cookie } });
+  expect(member.status).toBe(200);
+  expect(((await member.json()) as { account?: string }).account).toBe(ALLOWED);
   // The native app sends the session token instead of a cookie.
   expect(token).not.toBe('');
-  expect((await call(env, '/api/config', { headers: { Authorization: 'Bearer ' + token } })).status).toBe(200);
+  const app = await call(env, '/api/config', { headers: { Authorization: 'Bearer ' + token } });
+  expect(((await app.json()) as { account?: string }).account).toBe(ALLOWED);
 });
 
 test('an email that is not allowed gets no code and cannot sign in', async () => {

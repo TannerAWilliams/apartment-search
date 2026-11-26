@@ -157,7 +157,10 @@ app.use(async (c, next) => {
   const bearer = Boolean(
     env.APP_ACCESS_TOKEN && (await timingSafeEqual(c.req.header('Authorization') ?? '', 'Bearer ' + env.APP_ACCESS_TOKEN)),
   );
-  const auth = bearer ? null : authFor(env);
+  // A visitor sends no session (a cookie from the browser, a bearer token from the phone app), so there is none
+  // to look up: most requests are a visitor's, and each lookup costs them time before any answer starts.
+  const carriesSession = /session_token/.test(c.req.header('Cookie') ?? '') || c.req.header('Authorization') !== undefined;
+  const auth = bearer || !carriesSession ? null : authFor(env);
   const session = auth
     ? await sessionEmail(auth, env, c.req.raw.headers).catch((cause) => {
         log.error('session_check_failed', cause);
