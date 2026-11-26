@@ -302,6 +302,28 @@ export function compareResults(
   return (a[metric] ?? Infinity) - (b[metric] ?? Infinity) || a.rent - b.rent || a.id.localeCompare(b.id);
 }
 
+/**
+ * Sorts search results in place. Newest first is the order people open on, so it is the quick one: each
+ * listing's date and whether its rent is suspicious are read once into arrays of numbers, and the sort compares
+ * those; only listings posted at the same moment are compared in full.
+ */
+export function sortResults<T extends Parameters<typeof compareResults>[0]>(list: T[], sort = 'rent') {
+  if (sort !== 'newest') return list.sort((a, b) => compareResults(a, b, sort));
+  const count = list.length;
+  const times = new Float64Array(count);
+  const suspicious = new Uint8Array(count);
+  const order = new Uint32Array(count);
+  for (let index = 0; index < count; index++) {
+    times[index] = listedTime(list[index]!);
+    suspicious[index] = suspiciousRent(list[index]!) ? 1 : 0;
+    order[index] = index;
+  }
+  const copy = list.slice();
+  order.sort((a, b) => suspicious[a]! - suspicious[b]! || times[b]! - times[a]! || compareResults(copy[a]!, copy[b]!, 'rent'));
+  for (let index = 0; index < count; index++) list[index] = copy[order[index]!]!;
+  return list;
+}
+
 const placeName = (name: string) =>
   name
     .toLowerCase()

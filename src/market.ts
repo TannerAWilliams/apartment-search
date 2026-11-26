@@ -4,7 +4,7 @@ import { bestFit } from './best-fit.ts';
 import { SNAPSHOT_MONTH } from './data/snapshot-month.ts';
 import { listingWithVerifiedLinks, mergeListings, orderedListingLinks } from './listings.ts';
 import { matchesRegion } from './regions.ts';
-import { compareResults, isPoint, matchListings, SearchInputError } from './search.ts';
+import { isPoint, matchListings, SearchInputError, sortResults } from './search.ts';
 
 /** What the map draws for one home, and what saving from the map needs: its identity, address and every link. */
 export function mapPoint(listing: ListingData, source?: string) {
@@ -135,7 +135,7 @@ export function formatSearch(
   const matches = filters.source
     ? eligible.filter((listing) => listing.sources.some(({ id, url }) => id === filters.source && url))
     : eligible;
-  matches.sort((first, second) => compareResults(first, second, filters.sort));
+  sortResults(matches, filters.sort);
   const mapPoints = filters.includeMap ? matches.filter(isPoint).map((listing) => mapPoint(listing, filters.source)) : undefined;
   const offset = filters.offset ?? 0;
   const pageSize = 100;
