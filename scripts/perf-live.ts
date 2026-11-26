@@ -5,17 +5,18 @@
  *
  * Run after each deploy (.github/workflows/deploy.yml), so a slowdown that only shows in production (the
  * database, the network, a cold server) turns the run red. Each measure is the middle of several visits in a
- * new browser profile, like a private window. The limits leave room for a slow network; the tests in CI
- * (perf/ and e2e/perf.spec.ts) are the tight ones.
+ * new browser profile, like a private window. The limits sit just above what the site measures; the tests in CI
+ * (perf/ and e2e/perf.spec.ts) catch a slowdown before it ships.
  */
 import { chromium, devices, type Browser } from 'playwright';
 
-// Measured after search moved into the browser: about 0.8 s, 0.25 s, 1 s and 0.06 s. The limits leave room for a slow network.
+// Measured on the live site: about 0.7 s, 0.24 s, 0.97 s and 0.07 s. Each limit is the measurement plus about
+// a third to a half, which is what one run differs from the next by; anything slower is a real slowdown.
 const LIMITS_MS = {
-  'home page ready': 1500,
-  'results after tapping Search': 1000,
-  'results opening /search': 2000,
-  'Rents after tapping it': 500,
+  'home page ready': 1000,
+  'results after tapping Search': 400,
+  'results opening /search': 1300,
+  'Rents after tapping it': 150,
 };
 const VISITS = 3;
 type Measure = keyof typeof LIMITS_MS;
