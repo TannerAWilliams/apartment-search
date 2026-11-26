@@ -168,6 +168,8 @@ export const robotsFile = (origin: string) =>
     'Allow: /$',
     'Allow: /rents',
     'Allow: /blog',
+    'Allow: /about',
+    'Allow: /pricing',
     'Allow: /terms',
     'Allow: /privacy',
     'Allow: /_expo/',
@@ -249,7 +251,15 @@ export const publicPages = (env: AppEnv, fetcher: FetchTransport, loadArchive?: 
       const pages = await neighborhoodIndex(env);
       const database = env.BUCKET?.database;
       const articles = database && loadArchive ? articleSlugs(await articleMonths(database, loadArchive).catch(() => [])) : [];
-      const urls = ['/', '/rents', ...pages.map(({ path }) => '/rents/' + path), '/blog', ...articles.map((slug) => '/blog/' + slug)]
+      const urls = [
+        '/',
+        '/about',
+        '/pricing',
+        '/rents',
+        ...pages.map(({ path }) => '/rents/' + path),
+        '/blog',
+        ...articles.map((slug) => '/blog/' + slug),
+      ]
         .map((path) => `<url><loc>${escape(origin + path)}</loc></url>`)
         .join('');
       return c.body(

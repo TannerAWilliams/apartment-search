@@ -21,6 +21,8 @@ const PLAIN = [
   'privacy',
   'list',
   'afford',
+  'about',
+  'pricing',
 ];
 const BY_PATH = new Map<string, string>([
   ...Object.entries(NAMED).map(([tab, path]) => [path, tab] as const),

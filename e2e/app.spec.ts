@@ -1322,7 +1322,22 @@ test('results offer email alerts for the search, and newest and best-value sorti
 test('a visitor uses Walkup without an account, and is asked for one only to save or get alerts', async ({ page }) => {
   const { requests } = await mockApp(page, { admin: false, start: '/' });
   await expect(page.getByRole('heading', { name: 'Find your next New York apartment', exact: true })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Plans', exact: true })).toBeVisible();
+  // The home page is the search; what Walkup is and what it costs are pages of their own, one tap away.
+  await expect(page.getByRole('heading', { name: 'Plans', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Questions', exact: true })).toHaveCount(0);
+  await page.getByRole('link', { name: 'How Walkup works', exact: true }).click();
+  await expect(page).toHaveURL(/\/about$/);
+  await expect(page.getByRole('heading', { name: 'What Walkup does that listing sites don’t', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Questions', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'See pricing', exact: true }).click();
+  await expect(page).toHaveURL(/\/pricing$/);
+  await expect(page.getByRole('heading', { name: 'Pricing', exact: true })).toBeVisible();
+  await expect(page.getByText('or $35 for three months, paid once', { exact: true })).toBeVisible();
+  await expect(page.getByRole('tab', { name: 'Profile', exact: true })).toHaveAttribute('aria-selected', 'false');
+  // Pricing ends on the paid feature, which asks a visitor for an account.
+  await page.getByRole('button', { name: 'Get email alerts', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Create a free account to get email alerts', exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Pricing', exact: true })).toBeVisible();
   // Search works signed out.
   await page.getByRole('tab', { name: 'Search', exact: true }).click();
   await expect(page.getByText('12 Grove Street', { exact: true })).toBeVisible();

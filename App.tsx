@@ -69,6 +69,8 @@ const ApplyPage = preloadable(() => import('./src/screens/ApplyPage.tsx').then((
 const NeighborhoodsPage = preloadable(() => import('./src/screens/NeighborhoodsPage.tsx').then((module) => module.NeighborhoodsPage));
 const RenewalPage = preloadable(() => import('./src/screens/NeighborhoodsPage.tsx').then((module) => module.RenewalPage));
 const AdminPage = preloadable(() => import('./src/screens/AdminPage.tsx').then((module) => module.AdminPage));
+const AboutPage = preloadable(() => import('./src/screens/AboutPage.tsx').then((module) => module.AboutPage));
+const PricingPage = preloadable(() => import('./src/screens/AboutPage.tsx').then((module) => module.PricingPage));
 const LegalPage = preloadable(() => import('./src/screens/LegalPage.tsx').then((module) => module.LegalPage));
 const ListingPage = preloadable(() => import('./src/screens/ListingPage.tsx').then((module) => module.ListingPage));
 const DirectPage = preloadable(() => import('./src/screens/DirectPage.tsx').then((module) => module.DirectPage));
@@ -464,7 +466,7 @@ function ApartmentSearch() {
         // An apartment's page belongs to Search; Profile's own pages to Profile.
         const selected =
           key === 'more'
-            ? !['home', 'chart', 'results', 'saved'].includes(tab) && !tab.startsWith('listing=')
+            ? !['home', 'chart', 'results', 'saved', 'about', 'pricing'].includes(tab) && !tab.startsWith('listing=')
             : key === 'results'
               ? tab === key || tab.startsWith('listing=')
               : tab === key;
@@ -938,7 +940,6 @@ function ApartmentSearch() {
                   {view === 'apply' && <ApplyPage saved={saved} onError={setError} />}
                   {view === 'home' && (
                     <HomePage
-                      signedIn={member}
                       onOpen={navigateTab}
                       // A search from the home page starts fresh, not from the filters of an earlier one.
                       onSearch={(changes) => {
@@ -985,6 +986,8 @@ function ApartmentSearch() {
                       }}
                     />
                   )}
+                  {view === 'about' && <AboutPage onOpen={navigateTab} />}
+                  {view === 'pricing' && <PricingPage signedIn={member} onOpen={navigateTab} />}
                   {view === 'terms' && <LegalPage kind="terms" />}
                   {view === 'privacy' && <LegalPage kind="privacy" />}
                   {view === 'neighborhoods' && (
@@ -1017,10 +1020,21 @@ function ApartmentSearch() {
               </View>
               <View style={styles.footer}>
                 <Text style={styles.smallMuted}>Walkup · New York, New Jersey and Connecticut</Text>
-                {/* The monthly market reports are pages of their own, written from the same figures as the Rents tab. */}
-                <ExternalLink url={`${API_ORIGIN}/blog`} onError={setError} style={{ alignSelf: 'flex-start', paddingVertical: 6 }}>
-                  <Text style={styles.linkText}>Market reports</Text>
-                </ExternalLink>
+                {/* What Walkup is and costs, and the monthly market reports, which are pages of their own written
+                    from the same figures as the Rents tab. */}
+                <View style={[styles.chipRow, { alignItems: 'center' }]}>
+                  <Pressable accessibilityRole="link" onPress={() => navigateTab('about')} style={{ paddingVertical: 6 }}>
+                    <Text style={styles.linkText}>About</Text>
+                  </Pressable>
+                  <Text style={styles.smallMuted}>·</Text>
+                  <Pressable accessibilityRole="link" onPress={() => navigateTab('pricing')} style={{ paddingVertical: 6 }}>
+                    <Text style={styles.linkText}>Pricing</Text>
+                  </Pressable>
+                  <Text style={styles.smallMuted}>·</Text>
+                  <ExternalLink url={`${API_ORIGIN}/blog`} onError={setError} style={{ paddingVertical: 6 }}>
+                    <Text style={styles.linkText}>Market reports</Text>
+                  </ExternalLink>
+                </View>
               </View>
             </View>
           </ScrollView>
@@ -1103,6 +1117,8 @@ const PAGE_TITLES: Record<string, string> = {
   marketplaces: 'Rental platforms',
   sources: 'Sources & sync',
   admin: 'Dashboard',
+  about: 'How Walkup works',
+  pricing: 'Pricing',
   terms: 'Terms of Service',
   privacy: 'Privacy Policy',
 };
