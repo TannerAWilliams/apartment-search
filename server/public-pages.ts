@@ -70,7 +70,7 @@ function page(origin: string, path: string, title: string, description: string, 
 body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--ink);background:var(--page);line-height:1.5}
 header,main,footer{max-width:880px;margin:0 auto;padding:16px 20px}
 header{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line)}
-a{color:var(--ink)}.brand{display:flex;align-items:baseline;gap:1px;color:var(--brand);font-weight:800;font-size:23px;text-decoration:none;letter-spacing:-.9px}.brand img{height:12.5px;width:auto}
+a{color:var(--ink)}.brand{display:flex;align-items:baseline;gap:7px;color:var(--brand);font-weight:800;font-size:23px;text-decoration:none;letter-spacing:-.9px}.brand img{height:23px;width:auto}
 main{padding-top:8px;padding-bottom:32px}main>:last-child{margin-bottom:0}
 h1{font-size:34px;line-height:1.15;letter-spacing:-.6px;margin:24px 0 8px}h2{font-size:22px;margin:32px 0 8px}p{margin:0 0 16px}
 .muted{color:var(--muted)}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
@@ -81,7 +81,7 @@ table{border-collapse:collapse;width:100%;margin:8px 0 16px}th,td{text-align:lef
 td:not(:first-child),th:not(:first-child){text-align:right;white-space:nowrap}
 footer{border-top:1px solid var(--line);font-size:14px;padding-top:20px;padding-bottom:28px}footer p{margin:0 0 8px}footer nav{display:flex;flex-wrap:wrap;gap:6px 18px}
 </style></head><body>
-<header><a class="brand" href="/" aria-label="Walkup, home"><img src="/icons/walkup.svg" alt="w">alkup</a><a href="/profile">Log in</a></header>
+<header><a class="brand" href="/"><img src="/icons/walkup.svg" alt="">walkup</a><a href="/profile">Log in</a></header>
 <main>${body}</main>
 <footer class="muted"><p>Walkup searches New York City apartments across listing sites, brokerages and landlords. Figures are medians of asking rents; 311 complaints come from NYC Open Data.</p><nav><a href="/search">Search apartments</a><a href="/rents">All neighborhoods</a><a href="/blog">Market reports</a></nav></footer>
 </body></html>`;

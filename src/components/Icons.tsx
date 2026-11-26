@@ -47,17 +47,16 @@ export function ChartIcon({ color, size = 22 }: IconProps) {
 }
 
 /**
- * Walkup's mark, which is also the name's first letter: a W that reads two ways, as a flat letter and as a flight
- * of stairs folding away from you (the dark faces are the risers, the pink ones the treads). In the header it stands
- * where the "w" would, as tall as the small letters beside it, followed by "alkup". Its dark faces are the page's
- * ink, so it follows the theme. The same drawing is the tab icon (public/icons/walkup.svg); the home-screen icons
- * put it on a dark tile.
+ * Walkup's mark: an arched doorway with a flight of stairs inside it, which is what a walk-up is. The doorway is
+ * the page's ink, so it follows the theme, and the stairs are the accent color. It has no tile behind it, is about
+ * as tall as the name's tall letters and stands on the name's baseline. The same drawing is the tab icon
+ * (public/icons/walkup.svg); the home-screen icons put it on a dark tile.
  */
-export function BrandMark({ size = 12.5 }: { size?: number }) {
+export function BrandMark({ size = 23 }: { size?: number }) {
   return (
-    <Svg width={(size * 21) / 13.7} height={size} viewBox="0 0 21 13.7" aria-hidden>
-      <Path d="M0 0l5.25 6.7v7L0 7zM10.5 0l5.25 6.7v7L10.5 7z" fill={palette.gray[9]} />
-      <Path d="M5.25 6.7 10.5 0v7l-5.25 6.7zM15.75 6.7 21 0v7l-5.25 6.7z" fill={palette.rose[5]} />
+    <Svg width={(size * 21) / 25} height={size} viewBox="5.5 3 21 25" aria-hidden>
+      <Path d="M6.5 28V13.5a9.5 9.5 0 0 1 19 0V28z" fill={palette.gray[9]} />
+      <Path d="M9 28v-4.2h4.8v-4.2h4.8v-4.2h4.4V28z" fill={palette.rose[5]} />
     </Svg>
   );
 }
