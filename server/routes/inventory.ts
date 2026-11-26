@@ -5,7 +5,7 @@
 import { readFile, readHead, refreshInventorySoon } from '../inventory.ts';
 import { factory, fail } from './context.ts';
 
-/** Sent as stored: the file is already gzipped, so Cloudflare must not compress it again. */
+/** Sent as stored: the file is already compressed, so Cloudflare must not compress it again. */
 const asStored = { encodeBody: 'manual' } as ResponseInit;
 
 export const inventoryRoutes = factory
@@ -34,14 +34,21 @@ export const inventoryRoutes = factory
     if (c.req.header('Sec-Fetch-Site') !== 'same-origin') return fail(c, 403, 'The inventory file is for the app’s own pages.');
     const store = c.var.appEnv.INVENTORY;
     const version = c.req.param('version');
-    const file = store && /^[0-9a-f]{24}$/.test(version) ? await readFile(store, version) : null;
+    if (!store || !/^[0-9a-f]{24}$/.test(version)) return fail(c, 404, 'That inventory file is gone. Ask for the current one.');
+    // Brotli for the browsers that read it, gzip for the rest and for a file stored before Brotli. Cloudflare
+    // rewrites Accept-Encoding on the way in and keeps what the browser sent beside it.
+    const accepted =
+      (c.req.raw as Request & { cf?: { clientAcceptEncoding?: string } }).cf?.clientAcceptEncoding ?? c.req.header('Accept-Encoding');
+    const brotli = /\bbr\b/.test(accepted ?? '') ? await readFile(store, version, 'br') : null;
+    const file = brotli ?? (await readFile(store, version, 'gzip'));
     if (!file) return fail(c, 404, 'That inventory file is gone. Ask for the current one.');
     return new Response(file, {
       ...asStored,
       headers: {
         'Content-Type': 'text/plain; charset=utf-8',
-        'Content-Encoding': 'gzip',
+        'Content-Encoding': brotli ? 'br' : 'gzip',
         'Cache-Control': 'public, max-age=31536000, immutable',
+        Vary: 'Accept-Encoding',
       },
     });
   });

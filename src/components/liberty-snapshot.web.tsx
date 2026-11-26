@@ -45,6 +45,16 @@ function start() {
   return renderer;
 }
 
+/**
+ * Loads the map's code and its style ahead of the first card, which would otherwise wait for both after it is
+ * on screen. A failure here is found again, and handled, by the first picture asked for.
+ */
+export function warmSnapshots() {
+  start().catch(() => {
+    renderer = null;
+  });
+}
+
 /** A Liberty picture of the streets around a point, `width` by `height`, as an image address. */
 export function libertySnapshot(latitude: number, longitude: number, width: number, height: number): Promise<string> {
   const w = Math.round(width);

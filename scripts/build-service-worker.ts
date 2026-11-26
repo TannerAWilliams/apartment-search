@@ -13,12 +13,17 @@ if (!result.success || result.outputs.length !== 1) throw new AggregateError(res
 await Bun.write(new URL('../web-build/sw.js', import.meta.url), result.outputs[0]);
 console.log(`Service worker: web-build/sw.js (${result.outputs[0].size} bytes)`);
 
-// The page's early requests (web/boot.ts): a few hundred bytes, loaded by index.html before the app.
+// The page's early requests (web/boot.ts): a few hundred bytes, loaded by index.html before the app. It is told
+// where this build's map code is, to start that download early on the pages that draw cards.
+const scripts = new URL('../web-build/_expo/static/js/web/', import.meta.url);
+const [mapCode = ''] = await Array.fromAsync(new Bun.Glob('ListingMap-*.js').scan(scripts.pathname));
+if (!mapCode) console.warn('The map code was not found in the export; pages will load it when a card needs it.');
 const boot = await Bun.build({
   entrypoints: [new URL('../web/boot.ts', import.meta.url).pathname],
   target: 'browser',
   format: 'iife',
   minify: true,
+  define: { MAP_CODE: JSON.stringify(mapCode && '/_expo/static/js/web/' + mapCode) },
 });
 if (!boot.success || boot.outputs.length !== 1) throw new AggregateError(boot.logs, 'The early-request script did not build.');
 await Bun.write(new URL('../web-build/boot.js', import.meta.url), boot.outputs[0]);

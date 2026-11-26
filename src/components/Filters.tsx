@@ -7,6 +7,7 @@ import { colors, styles } from '../styles.ts';
 import { Button, Chip, Field } from './ui.tsx';
 import { lineColors } from './LineBullet.tsx';
 import { type DraftFilters, SEARCH_DEFAULTS, BEDROOMS, formDefaults } from '../app-shared.ts';
+import { type CommutePlace, samePlace } from '../hooks/use-commute-place.ts';
 
 /** A filter section's heading, with a divider above it. */
 const FILTER_HEADING = {
@@ -313,19 +314,11 @@ export function Filters({
       {panel === 'commute' && (
         <>
           <Text style={styles.smallMuted}>Where you commute to. Typed places are looked up with OpenStreetMap.</Text>
-          <View style={styles.chipRow}>
-            {Object.entries(WORKPLACES).map(([key, workplace]) => (
-              <Chip key={key} selected={draft.workplace === key} onPress={() => set('workplace')(key)}>
-                {workplace.label}
-              </Chip>
-            ))}
-            <Chip selected={draft.workplace === 'custom'} onPress={() => set('workplace')('custom')}>
-              Custom
-            </Chip>
-          </View>
-          {draft.workplace === 'custom' && (
-            <DestinationField value={draft.customWorkplace} onChange={set('customWorkplace')} suggest={suggest} />
-          )}
+          <CommuteField
+            place={{ workplace: draft.workplace, customWorkplace: draft.customWorkplace }}
+            onChange={(place) => setDraft((previous) => ({ ...previous, ...place }))}
+            suggest={suggest}
+          />
           {commuteLimit}
           {commuteConfigured ? (
             <>
@@ -404,15 +397,61 @@ export function Filters({
 
 type Place = { label: string; latitude: number; longitude: number };
 
-/** A typed destination: an address or a place name, with suggestions from the map as it is typed. */
+/** The well-known destinations, offered by name before the map is asked. */
+const KNOWN_PLACES = Object.values(WORKPLACES).map(({ label }) => label);
+const sameText = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+/** What typed text means: a well-known place by its name, or an address for the map to find. */
+const placeFor = (text: string): CommutePlace => {
+  const known = Object.entries(WORKPLACES).find(([, { label }]) => sameText(label, text));
+  return known ? { workplace: known[0], customWorkplace: '' } : { workplace: 'custom', customWorkplace: text };
+};
+const placeText = (place: CommutePlace) =>
+  place.workplace === 'custom' ? place.customWorkplace : (WORKPLACES[place.workplace]?.label ?? '');
+
+/**
+ * The commute destination as one search box, wherever it is set: type a place or an address and pick it. An
+ * emptied box changes nothing, so a destination is replaced only by another.
+ */
+export function CommuteField({
+  place,
+  onChange,
+  suggest,
+}: {
+  place: CommutePlace;
+  onChange: (place: CommutePlace) => void;
+  suggest?: (query: string) => Promise<Place[]>;
+}) {
+  const [text, setText] = useState(() => placeText(place));
+  // A destination set elsewhere replaces the text; text that already says it stays as it was typed.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: compared by value, not by object
+  useEffect(() => {
+    setText((current) => (samePlace(placeFor(current), place) ? current : placeText(place)));
+  }, [place.workplace, place.customWorkplace]);
+  return (
+    <DestinationField
+      value={text}
+      known={KNOWN_PLACES}
+      suggest={suggest}
+      onChange={(next) => {
+        setText(next);
+        if (next.trim()) onChange(placeFor(next));
+      }}
+    />
+  );
+}
+
+/** A typed destination: an address or a place name, with suggestions as it is typed. */
 export function DestinationField({
   value,
   onChange,
   suggest,
+  known = [],
 }: {
   value: string;
   onChange: (value: string) => void;
   suggest?: (query: string) => Promise<Place[]>;
+  /** Places offered by name at once, before the map's own; one typed in full needs no lookup. */
+  known?: string[];
 }) {
   // What the list shows: nothing yet, a search under way, its places, or that nothing matched.
   const [places, setPlaces] = useState<{ query: string; list: Place[]; state: 'idle' | 'searching' | 'done' }>({
@@ -422,9 +461,12 @@ export function DestinationField({
   });
   const [picked, setPicked] = useState('');
   const query = value.trim();
+  // A place already chosen, or a well-known one typed in full, is settled: nothing more to look up or list.
+  const settled = query === '' || query === picked || known.some((label) => sameText(label, query));
+  const matching = settled ? [] : known.filter((label) => label.toLowerCase().includes(query.toLowerCase()));
   // Asked once typing pauses, and only for the latest text; a choice closes the list.
   useEffect(() => {
-    if (!suggest || query.length < 3 || query === picked) {
+    if (!suggest || query.length < 3 || settled) {
       setPlaces({ query: '', list: [], state: 'idle' });
       return;
     }
@@ -441,12 +483,14 @@ export function DestinationField({
       current = false;
       clearTimeout(timer);
     };
-  }, [query, suggest, picked]);
-  const choose = (place: Place) => {
-    setPicked(place.label);
-    onChange(place.label);
+  }, [query, suggest, settled]);
+  const choose = (label: string) => {
+    setPicked(label);
+    onChange(label);
   };
-  const open = query.length >= 3 && query !== picked;
+  const open = query.length >= 3 && !settled;
+  // The well-known places that match come first, then the map's.
+  const rows = [...matching, ...(open ? places.list.map(({ label }) => label).filter((label) => !matching.includes(label)) : [])];
   return (
     <View style={styles.tokenForm}>
       <Field
@@ -455,27 +499,30 @@ export function DestinationField({
         value={value}
         onChangeText={onChange}
         // Enter takes the first suggestion, as search boxes do.
-        onSubmitEditing={() => places.list[0] && open && choose(places.list[0])}
+        onSubmitEditing={() => rows[0] && choose(rows[0])}
         maxLength={160}
       />
-      {open && places.list.length > 0 && (
-        <View accessibilityRole="list" style={[styles.menu, places.state === 'searching' && { opacity: 0.6 }]}>
-          {places.list.map((place, index) => (
+      {rows.length > 0 && (
+        <View
+          accessibilityRole="list"
+          style={[styles.menu, open && places.state === 'searching' && matching.length === 0 && { opacity: 0.6 }]}
+        >
+          {rows.map((label, index) => (
             <Pressable
-              key={place.label}
+              key={label}
               accessibilityRole="button"
-              accessibilityLabel={`Use ${place.label}`}
-              onPress={() => choose(place)}
+              accessibilityLabel={`Use ${label}`}
+              onPress={() => choose(label)}
               style={({ pressed }) => [styles.menuRow, index > 0 && styles.menuDivider, pressed && styles.pressed]}
             >
               <Text style={styles.bodyText} numberOfLines={2}>
-                {place.label}
+                {label}
               </Text>
             </Pressable>
           ))}
         </View>
       )}
-      {open && suggest && places.list.length === 0 && (
+      {open && suggest && rows.length === 0 && (
         <Text accessibilityRole="status" style={styles.smallMuted}>
           {places.state === 'done'
             ? `No places match “${query}”. Try a street address, like 350 5th Ave, or a landmark.`

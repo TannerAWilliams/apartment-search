@@ -383,7 +383,11 @@ export function ProfilePage({
           [
             'saved',
             `Saved listings (${savedCount})`,
-            account ? 'Kept on your account, on every device you sign in on' : 'Kept on this device',
+            account
+              ? 'Kept on your account, on every device you sign in on'
+              : signInCard
+                ? 'Sign in to save apartments'
+                : 'Kept on this device',
           ],
           ['afford', 'What can I afford?', 'Landlords’ 40× rule and Dave Ramsey’s 25% of take-home pay'],
           ['apply', 'Application kit', 'Your renter profile, the income rule, documents and a ready-written message'],

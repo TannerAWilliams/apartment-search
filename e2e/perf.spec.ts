@@ -93,6 +93,14 @@ test('the home page shows from one script, and asks the server for settings and 
   expect(api.length).toBeLessThanOrEqual(8);
 });
 
+test('a page that opens on cards starts the map’s code with the app’s own, not after the first card', async ({ page }) => {
+  const { scripts } = await open(page, '/search');
+  await expect(page.getByText(/matching apartment/).first()).toBeVisible();
+  // Each card's picture is drawn by the map's code: asked for by the early script, alongside the app.
+  expect(scripts.slice(0, 3).some((name) => name.startsWith('ListingMap-'))).toBe(true);
+  expect(await page.locator('link[rel="preconnect"][href="https://tiles.openfreemap.org"]').count()).toBe(1);
+});
+
 test('search results need one search, which does not wait for the settings', async ({ page }) => {
   let release = () => {};
   const holdConfig = new Promise<void>((resolve) => {

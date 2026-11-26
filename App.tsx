@@ -33,6 +33,8 @@ import { Filters } from './src/components/Filters.tsx';
 import { HomePage } from './src/screens/HomePage.tsx';
 import { AccountPrompt } from './src/components/AccountPrompt.tsx';
 import { StreetViewContext } from './src/components/ListingThumbnail.tsx';
+// No extension: the bundler picks liberty-snapshot.web.tsx in the browser and the stub elsewhere.
+import { warmSnapshots } from './src/components/liberty-snapshot';
 import {
   BrandMark,
   ChartIcon,
@@ -198,7 +200,9 @@ function ApartmentSearch() {
   const navigateRef = useRef(navigateTab);
   navigateRef.current = navigateTab;
   const commuteKnown = commute.place !== null;
-  const commuteAsk = useMemo(() => ({ known: commuteKnown, add: () => navigateRef.current('more') }), [commuteKnown]);
+  /** Takes someone who has not said where they work to where they can (set below, once the screens are known). */
+  const askCommute = useRef(() => {});
+  const commuteAsk = useMemo(() => ({ known: commuteKnown, add: () => askCommute.current() }), [commuteKnown]);
   activeTokenRef.current = activeToken;
   const defaults = () => ({ ...formDefaults(), ...commute.current.current });
   const savedByKey = useMemo(() => new Map(saved.map((listing) => [listingKey(listing), listing])), [saved]);
@@ -253,7 +257,9 @@ function ApartmentSearch() {
       }
       // The chosen category or filter shows as chosen at once, and the results screen opens while they load.
       setApplied(filters);
-      if (changingDestination) commute.remember({ workplace: filters.workplace, customWorkplace: filters.customWorkplace });
+      // A destination applied for the first time is theirs from then on, even when it is the one first offered.
+      if (changingDestination || (expanded === 'commute' && !commuteKnown))
+        commute.remember({ workplace: filters.workplace, customWorkplace: filters.customWorkplace });
       setScope('market');
       navigateTab('results');
       setExpanded('');
@@ -395,7 +401,18 @@ function ApartmentSearch() {
     };
     idle(() => void preloadScreens('soon'));
     if (thrifty) return;
-    const later = setTimeout(() => idle(() => void preloadScreens('later')), 6000);
+    // The hidden map that draws each card's picture: started now where the page opens on cards, so the first
+    // picture does not wait for the map's code and style after the card is on screen; elsewhere with the rest.
+    const cardsFirst = /^\/(search|saved|listing\/)/.test(window.location.pathname);
+    if (cardsFirst) warmSnapshots();
+    const later = setTimeout(
+      () =>
+        idle(() => {
+          void preloadScreens('later');
+          warmSnapshots();
+        }),
+      6000,
+    );
     return () => clearTimeout(later);
   }, []);
 
@@ -413,6 +430,14 @@ function ApartmentSearch() {
   // A visitor (no account, not the app's own admin token) uses everything except what belongs to an account.
   const member = Boolean(account) || admin;
   const view = !member && ACCOUNT_TABS[tab] ? 'account' : tab;
+  // A member sets the destination on their profile, where it is kept with the account; a visitor in the
+  // search's own destination box, where nothing claims to be saved.
+  askCommute.current = () => {
+    if (member) return navigateTab('more');
+    navigateTab('results');
+    setError('');
+    if (expanded !== 'commute') toggleFilter('commute');
+  };
   const listMode = view === 'results' || view === 'saved';
   const [listMounted, setListMounted] = useState(listMode);
   if (listMode && !listMounted) setListMounted(true);
@@ -818,16 +843,20 @@ function ApartmentSearch() {
                       onOpen={navigateTab}
                       onSignOut={() => void signOut()}
                       signInCard={member ? undefined : <AccountPrompt reason="save apartments and get alerts" onSignedIn={signedIn} />}
+                      // Profile settings are an account's: a visitor sees the sign-in form instead, and sets
+                      // the destination in a search, where nothing claims to be saved.
                       commuteCard={
-                        <CommuteCard
-                          place={commute.place ?? { workplace: applied.workplace, customWorkplace: applied.customWorkplace }}
-                          signedIn={Boolean(account)}
-                          suggest={suggestPlaces}
-                          onSave={(place) => {
-                            commute.remember(place);
-                            setDraft((current) => ({ ...current, ...place }));
-                          }}
-                        />
+                        member ? (
+                          <CommuteCard
+                            place={commute.place ?? { workplace: applied.workplace, customWorkplace: applied.customWorkplace }}
+                            onAccount={Boolean(account)}
+                            suggest={suggestPlaces}
+                            onSave={(place) => {
+                              commute.remember(place);
+                              setDraft((current) => ({ ...current, ...place }));
+                            }}
+                          />
+                        ) : undefined
                       }
                       settingsRequest={serverState === 'ready' ? settingsRequest : undefined}
                       onError={setError}

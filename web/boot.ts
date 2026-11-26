@@ -3,8 +3,19 @@
  * settings, the inventory's head (which carries the opening search's answer), the inventory file itself and, on
  * an apartment's own address, that apartment, all of which the app takes over instead of asking again (src/early-requests.ts). Built to /boot.js by
  * scripts/build-service-worker.ts; it loads none of the app's code.
+ *
+ * On the pages that open on apartment cards it also starts the download of the map's code, which draws each
+ * card's picture: the app would ask for it only once the first card is on screen.
  */
 import { EARLY_INVENTORY_FILE, earlyKey, type EarlyRequests } from '../src/early-key.ts';
+
+/** The map code's address in this build, set by the build script ('' when it is not known). */
+declare const MAP_CODE: string;
+if (MAP_CODE && /^\/(search|saved|listing\/)/.test(location.pathname)) {
+  const link = document.createElement('link');
+  Object.assign(link, { rel: 'preload', as: 'script', href: MAP_CODE });
+  document.head.append(link);
+}
 
 const head = fetch('/api/inventory');
 const early: EarlyRequests = {

@@ -212,12 +212,43 @@ What it shows:
   Protobuf decodes 11 ms faster, and would add a library to the app's first download and a schema to maintain.
 - **What is in the file matters more than its format.** Dropping the fields search does not read halves it
   (1,041 to 526 KB), whichever format.
-- **Brotli instead of gzip saves a quarter** (1,041 to 778 KB) with no change to the format.
+- **Brotli instead of gzip saves a quarter** (1,041 to 778 KB) with no change to the format. See the next
+  table for what the Worker can produce.
 - **Plain JSON decodes fastest** (24 ms against 39 ms): the column layout pays a little time for a 15% smaller
   download.
 
 Where the bytes are, in the current file: comparisons and nearby subway stations 28%, source links 21%, building
 records 5%, check times 5%, and every other field under 4% each.
+
+## Compression benchmark
+
+The same file under each codec and setting: its size, the time to compress it once (in the Worker, each time the
+file is built) and the time to decompress it (in the browser, once per version).
+
+| Codec and setting | Size | Against gzip 6 | Compress | Decompress | Read by |
+|---|---:|---:|---:|---:|---|
+| gzip 6 (what was served) | 1,041 KB | | 64 ms | 11 ms | every browser |
+| gzip 9 | 1,008 KB | −3% | 160 ms | 12 ms | every browser |
+| **Brotli, the Worker's own (about setting 4)** | **871 KB** | **−15%** | 135 ms | 14 ms | every current browser |
+| Brotli 5 | 824 KB | −21% | 112 ms | 14 ms | |
+| Brotli 9 | 779 KB | −25% | 327 ms | 14 ms | |
+| Brotli 10 | 683 KB | −34% | 4.6 s | 15 ms | |
+| Brotli 11 | 660 KB | −37% | 17.6 s | 15 ms | |
+| Zstandard 9 | 823 KB | −21% | 86 ms | 9 ms | Chrome, Firefox; not Safari |
+| Zstandard 19 | 702 KB | −33% | 3.5 s | 12 ms | Chrome, Firefox; not Safari |
+
+What is served, since 26 November 2026: **Brotli from the Worker's own `CompressionStream('brotli')`, 871 KB**, to
+every browser that says it reads Brotli, and the gzip file to the rest (Android's HTTP library in the phone app,
+old browsers). Both are stored; the route picks by what the browser sent.
+
+Why not a higher setting: the web-standard stream has no quality setting, and the higher ones are reachable only
+through Node's `zlib` (the Worker would run in Node.js compatibility, which this codebase does without) or a
+WebAssembly encoder added to the Worker. Brotli 10 and 11 also hold a search tree several times the size of
+their window in memory, next to a 10 MB file and the scored listings, inside a Worker's 128 MB; that cannot be
+tested locally, and a build that runs out of memory stops the file being refreshed. Brotli 9 would save another
+92 KB (0.07 s on a 10 Mbit/s connection, on a download that happens in the background). Zstandard at its best is
+no smaller than Brotli at its best and Safari does not read it. Halving the file is a matter of what is in it
+(the slim file above), not of the codec.
 
 ## Questions worth asking
 

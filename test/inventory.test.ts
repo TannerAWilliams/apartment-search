@@ -21,7 +21,9 @@ function memoryStore() {
   } as unknown as InventoryStore;
   return { store, values };
 }
-const gunzip = async (bytes: ArrayBuffer) => new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
+const unpacked = async (bytes: ArrayBuffer, format: string) =>
+  new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream(format as CompressionFormat))).text();
+const gunzip = (bytes: ArrayBuffer) => unpacked(bytes, 'gzip');
 const database = await seededDatabase(1500);
 const env = () => ({ BUCKET: coldBucket(database) });
 /** A listing as the file carries it: without what only an apartment's own page shows. */
@@ -108,11 +110,21 @@ test('the inventory is built after a sync, stored once per version, and rebuilt 
   expect(text.length).toBe(head.bytes);
   expect((await decodeInventory(text)).rows).toHaveLength(head.listings);
   expect(text, 'what only an apartment’s page shows is left out').not.toContain('priceHistory');
+  // The same file in Brotli beside it, smaller.
+  const brotli = values.get('br:' + head.version) as ArrayBuffer;
+  expect(await unpacked(brotli, 'brotli')).toBe(text);
+  expect(brotli.byteLength).toBeLessThan((values.get('file:' + head.version) as ArrayBuffer).byteLength);
+  expect(head.encodings).toEqual(['br', 'gzip']);
   // Nothing changed: nothing written. A new deploy keeps the file and stamps the head.
   expect(await refreshInventory(settings)).toBe('unchanged');
   expect(await refreshInventory({ ...settings, CF_VERSION_METADATA: { id: 'deploy-2' } })).toBe('built');
-  expect(values.size).toBe(2);
+  expect(values.size).toBe(3);
   expect(JSON.parse(values.get('head') as string)).toMatchObject({ version: head.version, build: 'deploy-2' });
+  // A file stored before Brotli (its head names no encodings) is written again in both.
+  values.delete('br:' + head.version);
+  values.set('head', JSON.stringify({ ...head, encodings: undefined }));
+  expect(await refreshInventory({ ...settings, CF_VERSION_METADATA: { id: 'deploy-3' } })).toBe('built');
+  expect(values.has('br:' + head.version)).toBe(true);
   // The hourly run keeps it current, and a failure to build does not fail the hour.
   const quiet = new Date('2026-11-25T08:10:00Z');
   const fresh = memoryStore();
@@ -143,7 +155,17 @@ test('the API serves the head and each version’s file, and builds the file whe
   const file = await get('inventory/' + head.version);
   expect(file.headers.get('Content-Encoding')).toBe('gzip');
   expect(file.headers.get('Cache-Control')).toBe('public, max-age=31536000, immutable');
+  expect(file.headers.get('Vary')).toBe('Accept-Encoding');
   expect((await decodeInventory(await gunzip(await file.arrayBuffer()))).rows).toHaveLength(head.listings);
+  // A browser that reads Brotli gets the smaller file; one stored before Brotli is still served, gzipped.
+  const modern = { 'Sec-Fetch-Site': 'same-origin', 'Accept-Encoding': 'gzip, deflate, br, zstd' };
+  const smaller = await get('inventory/' + head.version, settings, {}, modern);
+  expect(smaller.headers.get('Content-Encoding')).toBe('br');
+  expect((await decodeInventory(await unpacked(await smaller.arrayBuffer(), 'brotli'))).rows).toHaveLength(head.listings);
+  const kept = values.get('br:' + head.version)!;
+  values.delete('br:' + head.version);
+  expect((await get('inventory/' + head.version, settings, {}, modern)).headers.get('Content-Encoding')).toBe('gzip');
+  values.set('br:' + head.version, kept);
   // The file is for the app's own pages: a request from another site, or from no page at all, is refused.
   expect((await get('inventory/' + head.version, settings, {}, { 'Sec-Fetch-Site': 'cross-site' })).status).toBe(403);
   expect((await get('inventory/' + head.version, settings, {}, {})).status).toBe(403);

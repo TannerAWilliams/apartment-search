@@ -6,6 +6,7 @@
  *
  *   head            what the current file is (its version), and the answer to the app's opening search
  *   file:<version>  the file, gzipped; a version is the hash of its contents, so it never changes
+ *   br:<version>    the same file in Brotli, about a sixth smaller, for the browsers that read it (nearly all)
  */
 import { type Inventory, answerSearch } from '../src/answer.ts';
 import type { SearchResult } from '../src/domain.ts';
@@ -30,18 +31,30 @@ export type InventoryHead = {
   build: string;
   listings: number;
   bytes: number;
+  /** How the file is stored. A head from before Brotli names none, and its file is written again in both. */
+  encodings?: Encoding[];
   /** The answer to the app's opening search, so a first visit shows apartments before the file has arrived. */
   opening: SearchResult;
 };
 
+/** How a stored file is compressed, by its Content-Encoding name. */
+export type Encoding = 'br' | 'gzip';
+const ENCODINGS: Encoding[] = ['br', 'gzip'];
 const HEAD_KEY = 'head';
-const fileKey = (version: string) => 'file:' + version;
+const fileKey = (version: string, encoding: Encoding) => (encoding === 'br' ? 'br:' : 'file:') + version;
 /** A replaced file is kept this long for browsers still reading it, then KV removes it. */
 const FILE_KEPT_SECONDS = 7 * 86_400;
 /** Fields a search and a card do not use; an apartment's own page reads them from the server. */
 const NOT_IN_FILE = ['priceHistory', 'county', 'seenAt'];
 
-const gzip = async (text: string) => new Response(new Blob([text]).stream().pipeThrough(new CompressionStream('gzip'))).arrayBuffer();
+/**
+ * The text compressed as a stream, which needs little memory however large the file. The runtime's Brotli has no
+ * quality setting; its own is about a sixth smaller than gzip here (docs/architecture/README.md has the measure).
+ */
+const compressed = async (text: string, encoding: Encoding) =>
+  new Response(
+    new Blob([text]).stream().pipeThrough(new CompressionStream((encoding === 'br' ? 'brotli' : 'gzip') as CompressionFormat)),
+  ).arrayBuffer();
 const sha256 = async (text: string) =>
   [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)))]
     .map((byte) => byte.toString(16).padStart(2, '0'))
@@ -67,6 +80,7 @@ export async function composeInventory(inventory: Inventory, build: string, now 
     build,
     listings: rows.length,
     bytes: text.length,
+    encodings: ENCODINGS,
     // Answered from the rows as the browser will have them.
     opening: answerSearch({ ...inventory, listings: rows as unknown as Inventory['listings'] }, filters, localWorkplace(filters)!),
   };
@@ -78,8 +92,9 @@ export const readHead = async (store: InventoryStore): Promise<InventoryHead | n
   const head = text ? (JSON.parse(text) as InventoryHead) : null;
   return head?.format === INVENTORY_FORMAT ? head : null;
 };
-/** A version's file, gzipped. A version never changes, so locations keep it a day. */
-export const readFile = (store: InventoryStore, version: string) => store.get(fileKey(version), { type: 'arrayBuffer', cacheTtl: 86_400 });
+/** A version's file in one encoding. A version never changes, so locations keep it a day. */
+export const readFile = (store: InventoryStore, version: string, encoding: Encoding) =>
+  store.get(fileKey(version, encoding), { type: 'arrayBuffer', cacheTtl: 86_400 });
 
 /**
  * Builds the inventory and stores it when it differs from the one stored. Says what it did. Called after each
@@ -92,8 +107,13 @@ export async function refreshInventory(env: AppEnv & { BUCKET: Bucket }, now = n
   const build = env.CF_VERSION_METADATA?.id ?? '';
   const [{ text, head }, current] = await Promise.all([composeInventory(await readInventory(env), build, now), readHead(store)]);
   if (current?.version === head.version && current.build === build) return 'unchanged';
-  // The file first, so the head never names a file that is not there.
-  if (current?.version !== head.version) await store.put(fileKey(head.version), await gzip(text), { expirationTtl: FILE_KEPT_SECONDS });
+  // The file first, in each encoding, so the head never names a file that is not there.
+  if (current?.version !== head.version || !ENCODINGS.every((encoding) => current.encodings?.includes(encoding)))
+    await Promise.all(
+      ENCODINGS.map(async (encoding) =>
+        store.put(fileKey(head.version, encoding), await compressed(text, encoding), { expirationTtl: FILE_KEPT_SECONDS }),
+      ),
+    );
   await store.put(HEAD_KEY, JSON.stringify(head));
   log.info('inventory_built', { version: head.version, listings: head.listings, bytes: head.bytes });
   return 'built';

@@ -35,7 +35,8 @@ a phone's memory; then B, with scores written to indexed columns at sync time, b
 ```
 sync / hourly ──► readInventory ──► composeInventory ──► Workers KV
                   (merge, score)    (columnar file,      head            (version, opening answer)
-                                     gzip, hash)         file:<version>  (never changes)
+                                     Brotli and gzip,    file:<version>, br:<version>
+                                     hash)               (never change)
 
 browser: /boot.js ──► GET /api/inventory ──► GET /api/inventory/<version>   (while the app's code downloads)
          app      ──► searchApartments(filters) ──► answerSearch(inventory, filters)   (no request)

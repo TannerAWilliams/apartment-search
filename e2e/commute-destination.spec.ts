@@ -31,7 +31,6 @@ test('destination editing stays local until Apply and remains accessible without
   await expect(page.getByRole('button', { name: 'Change destination', exact: true })).toBeVisible();
   await expect.poll(() => requests.length).toBe(1);
   await page.getByRole('button', { name: 'Change destination', exact: true }).click();
-  await page.getByRole('button', { name: 'Custom', exact: true }).click();
   await page.getByLabel('Destination address or place').fill('40.75, -73.98');
   await expect(page.getByText('Automatic transit and driving estimates are unavailable.', { exact: false })).toHaveCount(0);
   expect(requests).toHaveLength(1);
@@ -39,7 +38,6 @@ test('destination editing stays local until Apply and remains accessible without
   expect(requests).toHaveLength(1);
   await expect(page.getByText('Custom workplace', { exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Change destination', exact: true }).click();
-  await page.getByRole('button', { name: 'Custom', exact: true }).click();
   await page.getByLabel('Destination address or place').fill('40.75, -73.98');
   await page.getByRole('button', { name: 'Apply destination', exact: true }).click();
   await expect.poll(() => requests.length).toBe(2);
@@ -78,7 +76,6 @@ test('a typed destination suggests places from the map, and picking one fills it
   });
   await page.goto('/search');
   await page.getByRole('button', { name: 'Change destination', exact: true }).click();
-  await page.getByRole('button', { name: 'Custom', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Check address', exact: true })).toHaveCount(0);
   await page.getByLabel('Destination address or place').fill('empire st');
   await page.getByRole('button', { name: 'Use Empire State Building, 350 5th Avenue, New York', exact: true }).click();
@@ -96,13 +93,30 @@ test('a typed destination suggests places from the map, and picking one fills it
   await expect(page.getByLabel('Destination address or place')).toHaveValue('Empire State Building, 350 5th Avenue, New York');
 });
 
-test('the commute destination is set once on the profile, kept on the device, and used by the next search', async ({ page }) => {
-  const searched: { workplace: string; customWorkplace: string }[] = [];
+test('a visitor’s profile is the sign-in form, with no setting that seems to save', async ({ page }) => {
   await page.route('**/*', async (route) => {
     const url = new URL(route.request().url());
     if (url.origin !== 'http://127.0.0.1:4173') return route.abort();
     if (!url.pathname.startsWith('/api/')) return route.continue();
     if (url.pathname === '/api/config') return route.fulfill({ json: { sources: [], commuteConfigured: false } });
+    return route.abort();
+  });
+  await page.goto('/profile');
+  await expect(page.getByRole('heading', { name: 'Profile', exact: true })).toBeVisible();
+  await expect(page.getByRole('textbox', { name: 'Email', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Your commute', exact: true })).toHaveCount(0);
+  await expect(page.getByText('Sign in to save apartments', { exact: true })).toBeVisible();
+  await expect(page.getByText(/Kept on this device/)).toHaveCount(0);
+});
+
+test('the commute destination is set once on the profile, kept with the account, and used by the next search', async ({ page }) => {
+  const searched: { workplace: string; customWorkplace: string }[] = [];
+  await page.route('**/*', async (route) => {
+    const url = new URL(route.request().url());
+    if (url.origin !== 'http://127.0.0.1:4173') return route.abort();
+    if (!url.pathname.startsWith('/api/')) return route.continue();
+    if (url.pathname === '/api/config')
+      return route.fulfill({ json: { sources: [], commuteConfigured: false, account: 'renter@example.test', plan: 'free' } });
     if (url.pathname === '/api/search') {
       const filters = parseFilters(route.request().postDataJSON());
       searched.push({ workplace: filters.workplace, customWorkplace: filters.customWorkplace });
@@ -112,12 +126,18 @@ test('the commute destination is set once on the profile, kept on the device, an
   });
   await page.goto('/profile');
   await expect(page.getByRole('heading', { name: 'Your commute', exact: true })).toBeVisible();
-  await expect(page.getByText(/Commute times on every apartment are to Rockefeller Center\. Kept on this device/)).toBeVisible();
-  await page.getByRole('button', { name: 'Penn Station', exact: true }).click();
+  // One search box, holding the destination in use; a well-known place is offered by name as it is typed.
+  const destination = page.getByLabel('Destination address or place');
+  await expect(destination).toHaveValue('Rockefeller Center');
+  await expect(page.getByText(/Kept on your account, on every device\./)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Save commute', exact: true })).toHaveCount(0);
+  await destination.fill('penn');
+  await page.getByRole('button', { name: 'Use Penn Station', exact: true }).click();
+  await expect(destination).toHaveValue('Penn Station');
   await page.getByRole('button', { name: 'Save commute', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Saved', exact: true })).toBeVisible();
   await page.reload();
-  await expect(page.getByText(/Commute times on every apartment are to Penn Station\./)).toBeVisible();
+  await expect(page.getByLabel('Destination address or place')).toHaveValue('Penn Station');
   await page.goto('/');
   await page.getByRole('button', { name: 'Search apartments', exact: true }).click();
   await expect.poll(() => searched.at(-1)).toEqual({ workplace: 'penn', customWorkplace: '' });
@@ -194,7 +214,17 @@ test('before saying where they work, a visitor sees "? min to your job" and is t
   });
   await page.goto('/search');
   await expect(page.getByText(/Commute times to Rockefeller Center/)).toHaveCount(0);
+  // A visitor is taken to the search's own destination box, not to a profile setting that would seem to save.
   await page.getByRole('button', { name: 'Add where you work', exact: true }).click();
-  await expect(page).toHaveURL(/\/profile$/);
-  await expect(page.getByRole('heading', { name: 'Your commute', exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/\/search$/);
+  const destination = page.getByLabel('Destination address or place');
+  await expect(destination).toHaveValue('Rockefeller Center');
+  // The place first offered is theirs once applied, without having to change it.
+  await page.getByRole('button', { name: 'Apply destination', exact: true }).click();
+  await expect(page.getByText(/Commute times to/)).toContainText('Rockefeller Center');
+  await page.getByRole('button', { name: 'Change destination', exact: true }).click();
+  await destination.fill('grand');
+  await page.getByRole('button', { name: 'Use Grand Central Terminal', exact: true }).click();
+  await page.getByRole('button', { name: 'Apply destination', exact: true }).click();
+  await expect(page.getByText(/Commute times to/)).toContainText('Grand Central Terminal');
 });
