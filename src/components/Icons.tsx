@@ -55,9 +55,9 @@ export function BrandMark({ size = 30 }: { size?: number }) {
     <Svg width={size} height={size} viewBox="0 0 32 32" aria-hidden>
       <Rect width={32} height={32} rx={7} fill={mark.tile} />
       <Path d="M5.5 27v-5h7v-5h7v-5h7v15z" fill={mark.steps} />
-      {/* The handrail: a post at the front of each lower step, the same distance in, and a rail as steep as the
-          stairs that ends on the door's edge. Drawn under the door, so its end is square against it. */}
-      <Path d="M6.3 22v-6.07M13.3 17v-6.07M6.3 15.93 19.5 6.5" fill="none" stroke={mark.steps} strokeWidth={1.3} strokeLinecap="round" />
+      {/* The handrail. A post stands flush on each lower step's front edge, and the rail runs the same height above
+          every step's corner, from the first post to the door's edge, where the third step's corner is. */}
+      <Path d="M5.5 22v-6.2l14-10v1.4L6.8 16.27V22zM12.5 17v-5l1.3-.9V17z" fill={mark.steps} />
       <Path d="M19.5 12V4.6a.6.6 0 0 1 .6-.6h5.8a.6.6 0 0 1 .6.6V12z" fill={mark.door} />
       {/* The doorknob, the color of the steps. */}
       <Circle cx={21.4} cy={8.4} r={0.8} fill={mark.steps} />
