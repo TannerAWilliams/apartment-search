@@ -369,9 +369,12 @@ export function ProfilePage({
 
   return (
     <View style={{ gap: 16, maxWidth: 720, width: '100%', alignSelf: 'center' }}>
-      <Text accessibilityRole="header" style={styles.panelTitle}>
-        Profile
-      </Text>
+      {/* A visitor's page opens on signing in; its own heading says so. */}
+      {!signInCard && (
+        <Text accessibilityRole="header" style={styles.panelTitle}>
+          Profile
+        </Text>
+      )}
       {signInCard}
       {account && (
         <View style={[styles.menu, styles.menuRow]}>
