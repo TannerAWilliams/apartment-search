@@ -109,6 +109,7 @@ export const AlertRequestSchema = v.variant(
   'action',
   [
     v.object({ action: v.literal('add-rule'), rule: v.unknown() }),
+    v.object({ action: v.literal('preview-rule'), rule: v.unknown() }),
     v.object({ action: v.literal('delete-rule'), id: v.string('Choose an alert to remove.') }),
     v.object({ action: v.literal('add-device'), subscription: v.unknown(), label: v.optional(v.string()) }),
     v.object({ action: v.literal('remove-device'), endpoint: v.string('Choose a device to remove.') }),

@@ -937,6 +937,18 @@ function ApartmentSearch() {
                       <AlertsPage
                         request={alertRequest}
                         filters={applied}
+                        workplace={commuteKnown ? result.workplace : undefined}
+                        renderMap={
+                          WEB_MAP
+                            ? (mapped, total) => (
+                                <View style={styles.mapPanel}>
+                                  <Suspense fallback={<Text style={styles.smallMuted}>Loading map…</Text>}>
+                                    <ListingMap points={mapped} total={total} visible />
+                                  </Suspense>
+                                </View>
+                              )
+                            : undefined
+                        }
                         loadNeighborhoods={serverState === 'ready' ? loadNeighborhoods : undefined}
                         onError={setError}
                         onUpgrade={() => navigateTab('more')}

@@ -105,7 +105,14 @@ export const AlertRulesSchema = v.array(
     /** The account the alert belongs to; rules made before accounts have none and go to every allowed address. */
     owner: v.optional(text),
     /** Bedroom counts (any of them) and neighborhoods (any of them); empty lists mean any. */
-    criteria: v.optional(v.object({ bedrooms: v.array(v.number()), neighborhoods: v.array(text) })),
+    criteria: v.optional(
+      v.object({
+        bedrooms: v.array(v.number()),
+        neighborhoods: v.array(text),
+        maxTransitMinutes: v.optional(v.number()),
+        destination: v.optional(text),
+      }),
+    ),
   }),
 );
 /** A device that turned on notifications. */

@@ -6,6 +6,34 @@ import { listingWithVerifiedLinks, mergeListings, orderedListingLinks } from './
 import { matchesRegion } from './regions.ts';
 import { compareResults, isPoint, matchListings, SearchInputError } from './search.ts';
 
+/** What the map draws for one home, and what saving from the map needs: its identity, address and every link. */
+export function mapPoint(listing: ListingData, source?: string) {
+  const [original, ...additionalLinks] = orderedListingLinks(listing.sources, source);
+  return {
+    // What saving from the map needs: the listing's identity, address and every link.
+    id: listing.id,
+    address: listing.address,
+    unit: listing.unit,
+    city: listing.city,
+    state: listing.state,
+    zip: listing.zip,
+    region: listing.region,
+    sources: listing.sources,
+    latitude: listing.latitude,
+    longitude: listing.longitude,
+    rent: listing.rent,
+    bedrooms: listing.bedrooms,
+    title: [listing.address, listing.unit && '#' + listing.unit.replace(/^#/, '')].filter(Boolean).join(' '),
+    name: original?.name,
+    url: original?.url,
+    kind: listing.kind,
+    linkKind: original?.kind,
+    ...(additionalLinks.length ? { additionalLinks } : {}),
+    transitSeconds: listing.transitSeconds,
+    drivingSeconds: listing.drivingSeconds,
+  };
+}
+
 export { SNAPSHOT_MONTH };
 export const SNAPSHOT_SOURCE = 'https://www.firstmovernyc.com/open-data';
 export const RENT_GROUPINGS = { neighborhood: 'Neighborhood', city: 'Borough / city', zip: 'ZIP code' };
@@ -108,34 +136,7 @@ export function formatSearch(
     ? eligible.filter((listing) => listing.sources.some(({ id, url }) => id === filters.source && url))
     : eligible;
   matches.sort((first, second) => compareResults(first, second, filters.sort));
-  const mapPoints = filters.includeMap
-    ? matches.filter(isPoint).map((listing) => {
-        const [original, ...additionalLinks] = orderedListingLinks(listing.sources, filters.source);
-        return {
-          // What saving from the map needs: the listing's identity, address and every link.
-          id: listing.id,
-          address: listing.address,
-          unit: listing.unit,
-          city: listing.city,
-          state: listing.state,
-          zip: listing.zip,
-          region: listing.region,
-          sources: listing.sources,
-          latitude: listing.latitude,
-          longitude: listing.longitude,
-          rent: listing.rent,
-          bedrooms: listing.bedrooms,
-          title: [listing.address, listing.unit && '#' + listing.unit.replace(/^#/, '')].filter(Boolean).join(' '),
-          name: original?.name,
-          url: original?.url,
-          kind: listing.kind,
-          linkKind: original?.kind,
-          ...(additionalLinks.length ? { additionalLinks } : {}),
-          transitSeconds: listing.transitSeconds,
-          drivingSeconds: listing.drivingSeconds,
-        };
-      })
-    : undefined;
+  const mapPoints = filters.includeMap ? matches.filter(isPoint).map((listing) => mapPoint(listing, filters.source)) : undefined;
   const offset = filters.offset ?? 0;
   const pageSize = 100;
   return {

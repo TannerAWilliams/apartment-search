@@ -1,7 +1,8 @@
 import { wholeNumber } from '../whole-number.ts';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Text, View } from 'react-native';
-import type { SearchFilters } from '../domain.ts';
+import type React from 'react';
+import type { MapPoint, SearchFilters } from '../domain.ts';
 import { browserPush, deviceLabel, pushSupport, subscribePush } from '../push.ts';
 import { NYC_SEARCH_AREAS } from '../regions.ts';
 import { formatRent } from '../search.ts';
@@ -26,6 +27,10 @@ const BEDS: [number, string][] = [
   [4, '4+ BR'],
 ];
 type Neighborhood = { id: string; label: string; detail: string; count: number };
+/** The longest commute an alert can ask for, in minutes. */
+const COMMUTES = [20, 30, 45, 60];
+/** What an alert being written would match now (server/alerts.ts previewRule). */
+type Preview = { count: number; points: MapPoint[] };
 
 /** A name for an alert from what it watches: "West Village · 2 BR · under $5,000". */
 export function alertName(area: string, neighborhoods: string[], beds: number[], maxRent: number | null) {
@@ -60,11 +65,17 @@ export function AlertsPage({
   request,
   filters,
   loadNeighborhoods,
+  workplace,
+  renderMap,
   onError,
   onUpgrade,
 }: {
-  request: (body?: unknown) => Promise<AlertState>;
+  request: (body?: unknown) => Promise<AlertState & { preview?: Preview }>;
   filters: SearchFilters;
+  /** Where the person works, when they have said: an alert can then be limited by commute, and says each one. */
+  workplace?: { label: string; latitude: number; longitude: number };
+  /** Draws the apartments an alert would match on a map (the app's map, which this page does not load itself). */
+  renderMap?: (points: MapPoint[], total: number) => React.ReactNode;
   /** New York City's neighborhoods with listings, from the market figures. */
   loadNeighborhoods?: (signal: AbortSignal) => Promise<{ areas?: Neighborhood[] }>;
   onError: (message: string) => void;
@@ -79,6 +90,8 @@ export function AlertsPage({
   const [picked, setPicked] = useState<string[]>([]);
   const [places, setPlaces] = useState<Neighborhood[]>([]);
   const [customName, setCustomName] = useState('');
+  const [commute, setCommute] = useState<number | null>(null);
+  const [preview, setPreview] = useState<Preview | null>(null);
   const [busy, setBusy] = useState('');
   const [notice, setNotice] = useState('');
   const browser = browserPush();
@@ -129,12 +142,47 @@ export function AlertsPage({
   const name = customName.trim() || alertName(area, picked, beds, rent);
   const toggle = <T,>(list: T[], value: T) => (list.includes(value) ? list.filter((item) => item !== value) : [...list, value]);
 
-  function saveAlert() {
-    const rule = {
+  const destination = workplace?.label.split(',')[0]!.trim().slice(0, 80);
+  // The alert as it would be saved. Its commute is to the person's own destination, sent as where it is.
+  const rule = useMemo(
+    () => ({
       name,
-      filters: { region: area, maxRent: rent, bedrooms: null },
-      criteria: { bedrooms: beds, neighborhoods: picked },
+      filters: {
+        region: area,
+        maxRent: rent,
+        bedrooms: null,
+        ...(workplace ? { workplace: 'custom', customWorkplace: `${workplace.latitude},${workplace.longitude}` } : {}),
+      },
+      criteria: {
+        bedrooms: beds,
+        neighborhoods: picked,
+        ...(workplace && commute ? { maxTransitMinutes: commute } : {}),
+        ...(destination ? { destination } : {}),
+      },
+    }),
+    [name, area, rent, beds, picked, commute, workplace, destination],
+  );
+  // What it matches now, a moment after the last change, for the count and the map under "Where".
+  const formShown = state !== null && !(state.plan === 'free' && state.rules.length > 0);
+  useEffect(() => {
+    if (!formShown) return;
+    let current = true;
+    const timer = setTimeout(() => {
+      request({ action: 'preview-rule', rule })
+        .then((next) => {
+          if (current) setPreview(next.preview ?? null);
+        })
+        .catch(() => {
+          if (current) setPreview(null);
+        });
+    }, 400);
+    return () => {
+      current = false;
+      clearTimeout(timer);
     };
+  }, [rule, request, formShown]);
+
+  function saveAlert() {
     void act('rule', { action: 'add-rule', rule }, () => `Alert saved: ${name}. You’ll hear about new matches from now on.`);
   }
 
@@ -217,6 +265,15 @@ export function AlertsPage({
                 ))}
               </View>
               {choices.length > 0 && <NeighborhoodPicker choices={choices} picked={picked} onChange={setPicked} showBorough={!borough} />}
+              {/* What is chosen, on the map: the apartments this alert matches now. */}
+              {preview && (
+                <Text accessibilityRole="text" style={styles.bodyText}>
+                  {preview.count === 0
+                    ? 'No apartments match this right now. You’ll hear when one does.'
+                    : `${preview.count.toLocaleString('en-US')} ${preview.count === 1 ? 'apartment matches' : 'apartments match'} this right now, shown on the map.`}
+                </Text>
+              )}
+              {preview && preview.points.length > 0 && renderMap?.(preview.points, preview.count)}
               <Text style={styles.smallMuted}>Bedrooms (choose any; none means any size)</Text>
               <View style={styles.chipRow}>
                 {BEDS.map(([count, label]) => (
@@ -232,6 +289,23 @@ export function AlertsPage({
                 keyboardType="number-pad"
                 placeholder="Any price"
               />
+              <Text style={styles.smallMuted}>{workplace ? `Longest commute to ${destination} (estimated, by transit)` : 'Commute'}</Text>
+              {workplace ? (
+                <View style={styles.chipRow}>
+                  <Chip selected={commute === null} onPress={() => setCommute(null)}>
+                    Any
+                  </Chip>
+                  {COMMUTES.map((minutes) => (
+                    <Chip key={minutes} selected={commute === minutes} onPress={() => setCommute(minutes)}>
+                      {minutes} min
+                    </Chip>
+                  ))}
+                </View>
+              ) : (
+                <Text style={styles.smallMuted}>
+                  Set where you work on your profile to limit an alert by commute and see each apartment’s commute in it.
+                </Text>
+              )}
               <Field label="Alert name" value={customName} onChangeText={setCustomName} maxLength={60} placeholder={name} />
               <Button disabled={busy !== ''} onPress={saveAlert}>
                 Save alert

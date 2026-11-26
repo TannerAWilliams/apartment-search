@@ -3,7 +3,18 @@ import { recordEvent } from '../ops.ts';
 import { vValidator } from '@hono/valibot-validator';
 import type * as v from 'valibot';
 import type { AppEnv, Bucket } from '../contracts.ts';
-import { addDevice, addRule, alertChannels, alertMatches, alertState, deleteRule, deliver, FREE_RULES, removeDevice } from '../alerts.ts';
+import {
+  addDevice,
+  addRule,
+  alertChannels,
+  alertMatches,
+  alertState,
+  deleteRule,
+  deliver,
+  FREE_RULES,
+  previewRule,
+  removeDevice,
+} from '../alerts.ts';
 import { log } from '../log.ts';
 import { type Plan, planFor } from '../plans.ts';
 import { afterResponse, apiBodies, factory, fail, needsStorage, refuse } from './context.ts';
@@ -18,6 +29,10 @@ async function alertAction(
   const bucket = env.BUCKET;
   if (body.action === 'add-rule') {
     await addRule(bucket, body.rule, alertMatches(env), new Date(), owner);
+  } else if (body.action === 'preview-rule') {
+    // Nothing is saved: what the alert being written would match now, for the count and the map beside the form.
+    const [state, preview] = await Promise.all([alertState(env, owner), previewRule(body.rule, alertMatches(env))]);
+    return { ...state, preview };
   } else if (body.action === 'delete-rule') await deleteRule(bucket, body.id, owner);
   else if (body.action === 'add-device') await addDevice(bucket, body.subscription, body.label, new Date(), owner);
   else if (body.action === 'remove-device') await removeDevice(bucket, body.endpoint, owner);

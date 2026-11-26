@@ -10,7 +10,8 @@ import {
 } from '../src/observed-changes.ts';
 import { buildingGrade, marketBadge } from '../src/insights.ts';
 import { displayPriceHistory } from '../src/price-history.ts';
-import { localWorkplace, needsCommute, parseFilters, SearchInputError } from '../src/search.ts';
+import { isPoint, localWorkplace, needsCommute, parseFilters, SearchInputError } from '../src/search.ts';
+import { mapPoint } from '../src/market.ts';
 import type { AppEnv, Bucket } from './contracts.ts';
 import { log } from './log.ts';
 import { AlertDevicesSchema, AlertRulesSchema, checkedDocument, HeldAlertsSchema, RecentAlertsSchema } from './storage/stored-documents.ts';
@@ -47,7 +48,14 @@ const MAX_RECENT = 30;
 const SHOWN_UNITS = 4;
 
 /** Any of these bedroom counts (studio = 0) and any of these neighborhoods; an empty list means any. */
-export type AlertCriteria = { bedrooms: number[]; neighborhoods: string[] };
+export type AlertCriteria = {
+  bedrooms: number[];
+  neighborhoods: string[];
+  /** The longest estimated transit trip to the alert's destination, in minutes; none for any. */
+  maxTransitMinutes?: number;
+  /** The destination's name, for the alert's lines: the rule's filters keep only where it is. */
+  destination?: string;
+};
 type AlertRule = {
   id: string;
   name: string;
@@ -105,6 +113,7 @@ const NAMED = 'Give the alert a name of up to 60 characters.';
 const BEDS = 'Choose bedroom counts from studio to 4.';
 const NEIGHBORHOODS = 'Choose neighborhoods by name.';
 /** A new rule as sent: a name, filters checked by parseFilters, and optional bedroom counts and neighborhoods. */
+const COMMUTE = 'Choose a commute limit from 10 to 120 minutes.';
 const NewRuleSchema = v.object(
   {
     name: v.pipe(v.string(NAMED), v.trim(), v.minLength(1, NAMED), v.maxLength(60, NAMED)),
@@ -126,6 +135,8 @@ const NewRuleSchema = v.object(
           ),
           [],
         ),
+        maxTransitMinutes: v.optional(v.pipe(v.number(COMMUTE), v.integer(COMMUTE), v.minValue(10, COMMUTE), v.maxValue(120, COMMUTE))),
+        destination: v.optional(v.pipe(v.string(), v.trim(), v.maxLength(80))),
       }),
     ),
   },
@@ -140,7 +151,8 @@ const placeKey = (name: string) =>
     .trim();
 
 /**
- * The listings an alert's bedroom counts and neighborhoods allow. A listing with no neighborhood counts as in one
+ * The listings an alert's bedroom counts, neighborhoods and commute limit allow. The commute is the estimated
+ * transit time the search gives each listing; one with no estimate does not pass a limit. A listing with no neighborhood counts as in one
  * when its ZIP code is one where other listings in that neighborhood are.
  */
 export function matchesCriteria(listings: ListingData[], criteria: AlertCriteria | undefined) {
@@ -151,6 +163,7 @@ export function matchesCriteria(listings: ListingData[], criteria: AlertCriteria
   return listings.filter(
     (listing) =>
       (!beds.size || beds.has(listing.bedrooms)) &&
+      (!criteria.maxTransitMinutes || (listing.insights?.transitMinutes ?? Number.POSITIVE_INFINITY) <= criteria.maxTransitMinutes) &&
       (!wanted.size || (listing.neighborhood ? wanted.has(placeKey(listing.neighborhood)) : zips.has(listing.zip))),
   );
 }
@@ -164,6 +177,8 @@ export function validateRule(raw: unknown, now = new Date(), owner?: string): Al
     neighborhoods: rawCriteria.neighborhoods.filter(
       (name, index, all) => all.findIndex((other) => placeKey(other) === placeKey(name)) === index,
     ),
+    ...(rawCriteria.maxTransitMinutes ? { maxTransitMinutes: rawCriteria.maxTransitMinutes } : {}),
+    ...(rawCriteria.destination ? { destination: rawCriteria.destination } : {}),
   };
   const parsed = parseFilters(rawFilters);
   // Several bedroom counts are matched after the search, so the search itself takes any.
@@ -179,7 +194,24 @@ export function validateRule(raw: unknown, now = new Date(), owner?: string): Al
     filters: { ...filters, offset: 0, includeMap: false, includeCommute: false },
     createdAt: now.toISOString(),
     ...(owner ? { owner } : {}),
-    ...(criteria && (criteria.bedrooms.length || criteria.neighborhoods.length) ? { criteria } : {}),
+    ...(criteria && (criteria.bedrooms.length || criteria.neighborhoods.length || criteria.maxTransitMinutes || criteria.destination)
+      ? { criteria }
+      : {}),
+  };
+}
+
+/** How many apartments on the map a preview sends; the count is of all of them. */
+const PREVIEW_POINTS = 1500;
+/** What an alert would match now, before it is saved: how many apartments, and where they are for the map. */
+export async function previewRule(raw: unknown, loadMatches: (filters: AlertRule['filters']) => Promise<ListingData[]>) {
+  const rule = validateRule(raw);
+  const matches = matchesCriteria(await loadMatches(rule.filters), rule.criteria);
+  return {
+    count: matches.length,
+    points: matches
+      .filter(isPoint)
+      .slice(0, PREVIEW_POINTS)
+      .map((listing) => mapPoint(listing)),
   };
 }
 
@@ -243,7 +275,7 @@ type Described = Map<string, { facts: string[]; url: string }>;
  * apartments, its building's rent stabilization and grade, and the nearest subway. An alert is read in an inbox,
  * so it says enough to decide whether to open the apartment.
  */
-export function describeMatches(matches: ListingData[]): Described {
+export function describeMatches(matches: ListingData[], destination = 'work'): Described {
   const described: Described = new Map();
   for (const listing of matches) {
     const sourceId = displayPriceHistory(listing.priceHistory)?.sourceId;
@@ -257,6 +289,7 @@ export function describeMatches(matches: ListingData[]): Described {
         listing.building?.stabilized ? 'rent-stabilized building' : '',
         grade ? `building grade ${grade}` : '',
         subway ? `${subway.routes.join('/')} ${subway.minutes} min walk` : '',
+        listing.insights?.transitMinutes ? `about ${listing.insights.transitMinutes} min to ${destination}` : '',
       ].filter(Boolean),
       url: '/listing/' + encodeURIComponent(listing.id),
     });
@@ -481,7 +514,14 @@ export async function checkAlerts(
       // An unrecognized baseline is dropped, so the rule records a new one instead of sending a flood.
       const result = checkObservedChanges(matches, baseline);
       await write(bucket, key, result.baseline);
-      return baseline ? composeAlert(rule, result.changes, now, describeMatches(matches)) : null;
+      return baseline
+        ? composeAlert(
+            rule,
+            result.changes,
+            now,
+            describeMatches(matches, rule.criteria?.destination ?? localWorkplace(rule.filters)?.label),
+          )
+        : null;
     } catch (cause) {
       log.error('alert_check_failed', cause, { rule: rule.id });
       return null;

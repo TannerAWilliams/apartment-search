@@ -990,6 +990,7 @@ test('an open result expires without a provider request and saved apartments rem
 test('alerts: build one from an area, neighborhoods, bedroom counts and a rent, send a test, and remove it', async ({ page }) => {
   await mockApp(page);
   const posts: { action: string; rule?: { name: string; filters: Record<string, unknown>; criteria?: unknown } }[] = [];
+  const previews: { filters: Record<string, unknown>; criteria?: Record<string, unknown> }[] = [];
   let state = {
     rules: [] as { id: string; name: string; createdAt: string }[],
     devices: [],
@@ -998,6 +999,12 @@ test('alerts: build one from an area, neighborhoods, bedroom counts and a rent, 
   };
   await page.route('**/api/alerts', async (route) => {
     const body = route.request().postDataJSON();
+    if (body?.action === 'preview-rule') {
+      // What the alert being written would match now: two apartments, drawn on the map under "Where".
+      previews.push(body.rule);
+      const point = (id: string, latitude: number) => ({ id, address: id, title: id, latitude, longitude: -74.0, rent: 4200, bedrooms: 2, sources: [] });
+      return route.fulfill({ json: { ...state, preview: { count: 2, points: [point('1 Bank Street', 40.736), point('9 Perry Street', 40.735)] } } });
+    }
     if (body) {
       posts.push(body);
       if (body.action === 'add-rule') state = { ...state, rules: [{ id: 'rule-1', name: body.rule.name, createdAt: now }] };
@@ -1037,6 +1044,10 @@ test('alerts: build one from an area, neighborhoods, bedroom counts and a rent, 
   await page.getByRole('textbox', { name: 'Max rent per month', exact: true }).fill('5000');
   const name = page.getByRole('textbox', { name: 'Alert name', exact: true });
   await expect(name).toHaveAttribute('placeholder', 'West Village · 2 BR · under $5,000');
+  // The form says what the alert matches now and shows it on a map, a moment after the last change.
+  await expect(page.getByText('2 apartments match this right now, shown on the map.', { exact: true })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Map of matching apartments' })).toBeVisible();
+  expect(previews.at(-1)).toMatchObject({ filters: { region: 'manhattan', maxRent: 5000 }, criteria: { bedrooms: [2], neighborhoods: ['West Village'] } });
   await page.getByRole('button', { name: 'Save alert', exact: true }).click();
   await expect(page.getByText(/Alert saved: West Village · 2 BR · under \$5,000/)).toBeVisible();
   expect(posts[0]).toMatchObject({

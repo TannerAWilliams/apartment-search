@@ -4,6 +4,8 @@ import {
   addRule,
   checkAlerts,
   composeAlert,
+  describeMatches,
+  previewRule,
   deleteRule,
   readDevices,
   readRecent,
@@ -269,6 +271,16 @@ test('the alerts API lists, adds and removes rules and devices, and sends a test
     );
   const empty = await readJson<AlertState>(call());
   expect(empty).toStrictEqual({ rules: [], recent: [], devices: [], channels: { email: true, push: null }, plan: 'paid' });
+  // A preview answers with what the alert would match and saves nothing.
+  const previewed = await readJson<AlertState & { preview: { count: number; points: unknown[] } }>(call({ action: 'preview-rule', rule }));
+  expect(previewed.preview.count).toBeGreaterThan(0);
+  expect(previewed.preview.points.length).toBeLessThanOrEqual(Math.min(1500, previewed.preview.count));
+  expect(previewed.preview.points[0]).toMatchObject({
+    latitude: expect.any(Number),
+    longitude: expect.any(Number),
+    rent: expect.any(Number),
+  });
+  expect(previewed.rules).toStrictEqual([]);
   const added = await readJson<AlertState>(call({ action: 'add-rule', rule }));
   expect(added.rules[0].name).toBe('Brooklyn 1BR');
   const phone = await device();
@@ -366,6 +378,47 @@ test('an alert can ask for several bedroom counts and named neighborhoods', () =
   expect(ids({ bedrooms: [2], neighborhoods: ['West Village'] })).toStrictEqual(['a', 'd']);
   expect(ids({ bedrooms: [1, 2], neighborhoods: [] })).toStrictEqual(['a', 'b', 'c', 'd', 'e']);
   expect(ids({ bedrooms: [], neighborhoods: ['Chelsea'] })).toStrictEqual(['c']);
+});
+
+test('an alert can be limited by the estimated commute, says each commute, and can be previewed before it is saved', async () => {
+  const made = validateRule({
+    ...rule,
+    filters: { region: 'manhattan', bedrooms: null, maxRent: 5000, workplace: 'custom', customWorkplace: '40.7587,-73.9787' },
+    criteria: { maxTransitMinutes: 30, destination: ' Rockefeller Center ' },
+  });
+  expect(made.criteria).toStrictEqual({ bedrooms: [], neighborhoods: [], maxTransitMinutes: 30, destination: 'Rockefeller Center' });
+  expect(() => validateRule({ ...rule, criteria: { maxTransitMinutes: 5 } })).toThrow(/10 to 120 minutes/);
+  expect(
+    validateRule({ ...rule, criteria: { destination: 'Work' } }).criteria,
+    'a destination alone is kept, for the alert’s lines',
+  ).toStrictEqual({
+    bedrooms: [],
+    neighborhoods: [],
+    destination: 'Work',
+  });
+
+  // A listing with no estimate does not pass a limit.
+  const near = { ...testListing({ id: 'near', latitude: 40.75, longitude: -73.98 }), insights: { warnings: [], transitMinutes: 22 } };
+  const far = { ...testListing({ id: 'far', latitude: 40.6, longitude: -73.95 }), insights: { warnings: [], transitMinutes: 55 } };
+  const unknown = testListing({ id: 'unknown', latitude: undefined, longitude: undefined });
+  const all = [near, far, unknown];
+  const limit = { bedrooms: [], neighborhoods: [], maxTransitMinutes: 30 };
+  expect(matchesCriteria(all, limit).map(({ id }) => id)).toStrictEqual(['near']);
+  expect(matchesCriteria(all, { bedrooms: [], neighborhoods: [] })).toHaveLength(3);
+
+  // Each alert line says the commute, to the destination by name.
+  const tracked = { ...unit('7', 3000, '2026-11-20T00:00:00Z'), insights: { warnings: [], transitMinutes: 22 } };
+  expect([...describeMatches([tracked], 'Rockefeller Center').values()][0]?.facts).toContain('about 22 min to Rockefeller Center');
+  expect([...describeMatches([tracked]).values()][0]?.facts).toContain('about 22 min to work');
+
+  // The preview: how many match, and where those with a location are; nothing is saved.
+  const preview = await previewRule({ ...rule, criteria: limit }, async () => all);
+  expect(preview.count).toBe(1);
+  expect(preview.points).toMatchObject([{ id: 'near', latitude: 40.75, longitude: -73.98 }]);
+  expect(
+    (await previewRule(rule, async () => all)).points.map(({ id }) => id),
+    'only homes with a location go on the map',
+  ).toStrictEqual(['near', 'far']);
 });
 
 test('each account sees and gets only its own alerts; older shared alerts go to every allowed address', async () => {
