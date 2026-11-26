@@ -110,7 +110,7 @@ export function PricingPage({ signedIn, onOpen }: { signedIn: boolean; onOpen: (
           Pricing
         </Text>
         <Text style={{ fontSize: wide ? 18 : 16, lineHeight: wide ? 26 : 23, color: colors.muted, maxWidth: 720 }}>
-          Searching is free, and so is one email alert. The paid plan tells you about every new match as soon as it is found.
+          Searching is free, and so is one alert. The paid plan tells you about every new match as soon as it is found.
         </Text>
       </View>
       <View style={[column, { gap: 18, paddingVertical: 24 }]}>

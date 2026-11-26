@@ -172,8 +172,8 @@ export function AlertsPage({
           Alerts
         </Text>
         <Text style={styles.bodyText}>
-          Get an email when a new apartment on Walkup matches what you want, or when one drops its price. Alerts are checked every two hours
-          from 8 AM to 10 PM, overnight, and after every resync.
+          Hear by email, and on your phone if you turn notifications on, when a new apartment on Walkup matches what you want, or when one
+          drops its price. Alerts are checked every two hours from 8 AM to 10 PM, overnight, and after every resync.
         </Text>
       </View>
       {!state ? (
