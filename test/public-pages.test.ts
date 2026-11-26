@@ -48,7 +48,7 @@ test('neighborhood pages, their index, the sitemap and robots.txt are public', a
   const rules = await robots.text();
   expect(rules).toContain('Sitemap: https://walkup.test/sitemap.xml');
   // Search engines may index the public pages; the listings are not for collecting, and AI and data crawlers get nothing.
-  expect(rules).toContain('User-agent: *\nAllow: /$\nAllow: /rents\n');
+  expect(rules).toContain('User-agent: *\nAllow: /$\nAllow: /rents\nAllow: /blog\n');
   expect(rules).toContain('Allow: /manifest.webmanifest\nDisallow: /\n');
   expect(rules).toContain('User-agent: GPTBot\n');
   expect(rules).toMatch(/User-agent: DataForSeoBot\nDisallow: \/\n/);

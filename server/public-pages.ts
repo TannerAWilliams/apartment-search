@@ -4,7 +4,9 @@
  * robots.txt. Each page links to sign up. They show market figures only, never individual listings.
  */
 import { Hono } from 'hono';
+import { articleList, articleMonths, articleSlugs, composeArticle, monthName } from './articles.ts';
 import type { AppEnv } from './contracts.ts';
+import type { ArchiveLoader } from './dashboard-snapshot.ts';
 import { neighborhoodReport } from './neighborhoods.ts';
 import { offline, search } from './search.ts';
 import { parseFilters } from '../src/search.ts';
@@ -40,7 +42,7 @@ export async function neighborhoodIndex(env: AppEnv) {
     .sort((a, b) => BOROUGHS.indexOf(a.borough) - BOROUGHS.indexOf(b.borough) || a.name.localeCompare(b.name));
 }
 
-function page(origin: string, path: string, title: string, description: string, body: string) {
+function page(origin: string, path: string, title: string, description: string, body: string, article?: { published: string }) {
   const canonical = origin + path;
   return `<!doctype html>
 <html lang="en"><head>
@@ -49,7 +51,19 @@ function page(origin: string, path: string, title: string, description: string, 
 <meta name="description" content="${escape(description)}">
 <link rel="canonical" href="${escape(canonical)}">
 <meta property="og:title" content="${escape(title)}"><meta property="og:description" content="${escape(description)}">
-<meta property="og:url" content="${escape(canonical)}"><meta property="og:type" content="website">
+<meta property="og:url" content="${escape(canonical)}"><meta property="og:type" content="${article ? 'article' : 'website'}">${
+    article
+      ? `\n<script type="application/ld+json">${JSON.stringify({
+          '@context': 'https://schema.org',
+          '@type': 'Article',
+          headline: title,
+          description,
+          datePublished: article.published,
+          mainEntityOfPage: canonical,
+          publisher: { '@type': 'Organization', name: 'Walkup' },
+        }).replace(/</g, '\\u003c')}</script>`
+      : ''
+  }
 <style>
 body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:#222;background:#fff;line-height:1.5}
 header,main,footer{max-width:880px;margin:0 auto;padding:16px 20px}
@@ -59,11 +73,13 @@ h1{font-size:34px;line-height:1.15;letter-spacing:-.6px;margin:24px 0 8px}h2{fon
 .muted{color:#5f5b59}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
 .tile{border:1px solid #ddd;border-radius:12px;padding:14px}.tile b{display:block;font-size:24px}
 .cta{display:inline-block;background:#db164e;color:#fff;text-decoration:none;font-weight:600;padding:12px 20px;border-radius:10px;margin:16px 0}
-ul.links{columns:2;padding-left:18px}footer{border-top:1px solid #ddd;margin-top:40px;font-size:14px}
+ul.links{columns:2;padding-left:18px}ul.articles{list-style:none;padding:0}ul.articles li{padding:10px 0;border-bottom:1px solid #eee}
+table{border-collapse:collapse;width:100%;margin:8px 0 16px}th,td{text-align:left;padding:8px 10px;border-bottom:1px solid #eee}th{font-size:14px;color:#5f5b59}
+footer{border-top:1px solid #ddd;margin-top:40px;font-size:14px}
 </style></head><body>
 <header><a class="brand" href="/">walkup</a><a href="/">Sign in</a></header>
 <main>${body}</main>
-<footer class="muted">Walkup searches New York City apartments across listing sites, brokerages and landlords. Figures are medians of asking rents listed now; 311 complaints come from NYC Open Data. · <a href="/rents">All neighborhoods</a></footer>
+<footer class="muted">Walkup searches New York City apartments across listing sites, brokerages and landlords. Figures are medians of asking rents listed now; 311 complaints come from NYC Open Data. · <a href="/rents">All neighborhoods</a> · <a href="/blog">Market reports</a></footer>
 </body></html>`;
 }
 
@@ -151,6 +167,7 @@ export const robotsFile = (origin: string) =>
     'User-agent: *',
     'Allow: /$',
     'Allow: /rents',
+    'Allow: /blog',
     'Allow: /terms',
     'Allow: /privacy',
     'Allow: /_expo/',
@@ -168,8 +185,60 @@ export const robotsFile = (origin: string) =>
   ].join('\n');
 
 /** The public pages for this deployment's settings and data. */
-export const publicPages = (env: AppEnv, fetcher: FetchTransport) =>
+export const publicPages = (env: AppEnv, fetcher: FetchTransport, loadArchive?: ArchiveLoader) =>
   new Hono()
+    // Articles about the rental market, composed from the monthly figures (server/articles.ts).
+    .get('/blog', async (c) => {
+      const origin = new URL(c.req.url).origin;
+      const database = env.BUCKET?.database;
+      const months = database && loadArchive ? await articleMonths(database, loadArchive).catch(() => []) : [];
+      const list = articleList(months);
+      // A heading for each month, with that month's articles under it.
+      const items = months
+        .map(
+          (month) =>
+            `<h2>${escape(monthName(month))}</h2><ul class="articles">${list
+              .filter((article) => article.month === month)
+              .map(({ slug, title }) => `<li><a href="/blog/${slug}">${escape(title)}</a></li>`)
+              .join('')}</ul>`,
+        )
+        .join('');
+      const html = page(
+        origin,
+        '/blog',
+        'New York City rental market reports | Walkup',
+        'Monthly reports on New York City rents: the citywide median, the most affordable neighborhoods, and where rents are rising and falling.',
+        `<h1>New York City rental market reports</h1><p class="muted">Written each month from that month's figures.</p>${
+          items || '<p>The first reports are being prepared.</p>'
+        }<a class="cta" href="/">Search apartments on Walkup</a>`,
+      );
+      return c.html(html, 200, { 'Cache-Control': 'public, max-age=3600, no-transform' });
+    })
+    .get('/blog/:slug', async (c) => {
+      const origin = new URL(c.req.url).origin;
+      const database = env.BUCKET?.database;
+      const article = database && loadArchive ? await composeArticle(database, loadArchive, c.req.param('slug')).catch(() => null) : null;
+      if (!article)
+        return c.html(
+          page(
+            origin,
+            '/blog',
+            'Report not found | Walkup',
+            'Not found.',
+            '<h1>Report not found</h1><p><a href="/blog">All market reports</a></p>',
+          ),
+          404,
+        );
+      const html = page(
+        origin,
+        '/blog/' + article.slug,
+        article.title + ' | Walkup',
+        article.description,
+        `<p class="muted"><a href="/blog">Market reports</a></p><h1>${escape(article.title)}</h1>${article.html}<a class="cta" href="/">Search apartments on Walkup</a>`,
+        { published: article.month + '-01' },
+      );
+      return c.html(html, 200, { 'Cache-Control': 'public, max-age=3600, no-transform' });
+    })
     .get('/robots.txt', (c) =>
       c.text(robotsFile(new URL(c.req.url).origin), 200, {
         'Cache-Control': 'public, max-age=86400',
@@ -178,7 +247,9 @@ export const publicPages = (env: AppEnv, fetcher: FetchTransport) =>
     .get('/sitemap.xml', async (c) => {
       const origin = new URL(c.req.url).origin;
       const pages = await neighborhoodIndex(env);
-      const urls = ['/', '/rents', ...pages.map(({ path }) => '/rents/' + path)]
+      const database = env.BUCKET?.database;
+      const articles = database && loadArchive ? articleSlugs(await articleMonths(database, loadArchive).catch(() => [])) : [];
+      const urls = ['/', '/rents', ...pages.map(({ path }) => '/rents/' + path), '/blog', ...articles.map((slug) => '/blog/' + slug)]
         .map((path) => `<url><loc>${escape(origin + path)}</loc></url>`)
         .join('');
       return c.body(

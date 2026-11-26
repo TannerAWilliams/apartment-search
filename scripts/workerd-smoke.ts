@@ -34,6 +34,11 @@ const CHECKS: { path: string; init?: RequestInit; status: number; contains?: str
   // Loads the series into the local D1 tables from the archive, then reads it back.
   { path: '/api/history/values?series=rentalIndex_All.csv&areas=1&from=2026-01&to=2026-10', status: 200, contains: '"months"' },
   { path: '/api/history/month?series=medianAskingRent_All.csv&month=2026-10', status: 200, contains: '"value":4100' },
+  // The market reports, written from the same tables.
+  { path: '/blog', status: 200, contains: '/blog/nyc-rent-report-2026-10' },
+  { path: '/blog/nyc-rent-report-2026-10', status: 200, contains: 'The median asking rent in New York City was $4,100' },
+  { path: '/blog/nyc-rent-report-2019-01', status: 404, contains: 'Report not found' },
+  { path: '/robots.txt', status: 200, contains: 'Allow: /blog' },
   { path: '/api/search', status: 200, contains: '"matches"', init: { method: 'POST', body: JSON.stringify({ region: 'brooklyn' }) } },
   {
     path: '/api/vitals',

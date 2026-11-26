@@ -12,11 +12,12 @@ import { mobileStyles } from './src/mobileStyles.ts';
 import { colors, styles } from './src/styles.ts';
 import { localSearch } from './src/market.ts';
 import { listingKey, mapListing, mergeListings, mergeSourceLinks } from './src/listings.ts';
-import { Button, Chip } from './src/components/ui.tsx';
+import { Button, Chip, ExternalLink } from './src/components/ui.tsx';
 import { startVitals } from './src/web-vitals-report.ts';
 import { SavedSearches } from './src/components/SavedSearches.tsx';
 import { ObservedChanges } from './src/components/ObservedChanges.tsx';
 import {
+  API_ORIGIN,
   failureInfo,
   WEB_MAP,
   SEARCH_DEFAULTS,
@@ -979,6 +980,10 @@ function ApartmentSearch() {
               </View>
               <View style={styles.footer}>
                 <Text style={styles.smallMuted}>Walkup · New York, New Jersey and Connecticut</Text>
+                {/* The monthly market reports are pages of their own, written from the same figures as the Rents tab. */}
+                <ExternalLink url={`${API_ORIGIN}/blog`} onError={setError} style={{ alignSelf: 'flex-start', paddingVertical: 6 }}>
+                  <Text style={styles.linkText}>Market reports</Text>
+                </ExternalLink>
               </View>
             </View>
           </ScrollView>

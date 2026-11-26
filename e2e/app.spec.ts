@@ -261,6 +261,13 @@ test('homepage searches saved all-region inventory without starting a refresh', 
   expect(unexpected).toEqual([]);
 });
 
+test('the footer links to the market reports, which are pages of their own', async ({ page }) => {
+  await mockApp(page);
+  const link = page.getByRole('link', { name: 'Market reports', exact: true });
+  await expect(link).toBeVisible();
+  await expect(link).toHaveAttribute('href', '/blog');
+});
+
 test('sources exposes blocked refresh honestly and retains cached rentals', async ({ page }) => {
   const { requests } = await mockApp(page, { failed: true });
   await expect(page.getByText('12 Grove Street', { exact: true })).toBeVisible();
