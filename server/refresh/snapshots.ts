@@ -67,13 +67,26 @@ export async function storedFeed(bucket: Bucket, feed: { id: string }, filter?: 
   return snapshot;
 }
 
+/** How old the city's lottery list may be and still be shown as what is open now. */
+export const HOUSING_FRESH_DAYS = 7;
+
 export async function storedHousing(bucket: Bucket | undefined, now = new Date()): Promise<HousingSnapshot> {
   const object = await bucket?.get(HOUSING_KEY);
   if (!object) return { publishedAt: null, checkedAt: null, opportunities: [] };
   const data = checkedDocument(StoredHousingSchema, await object.json().catch(() => null), HOUSING_KEY);
   if (!data) return { publishedAt: null, checkedAt: null, opportunities: [] };
   const today = housingDate(now);
-  return { ...data, checkedAt: object.customMetadata.updatedAt, opportunities: data.opportunities.filter(({ closes }) => closes >= today) };
+  // The city publishes this list about monthly, and a lottery can close sooner than the list says: one shown as
+  // open until Dec 18, 2026 had ended on Nov 19. So a list older than a week names no lottery as open; the page
+  // says so and sends people to Housing Connect, which is current.
+  const published = Date.parse(data.publishedAt ?? '');
+  const stale = !(now.getTime() - published <= HOUSING_FRESH_DAYS * 86_400_000);
+  return {
+    ...data,
+    checkedAt: object.customMetadata.updatedAt,
+    opportunities: stale ? [] : data.opportunities.filter(({ closes }) => closes >= today),
+    ...(stale ? { stale: true } : {}),
+  };
 }
 
 export async function storedHdcRerentals(bucket: Bucket | undefined): Promise<HdcSnapshot | null> {

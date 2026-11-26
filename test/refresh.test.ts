@@ -180,7 +180,7 @@ function sources({ failure = false, conditional = false } = {}) {
       });
     }
     if (path.endsWith('/2026-10.csv') && !conditional) return new Response(CSV);
-    if (path === '/api/views/vy5i-a666') return Response.json({ rowsUpdatedAt: 1793635221 });
+    if (path === '/api/views/vy5i-a666') return Response.json({ rowsUpdatedAt: 1794153621 });
     if (path === '/resource/vy5i-a666.json') {
       expect(required(new URL(url).searchParams.get('$where'))).toMatch(/2026-11-09/);
       return Response.json([active, { ...active, lottery_id: '1', lottery_status: 'Tenant Selection' }]);

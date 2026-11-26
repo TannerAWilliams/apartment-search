@@ -136,17 +136,23 @@ export function AffordableHousing({
       {area === 'New York City' && (
         <>
           <Program
-            title={`Open housing lotteries${data ? ` (${lotteries.length})` : ''}`}
+            title={`Open housing lotteries${data && !data.stale ? ` (${lotteries.length})` : ''}`}
             about="New income-restricted apartments, filled by lottery on NYC Housing Connect."
           >
             {waiting}
-            {data && (
-              <Text style={styles.smallMuted}>
-                From the city’s list, published {showDate(data.publishedAt)}. The city updates it about monthly, so Housing Connect may show
-                newer lotteries. Income limits are the city’s {INCOME_YEAR} ceilings for a household of one, and rents its {RENT_YEAR}{' '}
-                ceilings for each income band; each lottery’s own page has its exact rents and its minimum income.
-              </Text>
-            )}
+            {data &&
+              (data.stale ? (
+                <Text style={styles.bodyText}>
+                  Walkup isn’t listing individual lotteries right now. The city’s published list is from {showDate(data.publishedAt)}, and
+                  lotteries can close before that list says they do. Housing Connect shows what is open today.
+                </Text>
+              ) : (
+                <Text style={styles.smallMuted}>
+                  From the city’s list, published {showDate(data.publishedAt)}. Income limits are the city’s {INCOME_YEAR} ceilings for a
+                  household of one, and rents its {RENT_YEAR} ceilings for each income band; each lottery’s own page has its exact rents,
+                  its minimum income and whether it is still open.
+                </Text>
+              ))}
             <Rows
               items={lotteries}
               more="Show more lotteries"

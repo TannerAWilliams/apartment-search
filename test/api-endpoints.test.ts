@@ -35,7 +35,7 @@ test('affordable housing: GET only, saved lotteries and re-rentals, and an hones
   await bucket.put(
     'rentals/housing-connect.json',
     JSON.stringify({
-      publishedAt: null,
+      publishedAt: new Date().toISOString(),
       opportunities: [
         {
           id: '1',
@@ -53,7 +53,20 @@ test('affordable housing: GET only, saved lotteries and re-rentals, and an hones
   );
   const saved = await readJson<HousingResponse>(handleApi(get('/api/housing'), { BUCKET: bucket }));
   expect(saved.opportunities.length).toBe(1);
+  expect(saved.stale).toBeUndefined();
   expect(saved.rerentals).toBeNull();
+  // A list the city published more than a week ago names no lottery as open: one it showed as open had closed.
+  const old = JSON.parse(await (await bucket.get('rentals/housing-connect.json'))!.text()) as Record<string, unknown>;
+  await bucket.put(
+    'rentals/housing-connect.json',
+    JSON.stringify({ ...old, publishedAt: new Date(Date.now() - 9 * 86_400_000).toISOString() }),
+    {
+      customMetadata: { updatedAt: '2026-11-20T00:00:00Z' },
+    },
+  );
+  const stale = await readJson<HousingResponse>(handleApi(get('/api/housing'), { BUCKET: bucket }));
+  expect(stale.opportunities).toEqual([]);
+  expect(stale.stale).toBe(true);
   const failed = await handleApi(get('/api/housing'), { BUCKET: failingBucket });
   expect(failed.status).toBe(503);
   expect((await readJson<ErrorBody>(failed)).error).toMatch(/Housing Connect data could not be read/);
@@ -156,7 +169,7 @@ test('search results link NYC apartments to open affordable-housing lotteries in
   await bucket.put(
     'rentals/housing-connect.json',
     JSON.stringify({
-      publishedAt: null,
+      publishedAt: new Date().toISOString(),
       opportunities: [
         {
           id: '1',

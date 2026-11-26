@@ -30,7 +30,7 @@ import {
   searchApartments,
 } from './src/app-shared.ts';
 import { Filters } from './src/components/Filters.tsx';
-import { HomePage } from './src/screens/HomePage.tsx';
+import { HomePage, type SiteStats } from './src/screens/HomePage.tsx';
 import { AccountPrompt } from './src/components/AccountPrompt.tsx';
 import { StreetViewContext } from './src/components/ListingThumbnail.tsx';
 // No extension: the bundler picks liberty-snapshot.web.tsx in the browser and the stub elsewhere.
@@ -216,6 +216,13 @@ function ApartmentSearch() {
   );
   activeTokenRef.current = activeToken;
   const defaults = () => ({ ...formDefaults(), ...commute.current.current });
+  // The site's size for the home page, from the first search with no filters set (the one the app opens with).
+  const [siteStats, setSiteStats] = useState<SiteStats | null>(null);
+  useEffect(() => {
+    if (siteStats || result.mode !== 'live' || result.sourceCounts.length === 0) return;
+    const plain = ({ workplace: _place, customWorkplace: _custom, ...rest }: ReturnType<typeof formDefaults>) => JSON.stringify(rest);
+    if (plain(applied) === plain(formDefaults())) setSiteStats({ apartments: result.eligibleTotal, sources: result.sourceCounts.length });
+  }, [result, applied, siteStats]);
   const savedByKey = useMemo(() => new Map(saved.map((listing) => [listingKey(listing), listing])), [saved]);
   const savedResults = useMemo(() => localSearch(saved, SAVED_FILTERS, result.workplace, 'saved'), [saved, result.workplace]);
 
@@ -978,6 +985,7 @@ function ApartmentSearch() {
                     {view === 'apply' && <ApplyPage saved={saved} onError={setError} />}
                     {view === 'home' && (
                       <HomePage
+                        stats={siteStats}
                         onOpen={navigateTab}
                         // A search from the home page starts fresh, not from the filters of an earlier one.
                         onSearch={(changes) => {

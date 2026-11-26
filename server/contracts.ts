@@ -83,7 +83,8 @@ export type AppEnv = {
   VAPID_SUBJECT?: string;
 };
 /** NYC Housing Connect's open lotteries, with the time they were last checked. */
-export type HousingSnapshot = StoredHousing & { checkedAt: string | null };
+/** `stale`: the city's list is too old to say what is open now, so no lottery is named (server/refresh/snapshots.ts). */
+export type HousingSnapshot = StoredHousing & { checkedAt: string | null; stale?: boolean };
 export type { HdcSnapshot };
 export type HousingResponse = HousingSnapshot & {
   rerentals: HdcSnapshot | null;

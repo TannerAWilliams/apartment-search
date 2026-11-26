@@ -7,7 +7,10 @@ import { Button } from '../components/ui.tsx';
 import { colors, styles } from '../styles.ts';
 
 const FEATURES: [title: string, body: string][] = [
-  ['Every listing, one search', 'Walkup reads more than 40 listing sites, brokerages and landlords, so you stop checking ten apps.'],
+  [
+    'Every listing, one search',
+    'Walkup reads listing sites, brokerages and landlords directly and merges them, so the same apartment on three sites shows once and you stop checking ten apps.',
+  ],
   ['Know a deal when you see it', 'Every rent is compared with similar apartments nearby, so “12% below similar” means something.'],
   ['Rent-stabilized buildings', 'Built from New York State’s list of about 57,000 registered buildings, with a filter for them.'],
   [

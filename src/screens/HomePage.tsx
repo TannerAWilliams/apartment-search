@@ -12,17 +12,43 @@ import { Button } from '../components/ui.tsx';
 import type { SearchFilters } from '../domain.ts';
 import { colors, styles } from '../styles.ts';
 
-const REASONS: [title: string, body: string][] = [
-  ['Every listing, one search', 'More than 40 listing sites, brokerages and landlords, so you stop checking ten apps.'],
-  ['Know a deal when you see it', 'Every rent is compared with similar apartments nearby, and rent-stabilized buildings are marked.'],
-  ['The building, before you tour', 'Open violations, complaints, pests, evictions and court cases from city records, graded A to D.'],
-];
+/** How much there is to search, when the app knows: every apartment and the sites they came from. */
+export type SiteStats = { apartments: number; sources: number };
+
+/**
+ * Three reasons to search here, each led by the figure that makes it concrete. The counts are the site's own,
+ * from the search it opens with; until that arrives the sentences stand without them.
+ */
+function reasons(stats: SiteStats | null): [figure: string, title: string, body: string][] {
+  // "17,000+": the count rounded down, so it stays true as listings come and go through the day.
+  const apartments = stats && stats.apartments >= 1000 ? `${(Math.floor(stats.apartments / 500) * 500).toLocaleString('en-US')}+` : null;
+  return [
+    [
+      stats ? `${stats.sources} sites` : 'One search',
+      'Stop checking ten apps',
+      `${apartments ? `${apartments} apartments` : 'Apartments'} from listing sites, brokerages and landlords in one search. The same apartment on three sites shows once.`,
+    ],
+    [
+      '% vs similar',
+      'See what is overpriced',
+      'Every rent is compared with similar apartments nearby, so a card says “12% below similar”, and an apartment listed at two prices is flagged.',
+    ],
+    [
+      'A to D',
+      'Check the building before you tour',
+      'Open violations, bedbugs, rats, heat complaints, evictions and Housing Court cases from city records, as one grade.',
+    ],
+  ];
+}
 
 export function HomePage({
   onSearch,
   onOpen,
   loadNeighborhoods,
+  stats = null,
 }: {
+  /** The site's size, once the opening search has said. */
+  stats?: SiteStats | null;
   /** Searches with these filters and opens the results. */
   onSearch: (changes: Partial<SearchFilters>) => void;
   onOpen: (tab: string) => void;
@@ -41,7 +67,10 @@ export function HomePage({
           Find your next New York apartment
         </Text>
         <Text style={{ fontSize: wide ? 18 : 16, lineHeight: wide ? 26 : 23, color: colors.muted, maxWidth: 720 }}>
-          Every listing site in one search, with real deals, building grades and rent-stabilized apartments marked. Free, no account needed.
+          {stats
+            ? `${stats.apartments.toLocaleString('en-US')} apartments from ${stats.sources} sites in one search`
+            : 'Every listing site in one search'}
+          , with real deals, building grades and rent-stabilized apartments marked. Free, no account needed.
         </Text>
         <HomeSearch onSearch={onSearch} loadNeighborhoods={loadNeighborhoods} />
       </View>
@@ -70,20 +99,23 @@ export function HomePage({
       </View>
 
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 14 }}>
-        {REASONS.map(([title, body]) => (
+        {reasons(stats).map(([figure, title, body]) => (
           <View
             key={title}
             style={{
               flexGrow: 1,
               flexBasis: wide ? 300 : 260,
-              gap: 4,
-              padding: 16,
+              gap: 6,
+              padding: 18,
               borderRadius: 16,
               borderWidth: 1,
               borderColor: colors.border,
             }}
           >
-            <Text style={{ fontSize: 16, fontWeight: '600', color: colors.ink }}>{title}</Text>
+            <Text style={{ fontSize: 26, lineHeight: 30, fontWeight: '700', letterSpacing: -0.6, color: colors.ink }}>{figure}</Text>
+            <Text accessibilityRole="header" style={{ fontSize: 17, fontWeight: '600', color: colors.ink }}>
+              {title}
+            </Text>
             <Text style={styles.bodyText}>{body}</Text>
           </View>
         ))}
