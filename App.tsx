@@ -12,7 +12,7 @@ import { mobileStyles } from './src/mobileStyles.ts';
 import { colors, styles } from './src/styles.ts';
 import { localSearch } from './src/market.ts';
 import { listingKey, mapListing, mergeListings, mergeSourceLinks } from './src/listings.ts';
-import { Button, Chip, ExternalLink } from './src/components/ui.tsx';
+import { AlertButton, Button, Chip, ExternalLink } from './src/components/ui.tsx';
 import { startVitals } from './src/web-vitals-report.ts';
 import { SavedSearches } from './src/components/SavedSearches.tsx';
 import { ObservedChanges } from './src/components/ObservedChanges.tsx';
@@ -430,6 +430,10 @@ function ApartmentSearch() {
   // A visitor (no account, not the app's own admin token) uses everything except what belongs to an account.
   const member = Boolean(account) || admin;
   const view = !member && ACCOUNT_TABS[tab] ? 'account' : tab;
+  // Why a visitor's profile is showing the sign-in page instead ('' when it is not); leaving the profile ends it.
+  const [signInReason, setSignInReason] = useState('');
+  // biome-ignore lint/correctness/useExhaustiveDependencies: cleared whenever the screen changes
+  useEffect(() => setSignInReason(''), [tab]);
   // A member sets the destination on their profile, where it is kept with the account; a visitor in the
   // search's own destination box, where nothing claims to be saved.
   askCommute.current = () => {
@@ -574,6 +578,9 @@ function ApartmentSearch() {
                   </Text>
                 </View>
               </Pressable>
+              {/* The call to action beside the search, as listing sites put "Save search"; on a phone it leads
+                  the row under the search instead, where there is room for its words. */}
+              {view === 'results' && wide && result.total > 0 && <AlertButton onPress={() => navigateTab('alerts')} />}
               {view === 'results' && (
                 <Pressable
                   accessibilityRole="button"
@@ -787,7 +794,7 @@ function ApartmentSearch() {
                                   savedByKey={savedByKey}
                                   showMarkets={() => navigateTab('marketplaces')}
                                   showSources={() => navigateTab('sources')}
-                                  onAlert={() => navigateTab('alerts')}
+                                  onAlert={wide ? undefined : () => navigateTab('alerts')}
                                   onOpen={openListing}
                                   onSave={saveListing}
                                   onSaveLink={saveLink}
@@ -831,7 +838,9 @@ function ApartmentSearch() {
                       </>
                     </View>
                   )}
-                  {view === 'more' && (
+                  {/* "Sign in to save" on a visitor's profile opens the sign-in page, with the reason they asked. */}
+                  {view === 'more' && !member && signInReason !== '' && <AccountPrompt reason={signInReason} onSignedIn={signedIn} />}
+                  {view === 'more' && (member || signInReason === '') && (
                     <ProfilePage
                       account={account}
                       admin={admin}
@@ -843,20 +852,19 @@ function ApartmentSearch() {
                       onOpen={navigateTab}
                       onSignOut={() => void signOut()}
                       signInCard={member ? undefined : <AccountPrompt reason="save apartments and get alerts" onSignedIn={signedIn} />}
-                      // Profile settings are an account's: a visitor sees the sign-in form instead, and sets
-                      // the destination in a search, where nothing claims to be saved.
+                      // A visitor's destination is used for their searches at once, and the button says what
+                      // keeping it takes: signing in, after which it is saved to the account.
                       commuteCard={
-                        member ? (
-                          <CommuteCard
-                            place={commute.place ?? { workplace: applied.workplace, customWorkplace: applied.customWorkplace }}
-                            onAccount={Boolean(account)}
-                            suggest={suggestPlaces}
-                            onSave={(place) => {
-                              commute.remember(place);
-                              setDraft((current) => ({ ...current, ...place }));
-                            }}
-                          />
-                        ) : undefined
+                        <CommuteCard
+                          place={commute.place ?? { workplace: applied.workplace, customWorkplace: applied.customWorkplace }}
+                          onAccount={Boolean(account)}
+                          onSignIn={member ? undefined : () => setSignInReason('keep your commute on every device')}
+                          suggest={suggestPlaces}
+                          onSave={(place) => {
+                            commute.remember(place);
+                            setDraft((current) => ({ ...current, ...place }));
+                          }}
+                        />
                       }
                       settingsRequest={serverState === 'ready' ? settingsRequest : undefined}
                       onError={setError}

@@ -122,6 +122,24 @@ export function ListIcon({ color, size = 16 }: IconProps) {
 }
 
 /** Close: an X. */
+export function BellIcon({ color, size = 16 }: IconProps) {
+  return (
+    <Svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={color}
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <Path d="M6 9a6 6 0 0 1 12 0c0 6 2.5 7.5 2.5 7.5h-17S6 15 6 9" />
+      <Path d="M10 20a2 2 0 0 0 4 0" />
+    </Svg>
+  );
+}
+
 export function CloseIcon({ color, size = 16 }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" aria-hidden>

@@ -494,7 +494,7 @@ export function DestinationField({
   return (
     <View style={styles.tokenForm}>
       <Field
-        label="Destination address or place"
+        label="Destination"
         placeholder="Empire State Building, or 350 5th Ave"
         value={value}
         onChangeText={onChange}

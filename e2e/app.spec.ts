@@ -1388,9 +1388,12 @@ test('the home page searches by where, bedrooms and rent, and readies the search
     .poll(() => requests.filter(({ path }) => path === '/api/search').at(-1)?.body)
     .toMatchObject({ region: 'brooklyn', bedroomOptions: [1, 2], maxRent: 4000 });
   await expect(page).toHaveURL(/\/search$/);
-  // A popular neighborhood searches in one tap; /welcome still opens the home page.
+  // The empty Where box offers the neighborhoods people start from; /welcome still opens the home page.
   await page.goto('/welcome');
-  await page.getByRole('button', { name: 'Astoria', exact: true }).click();
+  await expect(page.getByText('Popular neighborhoods', { exact: true })).toHaveCount(0);
+  await page.getByRole('textbox', { name: 'Where', exact: true }).click();
+  await page.getByRole('button', { name: 'Astoria, Queens', exact: true }).click();
+  await page.getByRole('button', { name: 'Search apartments', exact: true }).click();
   await expect
     .poll(() => requests.filter(({ path }) => path === '/api/search').at(-1)?.body)
     .toMatchObject({ region: 'queens', neighborhood: 'Astoria' });

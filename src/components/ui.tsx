@@ -2,6 +2,7 @@ import { type ComponentType, type ReactNode, useState } from 'react';
 import type { TextInputProps, ViewProps } from 'react-native';
 import { Linking, Platform, Pressable, Text, TextInput, View } from 'react-native';
 import { colors, styles } from '../styles.ts';
+import { BellIcon } from './Icons.tsx';
 
 /**
  * Props for a button that toggles on and off: aria-pressed on the web (aria-selected is not allowed on
@@ -68,6 +69,35 @@ export function Button({
       ]}
     >
       <Text style={[styles.buttonText, secondary && styles.buttonTextSecondary]}>{children}</Text>
+    </Pressable>
+  );
+}
+
+/**
+ * The results' call to action: email alerts for the search on screen. The one filled, colored button there, so it
+ * reads as the next step after searching.
+ */
+export function AlertButton({ onPress }: { onPress: () => void }) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="Get email alerts for this search"
+      onPress={onPress}
+      style={({ pressed }) => [
+        {
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 6,
+          minHeight: 44,
+          paddingHorizontal: 16,
+          borderRadius: 999,
+          backgroundColor: colors.green,
+        },
+        pressed && styles.pressed,
+      ]}
+    >
+      <BellIcon color={colors.white} />
+      <Text style={{ color: colors.white, fontSize: 15, fontWeight: '600' }}>Get alerts</Text>
     </Pressable>
   );
 }

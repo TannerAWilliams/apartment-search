@@ -166,6 +166,11 @@ test('the API serves the head and each version’s file, and builds the file whe
   values.delete('br:' + head.version);
   expect((await get('inventory/' + head.version, settings, {}, modern)).headers.get('Content-Encoding')).toBe('gzip');
   values.set('br:' + head.version, kept);
+  // A head from before Brotli: the Brotli file is not looked for, so a location never remembers it as missing.
+  const current = values.get('head') as string;
+  values.set('head', JSON.stringify({ ...head, encodings: undefined }));
+  expect((await get('inventory/' + head.version, settings, {}, modern)).headers.get('Content-Encoding')).toBe('gzip');
+  values.set('head', current);
   // The file is for the app's own pages: a request from another site, or from no page at all, is refused.
   expect((await get('inventory/' + head.version, settings, {}, { 'Sec-Fetch-Site': 'cross-site' })).status).toBe(403);
   expect((await get('inventory/' + head.version, settings, {}, {})).status).toBe(403);

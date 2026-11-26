@@ -8,7 +8,7 @@ import { MARKETPLACE_NAMES } from '../marketplaces.ts';
 import { RESULT_SORTS, bedroomsLabel, formatRent, needsCommute } from '../search.ts';
 import { colors, styles } from '../styles.ts';
 import { listingKey, mergeSourceLinks } from '../listings.ts';
-import { Button, Chip, toggleProps } from '../components/ui.tsx';
+import { AlertButton, Button, Chip, toggleProps } from '../components/ui.tsx';
 import { Listing } from '../components/Listing.tsx';
 import { PAGE_SIZE } from '../app-shared.ts';
 
@@ -185,7 +185,7 @@ export function Results({
   onCheckBuilding?: React.ComponentProps<typeof Listing>['onCheckBuilding'];
   /** One line on how fresh the sources are, shown with the coverage notes. */
   status?: React.ReactNode;
-  /** Opens the alert form for this search. */
+  /** Opens the alert form for this search; given where the button belongs in this row (a phone). */
   onAlert?: () => void;
   /** Opens an apartment's own page. */
   onOpen?: (listing: ListingData) => void;
@@ -292,6 +292,7 @@ export function Results({
           </View>
           {/* One row: the count, then sorting as a single menu and alerts as one small button. */}
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8, zIndex: 10 }}>
+            {!savedView && onAlert && result.total > 0 && <AlertButton onPress={onAlert} />}
             {sortOptions.length > 1 && <SortMenu options={sortOptions} sort={sort} onSort={onSort} />}
             {/* How long the trip to work may be, one tap from the results. */}
             {!savedView && onCommute && (
@@ -301,11 +302,6 @@ export function Results({
                 items={COMMUTE_CHOICES.map(([minutes, label]) => [String(minutes), label, (applied.maxCommuteMinutes ?? null) === minutes])}
                 onChoose={(id) => onCommute(id === 'null' ? null : Number(id))}
               />
-            )}
-            {!savedView && onAlert && result.total > 0 && (
-              <Chip label="Get email alerts for this search" onPress={onAlert}>
-                Get alerts
-              </Chip>
             )}
             {tools.length > 0 && onTool && <ChipMenu label="More tools" title="More" items={tools} onChoose={onTool} />}
           </View>

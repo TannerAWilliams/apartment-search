@@ -39,7 +39,10 @@ export const inventoryRoutes = factory
     // rewrites Accept-Encoding on the way in and keeps what the browser sent beside it.
     const accepted =
       (c.req.raw as Request & { cf?: { clientAcceptEncoding?: string } }).cf?.clientAcceptEncoding ?? c.req.header('Accept-Encoding');
-    const brotli = /\bbr\b/.test(accepted ?? '') ? await readFile(store, version, 'br') : null;
+    // Asked for only once the head says it is there: a location that looked for it sooner would remember
+    // that it was missing for as long as it keeps a file, a day.
+    const head = /\bbr\b/.test(accepted ?? '') ? await readHead(store) : null;
+    const brotli = head?.version === version && head.encodings?.includes('br') ? await readFile(store, version, 'br') : null;
     const file = brotli ?? (await readFile(store, version, 'gzip'));
     if (!file) return fail(c, 404, 'That inventory file is gone. Ask for the current one.');
     return new Response(file, {

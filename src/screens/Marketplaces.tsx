@@ -82,12 +82,6 @@ export function Marketplaces({
           </ExternalLink>
         ))}
       </View>
-      <Text style={styles.fieldLabel}>Search several sites at once</Text>
-      <View style={styles.chipRow}>
-        <Link label="RentReboot" url="https://rentreboot.com/" onError={onError} />
-        <Text style={styles.smallMuted}> · </Text>
-        <Link label="Lessia’s List" url="https://lessiaslist.com/" onError={onError} />
-      </View>
       <Pressable
         accessibilityRole="button"
         accessibilityState={{ expanded: showCompanies }}

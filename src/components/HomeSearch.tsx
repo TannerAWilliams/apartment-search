@@ -9,7 +9,6 @@ import type { SearchFilters } from '../domain.ts';
 import { NYC_BOROUGHS, REGIONS } from '../regions.ts';
 import { colors, styles } from '../styles.ts';
 import { SearchIcon } from './Icons.tsx';
-import { Chip } from './ui.tsx';
 
 type Place = { label: string; detail: string; region: string; neighborhood?: string };
 export type NeighborhoodLoader = (signal: AbortSignal) => Promise<{ areas?: { id: string; label: string; detail: string }[] }>;
@@ -18,17 +17,19 @@ export type NeighborhoodLoader = (signal: AbortSignal) => Promise<{ areas?: { id
 const AREAS: Place[] = (
   ['nyc', 'manhattan', 'brooklyn', 'queens', 'bronx', 'staten-island', 'nj', 'westchester', 'li', 'ct'] as (keyof typeof REGIONS)[]
 ).map((region) => ({ label: REGIONS[region].label, detail: region === 'nyc' ? 'All five boroughs' : 'Area', region }));
-/** Neighborhoods people often start from. */
-const POPULAR: [name: string, borough: (typeof NYC_BOROUGHS)[number]][] = [
-  ['Williamsburg', 'brooklyn'],
-  ['Astoria', 'queens'],
-  ['Upper West Side', 'manhattan'],
-  ['Park Slope', 'brooklyn'],
-  ['Harlem', 'manhattan'],
-  ['Long Island City', 'queens'],
-  ['Bushwick', 'brooklyn'],
-  ['East Village', 'manhattan'],
-];
+/** Neighborhoods people often start from, offered when the Where box is opened and still empty. */
+const POPULAR: Place[] = (
+  [
+    ['Williamsburg', 'brooklyn'],
+    ['Astoria', 'queens'],
+    ['Upper West Side', 'manhattan'],
+    ['Park Slope', 'brooklyn'],
+    ['Harlem', 'manhattan'],
+    ['Long Island City', 'queens'],
+    ['Bushwick', 'brooklyn'],
+    ['East Village', 'manhattan'],
+  ] as [string, (typeof NYC_BOROUGHS)[number]][]
+).map(([name, borough]) => ({ label: name, detail: REGIONS[borough].label, region: borough, neighborhood: name }));
 const boroughKey = (detail: string) => NYC_BOROUGHS.find((key) => detail.toLowerCase().replace(/ /g, '-').startsWith(key)) ?? 'nyc';
 const SIZES: [number, string][] = [
   [0, 'Studio'],
@@ -69,13 +70,17 @@ export function HomeSearch({
     return () => controller.abort();
   }, [focused, loadNeighborhoods]);
   const query = text.trim().toLowerCase();
-  const suggestions =
-    focused && query && place?.label !== text
-      ? [...AREAS, ...(neighborhoods.current ?? [])]
-          .filter(({ label }) => label.toLowerCase().includes(query))
-          .sort((a, b) => Number(!a.label.toLowerCase().startsWith(query)) - Number(!b.label.toLowerCase().startsWith(query)))
-          .slice(0, 7)
-      : [];
+  // Typing narrows the areas and neighborhoods; an empty box offers the ones people most often start from.
+  const suggestions = !focused
+    ? []
+    : !query
+      ? POPULAR
+      : place?.label !== text
+        ? [...AREAS, ...(neighborhoods.current ?? [])]
+            .filter(({ label }) => label.toLowerCase().includes(query))
+            .sort((a, b) => Number(!a.label.toLowerCase().startsWith(query)) - Number(!b.label.toLowerCase().startsWith(query)))
+            .slice(0, 7)
+        : [];
   const maxRent = Number(rent.replace(/\D/g, '')) || null;
   const search = (chosen = place) =>
     onSearch({
@@ -207,16 +212,6 @@ export function HomeSearch({
           ))}
         </View>
       )}
-      <View style={{ gap: 8 }}>
-        <Text style={styles.fieldLabel}>Popular neighborhoods</Text>
-        <View style={styles.chipRow}>
-          {POPULAR.map(([name, borough]) => (
-            <Chip key={name} onPress={() => search({ label: name, detail: REGIONS[borough].label, region: borough, neighborhood: name })}>
-              {name}
-            </Chip>
-          ))}
-        </View>
-      </View>
     </View>
   );
 }

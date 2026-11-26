@@ -16,12 +16,18 @@ export function CommuteCard({
   onSave,
   suggest,
   onAccount,
+  onSignIn,
 }: {
   place: CommutePlace;
   onSave: (place: CommutePlace) => void;
   suggest?: Suggest;
   /** Whether it is kept on an account (an admin signed in by token has none, and it stays on the device). */
   onAccount: boolean;
+  /**
+   * For a visitor: opens the sign-in page. Their destination is used for their searches at once, and is kept on
+   * the account they sign in to; nothing is called saved before then.
+   */
+  onSignIn?: () => void;
 }) {
   const [draft, setDraft] = useState(place);
   const [saved, setSaved] = useState(false);
@@ -33,7 +39,12 @@ export function CommuteCard({
   return (
     <View style={[styles.menu, { padding: 16, gap: 10 }]}>
       <Text style={styles.smallMuted}>
-        Commute times on every apartment are to this place. {onAccount ? 'Kept on your account, on every device.' : 'Kept on this device.'}
+        Commute times on every apartment are to this place.{' '}
+        {onSignIn
+          ? 'Sign in to keep it on your account, on every device.'
+          : onAccount
+            ? 'Kept on your account, on every device.'
+            : 'Kept on this device.'}
       </Text>
       <CommuteField
         place={draft}
@@ -43,16 +54,17 @@ export function CommuteCard({
           setSaved(false);
         }}
       />
-      {(changed || saved) && (
+      {(onSignIn || changed || saved) && (
         <View style={styles.chipRow}>
           <Button
-            disabled={!changed || !ready}
+            disabled={!ready || (!onSignIn && !changed)}
             onPress={() => {
               onSave({ workplace: draft.workplace, customWorkplace: draft.workplace === 'custom' ? draft.customWorkplace.trim() : '' });
-              setSaved(true);
+              if (onSignIn) onSignIn();
+              else setSaved(true);
             }}
           >
-            {changed ? 'Save commute' : 'Saved'}
+            {onSignIn ? 'Sign in to save' : changed ? 'Save commute' : 'Saved'}
           </Button>
         </View>
       )}

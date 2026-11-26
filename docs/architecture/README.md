@@ -237,6 +237,34 @@ file is built) and the time to decompress it (in the browser, once per version).
 | Zstandard 9 | 823 KB | −21% | 86 ms | 9 ms | Chrome, Firefox; not Safari |
 | Zstandard 19 | 702 KB | −33% | 3.5 s | 12 ms | Chrome, Firefox; not Safari |
 
+### What the person waits for
+
+Compressing happens once, in the background, when the file is built; nobody waits for it. A visitor waits for the
+file to arrive and for the browser to open it, so the measure that matters is download plus decompression. A
+browser opens gzip, Brotli and (except Safari) Zstandard itself; every other codec needs its decoder downloaded
+with the app and run in WebAssembly, which is slower than the browser's own. Seconds until the file is usable,
+with a phone taken as four times slower than the test machine at decompressing:
+
+| Codec | Size | Decompress | In the browser | On 10 Mbit/s | On 50 Mbit/s |
+|---|---:|---:|---|---:|---:|
+| None | 10,376 KB | 0 ms | yes | 8.50 s | 1.70 s |
+| Snappy | 1,966 KB | 5 ms | no | 1.65 s | 0.36 s |
+| LZ4 | 1,698 KB | 3 ms | no | 1.42 s | 0.30 s |
+| LZ4 HC | 1,247 KB | 3 ms | no | 1.04 s | 0.23 s |
+| gzip / Deflate 6 | 1,041 KB | 18 ms | yes | 0.92 s | 0.24 s |
+| bzip2 | 836 KB | 148 ms | no | 1.87 s | 1.32 s |
+| XZ / LZMA | 710 KB | 29 ms | no | 0.82 s | 0.35 s |
+| Zopfli (gzip format, 24 s to compress) | 879 KB | 19 ms | yes | 0.80 s | 0.22 s |
+| **Brotli, the Worker's own (served)** | **887 KB** | 10 ms | yes | **0.77 s** | **0.19 s** |
+| Brotli 9 | 778 KB | 11 ms | yes | 0.68 s | 0.17 s |
+| Brotli 11 | 665 KB | 20 ms | yes | 0.62 s | 0.19 s |
+| Zstandard 19 | 700 KB | 5 ms | not Safari | 0.59 s | 0.13 s |
+
+The codecs known for speed (LZ4, Snappy) are fast at compressing and decompressing, which is a few milliseconds
+either way; they lose on the download, which is most of the wait. LZHAM has no maintained build and no browser
+support and was not measured. The file is downloaded in the background while the opening results (carried in the
+head) are already on screen, so none of this delays the first apartments.
+
 What is served, since 26 November 2026: **Brotli from the Worker's own `CompressionStream('brotli')`, 871 KB**, to
 every browser that says it reads Brotli, and the gzip file to the rest (Android's HTTP library in the phone app,
 old browsers). Both are stored; the route picks by what the browser sent.
