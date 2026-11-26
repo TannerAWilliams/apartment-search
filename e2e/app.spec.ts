@@ -1541,3 +1541,57 @@ test('Rents is read in the background after the home page, so the tab opens with
   await expect(page.getByRole('heading', { name: 'Rent prices', exact: true })).toBeVisible();
   expect(markets.length).toBe(before);
 });
+
+test('a shared list’s link opens it without an account, and a guest’s note is added under their name', async ({ page }) => {
+  const token = 'ab'.repeat(16);
+  const [apartment] = fixtures(1);
+  const list = {
+    members: ['ana'],
+    listings: [apartment],
+    votes: { [apartment!.id]: { ana: 'yes' } },
+    notes: { [apartment!.id]: [{ by: 'ana', text: 'Bright', at: now }] },
+  };
+  const sent: unknown[] = [];
+  await mockApp(page, { admin: false, start: '/s/' + token });
+  await page.route('**/api/shared-list/' + token, (route) => {
+    if (route.request().method() === 'POST') {
+      const note = route.request().postDataJSON() as { id: string; name: string; text: string };
+      sent.push(note);
+      list.notes[note.id]!.push({ by: `${note.name} (guest)`, text: note.text, at: '2026-11-13T12:05:00Z' });
+    }
+    return route.fulfill({ json: { list } });
+  });
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Apartments ana is considering', exact: true })).toBeVisible();
+  await expect(page.getByText('ana: yes', { exact: true })).toBeVisible();
+  await expect(page.getByText('ana: Bright', { exact: true })).toBeVisible();
+  // A note needs a name; then it is sent and shown.
+  await page.getByRole('textbox', { name: 'Note on 12 Grove Street', exact: true }).fill('Is there an elevator?');
+  await expect(page.getByRole('button', { name: 'Add note', exact: true })).toBeDisabled();
+  await page.getByRole('textbox', { name: 'Your name', exact: true }).fill('Mom');
+  await page.getByRole('button', { name: 'Add note', exact: true }).click();
+  await expect(page.getByText('Mom (guest): Is there an elevator?', { exact: true })).toBeVisible();
+  expect(sent).toEqual([{ id: apartment!.id, name: 'Mom', text: 'Is there an elevator?' }]);
+  // The apartment's own page is one tap away.
+  await page.getByRole('link', { name: 'Open 12 Grove Street', exact: true }).click();
+  await expect(page).toHaveURL(/\/listing\//);
+});
+
+test('a member turns a link to the shared list on and off', async ({ page }) => {
+  await mockApp(page, { account: 'ana@example.test', admin: false });
+  let household: Record<string, unknown> | null = null;
+  await page.route('**/api/household', (route) => {
+    const body = route.request().postDataJSON() as { action?: string } | null;
+    if (body?.action === 'link')
+      household = { id: 'h', members: ['ana@example.test'], invited: [], listings: [], votes: {}, notes: {}, link: 'cd'.repeat(16) };
+    if (body?.action === 'unlink') household = { ...household, link: undefined };
+    return route.fulfill({ json: { household, me: 'ana@example.test' } });
+  });
+  await page.getByRole('tab', { name: 'Profile', exact: true }).click();
+  await page.getByRole('button', { name: 'Shared list', exact: true }).click();
+  // No one has to be invited first.
+  await page.getByRole('button', { name: 'Create a link', exact: true }).click();
+  await expect(page.getByLabel('Link to this list')).toHaveText('http://127.0.0.1:4173/s/' + 'cd'.repeat(16));
+  await page.getByRole('button', { name: 'Turn off the link', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Create a link', exact: true })).toBeVisible();
+});

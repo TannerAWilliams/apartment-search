@@ -183,7 +183,14 @@ app.use(async (c, next) => {
 app.use('/api/*', async (c, next) => {
   // The inventory file is every listing at once; a browser reads it once per version.
   const binding =
-    c.req.method === 'POST' ? LIMITED_ROUTES[c.req.path] : c.req.path.startsWith('/api/inventory/') ? 'LOOKUP_LIMIT' : undefined;
+    // A shared list's link is open to anyone who has it, so reading it and leaving notes are limited too.
+    c.req.path.startsWith('/api/shared-list/')
+      ? 'LOOKUP_LIMIT'
+      : c.req.method === 'POST'
+        ? LIMITED_ROUTES[c.req.path]
+        : c.req.path.startsWith('/api/inventory/')
+          ? 'LOOKUP_LIMIT'
+          : undefined;
   const limiter = binding && c.env[binding];
   if (limiter && !(await limiter.limit({ key: binding + ':' + c.var.caller })).success) {
     log.warn('rate_limited', { path: c.req.path });

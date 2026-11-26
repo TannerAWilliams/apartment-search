@@ -165,6 +165,18 @@ export const PlanRequestSchema = v.object({
 const SETTING = 'Say whether the nightly resync or the daytime checks are on.';
 const ID = 'Name the apartment.';
 const listingIdSchema = v.pipe(v.string(ID), v.minLength(1, ID), v.maxLength(300, ID));
+/** A note left through a shared list's link, by someone without an account. */
+export const GuestNoteSchema = v.object({
+  id: v.pipe(v.string('Choose an apartment.'), v.minLength(1, 'Choose an apartment.'), v.maxLength(300, 'Choose an apartment.')),
+  name: v.pipe(
+    v.string('Say who you are.'),
+    v.trim(),
+    v.minLength(1, 'Say who you are.'),
+    v.maxLength(40, 'Keep your name under 40 characters.'),
+  ),
+  text: v.pipe(v.string('Write a note.'), v.trim(), v.minLength(1, 'Write a note.'), v.maxLength(500, 'Keep notes under 500 characters.')),
+});
+
 /** A change to the signed-in account's shared list (server/households.ts). */
 export const HouseholdRequestSchema = v.variant(
   'action',
@@ -185,6 +197,8 @@ export const HouseholdRequestSchema = v.variant(
       ),
     }),
     v.object({ action: v.literal('leave') }),
+    v.object({ action: v.literal('link') }),
+    v.object({ action: v.literal('unlink') }),
     v.object({ action: v.literal('add'), listing: v.unknown() }),
     v.object({ action: v.literal('remove'), id: listingIdSchema }),
     v.object({ action: v.literal('vote'), id: listingIdSchema, vote: v.nullable(v.picklist(['yes', 'no'], 'Vote yes or no.')) }),

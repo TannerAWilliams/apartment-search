@@ -20,6 +20,7 @@ import {
 import type { AffordableHousing } from '../screens/AffordableHousing.tsx';
 import type { AlertState } from '../screens/AlertsPage.tsx';
 import type { HouseholdReply } from '../screens/SharedListPage.tsx';
+import type { SharedByLink } from '../screens/SharedLinkPage.tsx';
 import type { NeighborhoodReport } from '../screens/NeighborhoodsPage.tsx';
 import type { AdminStats } from '../screens/AdminPage.tsx';
 import type { DirectReply } from '../screens/DirectPage.tsx';
@@ -293,6 +294,12 @@ export function useServer({ appliedFilters, searchVersion, submitted, setResult,
     (body?: Record<string, unknown>) => api<HouseholdReply>('household', body ? { body, token: activeToken } : { token: activeToken }),
     [activeToken],
   );
+  /** A shared list through its link: read it, or leave a note on one of its apartments (no account needed). */
+  const sharedLinkRequest = useCallback(
+    (linkToken: string, note?: { id: string; name: string; text: string }) =>
+      api<{ list: SharedByLink }>('shared-list/' + linkToken, note ? { body: note, token: activeToken } : { token: activeToken }),
+    [activeToken],
+  );
   /** One neighborhood's report: rents by size, buildings and 311 complaints. */
   const loadNeighborhoodReport = useCallback(
     (name: string) => api<NeighborhoodReport>('neighborhood?' + new URLSearchParams({ name }), { token: activeToken }),
@@ -392,6 +399,7 @@ export function useServer({ appliedFilters, searchVersion, submitted, setResult,
     plan,
     membersRequest,
     householdRequest,
+    sharedLinkRequest,
     billingRequest,
     loadListing,
     loadStoredListing,

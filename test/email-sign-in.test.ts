@@ -177,6 +177,12 @@ test('costly routes are limited per signed-in person, and other routes are not',
   await post(open, '/api/search', {}, { 'CF-Connecting-IP': '203.0.113.9' });
   await post(open, '/api/search', {});
   expect(keys.slice(-2)).toEqual(['SEARCH_LIMIT:ip:203.0.113.9', 'SEARCH_LIMIT:ip:unknown']);
+  // A shared list's link is open to anyone who has it: reading it is counted, and refused past the limit.
+  const link = await call(open, '/api/shared-list/' + 'ab'.repeat(16), { headers: { 'CF-Connecting-IP': '203.0.113.9' } });
+  expect(link.status).toBe(429);
+  expect(keys.at(-1)).toBe('LOOKUP_LIMIT:ip:203.0.113.9');
+  // So is the inventory file, which is every listing at once.
+  expect((await call(open, '/api/inventory/' + 'a'.repeat(24), { headers: { 'CF-Connecting-IP': '203.0.113.9' } })).status).toBe(429);
 });
 
 test('the app is told who is signed in, and signing out ends the session', async () => {

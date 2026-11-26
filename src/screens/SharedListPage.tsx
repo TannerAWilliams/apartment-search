@@ -18,12 +18,15 @@ export type Household = {
   votes: Record<string, Record<string, 'yes' | 'no'>>;
   notes: Record<string, { by: string; text: string; at: string }[]>;
   workplaces?: Record<string, Place>;
+  /** The token of the link that opens the list without an account, while one is on. */
+  link?: string;
 };
 type Place = { label: string; latitude: number; longitude: number };
 export type HouseholdReply = { household: Household | null; me: string };
 export type HouseholdRequest = (body?: Record<string, unknown>) => Promise<HouseholdReply>;
 
-const name = (email: string) => email.split('@')[0];
+/** A member by the start of their address; a guest, who left a note through the link, by the name they gave. */
+const name = (who: string) => (who.startsWith('guest:') ? `${who.slice('guest:'.length)} (guest)` : who.split('@')[0]);
 const title = (listing: ListingData) => (listing.unit ? `${listing.address}, Unit ${listing.unit}` : listing.address);
 
 export function SharedListPage({
@@ -31,7 +34,10 @@ export function SharedListPage({
   saved,
   lookUp,
   onError,
+  origin,
 }: {
+  /** The site's address, which the list's link starts with. */
+  origin: string;
   request?: HouseholdRequest;
   saved: ListingData[];
   /** Finds a typed place: the same OpenStreetMap lookup as the commute destination. */
@@ -103,11 +109,40 @@ export function SharedListPage({
       </Button>
     </View>
   );
+  const link = household?.link ? `${origin}/s/${household.link}` : '';
+  const linkCard = (
+    <View style={styles.chartCard}>
+      <Text accessibilityRole="header" style={styles.fieldLabel}>
+        Share with a link
+      </Text>
+      <Text style={styles.smallMuted}>
+        Anyone with the link reads the list and leaves notes, without an account. They see names, not email addresses.
+      </Text>
+      {link ? (
+        <>
+          <Text selectable accessibilityLabel="Link to this list" style={styles.bodyText}>
+            {link}
+          </Text>
+          <View style={styles.chipRow}>
+            <Link label="Open the link" url={link} onError={onError} />
+            <Button secondary disabled={busy} onPress={() => act({ action: 'unlink' })}>
+              Turn off the link
+            </Button>
+          </View>
+        </>
+      ) : (
+        <Button secondary disabled={busy} onPress={() => act({ action: 'link' })}>
+          Create a link
+        </Button>
+      )}
+    </View>
+  );
   if (!household)
     return (
       <View style={styles.marketplacePanel}>
         {intro}
         {inviteForm}
+        {linkCard}
       </View>
     );
   if (!member)
@@ -279,6 +314,7 @@ export function SharedListPage({
         </View>
       </View>
       {inviteForm}
+      {linkCard}
       <Button secondary disabled={busy} onPress={() => act({ action: 'leave' })}>
         Leave the shared list
       </Button>

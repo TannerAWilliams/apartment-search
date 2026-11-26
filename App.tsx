@@ -64,6 +64,7 @@ const SavedComparison = preloadable(() => import('./src/components/SavedComparis
 const TourPlanner = preloadable(() => import('./src/components/TourPlanner.tsx').then((module) => module.TourPlanner));
 const RentChart = preloadable(() => import('./src/components/RentChart.tsx').then((module) => module.RentChart), 'soon');
 const ProfilePage = preloadable(() => import('./src/screens/ProfilePage.tsx').then((module) => module.ProfilePage), 'soon');
+const SharedLinkPage = preloadable(() => import('./src/screens/SharedLinkPage.tsx').then((module) => module.SharedLinkPage));
 const SharedListPage = preloadable(() => import('./src/screens/SharedListPage.tsx').then((module) => module.SharedListPage));
 const ApplyPage = preloadable(() => import('./src/screens/ApplyPage.tsx').then((module) => module.ApplyPage));
 const NeighborhoodsPage = preloadable(() => import('./src/screens/NeighborhoodsPage.tsx').then((module) => module.NeighborhoodsPage));
@@ -135,6 +136,7 @@ function ApartmentSearch() {
     plan,
     membersRequest,
     householdRequest,
+    sharedLinkRequest,
     billingRequest,
     loadListing,
     loadStoredListing,
@@ -466,7 +468,7 @@ function ApartmentSearch() {
         // An apartment's page belongs to Search; Profile's own pages to Profile.
         const selected =
           key === 'more'
-            ? !['home', 'chart', 'results', 'saved', 'about', 'pricing'].includes(tab) && !tab.startsWith('listing=')
+            ? !['home', 'chart', 'results', 'saved', 'about', 'pricing'].includes(tab) && !/^(listing|link)=/.test(tab)
             : key === 'results'
               ? tab === key || tab.startsWith('listing=')
               : tab === key;
@@ -936,6 +938,17 @@ function ApartmentSearch() {
                         serverState === 'ready' ? (place) => api('geocode', { body: { address: place }, token: activeToken }) : undefined
                       }
                       onError={setError}
+                      origin={Platform.OS === 'web' ? window.location.origin : API_ORIGIN}
+                    />
+                  )}
+                  {/* A shared list opened by its link, by someone who may have no account. */}
+                  {view.startsWith('link=') && (
+                    <SharedLinkPage
+                      key={view}
+                      load={serverState === 'ready' ? () => sharedLinkRequest(view.slice('link='.length)) : undefined}
+                      addNote={(note) => sharedLinkRequest(view.slice('link='.length), note)}
+                      onOpenListing={openListing}
+                      onSearch={() => navigateTab('results')}
                     />
                   )}
                   {view === 'apply' && <ApplyPage saved={saved} onError={setError} />}

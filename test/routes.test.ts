@@ -33,3 +33,13 @@ test('the Worker serves the app for its own paths only', () => {
   expect(isAppPath('/_expo/static/gone.js')).toBe(false);
   expect(isAppPath('/listing/a/b')).toBe(false);
 });
+
+test('a shared list’s link is an address of its own', () => {
+  const token = 'ab'.repeat(16);
+  expect(pathForTab('link=' + token)).toBe('/s/' + token);
+  expect(tabForLocation('/s/' + token)).toBe('link=' + token);
+  expect(isAppPath('/s/' + token)).toBe(true);
+  // Anything else under /s/ is not a link.
+  expect(tabForLocation('/s/short')).toBe('home');
+  expect(isAppPath('/s/short')).toBe(false);
+});
