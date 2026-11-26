@@ -176,6 +176,23 @@ export function BuildingReport({
               not this apartment’s size.
             </Text>
           ) : null}
+          <Text style={styles.smallMuted}>
+            {result.heat
+              ? `Heat and hot water complaints to 311, by winter: ${result.heat.map(({ winter, complaints }) => `${winter}: ${complaints}`).join(' · ')}${result.taxLotOwner?.units ? `, in ${result.taxLotOwner.units} apartments` : ''}.`
+              : 'Heat and hot water complaints: unknown.'}
+          </Text>
+          {result.landlord ? (
+            <Text style={styles.smallMuted}>
+              {result.landlord.buildings.length
+                ? `Other buildings under the owner name ${result.landlord.name}${result.landlord.more ? ' (the largest)' : ''}: ${result.landlord.buildings
+                    .map(
+                      ({ address, units, openViolations }) =>
+                        `${address} (${units} apartments, ${openViolations === null ? 'violations unknown' : `${openViolations} open violations`})`,
+                    )
+                    .join(' · ')}.`
+                : `No other building is under the owner name ${result.landlord.name}. Owners often hold each building under its own company; JustFix, above, traces them.`}
+            </Text>
+          ) : null}
           <Text style={styles.fieldLabel}>The block</Text>
           {result.block ? (
             <>
@@ -197,6 +214,13 @@ export function BuildingReport({
                     ? `Grocery stores within a five-minute walk: ${result.block.groceries.join(' · ')}.`
                     : 'No grocery store within a five-minute walk.'
                   : 'Grocery stores nearby: unknown.'}
+              </Text>
+              <Text style={styles.smallMuted}>
+                {result.block.noise
+                  ? result.block.noise.total
+                    ? `Noise complaints to 311 within about a block and a half in the last year: ${result.block.noise.total} (${result.block.noise.kinds.map(({ kind, count }) => `${kind} ${count}`).join(' · ')}).`
+                    : 'No noise complaints to 311 within about a block and a half in the last year.'
+                  : 'Noise complaints nearby: unknown.'}
               </Text>
               <Text style={styles.smallMuted}>
                 Counts and distances from city and state records, measured from the building. A busy corner has more reports than a quiet

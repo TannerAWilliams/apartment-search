@@ -44,6 +44,10 @@ type Overrides = {
     | 'registration'
     | 'rodents'
     | 'vacate'
+    | 'heat'
+    | 'noise'
+    | 'lots'
+    | 'lotViolations'
     | 'crime'
     | 'parks'
     | 'stores'
@@ -102,6 +106,22 @@ function source(override: Overrides = {}) {
     }
     expect(options?.redirect).toBe('manual');
     if (u.pathname.includes('kj4p')) return Response.json(override.buildings ?? [building]);
+    // The owner's other tax lots, and their open violations.
+    if (u.pathname.includes('64uk-42ks') && u.searchParams.get('$where')?.startsWith('ownername=')) {
+      expect(u.searchParams.get('$where')).toBe("ownername='EXAMPLE PROPERTY LLC' AND unitsres > 0");
+      return Response.json(
+        override.lots ?? [
+          { bbl: bbl + '.00000000', address: '123 MAIN STREET', unitsres: '20' },
+          { bbl: '3000990001.00000000', address: '9 OTHER STREET', unitsres: '40' },
+          { bbl: '3000990002.00000000', address: '11 OTHER STREET', unitsres: '8' },
+          { bbl: 'x', address: 'NOWHERE', unitsres: '3' },
+        ],
+      );
+    }
+    if (u.pathname.includes('wvxf') && u.searchParams.get('$where')?.startsWith('bbl in')) {
+      expect(u.searchParams.get('$where')).toBe("bbl in ('3000990001','3000990002') AND upper(violationstatus)='OPEN'");
+      return Response.json(override.lotViolations ?? [{ status: '3000990001', count: '31' }]);
+    }
     if (u.pathname.includes('64uk-42ks')) {
       expect(u.searchParams.get('$where')).toBe(`bbl=${bbl}`);
       return Response.json(
@@ -115,6 +135,31 @@ function source(override: Overrides = {}) {
             latitude: '40.7',
             longitude: '-73.99',
           },
+        ],
+      );
+    }
+    if (u.pathname.includes('erm2-nwe9') && u.searchParams.get('$group') === 'y,m') {
+      expect(u.searchParams.get('$where')).toStartWith(`bbl='${bbl}' AND complaint_type='HEAT/HOT WATER' AND created_date >= '`);
+      return Response.json(
+        override.heat ?? [
+          { y: '2024', m: '12', count: '14' },
+          { y: '2025', m: '1', count: '11' },
+          { y: '2025', m: '7', count: '9' },
+          { y: '2025', m: '10', count: '2' },
+          { y: '2026', m: '2', count: '5' },
+          { y: '2026', m: '10', count: '5' },
+          { y: '2026', m: '11', count: '2' },
+        ],
+      );
+    }
+    if (u.pathname.includes('erm2-nwe9') && u.searchParams.get('$where')?.startsWith('within_circle')) {
+      expect(u.searchParams.get('$where')).toStartWith("within_circle(location, 40.7, -73.99, 150) AND created_date >= '");
+      expect(u.searchParams.get('$where')).toEndWith("AND starts_with(complaint_type, 'Noise')");
+      return Response.json(
+        override.noise ?? [
+          { status: 'Noise - Residential', count: '79' },
+          { status: 'Noise', count: '55' },
+          { status: 'Noise - Street/Sidewalk', count: '50' },
         ],
       );
     }
@@ -613,7 +658,8 @@ test('a request the city refuses while busy is asked once more, and a second ref
   const asked = new Map<string, number>();
   /** Refuses each dataset's first `refusals` requests, as a busy service does. */
   const busy = (refusals: number) => async (url: string, options?: RequestInit) => {
-    const dataset = new URL(url).pathname;
+    // Each question is its own request: a dataset is asked more than one.
+    const dataset = url;
     asked.set(dataset, (asked.get(dataset) ?? 0) + 1);
     return asked.get(dataset)! <= refusals ? new Response('Service unavailable', { status: 503 }) : fetcher(url, options);
   };
@@ -639,6 +685,14 @@ test('the block, vacate orders and an average apartment size come from the tax l
       { name: 'Pocket Park', acres: 0.4 },
     ],
     groceries: ['KEY FOOD', 'TRADER JOES'],
+    noise: {
+      total: 184,
+      kinds: [
+        { kind: 'Residential', count: 79 },
+        { kind: 'General', count: 55 },
+        { kind: 'Street/Sidewalk', count: 50 },
+      ],
+    },
   });
   expect(report.vacateOrders).toEqual({ orders: 0, active: 0, latest: null });
 
@@ -690,7 +744,11 @@ test('the block, vacate orders and an average apartment size come from the tax l
     source({ vacate: [{ vacate_effective_date: 'soon' }], crime: { error: 1 }, parks: { error: 1 }, stores: { error: 1 } }),
     now,
   );
-  expect(broken).toMatchObject({ status: 'partial', vacateOrders: null, block: { crime: null, parks: null, groceries: null } });
+  expect(broken).toMatchObject({
+    status: 'partial',
+    vacateOrders: null,
+    block: { crime: null, parks: null, groceries: null, noise: { total: 184 } },
+  });
   expect(summarizeReport(broken)).toMatchObject({ vacate: null });
   expect(broken.errors.toSorted()).toEqual([
     'Food stores nearby could not be retrieved.',
@@ -710,4 +768,58 @@ test('the block, vacate orders and an average apartment size come from the tax l
   const unplaced = await retrieveBuildingRecords(address, source({ owner: [nowhere], bedbugs: [] }), now);
   expect(unplaced.block).toBeNull();
   expect(unplaced.taxLotOwner).toMatchObject({ averageSquareFeet: null, point: null });
+});
+
+test('heat complaints by winter, and the owner’s other buildings with their open violations', async () => {
+  const report = await retrieveBuildingRecords(address, source(), now);
+  expect(report.status).toBe('matched');
+  // October to May is a winter; a complaint in July belongs to none. It is November 2026: the third is under way.
+  expect(report.heat).toEqual([
+    { winter: '2024–25', complaints: 25 },
+    { winter: '2025–26', complaints: 7 },
+    { winter: '2026–27', complaints: 7 },
+  ]);
+  // The building itself and a lot the records garble are left out; a lot the violations do not name has none open.
+  expect(report.landlord).toEqual({
+    name: 'EXAMPLE PROPERTY LLC',
+    buildings: [
+      { address: '9 OTHER STREET', units: 40, openViolations: 31 },
+      { address: '11 OTHER STREET', units: 8, openViolations: 0 },
+    ],
+    more: false,
+  });
+  // In spring the winter under way began the October before.
+  const spring = await retrieveBuildingRecords(address, source(), new Date('2026-03-10T12:00:00Z'));
+  expect(spring.heat?.map(({ winter }) => winter)).toEqual(['2023–24', '2024–25', '2025–26']);
+
+  // An owner with nothing else under the name; violations that cannot be read; and answers that cannot be trusted.
+  const alone = await retrieveBuildingRecords(
+    address,
+    source({ lots: [{ bbl: bbl + '.00000000', address: '123 MAIN STREET', unitsres: '20' }] }),
+    now,
+  );
+  expect(alone.landlord).toEqual({ name: 'EXAMPLE PROPERTY LLC', buildings: [], more: false });
+  const many = Array.from({ length: 12 }, (_, index) => ({
+    bbl: `30009900${String(index + 10)}.00000000`,
+    address: `${index} LONG ROW`,
+    unitsres: '6',
+  }));
+  const large = await retrieveBuildingRecords(address, source({ lots: many, lotViolations: { error: 1 } }), now);
+  expect(large.landlord).toMatchObject({ more: true });
+  expect(large.landlord!.buildings).toHaveLength(10);
+  expect(large.landlord!.buildings[0]).toEqual({ address: '0 LONG ROW', units: 6, openViolations: null });
+  const broken = await retrieveBuildingRecords(
+    address,
+    source({ lots: { error: 1 }, heat: [{ y: 'x', m: '1', count: '2' }], noise: { error: 1 } }),
+    now,
+  );
+  expect(broken).toMatchObject({ status: 'partial', landlord: null, heat: null, block: { noise: null } });
+  expect(broken.errors.toSorted()).toEqual([
+    'Heat and hot water complaints could not be retrieved.',
+    'Noise complaints nearby could not be retrieved.',
+    'The owner’s other buildings could not be retrieved.',
+  ]);
+  // Without a tax lot there is no owner to follow and no lot to count heat complaints on.
+  const noLot = await retrieveBuildingRecords(address, source({ buildings: [{ ...building, block: '0' }] }), now);
+  expect(noLot).toMatchObject({ landlord: null, heat: null });
 });

@@ -31,6 +31,7 @@ const NEW_YORK_STATE = 'https://data.ny.gov/resource/';
 /** How far "near" reaches: reported crime within about two blocks, parks and food stores within a five-minute walk. */
 const CRIME_METERS = 200;
 const WALK_METERS = 400;
+const NOISE_METERS = 150;
 /** A food store this large or larger is counted as a grocery store, not a deli or a kiosk. */
 const GROCERY_SQUARE_FEET = 4000;
 const VIOLENT = /MURDER|HOMICIDE|RAPE|ROBBERY|ASSAULT|SEX CRIMES|KIDNAPPING/;
@@ -166,6 +167,8 @@ export async function retrieveBuildingRecords(
     rodents: null,
     vacateOrders: null,
     block: null,
+    landlord: null,
+    heat: null,
     evictions: null,
     housingCourt: null,
     hpdRegistration: null,
@@ -357,7 +360,7 @@ export async function retrieveBuildingRecords(
     if (!at) return null;
     const circle = (column: string, meters: number) => `within_circle(${column}, ${at.latitude}, ${at.longitude}, ${meters})`;
     return (async () => {
-      const [crime, parks, groceries] = await Promise.all([
+      const [crime, parks, groceries, noise] = await Promise.all([
         (async () => {
           try {
             const data = await readRows(
@@ -423,9 +426,80 @@ export async function retrieveBuildingRecords(
             return null;
           }
         })(),
+        // Noise complaints to 311 over a year, from the building and everything around it: a quiet building on
+        // a loud corner is still loud.
+        (async () => {
+          try {
+            const data = await readRows(
+              'erm2-nwe9',
+              {
+                $select: 'complaint_type as status,count(*) as count',
+                $where: `${circle('location', NOISE_METERS)} AND created_date >= '${since}' AND created_date <= '${until}' AND starts_with(complaint_type, 'Noise')`,
+                $group: 'complaint_type',
+                $limit: '21',
+              },
+              fetcher,
+              signal,
+            );
+            const kinds = grouping(data, 20).sort((a, b) => b.count - a.count || a.status.localeCompare(b.status));
+            return {
+              total: kinds.reduce((sum, { count }) => sum + count, 0),
+              kinds: kinds.map(({ status, count }) => ({ kind: status.replace(/^Noise( - )?/, '') || 'General', count })),
+            };
+          } catch {
+            errors.push('Noise complaints nearby could not be retrieved.');
+            return null;
+          }
+        })(),
       ]);
-      return { point: at, crime, parks, groceries };
+      return { point: at, crime, parks, groceries, noise };
     })();
+  })();
+  // The owner's other buildings: the tax lots under the same owner name, with each one's open violations.
+  const landlordRead = (async () => {
+    const owner = await taxLotRead;
+    if (!owner || !bbl) return null;
+    try {
+      const lots = await readRows(
+        '64uk-42ks',
+        {
+          $select: 'bbl,address,unitsres',
+          $where: `ownername=${quote(owner.name)} AND unitsres > 0`,
+          $order: 'unitsres DESC',
+          $limit: '12',
+        },
+        fetcher,
+        signal,
+      );
+      const others = lots
+        .map((lot) => ({ bbl: text(lot.bbl).replace(/\.0+$/, ''), address: text(lot.address).slice(0, 80), units: Number(lot.unitsres) }))
+        .filter((lot) => /^[1-5]\d{9}$/.test(lot.bbl) && lot.bbl !== bbl && lot.address && lot.units > 0);
+      if (!others.length) return { name: owner.name, buildings: [], more: false };
+      const counts = await readRows(
+        'wvxf-dwi5',
+        {
+          $select: 'bbl as status,count(*) as count',
+          $where: `bbl in (${others.map((lot) => quote(lot.bbl)).join(',')}) AND upper(violationstatus)='OPEN'`,
+          $group: 'bbl',
+          $limit: '13',
+        },
+        fetcher,
+        signal,
+      )
+        .then((rows) => new Map(grouping(rows, 12).map(({ status, count }) => [status, count])))
+        .catch(() => null);
+      return {
+        name: owner.name,
+        // A lot the violations answer does not name has none open; without the answer each is unknown.
+        buildings: others
+          .slice(0, 10)
+          .map(({ bbl: lot, address, units }) => ({ address, units, openViolations: counts ? (counts.get(lot) ?? 0) : null })),
+        more: lots.length >= 12,
+      };
+    } catch {
+      errors.push('The owner’s other buildings could not be retrieved.');
+      return null;
+    }
   })();
   const [
     openViolations,
@@ -440,6 +514,8 @@ export async function retrieveBuildingRecords(
     hpdRegistration,
     vacateOrders,
     block,
+    landlord,
+    heat,
   ] = await Promise.all([
     (async () => {
       try {
@@ -697,6 +773,37 @@ export async function retrieveBuildingRecords(
       }
     })(),
     blockRead,
+    landlordRead,
+    // Heat and hot water complaints to 311 from the tax lot, by winter (October to May), for the last three.
+    (async () => {
+      if (!bbl) return null;
+      try {
+        const year = Number(parts.year) - (Number(parts.month) >= 10 ? 0 : 1);
+        const data = await readRows(
+          'erm2-nwe9',
+          {
+            $select: 'date_extract_y(created_date) as y,date_extract_m(created_date) as m,count(*) as count',
+            $where: `bbl=${quote(bbl)} AND complaint_type='HEAT/HOT WATER' AND created_date >= '${year - 2}-10-01T00:00:00' AND created_date <= '${until}'`,
+            $group: 'y,m',
+            $limit: '40',
+          },
+          fetcher,
+          signal,
+        );
+        if (data.some((month) => !validCount(month.y) || !validCount(month.m) || !validCount(month.count)))
+          throw new Error('Heat complaints were not recognized.');
+        return [year - 2, year - 1, year].map((start) => ({
+          winter: `${start}–${String(start + 1).slice(2)}`,
+          complaints: data
+            // October to December of the winter's first year, January to May of its second.
+            .filter(({ y, m }) => (Number(y) === start && Number(m) >= 10) || (Number(y) === start + 1 && Number(m) <= 5))
+            .reduce((sum, month) => sum + Number(month.count), 0),
+        }));
+      } catch {
+        errors.push('Heat and hot water complaints could not be retrieved.');
+        return null;
+      }
+    })(),
   ]);
 
   // A lot the loaded list does not name had none; without the list, or the lot, it is unknown.
@@ -757,6 +864,8 @@ export async function retrieveBuildingRecords(
     hpdRegistration,
     vacateOrders,
     block,
+    landlord,
+    heat,
     dob,
     flood,
     since: since.slice(0, 10),
