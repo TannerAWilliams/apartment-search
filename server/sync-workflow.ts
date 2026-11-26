@@ -7,6 +7,7 @@ import { log } from './log.ts';
 import { runAlerts } from './alerts.ts';
 import { fillBuildingFactsFromInventory } from './building-facts.ts';
 import { refreshOpenData } from './open-data.ts';
+import { fillWalkabilityFromInventory } from './walkability.ts';
 
 /** Batches of 40 building checks after a full nightly run: about 200 buildings a night. */
 const BUILDING_BATCHES = 5;
@@ -26,6 +27,10 @@ const NAMES: Record<string, string> = Object.fromEntries(WORKFLOW_SOURCE_IDS.map
 export async function afterFullRun(step: Pick<WorkflowStep, 'do'>, env: AppEnv & { BUCKET: Bucket }) {
   await step.do('Refresh rent registrations and subway stations', { retries: { limit: 1, delay: '1 minute' }, timeout: '10 minutes' }, () =>
     refreshOpenData(env.BUCKET, (url, options) => fetch(url, options)),
+  );
+  // The EPA's walkability index for the places listings are in that the app has not asked about yet.
+  await step.do('Learn walkability for new places', { retries: { limit: 1, delay: '1 minute' }, timeout: '15 minutes' }, () =>
+    fillWalkabilityFromInventory(env, (url, options) => fetch(url, options)),
   );
   let checked = 0;
   for (let batch = 1; batch <= BUILDING_BATCHES; batch++) {

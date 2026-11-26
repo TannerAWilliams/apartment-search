@@ -194,6 +194,8 @@ test('the nightly run checks listed buildings in five steps', async () => {
   expect(names).toStrictEqual([
     'Refresh rent registrations and subway stations',
     'Refresh rent registrations and subway stations',
+    // Unreachable tonight: nothing learned, and the run goes on.
+    'Learn walkability for new places',
     ...[1, 2, 3, 4, 5].map((batch) => `Check building records (${batch} of 5)`),
   ]);
 });

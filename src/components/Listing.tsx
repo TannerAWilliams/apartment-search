@@ -257,6 +257,7 @@ export const Listing = memo(function Listing({
         : '',
     commute && drivingSeconds != null ? `${Math.ceil(drivingSeconds / 60)} min drive` : '',
     listing.building?.stabilized && photoBadge !== 'Rent-stabilized' ? 'Rent-stabilized' : '',
+    listing.insights?.walkability ? `Walkability ${listing.insights.walkability}/20` : '',
     priceCut && !isNew ? '' : priceCut ? `Price cut ${formatRent(priceCut)}` : '',
     longListed ? `${listed}, worth negotiating` : '',
   ]
@@ -471,6 +472,12 @@ export const Listing = memo(function Listing({
                 .filter(Boolean)
                 .join(' · ')}
             </Text>
+            {listing.insights?.walkability ? (
+              <Text style={styles.smallMuted}>
+                Walkability {listing.insights.walkability} of 20 · EPA National Walkability Index, for the surrounding blocks (20 is the
+                most walkable).
+              </Text>
+            ) : null}
             {!commuteKnown && addCommute && (
               <Pressable accessibilityRole="button" onPress={addCommute} style={{ paddingVertical: 4 }}>
                 <Text style={styles.linkText}>? min to your job · Add where you work</Text>

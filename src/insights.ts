@@ -49,6 +49,8 @@ export type ListingInsights = {
   firstSeen?: string;
   /** How much the rent dropped at its last change, when it dropped. */
   priceCut?: number;
+  /** The EPA's National Walkability Index for the blocks around it, 1 (least) to 20 (most walkable). */
+  walkability?: number;
   /** Estimated door-to-door transit minutes to the search's destination (src/transit-estimate.ts). */
   transitMinutes?: number;
 };
@@ -129,6 +131,12 @@ export function rentBenchmarks(listings: Pick<ListingData, 'neighborhood' | 'zip
   return new Map([...groups].map(([key, rents]) => [key, { median: median(rents), count: rents.length }]));
 }
 
+/** The map cell a point is in, about a block across: what walkability is kept by. Null without a point. */
+export const walkCell = (latitude: unknown, longitude: unknown) =>
+  typeof latitude === 'number' && typeof longitude === 'number' && Number.isFinite(latitude) && Number.isFinite(longitude)
+    ? `${latitude.toFixed(3)},${longitude.toFixed(3)}`
+    : null;
+
 /** A grade from the building's records; null when nothing was checked. */
 export function buildingGrade(facts: BuildingFacts | undefined): BuildingGrade | null {
   if (!facts || [facts.openViolations, facts.complaints, facts.bedbugs, facts.flood].every((value) => value === null)) return null;
@@ -164,7 +172,11 @@ const unitOf = (listing: ListingData, building = buildingKey(listing)) => {
 export function withInsights<T extends ListingData>(
   listings: T[],
   buildings: Record<string, BuildingFacts> = {},
-  { registry = {}, stations = [] }: { registry?: Record<string, number>; stations?: Station[] } = {},
+  {
+    registry = {},
+    stations = [],
+    walkability = {},
+  }: { registry?: Record<string, number>; stations?: Station[]; walkability?: Record<string, number> } = {},
 ) {
   // The day, not the moment: a building known only from the registry is the same listing all day, so files built
   // from these listings stay the same until something changes.
@@ -207,10 +219,13 @@ export function withInsights<T extends ListingData>(
         }
       : checked;
     const subway = listing.region === 'nyc' ? near(listing.latitude, listing.longitude) : [];
+    // Whole numbers: the index is for the surrounding blocks, and a decimal would promise more than that.
+    const walk = Math.round(walkability[walkCell(listing.latitude, listing.longitude) ?? ''] ?? 0);
     const insights: ListingInsights = {
       ...(compared ? { marketMedian: compared.median, comparedWith: compared.count, vsMarket } : {}),
       warnings,
       ...(subway.length ? { subway } : {}),
+      ...(walk ? { walkability: walk } : {}),
       ...freshness(listing.priceHistory),
     };
     return { ...listing, insights, ...(building ? { building } : {}) };
