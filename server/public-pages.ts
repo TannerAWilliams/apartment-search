@@ -66,7 +66,7 @@ function page(origin: string, path: string, title: string, description: string, 
   }
 <style>
 :root{color-scheme:light dark;--ink:#222;--muted:#5f5b59;--page:#fff;--line:#ddd;--soft:#eee;--brand:#773516;--accent:#db164e}
-@media (prefers-color-scheme:dark){:root{--ink:#f2f0ee;--muted:#b3aeab;--page:#141312;--line:#3a3735;--soft:#2a2826;--brand:#f8a47e;--accent:#f43f6b}}
+@media (prefers-color-scheme:dark){:root{--ink:#f6f6f6;--muted:#b8b8b8;--page:#121212;--line:#353535;--soft:#262626;--brand:#f6f6f6;--accent:#f43f6b}}
 body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--ink);background:var(--page);line-height:1.5}
 header,main,footer{max-width:880px;margin:0 auto;padding:16px 20px}
 header{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line)}

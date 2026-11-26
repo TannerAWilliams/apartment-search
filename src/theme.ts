@@ -11,14 +11,52 @@ import { type Hue, palette as light } from './palette.ts';
 export type ThemeChoice = 'system' | 'light' | 'dark';
 const KEY = 'walkup.theme';
 /** The page behind everything, and what is drawn on the accent color. */
-const SURFACE = { light: '#ffffff', dark: '#141312' };
+export const SURFACE = { light: '#ffffff', dark: '#121212' };
+/**
+ * The dark theme's grays are neutral: the light theme's warm grays, turned over, read as brown on a dark page.
+ * Each is as light as the warm gray it stands for, so the contrast rules are the same.
+ */
+const NEUTRAL = ['#f6f6f6', '#d5d5d5', '#b8b8b8', '#9e9e9e', '#868686', '#707070', '#5c5c5c', '#484848', '#353535', '#1e1e1e'];
+/** Each hue's levels in the dark theme, 0 nearest the page: the other end of the same hue. */
+export const darkPalette = Object.fromEntries(
+  (Object.keys(light) as Hue[]).map((hue) => [hue, (hue === 'gray' ? NEUTRAL : light[hue]).toReversed()]),
+) as { [H in Hue]: string[] };
+/**
+ * The brownstone mark and the name beside it. By day the mark is the brownstone on cream; in the dark theme it is
+ * the same building at night, windows lit, on a dark tile, and the name is the page's ink.
+ */
+const MARK = {
+  light: {
+    tile: '#f1e4cc',
+    wall: '#6f3418',
+    cornice: '#2b1206',
+    window: '#f6ead2',
+    door: '#d62a52',
+    stoop: '#d9a882',
+    rail: '#1a0a03',
+    name: light.brown[7],
+  },
+  dark: {
+    tile: '#262626',
+    wall: '#a8603c',
+    cornice: '#e9d3bd',
+    window: '#ffd98a',
+    door: '#ff5a79',
+    stoop: '#e3b998',
+    rail: '#f6f6f6',
+    name: '#f6f6f6',
+  },
+};
+type MarkPart = keyof typeof MARK.light;
+const markParts = Object.keys(MARK.light) as MarkPart[];
 
 const hues = Object.keys(light) as Hue[];
 const declarations = (dark: boolean) =>
   [
     `--surface:${dark ? SURFACE.dark : SURFACE.light}`,
     `color-scheme:${dark ? 'dark' : 'light'}`,
-    ...hues.flatMap((hue) => light[hue].map((_, level) => `--${hue}-${level}:${light[hue][dark ? 9 - level : level]}`)),
+    ...hues.flatMap((hue) => light[hue].map((color, level) => `--${hue}-${level}:${dark ? darkPalette[hue][level] : color}`)),
+    ...markParts.map((part) => `--mark-${part}:${MARK[dark ? 'dark' : 'light'][part]}`),
   ].join(';');
 
 /** The theme's style sheet: the device's setting unless the page says which. */
@@ -74,7 +112,11 @@ export function themeFor(page: Page | undefined, storage: () => Storage) {
     page.head.append(sheet);
     apply(choice(), false);
   }
-  return { palette, surface: page ? 'var(--surface)' : SURFACE.light, choice, apply };
+  const mark = Object.fromEntries(markParts.map((part) => [part, page ? `var(--mark-${part})` : MARK.light[part]])) as Record<
+    MarkPart,
+    string
+  >;
+  return { palette, mark, surface: page ? 'var(--surface)' : SURFACE.light, choice, apply };
 }
 
 const theme = themeFor(typeof document === 'undefined' ? undefined : document, () => localStorage);
@@ -82,5 +124,7 @@ const theme = themeFor(typeof document === 'undefined' ? undefined : document, (
 export const palette = theme.palette;
 /** The page's own color: white in the light theme. */
 export const surface = theme.surface;
+/** The brand mark's colors, which change with the theme. */
+export const mark = theme.mark;
 export const themeChoice = theme.choice;
 export const applyTheme = theme.apply;

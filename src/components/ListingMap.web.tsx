@@ -233,7 +233,49 @@ function popupContent(listings: MapPoint[], actions: SaveActions) {
 /** OpenFreeMap's Liberty map style. */
 const LIBERTY = 'https://tiles.openfreemap.org/styles/liberty';
 
-/** From this zoom (a few neighborhoods across) homes show their rents; further out, a dot each. */
+/** What Leaflet keeps on a circle drawn on a canvas, which the small pin draws itself with. */
+type CanvasCircle = L.CircleMarker & {
+  _renderer: { _ctx: CanvasRenderingContext2D; _drawing: boolean; _fillStroke(context: CanvasRenderingContext2D, layer: L.Path): void };
+  _point: L.Point;
+  _radius: number;
+  _pxBounds: L.Bounds;
+  _empty(): boolean;
+  _clickTolerance(): number;
+};
+/** How far above its spot the pin's round head is centered, in radii. */
+const PIN_RISE = 1.9;
+/**
+ * A small map pin drawn on the canvas, its tip on the home's spot: thousands stay as quick as dots were, and a
+ * pin reads as "a place" where a dot read as a mark. Leaflet draws only circles on a canvas, so the shape, the
+ * area redrawn and the area that takes a tap are given here.
+ */
+const SmallPin = L.CircleMarker.extend({
+  _updatePath(this: CanvasCircle) {
+    const renderer = this._renderer;
+    if (!renderer._drawing || this._empty()) return;
+    const { x, y } = this._point;
+    const radius = this._radius;
+    const context = renderer._ctx;
+    context.beginPath();
+    // The head, from lower left over the top to lower right, then down to the tip.
+    context.arc(x, y - radius * PIN_RISE, radius, Math.PI * 0.8, Math.PI * 0.2, false);
+    context.lineTo(x, y);
+    context.closePath();
+    renderer._fillStroke(context, this);
+  },
+  _updateBounds(this: CanvasCircle) {
+    const reach = this._radius + this._clickTolerance();
+    this._pxBounds = L.bounds(this._point.subtract([reach, this._radius * PIN_RISE + reach]), this._point.add([reach, reach]));
+  },
+  _containsPoint(this: CanvasCircle, point: L.Point) {
+    return point.distanceTo(this._point.subtract([0, this._radius * PIN_RISE])) <= this._radius * 1.4 + this._clickTolerance();
+  },
+}) as unknown as new (
+  place: L.LatLngExpression,
+  options: L.CircleMarkerOptions,
+) => L.CircleMarker;
+
+/** From this zoom (a few neighborhoods across) homes show their rents; further out, a small pin each. */
 const PRICES_FROM_ZOOM = 14;
 
 export function ListingMap({
@@ -310,7 +352,7 @@ export function ListingMap({
       vector = null;
       streets();
     }
-    // Zoomed out: one small dot per home. Zoomed in: price pills, with "N homes" where several overlap.
+    // Zoomed out: one small pin per home. Zoomed in: price pills, with "N homes" where several overlap.
     const clusters = L.markerClusterGroup({
       showCoverageOnHover: false,
       maxClusterRadius: 36,
@@ -358,7 +400,7 @@ export function ListingMap({
           { maxWidth: 280 },
         ),
       );
-      L.circleMarker(coordinate, {
+      new SmallPin(coordinate, {
         renderer: dotRenderer,
         radius: 5,
         color: '#ffffff',

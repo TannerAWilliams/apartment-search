@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import { palette as light } from '../src/palette.ts';
-import { applyTheme, palette, surface, themeChoice, themeCss, themeFor } from '../src/theme.ts';
+import { applyTheme, darkPalette, mark, palette, SURFACE, surface, themeChoice, themeCss, themeFor } from '../src/theme.ts';
 
 /** A stand-in page and its storage. */
 function browser(stored: Record<string, string> = {}, broken = false) {
@@ -40,9 +40,17 @@ test('in a browser each color is a variable: the palette in light, the other end
   // Light: the palette's own values.
   expect(css).toStartWith(':root{--surface:#ffffff;color-scheme:light;--gray-0:' + light.gray[0]);
   // Dark, for a dark device unless light was chosen, and whenever dark was chosen: level 2 is the palette's level 7.
-  expect(css).toContain('@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--surface:#141312;color-scheme:dark;');
-  expect(css).toContain(':root[data-theme="dark"]{--surface:#141312;');
-  expect(css).toContain(`--gray-2:${light.gray[7]}`);
+  expect(css).toContain('@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--surface:#121212;color-scheme:dark;');
+  expect(css).toContain(':root[data-theme="dark"]{--surface:#121212;');
+  expect(css).toContain(`--brown-2:${light.brown[7]}`);
+  // The dark grays are neutral, as light as the warm grays they stand for.
+  expect(css).toContain(`--gray-2:${darkPalette.gray[2]}`);
+  expect(darkPalette.gray[2]).toBe('#484848');
+  // The brand mark changes with the theme too: the brownstone by day, and lit at night.
+  expect(theme.mark.window).toBe('var(--mark-window)');
+  expect(mark.window, 'outside a browser, the daytime mark').toBe('#f6ead2');
+  expect(css).toContain('--mark-window:#f6ead2');
+  expect(css).toContain('--mark-window:#ffd98a');
   expect(css).toContain(`--rose-9:${light.rose[0]}`);
   expect(page.documentElement.dataset.theme, 'the device decides until someone chooses').toBeUndefined();
 });
@@ -75,15 +83,15 @@ test('the dark theme keeps the palette’s contrast: text five levels from its s
     return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!;
   };
   const contrast = (a: string, b: string) => (Math.max(luminance(a), luminance(b)) + 0.05) / (Math.min(luminance(a), luminance(b)) + 0.05);
-  const dark = Object.fromEntries(Object.entries(light).map(([hue, levels]) => [hue, levels.toReversed()])) as Record<string, string[]>;
+  const dark: Record<string, string[]> = darkPalette;
   for (const [hue, levels] of Object.entries(dark)) {
     // Text at level 5 or beyond on the page, as the light theme's rule has it.
     for (const level of [5, 6, 7, 8, 9])
-      expect(contrast(levels[level]!, '#141312'), `${hue} ${level} on the dark page`).toBeGreaterThanOrEqual(4.5);
+      expect(contrast(levels[level]!, SURFACE.dark), `${hue} ${level} on the dark page`).toBeGreaterThanOrEqual(4.5);
     // And on the quiet fill (level 0), five levels apart.
     for (const level of [6, 7, 8, 9])
       expect(contrast(levels[level]!, dark.gray![0]!), `${hue} ${level} on the dark fill`).toBeGreaterThanOrEqual(4.5);
     // The page's own color on the accent levels buttons use (level 5), as white is in the light theme.
-    expect(contrast('#141312', levels[5]!), `the page color on ${hue} 5`).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(SURFACE.dark, levels[5]!), `the page color on ${hue} 5`).toBeGreaterThanOrEqual(4.5);
   }
 });

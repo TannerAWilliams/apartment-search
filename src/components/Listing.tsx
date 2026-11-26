@@ -1,7 +1,6 @@
 import { CommuteContext } from './commute-context.ts';
 import { LineBullets } from './LineBullet.tsx';
 import type { ListingData, SourceLink, Workplace } from '../domain.ts';
-import { typicalCosts } from '../move-in.ts';
 import { buildingGrade, leverage, listedLabel, listedWithin, marketBadge, type BuildingFacts } from '../insights.ts';
 import type { CheckBuilding } from './BuildingReport.tsx';
 import { discoveryFacts, LAUNDRY_LABELS } from '../discovery.ts';
@@ -12,7 +11,7 @@ import { matchesRegion, REGIONS, searchBorough } from '../regions.ts';
 import { directionsLink, formatRent } from '../search.ts';
 import { listingLinkLabel, listingPresentation, orderedListingLinks } from '../listings.ts';
 import { colors, styles } from '../styles.ts';
-import { Disclosure, ExternalLink, Link } from './ui.tsx';
+import { ExternalLink, Link } from './ui.tsx';
 import { CommuteDetails } from './CommuteDetails.tsx';
 import { hasPriceChange, PriceHistory } from './PriceHistory.tsx';
 import { SavedNotes } from './SavedNotes.tsx';
@@ -30,49 +29,7 @@ const CHECK_TIME = new Intl.DateTimeFormat('en-US', {
   minute: '2-digit',
   timeZoneName: 'short',
 });
-/** About what the apartment costs each month and to move in, from typical amounts and the state's rules. */
 const POSTED_DAY = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', year: 'numeric' });
-
-function TypicalCost({ listing }: { listing: ListingData }) {
-  if (!(listing.rent > 0)) return null;
-  const cost = typicalCosts(listing);
-  const row = (label: string, amount: number, total = false) => (
-    <View key={label} style={[card.costRow, total && card.costTotal]}>
-      <Text style={total ? card.highlight : styles.bodyText}>{label}</Text>
-      <Text style={total ? card.highlight : styles.bodyText}>{formatRent(amount)}</Text>
-    </View>
-  );
-  // The two numbers people want first; the pieces and the rules behind them one tap away.
-  return (
-    <View style={{ gap: 6 }}>
-      {row('Each month, with utilities (estimated)', cost.monthly, true)}
-      {cost.monthlyWithFee ? row('Each month with a broker fee spread over a year', cost.monthlyWithFee, true) : null}
-      {row('To move in (estimated)', cost.moveIn + cost.possibleBrokerFee, true)}
-      {/* Only the pieces of the two totals above, without the notes. */}
-      <Disclosure title="See the breakdown">
-        <View style={{ gap: 6 }}>
-          {row('Rent (from the listing)', cost.parts.rent)}
-          {row('Utilities, internet and insurance (typical)', cost.parts.utilities + cost.parts.internet + cost.parts.insurance)}
-          {row(
-            listing.state === 'NY'
-              ? 'First month and deposit (NY caps a deposit at one month)'
-              : 'First month and security deposit (up to the legal cap)',
-            cost.moveInParts.firstMonth + cost.moveInParts.deposit,
-          )}
-          {row(
-            listing.state === 'NY' ? 'Application fee (NY caps it at $20)' : 'Application fee (typical)',
-            cost.moveInParts.applicationFee,
-          )}
-          {cost.possibleBrokerFee ? row('Broker fee, if you pay one (often one month)', cost.possibleBrokerFee) : null}
-          <Text style={styles.smallMuted}>
-            Utilities, internet and insurance are typical amounts for an apartment this size, not quotes; the deposit is the most a landlord
-            may ask.
-          </Text>
-        </View>
-      </Disclosure>
-    </View>
-  );
-}
 
 /** A building's grade and the records behind it, as of its last check. */
 function BuildingSummary({ facts }: { facts: BuildingFacts }) {
@@ -166,8 +123,6 @@ const card = StyleSheet.create({
   openSummary: { width: '40%', maxWidth: 440 },
   openDetails: { flex: 1, minWidth: 0, maxWidth: 640 },
   highlight: { fontSize: 15, lineHeight: 20, fontWeight: '600', color: colors.ink },
-  costRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 12 },
-  costTotal: { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 8, marginTop: 2 },
 });
 
 /**
@@ -530,9 +485,6 @@ export const Listing = memo(function Listing({
                 ))}
               </Section>
             )}
-            <Section title="What it costs (estimated)">
-              <TypicalCost listing={listing} />
-            </Section>
             <Section title="Getting there">
               <CommuteDetails listing={listing} />
               <View style={styles.cardLinks}>

@@ -1,5 +1,5 @@
 import { Platform, StyleSheet } from 'react-native';
-import { palette, surface } from './theme.ts';
+import { mark, palette, surface } from './theme.ts';
 
 /**
  * The app's colors, all from the palette's scales (src/palette.ts): small text sits at least five levels from its
@@ -46,7 +46,7 @@ export const styles = StyleSheet.create({
     borderColor: palette.gray[1],
   },
   brand: { ...row, gap: 9 },
-  brandText: { color: palette.brown[7], fontSize: 23, fontWeight: '800', letterSpacing: -0.9 },
+  brandText: { color: mark.name, fontSize: 23, fontWeight: '800', letterSpacing: -0.9 },
   topLabel: { ...eyebrow, color: colors.muted, textAlign: 'right' },
   resultLayout: { gap: 14 },
   resultLayoutWide: { flexDirection: 'row', alignItems: 'flex-start' },

@@ -1,5 +1,6 @@
 /** The app's few icons, drawn as SVG so they look the same on every device and size. Decorative: the label beside each says what it is. */
 import Svg, { Circle, ClipPath, Defs, G, Line, Path, Rect } from 'react-native-svg';
+import { mark } from '../theme.ts';
 
 type IconProps = { color: string; size?: number; filled?: boolean; fill?: string };
 
@@ -59,19 +60,19 @@ export function BrandMark({ size = 30 }: { size?: number }) {
         </ClipPath>
       </Defs>
       <G clipPath="url(#r)">
-        <Rect width={32} height={32} fill="#f1e4cc" />
-        <Rect x={3.5} y={5.5} width={25} height={26.5} fill="#6f3418" />
-        <Rect x={2} y={2.5} width={28} height={4} rx={0.7} fill="#2b1206" />
-        <G fill="#f6ead2">
+        <Rect width={32} height={32} fill={mark.tile} />
+        <Rect x={3.5} y={5.5} width={25} height={26.5} fill={mark.wall} />
+        <Rect x={2} y={2.5} width={28} height={4} rx={0.7} fill={mark.cornice} />
+        <G fill={mark.window}>
           <Rect x={6} y={9} width={5.6} height={6} rx={0.5} />
           <Rect x={13.3} y={9} width={5.6} height={6} rx={0.5} />
           <Rect x={20.6} y={9} width={5.6} height={6} rx={0.5} />
           <Rect x={6} y={17.4} width={5.6} height={6.4} rx={0.5} />
           <Rect x={13.3} y={17.4} width={5.6} height={6.4} rx={0.5} />
         </G>
-        <Path d="M21 23.8v-4.6a2.2 2.2 0 0 1 4.4 0v4.6z" fill="#d62a52" />
-        <Path d="M19.8 23.8h7v2.2L16.4 32H8.6z" fill="#d9a882" />
-        <Path d="M19.6 24 8.8 31.8" stroke="#1a0a03" strokeWidth={1.6} strokeLinecap="round" />
+        <Path d="M21 23.8v-4.6a2.2 2.2 0 0 1 4.4 0v4.6z" fill={mark.door} />
+        <Path d="M19.8 23.8h7v2.2L16.4 32H8.6z" fill={mark.stoop} />
+        <Path d="M19.6 24 8.8 31.8" stroke={mark.rail} strokeWidth={1.6} strokeLinecap="round" />
       </G>
     </Svg>
   );
