@@ -17,15 +17,18 @@ export function ListingPage({
   onError,
   initial,
   onCheckBuilding,
-  loadHistory,
+  loadStored,
 }: {
   id: string;
   /** The apartment as the results showed it, so its page opens at once instead of loading it again. */
   initial?: ListingData;
   onCheckBuilding?: React.ComponentProps<typeof Listing>['onCheckBuilding'];
   load?: (id: string) => Promise<{ listing: ListingData }>;
-  /** The apartment's recorded rents, for a listing that came without them (from the inventory file). */
-  loadHistory?: (id: string) => Promise<{ priceHistory: unknown }>;
+  /**
+   * The listing as its source saved it, read by one quick lookup: shown until the full one arrives (a shared
+   * link opens on it), and the source of the recorded rents the inventory file leaves out.
+   */
+  loadStored?: (id: string) => Promise<{ listing: ListingData | null }>;
   workplace: Workplace;
   saved: (listing: ListingData) => boolean;
   onSave: (listing: ListingData) => void;
@@ -41,28 +44,42 @@ export function ListingPage({
       return;
     }
     if (!load) return;
+    let current = true;
     setState({ listing: null, error: '' });
     load(id)
-      .then(({ listing }) => setState({ listing, error: '' }))
-      .catch((error) => setState({ listing: null, error: error instanceof Error ? error.message : 'This apartment could not be loaded.' }));
+      // The full listing replaces the quick one, keeping the recorded rents it may have brought.
+      .then(({ listing }) => {
+        if (current)
+          setState((now) => ({ listing: { ...listing, priceHistory: listing.priceHistory ?? now.listing?.priceHistory }, error: '' }));
+      })
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : 'This apartment could not be loaded.';
+        // A quick copy already showing stays; otherwise the page says what went wrong.
+        if (current) setState((now) => (now.listing ? now : { listing: null, error: message }));
+      });
+    return () => {
+      current = false;
+    };
     // biome-ignore lint/correctness/useExhaustiveDependencies: the given listing is read when the page opens
   }, [id, load]);
-  // The page shows at once; its price history, when the listing came without one, follows.
-  const shown = state.listing;
-  const needsHistory = shown !== null && shown.priceHistory === undefined;
   useEffect(() => {
-    if (!needsHistory || !loadHistory) return;
+    if (!loadStored) return;
     let current = true;
-    loadHistory(id)
-      .then(({ priceHistory }) => {
-        if (current && priceHistory)
-          setState((now) => (now.listing?.id === id ? { ...now, listing: { ...now.listing, priceHistory } as ListingData } : now));
+    loadStored(id)
+      .then(({ listing: stored }) => {
+        if (!current || !stored) return;
+        setState((now) => {
+          if (!now.listing) return { listing: stored, error: '' };
+          return now.listing.priceHistory === undefined && stored.priceHistory
+            ? { ...now, listing: { ...now.listing, priceHistory: stored.priceHistory } }
+            : now;
+        });
       })
       .catch(() => {});
     return () => {
       current = false;
     };
-  }, [id, needsHistory, loadHistory]);
+  }, [id, loadStored]);
   return (
     <View style={{ gap: 12, maxWidth: 1080, width: '100%', alignSelf: 'center' }}>
       <Pressable accessibilityRole="button" onPress={onBack} style={{ alignSelf: 'flex-start', paddingVertical: 6 }}>

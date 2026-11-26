@@ -257,12 +257,15 @@ test('an apartment’s page reads the listing from the file and its price histor
   expect(await app.listing('gone', { workplace: 'penn', customWorkplace: '' })).toBeUndefined();
   expect(await client(false).listing(wanted.id, { workplace: 'penn', customWorkplace: '' })).toBeUndefined();
 
-  // Its recorded rents come from the database by ID, without reading the other listings.
-  const history = async (id: string, environment: object = settings) => {
-    const response = await handleApi(new Request('https://walkup.test/api/listing/history?' + new URLSearchParams({ id })), environment);
-    return (await response.json()) as { priceHistory: { observations: unknown[] } | null };
+  // The listing as stored comes from the database by ID, without reading the others: shown first, and the source
+  // of the recorded rents the file leaves out.
+  const stored = async (id: string, environment: object = settings) => {
+    const response = await handleApi(new Request('https://walkup.test/api/listing/stored?' + new URLSearchParams({ id })), environment);
+    return (await response.json()) as { listing: { id: string; priceHistory?: { observations: unknown[] } } | null };
   };
-  expect((await history(wanted.id)).priceHistory?.observations.length).toBeGreaterThan(0);
-  expect(await history('gone')).toEqual({ priceHistory: null });
-  expect(await history(wanted.id, {})).toEqual({ priceHistory: null });
+  const found = (await stored(wanted.id)).listing;
+  expect(found?.id).toBe(wanted.id);
+  expect(found?.priceHistory?.observations.length).toBeGreaterThan(0);
+  expect(await stored('gone')).toEqual({ listing: null });
+  expect(await stored(wanted.id, {})).toEqual({ listing: null });
 });

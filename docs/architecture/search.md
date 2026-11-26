@@ -61,9 +61,10 @@ browser: /boot.js ──► GET /api/inventory ──► GET /api/inventory/<ver
 
 Everything a search and a card use. Left out: each listing's price history and two bookkeeping fields.
 
-An apartment's own page takes the listing from the file too, including from a shared link, and asks the server
-only for its price history: `GET /api/listing/history`, one lookup by ID on an index (migration 0005), with no
-other listing read.
+An apartment's own page takes the listing from the file too. It also asks the server for the listing as stored
+(`GET /api/listing/stored`: one lookup by ID on an index, migration 0005, with no other listing read). That
+copy carries the price history, and on a shared link it is requested by `/boot.js` and shown first, before the
+file has arrived; the comparisons with other listings appear when it does.
 
 ## Who can read the file
 

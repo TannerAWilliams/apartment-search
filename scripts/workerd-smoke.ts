@@ -63,7 +63,7 @@ const CHECKS: { path: string; init?: RequestInit; status: number; contains?: str
   // Built by now, in Workers KV: the head, with the opening search's answer. The file itself is for the app's pages only.
   { path: '/api/inventory', status: 200, contains: '"opening"' },
   { path: '/api/inventory/' + '0'.repeat(24), status: 403, contains: 'own pages' },
-  { path: '/api/listing/history?id=none', status: 200, contains: '"priceHistory":null' },
+  { path: '/api/listing/stored?id=none', status: 200, contains: '"listing":null' },
 ];
 
 async function waitForWorker(deadline: number) {

@@ -329,9 +329,9 @@ export function useServer({ appliedFilters, searchVersion, submitted, setResult,
     },
     [activeToken],
   );
-  /** An apartment's recorded rents, which the inventory file leaves out. */
-  const loadPriceHistory = useCallback(
-    (id: string) => api<{ priceHistory: unknown }>('listing/history?' + new URLSearchParams({ id }), { token: activeToken }),
+  /** The listing as its source saved it: quick to read, with its recorded rents and without comparisons. */
+  const loadStoredListing = useCallback(
+    (id: string) => api<{ listing: ListingData | null }>('listing/stored?' + new URLSearchParams({ id }), { token: activeToken }),
     [activeToken],
   );
   const loadHousing = useCallback(
@@ -394,7 +394,7 @@ export function useServer({ appliedFilters, searchVersion, submitted, setResult,
     householdRequest,
     billingRequest,
     loadListing,
-    loadPriceHistory,
+    loadStoredListing,
     directRequest,
     loadAdminStats,
     accountRequest,

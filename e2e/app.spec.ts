@@ -230,6 +230,9 @@ async function mockApp(
         ...localSearch(listings, filters, localWorkplace(filters), 'live', [], options.notices ?? []),
         ...(options.inventoryExpiresAt ? { inventoryExpiresAt: options.inventoryExpiresAt } : {}),
       };
+    } else if (url.pathname === '/api/listing/stored') {
+      // The quick copy of an apartment; this stand-in server leaves that to its full lookup.
+      return route.fulfill({ json: { listing: null } });
     } else if (url.pathname === '/api/inventory') {
       // This stand-in server keeps no inventory file, so the app searches through it (e2e/perf.spec.ts has one).
       return route.fulfill({ status: 404, json: { error: 'This server keeps no inventory file.' } });

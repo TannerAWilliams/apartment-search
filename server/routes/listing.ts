@@ -28,10 +28,12 @@ export async function findListing(env: Parameters<typeof search>[1], id: string)
 
 export const listingRoutes = factory
   .createApp()
-  // An apartment's recorded rents, which the inventory file leaves out: one indexed lookup, no listings read.
-  .get('/listing/history', vValidator('query', v.object({ id: ListingQuerySchema.entries.id }), refuse), async (c) => {
+  // The listing as its source saved it, by one indexed lookup with no other listing read. An apartment's page
+  // shows it at once (from a shared link, before the inventory file has arrived) and takes its recorded rents
+  // from it, which the file leaves out. It has no comparisons with other listings; those come with the file.
+  .get('/listing/stored', vValidator('query', v.object({ id: ListingQuerySchema.entries.id }), refuse), async (c) => {
     const stored = await c.var.appEnv.BUCKET?.snapshots.find(c.req.valid('query').id);
-    return c.json({ priceHistory: isRecord(stored) ? (stored.priceHistory ?? null) : null }, 200);
+    return c.json({ listing: isRecord(stored) ? stored : null }, 200);
   })
   .get('/listing', vValidator('query', ListingQuerySchema, refuse), async (c) => {
     const { id, workplace, customWorkplace } = c.req.valid('query');
