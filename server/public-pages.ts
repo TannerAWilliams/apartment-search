@@ -110,15 +110,71 @@ ${buildings}${complaints}
   return page(origin, `/rents/${slug(borough)}/${slug(name)}`, title, description, body);
 }
 
+/**
+ * Crawlers that collect pages to train AI models or to resell as data, which get nothing. Search engines are not
+ * here: Google-Extended and Applebot-Extended opt out of AI training only, and do not affect Google or Apple search.
+ */
+const DATA_COLLECTORS = [
+  'GPTBot',
+  'ClaudeBot',
+  'anthropic-ai',
+  'Google-Extended',
+  'Applebot-Extended',
+  'CCBot',
+  'Bytespider',
+  'Amazonbot',
+  'meta-externalagent',
+  'FacebookBot',
+  'cohere-ai',
+  'Diffbot',
+  'Omgilibot',
+  'ImagesiftBot',
+  'DataForSeoBot',
+];
+
+/**
+ * robots.txt: what crawlers are asked to do. Search engines may read the pages written for them (the home page
+ * and the neighborhood rent pages, which carry market figures and no individual listings) and nothing else:
+ * everything not named is closed, so the listings, behind /api/ and on apartments' own pages, are not for
+ * collecting, and a page added later is closed until it is listed here. The file is a request
+ * that reputable crawlers honor, not a lock: the rate limits and the Terms of Service do the enforcing.
+ */
+export const robotsFile = (origin: string) =>
+  [
+    '# Walkup',
+    '#',
+    '# Search engines are welcome to index the pages below.',
+    '# The listings, rents and scores on this site may not be copied, scraped, collected in bulk,',
+    '# republished, resold or used to train models. See the Terms of Service: ' + origin + '/terms',
+    '',
+    '# Search engines and everyone else: the public pages only, and the files those pages need to display.',
+    'User-agent: *',
+    'Allow: /$',
+    'Allow: /rents',
+    'Allow: /terms',
+    'Allow: /privacy',
+    'Allow: /_expo/',
+    'Allow: /icons/',
+    'Allow: /boot.js',
+    'Allow: /manifest.webmanifest',
+    'Disallow: /',
+    '',
+    '# Crawlers that collect data for AI training or resale: nothing.',
+    ...DATA_COLLECTORS.map((agent) => 'User-agent: ' + agent),
+    'Disallow: /',
+    '',
+    `Sitemap: ${origin}/sitemap.xml`,
+    '',
+  ].join('\n');
+
 /** The public pages for this deployment's settings and data. */
 export const publicPages = (env: AppEnv, fetcher: FetchTransport) =>
   new Hono()
-    .get('/robots.txt', (c) => {
-      const origin = new URL(c.req.url).origin;
-      return c.text(`User-agent: *\nAllow: /\nDisallow: /api/\nSitemap: ${origin}/sitemap.xml\n`, 200, {
+    .get('/robots.txt', (c) =>
+      c.text(robotsFile(new URL(c.req.url).origin), 200, {
         'Cache-Control': 'public, max-age=86400',
-      });
-    })
+      }),
+    )
     .get('/sitemap.xml', async (c) => {
       const origin = new URL(c.req.url).origin;
       const pages = await neighborhoodIndex(env);

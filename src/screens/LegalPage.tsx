@@ -32,7 +32,7 @@ export const TERMS: Section[] = [
   ],
   [
     'Fair use',
-    'Use Walkup for your own apartment search. Do not copy its data in bulk, resell it, interfere with the service, or use it to discriminate against anyone. Housing discrimination is illegal under federal, state and New York City law.',
+    'Use Walkup for your own apartment search. Do not copy its data in bulk, collect it by automated means (scraping or crawling), republish it, resell it, use it to train models, interfere with the service, or use it to discriminate against anyone. Housing discrimination is illegal under federal, state and New York City law.',
   ],
   [
     'Availability and liability',

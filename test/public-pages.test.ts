@@ -45,7 +45,14 @@ test('neighborhood pages, their index, the sitemap and robots.txt are public', a
   await createD1Bucket(env.APARTMENTS).put('buildings/facts.json', JSON.stringify({ [buildingKey(listing)!]: facts }));
 
   const robots = await get(env, '/robots.txt');
-  expect(await robots.text()).toContain('Sitemap: https://walkup.test/sitemap.xml');
+  const rules = await robots.text();
+  expect(rules).toContain('Sitemap: https://walkup.test/sitemap.xml');
+  // Search engines may index the public pages; the listings are not for collecting, and AI and data crawlers get nothing.
+  expect(rules).toContain('User-agent: *\nAllow: /$\nAllow: /rents\n');
+  expect(rules).toContain('Allow: /manifest.webmanifest\nDisallow: /\n');
+  expect(rules).toContain('User-agent: GPTBot\n');
+  expect(rules).toMatch(/User-agent: DataForSeoBot\nDisallow: \/\n/);
+  expect(rules).not.toContain('Googlebot');
   const sitemap = await (await get(env, '/sitemap.xml')).text();
   expect(sitemap).toContain(`<loc>https://walkup.test/rents/${first.path}</loc>`);
   const index = await get(env, '/rents');
