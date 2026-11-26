@@ -544,23 +544,31 @@ export async function alertState(env: AppEnv & { BUCKET: Bucket }, owner?: strin
 
 /** Removes everything alerts keep for one account: its rules, devices and recent alerts. */
 export async function forgetAlerts(bucket: Bucket, owner: string) {
-  const [rules, devices, recent] = await Promise.all([readRules(bucket), readDevices(bucket), readRecent(bucket)]);
-  await write(
-    bucket,
-    RULES_KEY,
-    rules.filter((rule) => rule.owner !== owner),
-  );
-  await write(
-    bucket,
-    DEVICES_KEY,
-    devices.filter((device) => device.owner !== owner),
-  );
-  await write(
-    bucket,
-    RECENT_KEY,
-    recent.filter((alert) => alert.owner !== owner),
-  );
-  const held = await read(bucket, HELD_KEY, HeldAlertsSchema, { waiting: [], sent: {} });
+  const [rules, devices, recent, held] = await Promise.all([
+    readRules(bucket),
+    readDevices(bucket),
+    readRecent(bucket),
+    read(bucket, HELD_KEY, HeldAlertsSchema, { waiting: [], sent: {} }),
+  ]);
   const { [owner]: _sent, ...sent } = held.sent;
-  await write(bucket, HELD_KEY, { waiting: held.waiting.filter((alert) => alert.owner !== owner), sent });
+  const mine = (item: { owner?: string }) => item.owner === owner;
+  // Four documents, none depending on another: written together.
+  await Promise.all([
+    write(
+      bucket,
+      RULES_KEY,
+      rules.filter((rule) => !mine(rule)),
+    ),
+    write(
+      bucket,
+      DEVICES_KEY,
+      devices.filter((device) => !mine(device)),
+    ),
+    write(
+      bucket,
+      RECENT_KEY,
+      recent.filter((alert) => !mine(alert)),
+    ),
+    write(bucket, HELD_KEY, { waiting: held.waiting.filter((alert) => !mine(alert)), sent }),
+  ]);
 }

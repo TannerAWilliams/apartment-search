@@ -151,7 +151,7 @@ export async function retrieveBuildingRecords(
    * Residents evicted by a marshal, by tax lot, as the app last loaded them (server/open-data.ts); a building's
    * count comes from here, because the city answers that question about one building slowly or not at all.
    */
-  evictionsByLot?: { since: string; lots: Record<string, number> } | null,
+  evictionsRead?: Promise<{ since: string; lots: Record<string, number> } | null> | { since: string; lots: Record<string, number> } | null,
 ) {
   const checkedAt = now.toISOString();
   const unknown = {
@@ -700,6 +700,8 @@ export async function retrieveBuildingRecords(
   ]);
 
   // A lot the loaded list does not name had none; without the list, or the lot, it is unknown.
+  // Given as a read under way, it was started alongside the city's records and is awaited only here.
+  const evictionsByLot = (await evictionsRead) ?? null;
   const evictions = evictionsByLot && bbl ? (evictionsByLot.lots[bbl] ?? 0) : null;
   let flood = null;
   if (bedbugs?.point) {

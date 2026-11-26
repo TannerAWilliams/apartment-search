@@ -101,7 +101,8 @@ export const dataRoutes = factory
       (url, options) => fetcher(url, options),
       new Date(),
       c.req.raw.signal,
-      bucket ? await readEvictions(bucket) : null,
+      // Read from storage while the city's records are asked for, not before.
+      bucket ? readEvictions(bucket) : null,
     );
     // Kept so the building's cards show its grade from now on; a failure to keep it does not fail the report.
     if (bucket)
