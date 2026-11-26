@@ -1,6 +1,6 @@
 /** The app's few icons, drawn as SVG so they look the same on every device and size. Decorative: the label beside each says what it is. */
-import Svg, { Circle, Line, Path, Rect } from 'react-native-svg';
-import { mark } from '../theme.ts';
+import Svg, { Circle, Line, Path } from 'react-native-svg';
+import { palette } from '../theme.ts';
 
 type IconProps = { color: string; size?: number; filled?: boolean; fill?: string };
 
@@ -47,20 +47,16 @@ export function ChartIcon({ color, size = 22 }: IconProps) {
 }
 
 /**
- * Walkup's mark: a walk-up as two shapes, a flight of steps with its handrail and the door (with its knob) at the top, on a rounded tile. The same
- * drawing is the tab and home-screen icon (public/icons/walkup.svg). Its colors follow the theme (src/theme.ts).
+ * Walkup's mark: a walk-up as two shapes, a flight of steps and the door (with its knob) at the top. It stands on
+ * the page with no tile behind it, in the page's ink, so it follows the theme; the door is the accent color. The
+ * same drawing is the tab icon (public/icons/walkup.svg); the home-screen icons put it on a dark tile.
  */
 export function BrandMark({ size = 30 }: { size?: number }) {
   return (
-    <Svg width={size} height={size} viewBox="0 0 32 32" aria-hidden>
-      <Rect width={32} height={32} rx={7} fill={mark.tile} />
-      <Path d="M5.5 27v-5h7v-5h7v-5h7v15z" fill={mark.steps} />
-      {/* The handrail. A post stands in the middle of each lower step, and the rail runs the same height above
-          every step's corner, from the first post to the door's edge. */}
-      <Path d="M8.35 22v-8.24L19.5 5.8v1.4l-9.85 7.04V22zM15.35 17V9.9l1.3-.9v8z" fill={mark.steps} />
-      <Path d="M19.5 12V4.6a.6.6 0 0 1 .6-.6h5.8a.6.6 0 0 1 .6.6V12z" fill={mark.door} />
-      {/* The doorknob, the color of the steps. */}
-      <Circle cx={21.4} cy={8.4} r={0.8} fill={mark.steps} />
+    <Svg width={size} height={size} viewBox="3.5 3 25 25" aria-hidden>
+      <Path d="M5.5 27v-5h7v-5h7v-5h7v15z" fill={palette.gray[9]} />
+      <Path d="M19.5 12V4.6a.6.6 0 0 1 .6-.6h5.8a.6.6 0 0 1 .6.6V12z" fill={palette.rose[5]} />
+      <Circle cx={21.4} cy={8.4} r={0.8} fill="#ffffff" />
     </Svg>
   );
 }

@@ -2,21 +2,26 @@
 //   bun scripts/make-icons.ts
 import { chromium } from 'playwright';
 
-/** The mark (public/icons/walkup.svg) on its own tile color, inset by `inset` so a maskable icon keeps it in the safe zone. */
-const file = await Bun.file(new URL('../public/icons/walkup.svg', import.meta.url)).text();
-const drawing = file.slice(file.indexOf('>') + 1, file.lastIndexOf('</svg>'));
-const svg = (size: number, { rounded = true, inset = 0 } = {}) => {
+/**
+ * The mark (as in public/icons/walkup.svg) in white on a dark tile, which a home-screen icon needs: the mark alone
+ * has no background. It is inset by `inset`, more for a maskable icon, whose edges the phone may cut off.
+ */
+const drawing =
+  '<path fill="#ffffff" d="M5.5 27v-5h7v-5h7v-5h7v15z"/>' +
+  '<path fill="#f73b62" d="M19.5 12V4.6a.6.6 0 0 1 .6-.6h5.8a.6.6 0 0 1 .6.6V12z"/>' +
+  '<circle cx="21.4" cy="8.4" r=".8" fill="#ffffff"/>';
+const svg = (size: number, { rounded = true, inset = 0.14 } = {}) => {
   const pad = size * inset;
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
-    <rect width="${size}" height="${size}" rx="${rounded ? size * 0.22 : 0}" fill="#773516"/>
-    <svg x="${pad}" y="${pad}" width="${size - pad * 2}" height="${size - pad * 2}" viewBox="0 0 32 32">${drawing}</svg>
+    <rect width="${size}" height="${size}" rx="${rounded ? size * 0.22 : 0}" fill="#201e1c"/>
+    <svg x="${pad}" y="${pad}" width="${size - pad * 2}" height="${size - pad * 2}" viewBox="3.5 3 25 25">${drawing}</svg>
   </svg>`;
 };
 
 const icons: [string, number, Parameters<typeof svg>[1]?][] = [
   ['icon-192.png', 192],
   ['icon-512.png', 512],
-  ['maskable-512.png', 512, { rounded: false, inset: 0.14 }],
+  ['maskable-512.png', 512, { rounded: false, inset: 0.22 }],
   ['apple-touch-icon.png', 180, { rounded: false }],
   ['favicon-32.png', 32],
 ];

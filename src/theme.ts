@@ -21,16 +21,6 @@ const NEUTRAL = ['#f6f6f6', '#d5d5d5', '#b8b8b8', '#9e9e9e', '#868686', '#707070
 export const darkPalette = Object.fromEntries(
   (Object.keys(light) as Hue[]).map((hue) => [hue, (hue === 'gray' ? NEUTRAL : light[hue]).toReversed()]),
 ) as { [H in Hue]: string[] };
-/**
- * The mark and the name beside it. The mark is a walk-up reduced to two shapes: a flight of steps and the door
- * at the top of it, on a tile. In the dark theme the tile is dark and the name is the page's ink.
- */
-const MARK = {
-  light: { tile: light.brown[7], steps: light.brown[0], door: light.rose[3], name: light.brown[7] },
-  dark: { tile: '#262626', steps: '#f6f6f6', door: light.rose[4], name: '#f6f6f6' },
-};
-type MarkPart = keyof typeof MARK.light;
-const markParts = Object.keys(MARK.light) as MarkPart[];
 
 const hues = Object.keys(light) as Hue[];
 const declarations = (dark: boolean) =>
@@ -38,7 +28,6 @@ const declarations = (dark: boolean) =>
     `--surface:${dark ? SURFACE.dark : SURFACE.light}`,
     `color-scheme:${dark ? 'dark' : 'light'}`,
     ...hues.flatMap((hue) => light[hue].map((color, level) => `--${hue}-${level}:${dark ? darkPalette[hue][level] : color}`)),
-    ...markParts.map((part) => `--mark-${part}:${MARK[dark ? 'dark' : 'light'][part]}`),
   ].join(';');
 
 /** The theme's style sheet: the device's setting unless the page says which. */
@@ -94,11 +83,7 @@ export function themeFor(page: Page | undefined, storage: () => Storage) {
     page.head.append(sheet);
     apply(choice(), false);
   }
-  const mark = Object.fromEntries(markParts.map((part) => [part, page ? `var(--mark-${part})` : MARK.light[part]])) as Record<
-    MarkPart,
-    string
-  >;
-  return { palette, mark, surface: page ? 'var(--surface)' : SURFACE.light, choice, apply };
+  return { palette, surface: page ? 'var(--surface)' : SURFACE.light, choice, apply };
 }
 
 const theme = themeFor(typeof document === 'undefined' ? undefined : document, () => localStorage);
@@ -106,7 +91,5 @@ const theme = themeFor(typeof document === 'undefined' ? undefined : document, (
 export const palette = theme.palette;
 /** The page's own color: white in the light theme. */
 export const surface = theme.surface;
-/** The brand mark's colors, which change with the theme. */
-export const mark = theme.mark;
 export const themeChoice = theme.choice;
 export const applyTheme = theme.apply;

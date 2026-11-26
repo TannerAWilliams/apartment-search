@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import { palette as light } from '../src/palette.ts';
-import { applyTheme, darkPalette, mark, palette, SURFACE, surface, themeChoice, themeCss, themeFor } from '../src/theme.ts';
+import { applyTheme, darkPalette, palette, SURFACE, surface, themeChoice, themeCss, themeFor } from '../src/theme.ts';
 
 /** A stand-in page and its storage. */
 function browser(stored: Record<string, string> = {}, broken = false) {
@@ -46,11 +46,6 @@ test('in a browser each color is a variable: the palette in light, the other end
   // The dark grays are neutral, as light as the warm grays they stand for.
   expect(css).toContain(`--gray-2:${darkPalette.gray[2]}`);
   expect(darkPalette.gray[2]).toBe('#484848');
-  // The brand mark changes with the theme too: a brown tile by day, a dark one at night.
-  expect(theme.mark.tile).toBe('var(--mark-tile)');
-  expect(mark.tile, 'outside a browser, the daytime mark').toBe(light.brown[7]);
-  expect(css).toContain(`--mark-tile:${light.brown[7]}`);
-  expect(css).toContain('--mark-tile:#262626');
   expect(page.documentElement.dataset.theme, 'the device decides until someone chooses').toBeUndefined();
 });
 
