@@ -910,6 +910,11 @@ test('Jersey City affordable notices show with official links and stay out of ap
   });
   await expect(page.getByText('Example affordable building', { exact: true })).toHaveCount(0);
   await page.getByRole('tab', { name: 'Lotteries', exact: true }).click();
+  // The tab opens on New York City, with its lists shown, not only links to them.
+  await expect(page.getByRole('heading', { name: /^Open housing lotteries \(\d+\)$/ })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Mitchell-Lama', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Public housing (NYCHA)', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'New Jersey', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Jersey City affordable housing applications' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Example affordable building', exact: true })).toBeVisible();
   await expect(page.getByText('1 BR · 2', { exact: true })).toBeVisible();

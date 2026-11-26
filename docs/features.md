@@ -91,7 +91,7 @@ Every chart has a table view with every value. Colors follow a validated palette
 
 ## Lotteries and public housing
 
-The Lotteries tab (`src/screens/AffordableHousing.tsx`) starts with where each program is applied for, by area: New York City (housing lotteries, Mitchell-Lama, public housing), New Jersey, Long Island and Connecticut, each linking to the agency's own page. Below that it lists [NYC Housing Connect](https://data.cityofnewyork.us/d/vy5i-a666) lotteries with application dates, addresses and bedroom counts, HDC re-rentals, and links to Mitchell-Lama and Section 8 resources. Search results link to an open lottery in the same building.
+The Lotteries tab (`src/screens/AffordableHousing.tsx`) is chosen by area and shows what is open, not only where to look. New York City lists the open [NYC Housing Connect](https://data.cityofnewyork.us/d/vy5i-a666) lotteries (apply-by date, addresses, apartments by size) and the HDC re-rentals and open waitlists, then Mitchell-Lama, public housing and vouchers, which publish no list to show. New Jersey lists Jersey City's application notices; Westchester lists the county's HomeSeeker. Long Island and Connecticut are links to their registries until Walkup reads them. Search results link to an open lottery in the same building.
 
 ## Layout
 
