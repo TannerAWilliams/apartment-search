@@ -29,6 +29,17 @@
       .boot-bar { height: 56px; display: flex; align-items: center; padding: 0 20px; border-bottom: 1px solid #d7d5d3; }
       .boot-brand { color: #773516; font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
       .boot-note { margin: 32px auto; color: #5f5b59; font-size: 15px; }
+      /* The dark theme (src/theme.ts), before the app's own styles arrive: the device's, or the one chosen. */
+      @media (prefers-color-scheme: dark) {
+        :root:not([data-theme="light"]) body, :root:not([data-theme="light"]) .boot { background: #141312; }
+        :root:not([data-theme="light"]) .boot-bar { border-color: #373432; }
+        :root:not([data-theme="light"]) .boot-brand { color: #f8a47e; }
+        :root:not([data-theme="light"]) .boot-note { color: #a19d9a; }
+      }
+      :root[data-theme="dark"] body, :root[data-theme="dark"] .boot { background: #141312; }
+      :root[data-theme="dark"] .boot-bar { border-color: #373432; }
+      :root[data-theme="dark"] .boot-brand { color: #f8a47e; }
+      :root[data-theme="dark"] .boot-note { color: #a19d9a; }
     </style>
     <!-- The card pictures and the map are drawn from OpenFreeMap: the connection is opened while the app loads. -->
     <link rel="preconnect" href="https://tiles.openfreemap.org" crossorigin />

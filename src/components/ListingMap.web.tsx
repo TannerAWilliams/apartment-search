@@ -18,6 +18,7 @@ export { default as maplibregl } from 'maplibre-gl';
 import { safeListingUrl } from '../marketplaces.ts';
 import { bedroomLabel, formatRent } from '../search.ts';
 import { colors } from '../styles.ts';
+// The map and its pictures keep their own light colors in either theme.
 import { palette } from '../palette.ts';
 
 const center = [40.75, -73.98];

@@ -1,5 +1,5 @@
 import { Platform, StyleSheet } from 'react-native';
-import { palette } from './palette.ts';
+import { palette, surface } from './theme.ts';
 
 /**
  * The app's colors, all from the palette's scales (src/palette.ts): small text sits at least five levels from its
@@ -7,10 +7,10 @@ import { palette } from './palette.ts';
  */
 export const colors = {
   /** The page is white, as travel-booking apps are; cards separate with space, not fills. */
-  background: '#ffffff',
+  background: surface,
   /** The header is white too. (Named navy for history.) */
-  navy: '#ffffff',
-  white: '#ffffff',
+  navy: surface,
+  white: surface,
   ink: palette.gray[9],
   muted: palette.gray[6],
   /** The accent: primary buttons, selected tab, saved hearts. (Named green for history; it is rose.) */
@@ -21,7 +21,7 @@ export const colors = {
   field: palette.gray[4],
   /** The quiet fill behind selected rows, tags and image areas. */
   light: palette.gray[0],
-  lime: '#ffffff',
+  lime: surface,
 };
 
 const panel = { backgroundColor: colors.white, borderWidth: 1, borderColor: colors.border, borderRadius: 12 };
@@ -79,7 +79,7 @@ export const styles = StyleSheet.create({
     borderColor: palette.gray[4],
     borderWidth: 1,
     borderRadius: 8,
-    backgroundColor: '#ffffff',
+    backgroundColor: surface,
     paddingHorizontal: 12,
     paddingVertical: 12,
     minHeight: 48,

@@ -9,7 +9,7 @@ import Svg, { Circle, Line, Path, Polyline, Rect, Text as SvgText } from 'react-
 import { CHART_INK, divergingColor, SERIES_COLORS, textOn } from '../chart-colors.ts';
 import { divergingPosition, niceTicks, type Ranked, type ScatterPoint } from '../market-history.ts';
 import { CHART_FONT, pointerX, pointerY, tabular, Tooltip, useWidth } from './ChartParts.tsx';
-import { palette } from '../palette.ts';
+import { palette } from '../theme.ts';
 
 /** A small line of the last values, the latest point marked. */
 export function Sparkline({ values, width = 120, height = 32 }: { values: (number | null)[]; width?: number; height?: number }) {

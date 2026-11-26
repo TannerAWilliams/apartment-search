@@ -4,7 +4,7 @@ import { MARKETPLACE_NAMES } from '../marketplaces.ts';
 import { sourceCoverage, sourceRows, type SourceDefinition, type SourceStatus } from '../source-status.ts';
 import { colors, styles } from '../styles.ts';
 import { Button } from '../components/ui.tsx';
-import { palette } from '../palette.ts';
+import { palette } from '../theme.ts';
 
 const time = (value?: string | null) => (value && Number.isFinite(Date.parse(value)) ? new Date(value).toLocaleString() : 'Never');
 const shortTime = (value?: string | null) =>

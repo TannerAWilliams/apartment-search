@@ -4,7 +4,8 @@
  */
 import { type ReactNode, useCallback, useEffect, useState } from 'react';
 import { Linking, Platform, Pressable, Share, Switch, Text, View } from 'react-native';
-import { Button, Field } from '../components/ui.tsx';
+import { Button, Chip, Field } from '../components/ui.tsx';
+import { applyTheme, type ThemeChoice, themeChoice } from '../theme.ts';
 import { MenuIcon } from '../components/MenuIcons.tsx';
 import { colors, styles } from '../styles.ts';
 
@@ -51,6 +52,38 @@ type BillingRequest = (
 function openPage(url: string) {
   if (Platform.OS === 'web') window.location.assign(url);
   else void Linking.openURL(url);
+}
+
+/** Light or dark, or whichever the device is set to (the default). Kept on this device (src/theme.ts). */
+function Appearance() {
+  const [choice, setChoice] = useState<ThemeChoice>(themeChoice);
+  return (
+    <>
+      <Text accessibilityRole="header" style={styles.fieldLabel}>
+        Appearance
+      </Text>
+      <View accessibilityRole="radiogroup" style={styles.chipRow}>
+        {(
+          [
+            ['system', 'Match my device'],
+            ['light', 'Light'],
+            ['dark', 'Dark'],
+          ] as const
+        ).map(([key, label]) => (
+          <Chip
+            key={key}
+            selected={choice === key}
+            onPress={() => {
+              applyTheme(key);
+              setChoice(key);
+            }}
+          >
+            {label}
+          </Chip>
+        ))}
+      </View>
+    </>
+  );
 }
 
 /** The plan: upgrade through Stripe, or when paid, until when and a link to manage the subscription. */
@@ -375,6 +408,7 @@ export function ProfilePage({
           {commuteCard}
         </>
       )}
+      {Platform.OS === 'web' && <Appearance />}
       <Text accessibilityRole="header" style={styles.fieldLabel}>
         Your apartments
       </Text>

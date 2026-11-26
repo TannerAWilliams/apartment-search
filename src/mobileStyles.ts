@@ -1,6 +1,6 @@
 import { StyleSheet } from 'react-native';
 import { colors } from './styles.ts';
-import { palette } from './palette.ts';
+import { palette } from './theme.ts';
 export const mobileStyles = StyleSheet.create({
   searchBar: {
     flexDirection: 'row',

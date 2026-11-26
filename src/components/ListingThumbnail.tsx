@@ -9,6 +9,7 @@ import { libertySnapshot } from './liberty-snapshot';
 import { Image, Platform, StyleSheet, Text, View } from 'react-native';
 import Svg, { Path, Rect } from 'react-native-svg';
 import { colors } from '../styles.ts';
+// The map and its pictures keep their own light colors in either theme.
 import { palette } from '../palette.ts';
 
 /**

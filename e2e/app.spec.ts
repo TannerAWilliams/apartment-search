@@ -1595,3 +1595,25 @@ test('a member turns a link to the shared list on and off', async ({ page }) => 
   await page.getByRole('button', { name: 'Turn off the link', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Create a link', exact: true })).toBeVisible();
 });
+
+test('the theme follows the device, and a choice on the profile is kept', async ({ page }) => {
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await mockApp(page, { admin: false, start: '/profile' });
+  const background = () => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+  // The device is dark, so the page is.
+  expect(await background()).toBe('rgb(20, 19, 18)');
+  await expect(page.getByRole('button', { name: 'Match my device', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  // Light, chosen: shown at once, and still after a reload on the dark device.
+  await page.getByRole('button', { name: 'Light', exact: true }).click();
+  expect(await background()).toBe('rgb(255, 255, 255)');
+  await page.reload();
+  await expect(page.getByRole('button', { name: 'Light', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  expect(await background()).toBe('rgb(255, 255, 255)');
+  // Back to the device's.
+  await page.getByRole('button', { name: 'Match my device', exact: true }).click();
+  expect(await background()).toBe('rgb(20, 19, 18)');
+  await page.emulateMedia({ colorScheme: 'light' });
+  expect(await background()).toBe('rgb(255, 255, 255)');
+  await page.getByRole('button', { name: 'Dark', exact: true }).click();
+  expect(await background()).toBe('rgb(20, 19, 18)');
+});

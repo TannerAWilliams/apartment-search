@@ -19,7 +19,7 @@ import { SavedNotes } from './SavedNotes.tsx';
 import { listingKey } from '../listings.ts';
 import { HeartIcon } from './Icons.tsx';
 import { ListingThumbnail } from './ListingThumbnail.tsx';
-import { palette } from '../palette.ts';
+import { palette } from '../theme.ts';
 
 const CHECK_TIME = new Intl.DateTimeFormat('en-US', {
   timeZone: 'America/New_York',

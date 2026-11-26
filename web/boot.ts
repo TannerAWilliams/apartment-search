@@ -9,6 +9,14 @@
  */
 import { EARLY_INVENTORY_FILE, earlyKey, type EarlyRequests } from '../src/early-key.ts';
 
+// A theme the person chose (src/theme.ts) is shown from the first paint; otherwise the page follows the device.
+try {
+  const theme = localStorage.getItem('walkup.theme');
+  if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
+} catch {
+  // Storage is off: the device's setting stands.
+}
+
 /** The map code's address in this build, set by the build script ('' when it is not known). */
 declare const MAP_CODE: string;
 if (MAP_CODE && /^\/(search|saved|listing\/)/.test(location.pathname)) {
