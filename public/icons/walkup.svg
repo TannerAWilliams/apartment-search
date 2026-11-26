@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
   <style>
-    .tile{fill:#773516}.steps{fill:#fff4f0}.door{fill:#fc7081}.knob{fill:#773516}.rail{stroke:#fff4f0}
-    @media (prefers-color-scheme:dark){.tile{fill:#262626}.steps{fill:#f6f6f6}.door{fill:#f73b62}.knob{fill:#262626}.rail{stroke:#f6f6f6}}
+    .tile{fill:#773516}.steps{fill:#fff4f0}.door{fill:#fc7081}.knob{fill:#fff4f0}.rail{stroke:#fff4f0}
+    @media (prefers-color-scheme:dark){.tile{fill:#262626}.steps{fill:#f6f6f6}.door{fill:#f73b62}.knob{fill:#f6f6f6}.rail{stroke:#f6f6f6}}
   </style>
   <rect class="tile" width="32" height="32" rx="7"/>
   <path class="steps" d="M5.5 27v-5h7v-5h7v-5h7v15z"/>

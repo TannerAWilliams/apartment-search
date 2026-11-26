@@ -59,8 +59,8 @@ export function BrandMark({ size = 30 }: { size?: number }) {
           stairs that ends on the door's edge. Drawn under the door, so its end is square against it. */}
       <Path d="M6.3 22v-6.07M13.3 17v-6.07M6.3 15.93 19.5 6.5" fill="none" stroke={mark.steps} strokeWidth={1.3} strokeLinecap="round" />
       <Path d="M19.5 12V4.6a.6.6 0 0 1 .6-.6h5.8a.6.6 0 0 1 .6.6V12z" fill={mark.door} />
-      {/* The doorknob, in the tile's color. */}
-      <Circle cx={21.4} cy={8.4} r={0.8} fill={mark.tile} />
+      {/* The doorknob, the color of the steps. */}
+      <Circle cx={21.4} cy={8.4} r={0.8} fill={mark.steps} />
     </Svg>
   );
 }
