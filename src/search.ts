@@ -249,6 +249,20 @@ export function distanceMiles(from: unknown, to: unknown) {
   return 3958.76 * 2 * Math.asin(Math.sqrt(Math.min(1, haversine)));
 }
 
+/**
+ * When a listing was posted, as a number, worked out once for each listing: sorting every listing by date
+ * compares each one many times, and reading a date from text each time was most of that sort.
+ */
+const listedTimes = new WeakMap<object, number>();
+function listedTime(listing: { listedAt?: string }) {
+  let time = listedTimes.get(listing);
+  if (time === undefined) {
+    time = Date.parse(listing.listedAt ?? '') || 0;
+    listedTimes.set(listing, time);
+  }
+  return time;
+}
+
 export function compareResults(
   a: Pick<ListingData, 'id' | 'rent' | 'seenAt' | 'miles' | 'transitSeconds' | 'drivingSeconds' | 'insights' | 'listedAt'> & {
     kind?: string;
@@ -267,8 +281,8 @@ export function compareResults(
     if (difference) return difference;
   }
   if (sort === 'newest') {
-    const first = Date.parse(a.listedAt ?? '') || 0;
-    const second = Date.parse(b.listedAt ?? '') || 0;
+    const first = listedTime(a);
+    const second = listedTime(b);
     if (first !== second) return second - first;
   }
   if (sort === 'value') {
