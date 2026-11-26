@@ -189,6 +189,36 @@ flowchart LR
 - Against: a server to run, patch, scale and pay for; one region; the rest of the system (sync, sign-in, email,
   storage) would have to move or be called across the internet. Not built.
 
+## File format benchmark
+
+Measured on the production inventory file of 25 November 2026 (18,450 listings), each format holding the same
+listings. Decode time is to usable objects, the fastest of nine runs on a server-class machine; a phone is
+several times slower. "Slim" keeps only what filtering, sorting, counts and map pins read: no address, unit,
+link, photo or station name.
+
+| Contents | Format | Uncompressed | gzip | Brotli | Decode |
+|---|---|---:|---:|---:|---:|
+| Everything | JSON, one object per listing | 14,913 KB | 1,230 KB | 798 KB | 24 ms |
+| Everything | **Current: columns + dictionaries** | 10,376 KB | **1,041 KB** | 778 KB | 39 ms |
+| Everything | Protobuf | 7,049 KB | 1,214 KB | 831 KB | 28 ms |
+| Slim | JSON, one object per listing | 8,797 KB | 611 KB | 445 KB | 12 ms |
+| Slim | Columns + dictionaries | 4,901 KB | 526 KB | 422 KB | 20 ms |
+| Slim | Protobuf | 2,884 KB | 591 KB | 461 KB | 17 ms |
+
+What it shows:
+
+- **Protobuf is the smallest before compression and not after.** The file is sent compressed, and there the
+  current format is 14% smaller than protobuf with gzip (1,041 against 1,214 KB) and 6% smaller with Brotli.
+  Protobuf decodes 11 ms faster, and would add a library to the app's first download and a schema to maintain.
+- **What is in the file matters more than its format.** Dropping the fields search does not read halves it
+  (1,041 to 526 KB), whichever format.
+- **Brotli instead of gzip saves a quarter** (1,041 to 778 KB) with no change to the format.
+- **Plain JSON decodes fastest** (24 ms against 39 ms): the column layout pays a little time for a 15% smaller
+  download.
+
+Where the bytes are, in the current file: comparisons and nearby subway stations 28%, source links 21%, building
+records 5%, check times 5%, and every other field under 4% each.
+
 ## Questions worth asking
 
 **Is this the fastest it can be?** For changing filters, effectively yes: there is no request left to remove.
