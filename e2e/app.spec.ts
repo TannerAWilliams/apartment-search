@@ -56,6 +56,8 @@ async function mockApp(
     plan?: 'free' | 'paid';
     /** The first listing has building facts, a price comparison and a warning. */
     insights?: boolean;
+    /** Apartments the signed-in account has already hidden, by address-and-unit key. */
+    hidden?: string[];
   } = {},
 ) {
   const requests: MockRequest[] = [];
@@ -67,6 +69,7 @@ async function mockApp(
     lastNightly: { at: now, state: 'complete', updated: 12, failed: 1, background: true },
   };
   let savedOnAccount: unknown[] = [];
+  let hiddenOnAccount: string[] = options.hidden ?? [];
   let members = [
     { email: 'owner@example.test', admin: true, paid: true },
     { email: 'renter@example.test', admin: false, paid: false },
@@ -205,6 +208,9 @@ async function mockApp(
     } else if (url.pathname === '/api/saved' && options.account) {
       if (body) savedOnAccount = body.listings;
       data = { listings: savedOnAccount };
+    } else if (url.pathname === '/api/hidden' && options.account) {
+      if (body) hiddenOnAccount = body.keys;
+      data = { keys: hiddenOnAccount };
     } else if (url.pathname === '/api/housing' && options.housing) data = options.housing;
     else if (url.pathname === '/api/building-report' && options.nyc)
       data = {
@@ -1665,4 +1671,21 @@ test('an apartment can be hidden from this person’s results, and brought back'
   await expect(page.getByText('12 Grove Street', { exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: /1 hidden by you/ }).click();
   await expect(page.getByText('12 Grove Street', { exact: true })).toBeVisible();
+});
+
+test('a member’s hidden apartments are kept on the account and follow them to another device', async ({ page }) => {
+  await mockApp(page, { listingCount: 3, account: 'renter@example.com' });
+  await expect(page.getByText('12 Grove Street', { exact: true })).toBeVisible();
+  const sent = page.waitForRequest((request) => request.url().endsWith('/api/hidden') && request.method() === 'POST');
+  await page.getByRole('button', { name: 'Hide 12 Grove Street', exact: true }).click();
+  // One key for the apartment (its address and unit, or the listing's own name where it has no unit).
+  const keys = ((await sent).postDataJSON() as { keys: string[] }).keys;
+  expect(keys).toHaveLength(1);
+  await expect(page.getByText('12 Grove Street', { exact: true })).toHaveCount(0);
+  // Another device, with nothing hidden on it: the account's list applies there too.
+  await page.evaluate(() => localStorage.clear());
+  await mockApp(page, { listingCount: 3, account: 'renter@example.com', hidden: keys });
+  await expect(page.getByText('13 Grove Street', { exact: true })).toBeVisible();
+  await expect(page.getByText('12 Grove Street', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /1 hidden by you/ })).toBeVisible();
 });

@@ -4,6 +4,7 @@
  * the app checks them too.
  */
 import { CommutePlaceSchema } from '../commute-place.ts';
+import { HiddenSchema } from '../hidden.ts';
 import * as v from 'valibot';
 import { RENT_GROUPINGS } from '../../src/market.ts';
 import { REGIONS } from '../../src/regions.ts';
@@ -152,6 +153,8 @@ export const StreetViewQuerySchema = v.object({ lat: coordinate(-90, 90), lng: c
 /** POST /api/settings: turn the nightly resync on or off. */
 /** The account's commute destination, or null to forget it. */
 export const CommutePlaceRequestSchema = v.object({ place: v.nullable(CommutePlaceSchema) }, 'Send the commute destination, or null.');
+/** The account's whole list of hidden apartments, replacing what was stored. */
+export const HiddenRequestSchema = v.object({ keys: HiddenSchema }, 'Send the hidden apartments as a list of keys.');
 /** The account's whole list of saved listings, replacing what was stored. */
 export const SavedRequestSchema = v.object(
   { listings: v.array(v.unknown(), 'Send the saved listings as a list.') },

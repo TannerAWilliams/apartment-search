@@ -12,6 +12,7 @@ import { changeHousehold, findHousehold } from './households.ts';
 import { planFor, readPaidList, setPaid } from './plans.ts';
 import { readSaved, writeSaved } from './saved.ts';
 import { readCommutePlace, writeCommutePlace } from './commute-place.ts';
+import { readHidden, writeHidden } from './hidden.ts';
 import type { D1Database } from './storage/d1-bucket.ts';
 
 /** Everything the app keeps for this account, as one JSON document. */
@@ -26,6 +27,7 @@ export async function exportAccount(env: AppEnv & { BUCKET: Bucket }, email: str
     billing,
     savedListings: await readSaved(env.BUCKET, account),
     commutePlace: await readCommutePlace(env.BUCKET, account),
+    hiddenApartments: await readHidden(env.BUCKET, account),
     alerts,
     sharedList: await findHousehold(env.BUCKET, account),
   };
@@ -39,6 +41,7 @@ export async function deleteAccount(env: AppEnv & { BUCKET: Bucket }, database: 
     throw new SearchInputError('Cancel your subscription first (Profile → Manage billing), then delete your account.');
   await writeSaved(env.BUCKET, account, []);
   await writeCommutePlace(env.BUCKET, account, null);
+  if ((await readHidden(env.BUCKET, account)).length) await writeHidden(env.BUCKET, account, []);
   await forgetAlerts(env.BUCKET, account);
   if (await findHousehold(env.BUCKET, account)) await changeHousehold(env.BUCKET, account, { action: 'leave' });
   if ((await readPaidList(env.BUCKET)).includes(account)) await setPaid(env.BUCKET, account, false);

@@ -75,7 +75,11 @@ export const formDefaults = (): DraftFilters => ({
 });
 
 // On the web, the first requests may already be on their way (src/early-requests.ts).
-const transport = withEarlyRequests((globalThis as { walkupEarly?: EarlyRequests }).walkupEarly, (input, init) => fetch(input, init));
+const page = globalThis as { walkupEarly?: EarlyRequests; walkupStarted?: boolean };
+// The app has started: if the page's early script (web/boot.ts) has not run yet, it must not ask again for what
+// the app is about to ask for itself.
+page.walkupStarted = true;
+const transport = withEarlyRequests(page.walkupEarly, (input, init) => fetch(input, init));
 export const api = createApi(API_ORIGIN, transport);
 /**
  * Searches: on the web, answered in the app from the inventory file once it has arrived, and by the server

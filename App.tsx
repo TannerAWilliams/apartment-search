@@ -165,6 +165,7 @@ function ApartmentSearch() {
     loadNeighborhoods,
     savedRequest,
     commutePlaceRequest,
+    hiddenRequest,
     settingsRequest,
     loadHousing,
     checkBuilding,
@@ -348,7 +349,7 @@ function ApartmentSearch() {
     void submit({ ...applied, sort });
   }
 
-  const hiding = useHidden();
+  const hiding = useHidden(account, serverState === 'ready' && account ? hiddenRequest : undefined);
   const savedKeys = useMemo(() => new Set(saved.map(listingKey)), [saved]);
 
   /** Saving belongs to an account: a visitor is asked to create one first. */

@@ -278,6 +278,13 @@ export function useServer({ appliedFilters, searchVersion, submitted, setResult,
     },
     [activeToken],
   );
+  /** The signed-in account's hidden apartments: read them, or replace them with these. */
+  const hiddenRequest = useCallback(
+    async (keys?: string[]) =>
+      (await api<{ keys?: string[] }>('hidden', keys === undefined ? { token: activeToken } : { body: { keys }, token: activeToken }))
+        .keys ?? [],
+    [activeToken],
+  );
   /** Platform settings: anyone can read them; only an admin can change them. */
   const settingsRequest = useCallback(
     (body?: SettingsChange) => api<PlatformSettings>('settings', body ? { body, token: activeToken } : { token: activeToken }),
@@ -426,6 +433,7 @@ export function useServer({ appliedFilters, searchVersion, submitted, setResult,
     loadNeighborhoods,
     savedRequest,
     commutePlaceRequest,
+    hiddenRequest,
     settingsRequest,
     loadHousing,
     checkBuilding,
