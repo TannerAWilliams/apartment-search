@@ -4,5 +4,5 @@
     @media (prefers-color-scheme:dark){.door{fill:#f6f6f6}.stairs{fill:#f73b62}}
   </style>
   <path class="door" d="M6.5 28V13.5a9.5 9.5 0 0 1 19 0V28z"/>
-  <path class="stairs" d="M9 28v-4.2h4.8v-4.2h4.8v-4.2h4.4V28z"/>
+  <path class="stairs" d="M6.5 28v-5.2h6.3v-5.2h6.4v-5.2h6.3V28z"/>
 </svg>

@@ -56,7 +56,7 @@ export function BrandMark({ size = 23 }: { size?: number }) {
   return (
     <Svg width={(size * 21) / 25} height={size} viewBox="5.5 3 21 25" aria-hidden>
       <Path d="M6.5 28V13.5a9.5 9.5 0 0 1 19 0V28z" fill={palette.gray[9]} />
-      <Path d="M9 28v-4.2h4.8v-4.2h4.8v-4.2h4.4V28z" fill={palette.rose[5]} />
+      <Path d="M6.5 28v-5.2h6.3v-5.2h6.4v-5.2h6.3V28z" fill={palette.rose[5]} />
     </Svg>
   );
 }
