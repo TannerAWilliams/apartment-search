@@ -63,6 +63,8 @@ async function mockApp(
     insights?: boolean;
     /** Apartments the signed-in account has already hidden, by address-and-unit key. */
     hidden?: string[];
+    /** What Walkup has worked out about each apartment (its rent against others, its building, other sites). */
+    known?: Partial<ListingData>;
     /** Holds back the answer to the account's hidden list until it settles (a slow connection). */
     hiddenRead?: Promise<void>;
   } = {},
@@ -81,7 +83,7 @@ async function mockApp(
     { email: 'owner@example.test', admin: true, paid: true },
     { email: 'renter@example.test', admin: false, paid: false },
   ];
-  const listings = fixtures(options.listingCount);
+  const listings = fixtures(options.listingCount).map((listing) => ({ ...listing, ...options.known }));
   if (options.nyc) Object.assign(listings[0], { city: 'Brooklyn', state: 'NY', county: 'Kings', zip: '11201', region: 'nyc' });
   if (options.commute)
     Object.assign(listings[0], {
@@ -1849,4 +1851,29 @@ test('an apartment hidden while the account’s list is still on its way stays h
   const last = requests.filter((r) => r.path === '/api/hidden' && r.method === 'POST').at(-1)!.body as { keys: string[] };
   expect(last.keys).toHaveLength(2);
   expect(last.keys[0]).toBe('NJ|07302|99 old st|');
+});
+
+test('the home page shows what a card carries on a real apartment, and opens it', async ({ page }) => {
+  await mockApp(page, {
+    start: '/',
+    known: {
+      neighborhood: 'Downtown',
+      insights: { vsMarket: -0.18 } as ListingData['insights'],
+      building: { openViolations: 0, complaints: 0, bedbugs: false, flood: false } as ListingData['building'],
+      sources: [
+        { id: 'streeteasy', name: 'StreetEasy', kind: 'feed', url: 'https://streeteasy.com/building/test/1' },
+        { id: 'zumper', name: 'Zumper', kind: 'feed', url: 'https://www.zumper.com/apartments/1' },
+      ] as ListingData['sources'],
+    },
+  });
+  await expect(
+    page.getByText('Here is one of them, and what Walkup tells you about it that its listing does not.', { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole('heading', { name: '12 Grove Street', exact: true })).toBeVisible();
+  await expect(page.getByText('18% below similar', { exact: true })).toBeVisible();
+  await expect(page.getByText('Building A', { exact: true })).toBeVisible();
+  await expect(page.getByText('On 2 sites', { exact: true })).toBeVisible();
+  await expect(page.getByText('StreetEasy and Zumper list it. You see it once, with every link.', { exact: true })).toBeVisible();
+  await page.getByRole('link', { name: 'See this apartment', exact: true }).click();
+  await expect(page).toHaveURL(/\/listing\//);
 });

@@ -1,7 +1,7 @@
 /**
  * The home page, at the site's address, for everyone. The search comes first, as on a search site's front page;
- * under it the one thing Walkup charges for (an email when a new apartment matches), then three reasons to
- * search here. It shows no apartments, so it opens at once; the search the app runs on opening readies the first
+ * under it the one thing Walkup charges for (an email when a new apartment matches), then what a card carries,
+ * shown on one real apartment. It asks for no apartments of its own, so it opens at once; the search the app runs on opening readies the first
  * search made here. The longer account of what Walkup does, and its prices, are pages of their own
  * (AboutPage.tsx).
  */
@@ -10,33 +10,38 @@ import { HomeSearch, type NeighborhoodLoader } from '../components/HomeSearch.ts
 import { BellIcon } from '../components/Icons.tsx';
 import { Button } from '../components/ui.tsx';
 import type { SearchFilters } from '../domain.ts';
+import type { HomeExample } from '../home-example.ts';
 import { colors, styles } from '../styles.ts';
 
 /** How much there is to search, when the app knows: every apartment and the sites they came from. */
 export type SiteStats = { apartments: number; sources: number };
 
+const NAMES = new Intl.ListFormat('en-US', { style: 'long', type: 'conjunction' });
+/** "17,000+": the count rounded down, so it stays true as listings come and go through the day. */
+const rounded = (count: number) => (count >= 1000 ? `${(Math.floor(count / 500) * 500).toLocaleString('en-US')}+` : String(count));
+
 /**
- * Three reasons to search here, each led by the figure that makes it concrete. The counts are the site's own,
- * from the search it opens with; until that arrives the sentences stand without them.
+ * What Walkup adds to an apartment, each as the figure a card carries and what stands behind it. With an example
+ * apartment the figures are its own; without one (the listings have not arrived) they are described.
  */
-function reasons(stats: SiteStats | null): [figure: string, title: string, body: string][] {
-  // "17,000+": the count rounded down, so it stays true as listings come and go through the day.
-  const apartments = stats && stats.apartments >= 1000 ? `${(Math.floor(stats.apartments / 500) * 500).toLocaleString('en-US')}+` : null;
+function notes(example: HomeExample | null): [figure: string, body: string][] {
+  const sites = example?.sites ?? [];
   return [
     [
-      stats ? `${stats.sources} sites` : 'One search',
-      'Stop checking ten apps',
-      `${apartments ? `${apartments} apartments` : 'Apartments'} from listing sites, brokerages and landlords in one search. The same apartment on three sites shows once.`,
+      example?.below ?? 'Rent vs similar',
+      example?.below
+        ? 'Its rent against similar apartments nearby. Every apartment gets this, so you see what is overpriced before you tour.'
+        : 'Every rent is compared with similar apartments nearby, so you see what is overpriced before you tour.',
     ],
     [
-      '% vs similar',
-      'See what is overpriced',
-      'Every rent is compared with similar apartments nearby, so a card says “12% below similar”, and an apartment listed at two prices is flagged.',
+      example?.grade ? `Building ${example.grade}` : 'Building grade',
+      'Open violations, bedbugs, rats, heat complaints, evictions and Housing Court cases from city records, as one grade from A to D.',
     ],
     [
-      'A to D',
-      'Check the building before you tour',
-      'Open violations, bedbugs, rats, heat complaints, evictions and Housing Court cases from city records, as one grade.',
+      sites.length ? `On ${sites.length} sites` : 'Shown once',
+      sites.length
+        ? `${NAMES.format(sites.length > 3 ? [...sites.slice(0, 3), 'others'] : sites)} list it. You see it once, with every link.`
+        : 'The same apartment on three sites shows once, with every link.',
     ],
   ];
 }
@@ -46,9 +51,14 @@ export function HomePage({
   onOpen,
   loadNeighborhoods,
   stats = null,
+  example = null,
+  onExample,
 }: {
   /** The site's size, once the opening search has said. */
   stats?: SiteStats | null;
+  /** A real apartment from the listings in hand, shown as the example of what a card carries; and opening it. */
+  example?: HomeExample | null;
+  onExample?: (id: string) => void;
   /** Searches with these filters and opens the results. */
   onSearch: (changes: Partial<SearchFilters>) => void;
   onOpen: (tab: string) => void;
@@ -98,27 +108,73 @@ export function HomePage({
         <Button onPress={() => onOpen('alerts')}>Get a free alert</Button>
       </View>
 
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 14 }}>
-        {reasons(stats).map(([figure, title, body]) => (
-          <View
-            key={title}
-            style={{
-              flexGrow: 1,
-              flexBasis: wide ? 300 : 260,
-              gap: 6,
-              padding: 18,
-              borderRadius: 16,
-              borderWidth: 1,
-              borderColor: colors.border,
-            }}
-          >
-            <Text style={{ fontSize: 26, lineHeight: 30, fontWeight: '700', letterSpacing: -0.6, color: colors.ink }}>{figure}</Text>
-            <Text accessibilityRole="header" style={{ fontSize: 17, fontWeight: '600', color: colors.ink }}>
-              {title}
-            </Text>
-            <Text style={styles.bodyText}>{body}</Text>
-          </View>
-        ))}
+      {/* What a card carries, shown on a real apartment rather than claimed. */}
+      <View style={{ gap: 12 }}>
+        <Text
+          accessibilityRole="header"
+          style={{ fontSize: 22, lineHeight: 28, fontWeight: '700', letterSpacing: -0.4, color: colors.ink }}
+        >
+          {stats
+            ? `${rounded(stats.apartments)} apartments from ${stats.sources} sites, checked today`
+            : 'Apartments from listing sites, brokerages and landlords, in one search'}
+        </Text>
+        <Text style={styles.bodyText}>
+          {example
+            ? 'Here is one of them, and what Walkup tells you about it that its listing does not.'
+            : 'What Walkup tells you about each one that its listing does not:'}
+        </Text>
+        <View style={{ borderRadius: 16, borderWidth: 1, borderColor: colors.border, overflow: 'hidden' }}>
+          {example && (
+            <View style={{ padding: 18, gap: 2, backgroundColor: colors.light }}>
+              <Text accessibilityRole="header" numberOfLines={1} style={{ fontSize: 17, fontWeight: '600', color: colors.ink }}>
+                {example.title}
+              </Text>
+              <Text numberOfLines={1} style={styles.smallMuted}>
+                {example.place}
+              </Text>
+              <Text style={{ fontSize: 22, lineHeight: 28, fontWeight: '700', color: colors.ink }}>
+                {example.rent} <Text style={styles.smallMuted}>/ month</Text>
+              </Text>
+            </View>
+          )}
+          {notes(example).map(([figure, body], index) => (
+            <View
+              key={figure}
+              style={[
+                { flexDirection: wide ? 'row' : 'column', gap: wide ? 16 : 6, padding: 18, alignItems: wide ? 'center' : 'flex-start' },
+                (index > 0 || example) && { borderTopWidth: 1, borderTopColor: colors.border },
+              ]}
+            >
+              <View style={{ width: wide ? 190 : undefined }}>
+                <Text
+                  style={{
+                    alignSelf: 'flex-start',
+                    fontSize: 14,
+                    fontWeight: '700',
+                    color: colors.ink,
+                    borderWidth: 1.5,
+                    borderColor: colors.accent,
+                    borderRadius: 999,
+                    paddingVertical: 4,
+                    paddingHorizontal: 12,
+                  }}
+                >
+                  {figure}
+                </Text>
+              </View>
+              <Text style={[styles.bodyText, { flex: wide ? 1 : undefined }]}>{body}</Text>
+            </View>
+          ))}
+          {example && onExample && (
+            <Pressable
+              accessibilityRole="link"
+              onPress={() => onExample(example.id)}
+              style={{ padding: 18, borderTopWidth: 1, borderTopColor: colors.border }}
+            >
+              <Text style={styles.linkText}>See this apartment</Text>
+            </Pressable>
+          )}
+        </View>
       </View>
       <Pressable accessibilityRole="link" onPress={() => onOpen('about')} style={{ alignSelf: 'flex-start', paddingVertical: 6 }}>
         <Text style={styles.linkText}>How Walkup works</Text>

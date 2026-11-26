@@ -34,6 +34,7 @@ import {
 } from './src/app-shared.ts';
 import { Filters } from './src/components/Filters.tsx';
 import { HomePage, type SiteStats } from './src/screens/HomePage.tsx';
+import { type HomeExample, homeExample } from './src/home-example.ts';
 import { AccountPrompt } from './src/components/AccountPrompt.tsx';
 import { StreetViewContext } from './src/components/ListingThumbnail.tsx';
 // No extension: the bundler picks liberty-snapshot.web.tsx in the browser and the stub elsewhere.
@@ -227,6 +228,11 @@ function ApartmentSearch() {
     const plain = ({ workplace: _place, customWorkplace: _custom, ...rest }: ReturnType<typeof formDefaults>) => JSON.stringify(rest);
     if (plain(applied) === plain(formDefaults())) setSiteStats({ apartments: result.eligibleTotal, sources: result.sourceCounts.length });
   }, [result, applied, siteStats]);
+  // The home page's example apartment: the one among the first results that shows the most (src/home-example.ts).
+  const [example, setExample] = useState<HomeExample | null>(null);
+  useEffect(() => {
+    if (!example && result.mode === 'live') setExample(homeExample(result.matches));
+  }, [result, example]);
   const savedByKey = useMemo(() => new Map(saved.map((listing) => [listingKey(listing), listing])), [saved]);
   const savedResults = useMemo(() => localSearch(saved, SAVED_FILTERS, result.workplace, 'saved'), [saved, result.workplace]);
   // A saved apartment is a copy from the day it was saved. Where the apartment is still listed, the copy is
@@ -1002,6 +1008,8 @@ function ApartmentSearch() {
                     {view === 'home' && (
                       <HomePage
                         stats={siteStats}
+                        example={example}
+                        onExample={(id) => navigateTab('listing=' + encodeURIComponent(id))}
                         onOpen={navigateTab}
                         // A search from the home page starts fresh, not from the filters of an earlier one.
                         onSearch={(changes) => {
