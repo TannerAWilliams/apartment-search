@@ -268,7 +268,7 @@ test('homepage searches saved all-region inventory without starting a refresh', 
 });
 
 test('the footer links to the market reports, which are pages of their own', async ({ page }) => {
-  await mockApp(page);
+  await mockApp(page, { start: '/' });
   const link = page.getByRole('link', { name: 'Market reports', exact: true });
   await expect(link).toBeVisible();
   await expect(link).toHaveAttribute('href', '/blog');
@@ -741,10 +741,11 @@ test('market history charts one area, compares another, and says when figures ca
   await page.getByRole('tab', { name: 'Market', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Rent prices', exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Median rent', exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Connecticut', exact: true })).toBeVisible();
+  // New York City only: no state to choose.
+  await expect(page.getByRole('button', { name: 'Connecticut', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'New Jersey', exact: true })).toHaveCount(0);
 
-  // State, then borough, then neighborhood.
-  await page.getByRole('button', { name: 'New York', exact: true }).click();
+  // Borough, then neighborhood.
   await expect.poll(() => marketRequests).toContain('nyc|city');
   await expect(page.getByText('1 BR · New York', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Borough Brooklyn, NY', exact: true }).click();
@@ -792,14 +793,7 @@ test('market history charts one area, compares another, and says when figures ca
   await expect.poll(() => marketRequests).toContain('nyc|zip');
   await expect(page.getByText(/StreetEasy has no history for 11215/).first()).toBeVisible();
   await zip.fill('07302');
-  await expect.poll(() => marketRequests).toContain('all|zip');
   await expect(page.getByText('No listings in 07302', { exact: true })).toBeVisible();
-
-  // New Jersey: its cities; StreetEasy covers New York City only.
-  await page.getByRole('button', { name: 'New Jersey', exact: true }).click();
-  await page.getByRole('button', { name: 'City or town Jersey City, NJ', exact: true }).click();
-  await expect(page.getByText('1 BR · Jersey City, NJ', { exact: true })).toBeVisible();
-  await expect(page.getByText(/StreetEasy has no history for Jersey City/).first()).toBeVisible();
 
   // Sources are named on the page, one tap away.
   await page.getByRole('button', { name: 'Where these numbers come from', exact: true }).click();

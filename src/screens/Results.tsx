@@ -215,9 +215,11 @@ export function Results({
   );
   const savedView = result.mode === 'saved';
   // Apartments this person hid are left out of their results (never out of their saved list).
-  const { hidden, showAll } = useContext(HiddenContext);
-  const matches = savedView ? result.matches : result.matches.filter((listing) => !hidden.has(listingKey(listing)));
-  const hiddenHere = result.matches.length - matches.length;
+  // They can be looked at again: shown in place, each with a button that brings it back.
+  const { hidden } = useContext(HiddenContext);
+  const [showHidden, setShowHidden] = useState(false);
+  const hiddenHere = savedView ? 0 : result.matches.filter((listing) => hidden.has(listingKey(listing))).length;
+  const matches = savedView || showHidden ? result.matches : result.matches.filter((listing) => !hidden.has(listingKey(listing)));
   const shown = matches.slice(0, visible);
   const coverage = (status || (result.notices?.length ?? 0) > 0) && (
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: 10, rowGap: 2 }}>
@@ -272,10 +274,15 @@ export function Results({
                 applied.maxTransitMinutes != null ||
                 applied.maxDrivingMinutes != null ||
                 applied.maxCommuteMinutes != null) && <Text style={styles.smallMuted}>{summary}</Text>}
-            {hiddenHere > 0 && showAll && (
-              <Pressable accessibilityRole="button" onPress={showAll} style={{ alignSelf: 'flex-start', paddingVertical: 2 }}>
+            {hiddenHere > 0 && (
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => setShowHidden(!showHidden)}
+                style={{ alignSelf: 'flex-start', paddingVertical: 2 }}
+              >
                 <Text style={styles.smallMuted}>
-                  {hiddenHere} hidden by you · <Text style={styles.linkText}>Show hidden apartments</Text>
+                  {hiddenHere} hidden by you ·{' '}
+                  <Text style={styles.linkText}>{showHidden ? 'Hide them again' : 'Show hidden apartments'}</Text>
                 </Text>
               </Pressable>
             )}

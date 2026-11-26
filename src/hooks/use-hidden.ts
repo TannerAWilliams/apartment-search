@@ -16,7 +16,13 @@ const SYNCED = 'walkup.hidden.account';
 /** The most kept; the oldest are forgotten first. */
 const MAX_HIDDEN = 1000;
 
-export const HiddenContext = createContext<{ hidden: ReadonlySet<string>; hide?: (listing: ListingData) => void; showAll?: () => void }>({
+export const HiddenContext = createContext<{
+  hidden: ReadonlySet<string>;
+  hide?: (listing: ListingData) => void;
+  /** Brings one apartment back into the results. */
+  unhide?: (listing: ListingData) => void;
+  showAll?: () => void;
+}>({
   hidden: new Set(),
 });
 
@@ -65,6 +71,7 @@ export function useHidden(account: string | null = null, request?: HiddenRequest
     (listing: ListingData) => keep([...keys.filter((key) => key !== listingKey(listing)), listingKey(listing)].slice(-MAX_HIDDEN)),
     [keys, keep],
   );
+  const unhide = useCallback((listing: ListingData) => keep(keys.filter((key) => key !== listingKey(listing))), [keys, keep]);
   const showAll = useCallback(() => keep([]), [keep]);
-  return useMemo(() => ({ hidden: new Set(keys) as ReadonlySet<string>, hide, showAll }), [keys, hide, showAll]);
+  return useMemo(() => ({ hidden: new Set(keys) as ReadonlySet<string>, hide, unhide, showAll }), [keys, hide, unhide, showAll]);
 }

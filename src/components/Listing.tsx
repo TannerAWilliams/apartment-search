@@ -201,7 +201,8 @@ export const Listing = memo(function Listing({
   const destination = workplace.label.split(',')[0]!.trim().slice(0, 28);
   // No destination set yet: a question to answer, never minutes to a place the person did not choose.
   const { known: commuteKnown, add: addCommute } = useContext(CommuteContext);
-  const { hide } = useContext(HiddenContext);
+  const { hide, unhide, hidden } = useContext(HiddenContext);
+  const isHidden = hidden.has(listingKey(listing));
   const details = [
     presentation.bedsLabel,
     baths == null ? '' : `${baths} ${baths === 1 ? 'bath' : 'baths'}`,
@@ -343,7 +344,21 @@ export const Listing = memo(function Listing({
           </View>
         </Pressable>
         {/* Not for me: takes the apartment out of this person's results. Not offered on a saved one. */}
-        {hide && !onRemove && !saved && (
+        {/* A hidden one, when hidden apartments are being shown, has the way back in its place. */}
+        {hide && !onRemove && !saved && isHidden && (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Show ${title} again`}
+            onPress={() => unhide?.(listing)}
+            hitSlop={8}
+            style={[card.heart, { right: 52 }]}
+          >
+            <View style={{ height: 28, borderRadius: 14, paddingHorizontal: 10, backgroundColor: '#00000099', justifyContent: 'center' }}>
+              <Text style={{ color: '#ffffff', fontSize: 12, fontWeight: '600' }}>Hidden · Show again</Text>
+            </View>
+          </Pressable>
+        )}
+        {hide && !onRemove && !saved && !isHidden && (
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={`Hide ${title}`}

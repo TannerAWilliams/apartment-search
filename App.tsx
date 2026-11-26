@@ -28,6 +28,7 @@ import {
   formDefaults,
   api,
   searchApartments,
+  inventory,
 } from './src/app-shared.ts';
 import { Filters } from './src/components/Filters.tsx';
 import { HomePage, type SiteStats } from './src/screens/HomePage.tsx';
@@ -226,6 +227,22 @@ function ApartmentSearch() {
   }, [result, applied, siteStats]);
   const savedByKey = useMemo(() => new Map(saved.map((listing) => [listingKey(listing), listing])), [saved]);
   const savedResults = useMemo(() => localSearch(saved, SAVED_FILTERS, result.workplace, 'saved'), [saved, result.workplace]);
+  // A saved apartment is a copy from the day it was saved. Where the apartment is still listed, the copy is
+  // brought up to date from the listings the app already holds (no request is made for it): its rent, its
+  // baths, the nearest train and what has been learned about its building since.
+  useEffect(() => {
+    if (serverState !== 'ready' || saved.length === 0) return;
+    let current = true;
+    const place = { workplace: applied.workplace, customWorkplace: applied.customWorkplace };
+    void Promise.all(saved.map((listing) => inventory.listing(listing.id, place).catch(() => undefined))).then((fresh) => {
+      if (!current) return;
+      const next = saved.map((listing, index) => (fresh[index] ? { ...listing, ...fresh[index] } : listing));
+      if (JSON.stringify(next) !== JSON.stringify(saved)) setSaved(() => next);
+    });
+    return () => {
+      current = false;
+    };
+  }, [saved, serverState, applied.workplace, applied.customWorkplace, setSaved]);
 
   /** A search asked for while the app was still connecting. */
   const waitingSearch = useRef<[typeof draft | typeof applied, boolean] | null>(null);
@@ -349,6 +366,8 @@ function ApartmentSearch() {
     void submit({ ...applied, sort });
   }
 
+  // The map is offered for saved apartments only when at least one of them has a place on it.
+  const savedOnMap = useMemo(() => saved.some((listing) => listing.latitude != null && listing.longitude != null), [saved]);
   const hiding = useHidden(account, serverState === 'ready' && account ? hiddenRequest : undefined);
   const savedKeys = useMemo(() => new Set(saved.map(listingKey)), [saved]);
 
@@ -668,7 +687,7 @@ function ApartmentSearch() {
               // Room under the last line for the floating map pill, so it never covers the footer.
               contentContainerStyle={[
                 styles.scroll,
-                WEB_MAP && (view === 'results' || (view === 'saved' && saved.length > 0)) && { paddingBottom: 88 },
+                WEB_MAP && (view === 'results' || (view === 'saved' && savedOnMap)) && { paddingBottom: 88 },
               ]}
             >
               <View style={styles.shell}>
@@ -1066,28 +1085,31 @@ function ApartmentSearch() {
                     )}
                   </Suspense>
                 </View>
-                <View style={styles.footer}>
-                  <Text style={styles.smallMuted}>Walkup · New York, New Jersey and Connecticut</Text>
-                  {/* What Walkup is and costs, and the monthly market reports, which are pages of their own written
+                {/* What Walkup is, costs and publishes: on the pages people read, not under every tool and list. */}
+                {FOOTER_PAGES.includes(view) && (
+                  <View style={styles.footer}>
+                    <Text style={styles.smallMuted}>Walkup · Apartments in and around New York City</Text>
+                    {/* What Walkup is and costs, and the monthly market reports, which are pages of their own written
                     from the same figures as the Market tab. */}
-                  <View style={[styles.chipRow, { alignItems: 'center' }]}>
-                    <Pressable accessibilityRole="link" onPress={() => navigateTab('about')} style={{ paddingVertical: 6 }}>
-                      <Text style={styles.linkText}>About</Text>
-                    </Pressable>
-                    <Text style={styles.smallMuted}>·</Text>
-                    <Pressable accessibilityRole="link" onPress={() => navigateTab('pricing')} style={{ paddingVertical: 6 }}>
-                      <Text style={styles.linkText}>Pricing</Text>
-                    </Pressable>
-                    <Text style={styles.smallMuted}>·</Text>
-                    <ExternalLink url={`${API_ORIGIN}/blog`} onError={setError} style={{ paddingVertical: 6 }}>
-                      <Text style={styles.linkText}>Market reports</Text>
-                    </ExternalLink>
+                    <View style={[styles.chipRow, { alignItems: 'center' }]}>
+                      <Pressable accessibilityRole="link" onPress={() => navigateTab('about')} style={{ paddingVertical: 6 }}>
+                        <Text style={styles.linkText}>About</Text>
+                      </Pressable>
+                      <Text style={styles.smallMuted}>·</Text>
+                      <Pressable accessibilityRole="link" onPress={() => navigateTab('pricing')} style={{ paddingVertical: 6 }}>
+                        <Text style={styles.linkText}>Pricing</Text>
+                      </Pressable>
+                      <Text style={styles.smallMuted}>·</Text>
+                      <ExternalLink url={`${API_ORIGIN}/blog`} onError={setError} style={{ paddingVertical: 6 }}>
+                        <Text style={styles.linkText}>Market reports</Text>
+                      </ExternalLink>
+                    </View>
                   </View>
-                </View>
+                )}
               </View>
             </ScrollView>
             {/* Map and list switch from a floating pill above the tab bar. */}
-            {WEB_MAP && (view === 'results' || (view === 'saved' && saved.length > 0)) && (
+            {WEB_MAP && (view === 'results' || (view === 'saved' && savedOnMap)) && (
               <View pointerEvents="box-none" style={mobileStyles.floatingRow}>
                 <Pressable
                   accessibilityRole="button"
@@ -1136,6 +1158,8 @@ function ApartmentSearch() {
 }
 
 /** Pages opened from Profile, which lead back to it. */
+/** The pages that end with the footer: the ones read, not the tools and lists. */
+const FOOTER_PAGES = ['home', 'about', 'pricing', 'more', 'terms', 'privacy'];
 const PROFILE_PAGES = [
   'afford',
   'apply',

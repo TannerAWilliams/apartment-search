@@ -7,7 +7,7 @@ import { Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-na
 import { formatSnapshotMonth, rentAreas, SNAPSHOT_MONTH, SNAPSHOT_SOURCE } from '../market.ts';
 // Resolves to offline-rent-data.web.ts on the web, which bundles no data.
 import { offlineRentData } from '../offline-rent-data';
-import { NYC_BOROUGHS, searchBorough } from '../regions.ts';
+import { NYC_BOROUGHS } from '../regions.ts';
 import { formatRent } from '../search.ts';
 import { styles } from '../styles.ts';
 import { Button, Chip, Disclosure, Field, Link, toggleProps } from './ui.tsx';
@@ -60,9 +60,8 @@ const BOROUGH_LABELS: Record<string, string> = Object.fromEntries(
 /** Where the chart starts: the borough or state of the search, when the snapshot covers it. */
 function startingPoint(region: string): { state: State; choice: Choice } {
   if (BOROUGH_LABELS[region]) return { state: 'nyc', choice: { level: 'city', id: BOROUGH_LABELS[region]! } };
-  if (region === 'nyc' || region === 'manhattan-brooklyn') return { state: 'nyc', choice: STATE_CHOICE };
-  if (region === 'nj') return { state: 'nj', choice: STATE_CHOICE };
-  return { state: 'all', choice: STATE_CHOICE };
+  // The page covers New York City: the figures for New Jersey and Connecticut were too thin to stand beside it.
+  return { state: 'nyc', choice: STATE_CHOICE };
 }
 
 /** A row of choices: one line that scrolls sideways on a phone, wrapping lines on a wider screen. */
@@ -208,7 +207,6 @@ export function RentChart({
       return;
     }
     // A ZIP is looked up across both states, so it is found whichever state was chosen.
-    if (state !== 'all' && !(state === 'nyc' && searchBorough({ state: 'NY', zip: digits }))) setState('all');
     setChoice({ level: 'zip', id: digits });
   }
 
@@ -357,14 +355,6 @@ export function RentChart({
         <Text style={styles.bodyText}>What apartments rent for in each area, and how that has changed.</Text>
       </View>
       <View style={styles.chartControls}>
-        <Text style={styles.fieldLabel}>State</Text>
-        <ChipLine>
-          {STATES.map(([id, label]) => (
-            <Chip key={id} selected={state === id} onPress={() => chooseState(id)}>
-              {label}
-            </Chip>
-          ))}
-        </ChipLine>
         {state !== 'all' && stateCities.length > 0 && (
           <>
             <Text style={styles.fieldLabel}>{levelName}</Text>
@@ -486,22 +476,15 @@ export function RentChart({
       <Disclosure title="Where these numbers come from">
         <View style={styles.chartSource}>
           <Text style={styles.smallMuted}>
-            Recent months, New York City and New Jersey: median asking rents of new listings in FirstMover’s monthly snapshot, since May
-            2026.
+            Recent months: median asking rents of new New York City listings in FirstMover’s monthly snapshot, since May 2026.
           </Text>
           <Link label="FirstMover snapshot data" url={SNAPSHOT_SOURCE} onError={onError} />
           <Text style={styles.smallMuted}>
-            Longer history, New York City only: StreetEasy’s Data Dashboard, monthly since 2010, by borough and neighborhood.
+            Longer history: StreetEasy’s Data Dashboard, monthly since 2010, by borough and neighborhood.
           </Text>
           <Link label="StreetEasy Data Dashboard" url={DASHBOARD_URL} onError={onError} />
-          <Text style={styles.smallMuted}>Connecticut: medians of the apartments currently listed on Walkup.</Text>
         </View>
       </Disclosure>
-      {dataset === 'market' && (
-        <Pressable accessibilityRole="button" onPress={() => (setDataset('saved'), chooseState(state))} style={{ paddingVertical: 6 }}>
-          <Text style={styles.linkText}>Compare with your saved apartments</Text>
-        </Pressable>
-      )}
     </View>
   );
 }

@@ -161,7 +161,7 @@ function saveButton(point: MapPoint, { save, isSaved }: SaveActions) {
     button.setAttribute('aria-label', (saved ? 'Saved: ' : 'Save ') + point.title);
     Object.assign(button.style, BUTTON, {
       border: `1px solid ${colors.ink}`,
-      background: '#ffffff',
+      background: colors.surface,
       color: saved ? colors.accent : colors.ink,
       cursor: saved ? 'default' : 'pointer',
     });
@@ -189,6 +189,7 @@ function popupContent(listings: MapPoint[], actions: SaveActions) {
   });
   listings.forEach((point, index) => {
     const { title, rent, bedrooms, kind, url, transitSeconds } = point;
+    const baths = (point as { bathrooms?: number }).bathrooms;
     const row = document.createElement('div');
     Object.assign(row.style, {
       padding: '4px 0 10px',
@@ -204,7 +205,12 @@ function popupContent(listings: MapPoint[], actions: SaveActions) {
     const detail = document.createElement('div');
     Object.assign(detail.style, { fontSize: '13px', color: colors.muted, marginTop: '2px' });
     const status = ({ snapshot: 'Dated listing', cached: 'Last saved result' } as Record<string, string>)[kind];
-    detail.textContent = [bedroomLabel(bedrooms), status, transitSeconds == null ? null : `${Math.ceil(transitSeconds / 60)} min transit`]
+    detail.textContent = [
+      bedroomLabel(bedrooms),
+      baths ? `${baths} ${baths === 1 ? 'bath' : 'baths'}` : null,
+      status,
+      transitSeconds == null ? null : `${Math.ceil(transitSeconds / 60)} min transit`,
+    ]
       .filter(Boolean)
       .join(' · ');
     const buttons = document.createElement('div');
@@ -228,6 +234,17 @@ function popupContent(listings: MapPoint[], actions: SaveActions) {
     content.append(row);
   });
   return content;
+}
+
+// Leaflet draws a pop-up as a white card whatever the theme, and the card's text is the theme's ink: in the dark
+// theme that was near-white text on white. The card takes the theme's surface, so its text is always readable.
+if (typeof document !== 'undefined' && !document.getElementById('walkup-map-popup')) {
+  const sheet = document.createElement('style');
+  sheet.id = 'walkup-map-popup';
+  sheet.textContent =
+    `.leaflet-popup-content-wrapper,.leaflet-popup-tip{background:${colors.surface};color:${colors.ink}}` +
+    `.leaflet-container a.leaflet-popup-close-button{color:${colors.muted}}`;
+  document.head.append(sheet);
 }
 
 /** OpenFreeMap's Liberty map style. */

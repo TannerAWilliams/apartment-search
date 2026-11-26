@@ -23,6 +23,8 @@ export function mapPoint(listing: ListingData, source?: string) {
     longitude: listing.longitude,
     rent: listing.rent,
     bedrooms: listing.bedrooms,
+    // Only when the listing says: the pop-up shows it beside the bedrooms.
+    ...(typeof listing.bathrooms === 'number' && listing.bathrooms > 0 ? { bathrooms: listing.bathrooms } : {}),
     title: [listing.address, listing.unit && '#' + listing.unit.replace(/^#/, '')].filter(Boolean).join(' '),
     name: original?.name,
     url: original?.url,

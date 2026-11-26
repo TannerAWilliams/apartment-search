@@ -57,7 +57,8 @@ export const TOOLS: Record<'results' | 'saved', [string, string, string][]> = {
   ],
 };
 export const EMPTY_POINTS: NonNullable<SearchResult['mapPoints']> = [];
-export const SAVED_FILTERS = { ...SEARCH_DEFAULTS, bedrooms: null, maxRent: null, liveOnly: false };
+// The saved list is short, so its map points always come with it: the Saved map had none to draw without them.
+export const SAVED_FILTERS = { ...SEARCH_DEFAULTS, bedrooms: null, maxRent: null, liveOnly: false, includeMap: true };
 export const CHECK_TIME = new Intl.DateTimeFormat('en-US', {
   timeZone: 'America/New_York',
   month: 'short',
