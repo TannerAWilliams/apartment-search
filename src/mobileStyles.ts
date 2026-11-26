@@ -8,7 +8,7 @@ export const mobileStyles = StyleSheet.create({
     gap: 8,
     paddingHorizontal: 24,
     paddingVertical: 12,
-    backgroundColor: colors.white,
+    backgroundColor: colors.surface,
   },
   // The search summary is a pill with a soft shadow, the app's main way into its filters.
   summary: {
@@ -22,7 +22,7 @@ export const mobileStyles = StyleSheet.create({
     borderRadius: 999,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: colors.white,
+    backgroundColor: colors.surface,
     shadowColor: '#000',
     shadowOpacity: 0.08,
     shadowRadius: 12,
@@ -38,7 +38,7 @@ export const mobileStyles = StyleSheet.create({
   sheet: {
     width: '100%',
     maxHeight: '90%',
-    backgroundColor: colors.white,
+    backgroundColor: colors.surface,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     overflow: 'hidden',
@@ -65,7 +65,7 @@ export const mobileStyles = StyleSheet.create({
     borderColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.white,
+    backgroundColor: colors.surface,
   },
   floatingRow: { position: 'absolute', left: 0, right: 0, bottom: 92, alignItems: 'center', zIndex: 5 },
   floatingPill: {
@@ -82,11 +82,11 @@ export const mobileStyles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     elevation: 6,
   },
-  floatingText: { color: colors.white, fontSize: 14, lineHeight: 18, fontWeight: '600' },
-  bottomNav: { flexDirection: 'row', backgroundColor: colors.white, borderTopWidth: 1, borderColor: palette.gray[1], paddingBottom: 8 },
+  floatingText: { color: colors.surface, fontSize: 14, lineHeight: 18, fontWeight: '600' },
+  bottomNav: { flexDirection: 'row', backgroundColor: colors.surface, borderTopWidth: 1, borderColor: palette.gray[1], paddingBottom: 8 },
   navItem: { flex: 1, minHeight: 60, alignItems: 'center', justifyContent: 'center', gap: 4 },
   // The selected tab is shown by its accent color alone.
   navSelected: {},
-  navTextSelected: { color: colors.green },
+  navTextSelected: { color: colors.accent },
   overlayCentered: { justifyContent: 'center', padding: 24 },
 });

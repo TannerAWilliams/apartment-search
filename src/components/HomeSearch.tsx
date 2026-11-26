@@ -96,7 +96,7 @@ export function HomeSearch({
     setFocused(false);
   };
 
-  const box = { borderWidth: 1, borderColor: colors.border, borderRadius: 12, backgroundColor: colors.white } as const;
+  const box = { borderWidth: 1, borderColor: colors.border, borderRadius: 12, backgroundColor: colors.surface } as const;
   return (
     <View style={{ gap: 14, zIndex: 5 }}>
       <View
@@ -142,10 +142,10 @@ export function HomeSearch({
                     borderRadius: 999,
                     borderWidth: 1,
                     borderColor: on ? colors.ink : colors.border,
-                    backgroundColor: on ? colors.ink : colors.white,
+                    backgroundColor: on ? colors.ink : colors.surface,
                   }}
                 >
-                  <Text style={{ fontSize: 13, fontWeight: '600', color: on ? colors.white : colors.ink }}>{label}</Text>
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: on ? colors.surface : colors.ink }}>{label}</Text>
                 </Pressable>
               );
             })}
@@ -177,7 +177,7 @@ export function HomeSearch({
               alignItems: 'center',
               justifyContent: 'center',
               gap: 8,
-              backgroundColor: colors.green,
+              backgroundColor: colors.primary,
               borderRadius: 999,
               paddingHorizontal: 20,
               minHeight: 48,
@@ -185,8 +185,8 @@ export function HomeSearch({
             pressed && styles.pressed,
           ]}
         >
-          <SearchIcon color={colors.white} size={18} />
-          <Text style={{ color: colors.white, fontWeight: '700', fontSize: 15 }}>Search</Text>
+          <SearchIcon color={colors.surface} size={18} />
+          <Text style={{ color: colors.surface, fontWeight: '700', fontSize: 15 }}>Search</Text>
         </Pressable>
       </View>
       {suggestions.length > 0 && (

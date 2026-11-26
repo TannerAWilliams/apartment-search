@@ -55,9 +55,9 @@ const thumbnail = StyleSheet.create({
     marginLeft: -9,
     marginTop: -9,
     borderRadius: 9,
-    backgroundColor: colors.green,
+    backgroundColor: colors.accent,
     borderWidth: 3,
-    borderColor: colors.white,
+    borderColor: colors.surface,
   },
   credit: {
     position: 'absolute',

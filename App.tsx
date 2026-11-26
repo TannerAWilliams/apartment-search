@@ -505,7 +505,7 @@ function ApartmentSearch() {
             ]}
             onPress={() => navigateTab(key)}
           >
-            <Icon color={selected ? colors.green : wide ? colors.ink : colors.muted} />
+            <Icon color={selected ? colors.accent : wide ? colors.ink : colors.muted} />
             <Text
               style={
                 wide ? { fontSize: 15, fontWeight: '600', color: colors.ink } : [styles.tabLabel, selected && mobileStyles.navTextSelected]
@@ -521,7 +521,7 @@ function ApartmentSearch() {
 
   const topBar = (
     <>
-      <StatusBar barStyle="dark-content" {...{ backgroundColor: colors.navy }} />
+      <StatusBar barStyle="dark-content" {...{ backgroundColor: colors.surface }} />
       <View style={styles.topBar}>
         <Pressable
           accessibilityRole="link"
@@ -576,7 +576,7 @@ function ApartmentSearch() {
                   onPress={() => toggleFilter('more')}
                   style={mobileStyles.summary}
                 >
-                  {view === 'results' ? <SearchIcon color={colors.ink} size={18} /> : <HeartIcon color={colors.green} size={18} filled />}
+                  {view === 'results' ? <SearchIcon color={colors.ink} size={18} /> : <HeartIcon color={colors.accent} size={18} filled />}
                   <View style={mobileStyles.summaryCopy}>
                     <Text numberOfLines={1} style={mobileStyles.summaryTitle}>
                       {view === 'saved' ? 'Your saved apartments' : marketArea}
@@ -1092,7 +1092,7 @@ function ApartmentSearch() {
                   style={({ pressed }) => [mobileStyles.floatingPill, pressed && styles.pressed]}
                 >
                   <Text style={mobileStyles.floatingText}>{mapView ? 'Show list' : 'Show map'}</Text>
-                  {mapView ? <ListIcon color={colors.white} /> : <MapIcon color={colors.white} />}
+                  {mapView ? <ListIcon color={colors.surface} /> : <MapIcon color={colors.surface} />}
                 </Pressable>
               </View>
             )}
@@ -1102,7 +1102,7 @@ function ApartmentSearch() {
                   accessibilityRole="alert"
                   style={[
                     mobileStyles.floatingPill,
-                    { backgroundColor: colors.white, borderWidth: 1, borderColor: colors.border, gap: 16 },
+                    { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, gap: 16 },
                   ]}
                 >
                   <Text style={{ color: colors.ink, fontWeight: '600' }}>{toast}</Text>

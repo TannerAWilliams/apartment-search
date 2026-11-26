@@ -1,6 +1,6 @@
 /** The app's few icons, drawn as SVG so they look the same on every device and size. Decorative: the label beside each says what it is. */
 import Svg, { Circle, Line, Path } from 'react-native-svg';
-import { palette } from '../theme.ts';
+import { colors } from '../styles.ts';
 
 type IconProps = { color: string; size?: number; filled?: boolean; fill?: string };
 
@@ -55,8 +55,8 @@ export function ChartIcon({ color, size = 22 }: IconProps) {
 export function BrandMark({ size = 23 }: { size?: number }) {
   return (
     <Svg width={(size * 21) / 25} height={size} viewBox="5.5 3 21 25" aria-hidden>
-      <Path d="M6.5 28V13.5a9.5 9.5 0 0 1 19 0V28z" fill={palette.gray[9]} />
-      <Path d="M6.5 28v-5.2h6.3v-5.2h6.4v-5.2h6.3V28z" fill={palette.rose[5]} />
+      <Path d="M6.5 28V13.5a9.5 9.5 0 0 1 19 0V28z" fill={colors.ink} />
+      <Path d="M6.5 28v-5.2h6.3v-5.2h6.4v-5.2h6.3V28z" fill={colors.accent} />
     </Svg>
   );
 }

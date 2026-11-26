@@ -59,7 +59,7 @@ export function HomePage({
           backgroundColor: colors.light,
         }}
       >
-        <BellIcon color={colors.green} size={20} />
+        <BellIcon color={colors.accent} size={20} />
         <View style={{ flexGrow: 1, flexShrink: 1, flexBasis: 220, gap: 2 }}>
           <Text accessibilityRole="header" style={{ fontSize: 16, fontWeight: '600', color: colors.ink }}>
             New listings, emailed to you

@@ -64,7 +64,7 @@ function ChipMenu({
             top: 44,
             right: 0,
             minWidth: 220,
-            backgroundColor: colors.white,
+            backgroundColor: colors.surface,
             borderWidth: 1,
             borderColor: colors.border,
             borderRadius: 12,

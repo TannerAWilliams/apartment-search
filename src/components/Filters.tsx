@@ -297,7 +297,7 @@ export function Filters({
                       alignItems: 'center',
                       justifyContent: 'center',
                       // Chosen lines in their own color; the rest outlined, so the choice reads at a glance.
-                      backgroundColor: on ? background : colors.white,
+                      backgroundColor: on ? background : colors.surface,
                       borderWidth: 2,
                       borderColor: on ? background : colors.border,
                       opacity: pressed ? 0.7 : 1,

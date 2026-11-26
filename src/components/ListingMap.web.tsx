@@ -72,7 +72,7 @@ function pinIcon(count: number) {
   const label = count === 1 ? '1 home' : `${count.toLocaleString()} homes`;
   Object.assign(pill.style, {
     background: colors.ink,
-    color: colors.white,
+    color: colors.surface,
     border: '2px solid white',
     borderRadius: '999px',
     padding: '3px 9px',
@@ -98,7 +98,7 @@ function pricePin(listings: MapPoint[]) {
   const label = listings.length > 1 ? `${listings.length} from ${low}` : low;
   const pill = document.createElement('span');
   Object.assign(pill.style, {
-    background: colors.white,
+    background: colors.surface,
     color: colors.ink,
     border: `1px solid ${palette.gray[3]}`,
     borderRadius: '999px',
@@ -162,7 +162,7 @@ function saveButton(point: MapPoint, { save, isSaved }: SaveActions) {
     Object.assign(button.style, BUTTON, {
       border: `1px solid ${colors.ink}`,
       background: '#ffffff',
-      color: saved ? colors.green : colors.ink,
+      color: saved ? colors.accent : colors.ink,
       cursor: saved ? 'default' : 'pointer',
     });
   };
@@ -221,7 +221,7 @@ function popupContent(listings: MapPoint[], actions: SaveActions) {
           actions.open?.(point);
         });
       }
-      Object.assign(view.style, BUTTON, { border: `1px solid ${colors.green}`, background: colors.green, color: colors.white });
+      Object.assign(view.style, BUTTON, { border: `1px solid ${colors.primary}`, background: colors.primary, color: colors.surface });
       buttons.append(view);
     }
     row.append(price, heading, detail, buttons);
@@ -405,7 +405,7 @@ export function ListingMap({
         radius: 5,
         color: '#ffffff',
         weight: 1.5,
-        fillColor: colors.green,
+        fillColor: colors.accent,
         fillOpacity: 0.9,
       })
         .bindPopup(() => popupContent(listings, actions.current), { maxWidth: 280 })
@@ -446,7 +446,7 @@ export function ListingMap({
   }, [transitShown, visible]);
 
   return (
-    <section aria-label="Map of matching apartments" style={{ border: `1px solid ${colors.border}`, background: colors.white }}>
+    <section aria-label="Map of matching apartments" style={{ border: `1px solid ${colors.border}`, background: colors.surface }}>
       <div ref={container} style={{ height: 'clamp(350px, 66vh, 800px)', background: palette.gray[0] }} />
       <div
         role="status"

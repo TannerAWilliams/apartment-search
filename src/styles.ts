@@ -2,29 +2,36 @@ import { Platform, StyleSheet } from 'react-native';
 import { palette, surface } from './theme.ts';
 
 /**
- * The app's colors, all from the palette's scales (src/palette.ts): small text sits at least five levels from its
- * background, and borders that must be seen (form fields, checkboxes) at least four.
+ * The app's colors, by the job each does, all from the palette's scales (src/palette.ts). Small text sits at least
+ * five levels from its background, and borders that must be seen (form fields, checkboxes) at least four.
+ *
+ * The page is mostly surface and ink. The main button is ink too, so the accent stays rare: it marks where you
+ * are (the selected tab), what you saved (hearts), what is chosen (a checked box) and the logo's stairs. Kept
+ * rare, it is not mistaken for the red of an error, which is near it in hue. Cautions and errors have their own
+ * colors (amber and red from the palette) and are never the accent.
  */
 export const colors = {
-  /** The page is white, as travel-booking apps are; cards separate with space, not fills. */
-  background: surface,
-  /** The header is white too. (Named navy for history.) */
-  navy: surface,
-  white: surface,
+  /** The page, the header and cards: white in the light theme. Cards separate with space, not fills. */
+  surface,
+  /** Text and icons. */
   ink: palette.gray[9],
+  /** Secondary text. */
   muted: palette.gray[6],
-  /** The accent: primary buttons, selected tab, saved hearts. (Named green for history; it is rose.) */
-  green: palette.rose[5],
+  /** The main button's fill: the ink itself, with the surface's color for its label. */
+  primary: palette.gray[9],
+  /** The brand's one color: the selected tab, saved hearts, checked boxes, the logo's stairs. */
+  accent: palette.rose[5],
   /** Lines that separate; decorative, so lighter than the four-level rule. */
   border: palette.gray[1],
-  /** The edge of a field or checkbox, which must be seen: four levels from white. */
+  /** The edge of a field or checkbox, which must be seen: four levels from the surface. */
   field: palette.gray[4],
   /** The quiet fill behind selected rows, tags and image areas. */
   light: palette.gray[0],
-  lime: surface,
+  /** A caution as text on the surface (a duplicate listing, a price that differs). Never the accent. */
+  caution: palette.amber[7],
 };
 
-const panel = { backgroundColor: colors.white, borderWidth: 1, borderColor: colors.border, borderRadius: 12 };
+const panel = { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 12 };
 const small = { fontSize: 13, lineHeight: 19 };
 const weight = '700';
 const row = { flexDirection: 'row', alignItems: 'center' } as const;
@@ -32,7 +39,7 @@ const wrap = { ...row, flexWrap: 'wrap', gap: 7 } as const;
 const eyebrow = { fontSize: 11, lineHeight: 15, fontWeight: '800', letterSpacing: 1.15 } as const;
 
 export const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.background },
+  safe: { flex: 1, backgroundColor: colors.surface },
   // At least the screen's height, so a short page's footer sits at the bottom, not in the middle.
   scroll: { flexGrow: 1, alignItems: 'center', paddingHorizontal: 24, paddingTop: 16, paddingBottom: 24 },
   shell: { flexGrow: 1, width: '100%', maxWidth: 1600, gap: 16 },
@@ -41,7 +48,7 @@ export const styles = StyleSheet.create({
     justifyContent: 'space-between',
     minHeight: 56,
     paddingHorizontal: 20,
-    backgroundColor: colors.navy,
+    backgroundColor: colors.surface,
     borderBottomWidth: 1,
     borderColor: palette.gray[1],
   },
@@ -67,7 +74,7 @@ export const styles = StyleSheet.create({
   sectionTitle: { ...row, gap: 10, paddingBottom: 4 },
   sectionIndex: {
     ...eyebrow,
-    color: colors.green,
+    color: colors.accent,
     backgroundColor: colors.light,
     paddingHorizontal: 8,
     paddingVertical: 5,
@@ -95,7 +102,7 @@ export const styles = StyleSheet.create({
     borderRadius: 999,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: colors.white,
+    backgroundColor: colors.surface,
     paddingVertical: 6,
     paddingHorizontal: 14,
   },
@@ -103,7 +110,7 @@ export const styles = StyleSheet.create({
   chipActive: { borderColor: colors.ink, backgroundColor: colors.ink },
   chipText: { ...small, fontWeight: '600', color: colors.ink },
   // The same weight as unselected, so choosing a chip never changes its width or moves its neighbors.
-  chipTextActive: { color: colors.white },
+  chipTextActive: { color: colors.surface },
   divider: { height: 1, backgroundColor: colors.border, marginTop: 6, marginBottom: 3 },
   button: {
     justifyContent: 'center',
@@ -112,12 +119,12 @@ export const styles = StyleSheet.create({
     borderRadius: 8,
     paddingHorizontal: 20,
     paddingVertical: 12,
-    backgroundColor: colors.green,
+    backgroundColor: colors.primary,
     borderWidth: 1,
-    borderColor: colors.green,
+    borderColor: colors.primary,
   },
-  buttonSecondary: { backgroundColor: colors.white, borderColor: colors.ink, minHeight: 40, paddingVertical: 8, paddingHorizontal: 16 },
-  buttonText: { fontSize: 15, lineHeight: 20, color: colors.white, fontWeight: '600', textAlign: 'center' },
+  buttonSecondary: { backgroundColor: colors.surface, borderColor: colors.ink, minHeight: 40, paddingVertical: 8, paddingHorizontal: 16 },
+  buttonText: { fontSize: 15, lineHeight: 20, color: colors.surface, fontWeight: '600', textAlign: 'center' },
   buttonTextSecondary: { color: colors.ink },
   buttonDark: { backgroundColor: colors.ink, borderColor: colors.ink },
   pressed: { opacity: 0.66 },
@@ -148,7 +155,7 @@ export const styles = StyleSheet.create({
   empty: { ...panel, padding: 24, alignItems: 'flex-start', gap: 10 },
   listing: { ...panel, paddingHorizontal: 15, paddingVertical: 13, gap: 10 },
   listingTitle: { fontSize: 17, lineHeight: 22, fontWeight: '600', color: colors.ink },
-  listingAddress: { fontSize: 17, lineHeight: 24, fontWeight: '800', color: colors.green },
+  listingAddress: { fontSize: 17, lineHeight: 24, fontWeight: '800', color: colors.accent },
   websiteFilter: { gap: 6 },
   price: { fontSize: 15, lineHeight: 20, color: colors.ink, fontWeight: '600' },
   cardStats: wrap,
@@ -220,7 +227,7 @@ export const styles = StyleSheet.create({
   trendGuide: { position: 'absolute', width: 1, backgroundColor: palette.gray[4] },
   trendLine: { position: 'absolute', height: 2, borderRadius: 1 },
   trendDot: { position: 'absolute', width: 6, height: 6, borderRadius: 5 },
-  trendDotActive: { width: 10, height: 10, borderWidth: 1, borderColor: colors.white },
+  trendDotActive: { width: 10, height: 10, borderWidth: 1, borderColor: colors.surface },
   trendMonths: row,
   trendMonth: { flex: 1, alignItems: 'center', justifyContent: 'center', minHeight: 32, borderRadius: 5 },
   trendMonthActive: { backgroundColor: colors.light },

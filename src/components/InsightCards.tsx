@@ -58,7 +58,7 @@ export function InsightCards({
                   borderColor: chosen ? colors.ink : colors.border,
                   padding: chosen ? 11 : 12,
                   gap: 2,
-                  backgroundColor: colors.white,
+                  backgroundColor: colors.surface,
                 },
                 pressed && styles.pressed,
               ]}

@@ -204,7 +204,7 @@ export function TourPlanner({ listings, open: shown }: { listings: ListingData[]
                           marginBottom: 6,
                           borderWidth: 1,
                           borderRadius: 10,
-                          borderColor: selected === key ? colors.green : colors.border,
+                          borderColor: selected === key ? colors.accent : colors.border,
                           backgroundColor: selected === key ? colors.light : 'transparent',
                         }}
                       >
@@ -214,7 +214,7 @@ export function TourPlanner({ listings, open: shown }: { listings: ListingData[]
                             height: 18,
                             borderRadius: 9,
                             borderWidth: selected === key ? 6 : 2,
-                            borderColor: selected === key ? colors.green : colors.field,
+                            borderColor: selected === key ? colors.accent : colors.field,
                           }}
                         />
                         <Text style={{ color: colors.ink, flexShrink: 1 }}>

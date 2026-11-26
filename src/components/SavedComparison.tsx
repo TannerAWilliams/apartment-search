@@ -66,7 +66,7 @@ export function SavedComparison({ listings, open: shown }: { listings: ListingDa
                     marginBottom: 6,
                     borderWidth: 1,
                     borderRadius: 10,
-                    borderColor: checked ? colors.green : colors.border,
+                    borderColor: checked ? colors.accent : colors.border,
                     backgroundColor: checked ? colors.light : 'transparent',
                     opacity: disabled ? 0.5 : 1,
                   }}
@@ -77,13 +77,13 @@ export function SavedComparison({ listings, open: shown }: { listings: ListingDa
                       height: 18,
                       borderRadius: 4,
                       borderWidth: 2,
-                      borderColor: checked ? colors.green : colors.field,
-                      backgroundColor: checked ? colors.green : 'transparent',
+                      borderColor: checked ? colors.accent : colors.field,
+                      backgroundColor: checked ? colors.accent : 'transparent',
                       alignItems: 'center',
                       justifyContent: 'center',
                     }}
                   >
-                    {checked && <Text style={{ color: colors.white, fontSize: 12, fontWeight: '700', lineHeight: 14 }}>✓</Text>}
+                    {checked && <Text style={{ color: colors.surface, fontSize: 12, fontWeight: '700', lineHeight: 14 }}>✓</Text>}
                   </View>
                   <Text style={{ color: colors.ink, flexShrink: 1 }}>{comparisonTitle(listing)}</Text>
                 </Pressable>

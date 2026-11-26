@@ -279,7 +279,7 @@ function Members({
             disabled={admin || busy !== ''}
             onValueChange={(value) => void change(email, value)}
             trackColor={{ false: colors.border, true: colors.ink }}
-            thumbColor={colors.white}
+            thumbColor={colors.surface}
           />
         </View>
       ))}
@@ -389,7 +389,7 @@ export function ProfilePage({
               justifyContent: 'center',
             }}
           >
-            <Text style={{ color: colors.white, fontSize: 20, fontWeight: '600' }}>{account.slice(0, 1).toUpperCase()}</Text>
+            <Text style={{ color: colors.surface, fontSize: 20, fontWeight: '600' }}>{account.slice(0, 1).toUpperCase()}</Text>
           </View>
           <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
             <Text style={styles.menuLabel} numberOfLines={1}>
@@ -482,7 +482,7 @@ export function ProfilePage({
                   disabled={!settings || saving}
                   onValueChange={(value) => void change({ [key]: value })}
                   trackColor={{ false: colors.border, true: colors.ink }}
-                  thumbColor={colors.white}
+                  thumbColor={colors.surface}
                 />
               </View>
             ))}

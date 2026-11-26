@@ -91,13 +91,13 @@ export function AlertButton({ onPress }: { onPress: () => void }) {
           minHeight: 44,
           paddingHorizontal: 16,
           borderRadius: 999,
-          backgroundColor: colors.green,
+          backgroundColor: colors.primary,
         },
         pressed && styles.pressed,
       ]}
     >
-      <BellIcon color={colors.white} />
-      <Text style={{ color: colors.white, fontSize: 15, fontWeight: '600' }}>Get alerts</Text>
+      <BellIcon color={colors.surface} />
+      <Text style={{ color: colors.surface, fontSize: 15, fontWeight: '600' }}>Get alerts</Text>
     </Pressable>
   );
 }
