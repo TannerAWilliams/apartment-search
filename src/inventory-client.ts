@@ -7,7 +7,7 @@
  * whose answer comes with the file's head), where there is none, and for searches the file does not cover
  * (the phone app's official-only search, saved inventory, routed commute limits).
  */
-import { type Inventory, answerSearch } from './answer.ts';
+import { type Inventory, answerSearch, withTransitEstimates } from './answer.ts';
 import type { SearchFilters, SearchResult, Workplace } from './domain.ts';
 import { openingSearchBody } from './early-requests.ts';
 import type { FetchTransport } from './fetch-type.ts';
@@ -107,8 +107,28 @@ export function createInventorySearch({
     return answerSearch(inventory, filters, workplace) as SearchResult;
   }
 
+  /**
+   * One listing from the file, with its estimated transit time to the destination, for its own page. Undefined
+   * when the file cannot say (none here, or the listing is not in it): the server is asked then.
+   */
+  async function listing(id: string, place: Pick<SearchFilters, 'workplace' | 'customWorkplace'>, options: Options = {}) {
+    if (!enabled) return undefined;
+    const known = await currentHead();
+    const mine = known && inventoryOf(known);
+    const inventory = mine ? (mine.loaded ?? (await mine.loading)) : null;
+    const found = inventory?.listings.find((candidate) => candidate.id === id);
+    if (!inventory || !found) return undefined;
+    const filters = parseFilters({ ...place, region: 'all' });
+    // A destination that cannot be found leaves the listing as it is.
+    const destination =
+      localWorkplace(filters) ??
+      (await api<Workplace>('geocode', { body: { address: filters.customWorkplace }, ...options }).catch(() => null));
+    return destination ? withTransitEstimates([found], inventory.stations, destination)[0]! : found;
+  }
+
   return {
     search,
+    listing,
     /** Starts downloading the file, so the first search made does not wait for it. */
     preload: () => void (enabled && currentHead().then((known) => known && inventoryOf(known))),
   };

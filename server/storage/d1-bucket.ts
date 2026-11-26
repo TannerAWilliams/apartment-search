@@ -100,6 +100,14 @@ function d1Snapshots(database: D1Database): SnapshotStore {
         history: history ? parse(history.results) : [],
       };
     },
+    async find(id) {
+      // The expression the listings_by_id index is on (migration 0005).
+      const row = await database
+        .prepare("SELECT data FROM listings WHERE json_extract(data, '$.id') = ?1 LIMIT 1")
+        .bind(id)
+        .first<{ data: string }>();
+      return row ? (JSON.parse(row.data) as unknown) : null;
+    },
     async write(key, { summary, listings, history }, onlyIf) {
       const etag = crypto.randomUUID();
       const listingRows = listings.map((listing) => {

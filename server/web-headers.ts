@@ -1,5 +1,6 @@
 /** Security and caching headers, set with Hono's secure-headers middleware. */
 import { PHOTO_HOSTS } from '../src/listings.ts';
+import { Hono } from 'hono';
 import { secureHeaders } from 'hono/secure-headers';
 
 /**
@@ -60,4 +61,30 @@ export function withCacheControl(response: Response, pathname: string) {
   const result = new Response(response.body, response);
   if (response.ok || response.status === 304) result.headers.set('Cache-Control', cacheControl(pathname));
   return result;
+}
+
+/**
+ * The same headers for the pages and files Cloudflare serves itself, as its `_headers` file (written into the
+ * web build by scripts/build-service-worker.ts). The page and the app's code are static, so Cloudflare serves
+ * them from its edge without starting the Worker; the Worker's own responses get their headers from
+ * `securityHeaders` above. Rules apply in order, and a later one replaces a header only after detaching it.
+ */
+export async function assetHeadersFile() {
+  const response = await new Hono()
+    .use(securityHeaders)
+    .get('/', (c) => c.body(null))
+    .request('/');
+  const security = [...response.headers]
+    .filter(([name]) => name !== 'content-type' && name !== 'content-length')
+    .map(([name, value]) => `  ${name}: ${value}`);
+  return [
+    '/*',
+    ...security,
+    `  Cache-Control: ${cacheControl('/')}`,
+    '',
+    '/_expo/static/*',
+    '  ! Cache-Control',
+    `  Cache-Control: ${cacheControl('/_expo/static/')}`,
+    '',
+  ].join('\n');
 }

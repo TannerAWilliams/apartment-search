@@ -17,12 +17,15 @@ export function ListingPage({
   onError,
   initial,
   onCheckBuilding,
+  loadHistory,
 }: {
   id: string;
   /** The apartment as the results showed it, so its page opens at once instead of loading it again. */
   initial?: ListingData;
   onCheckBuilding?: React.ComponentProps<typeof Listing>['onCheckBuilding'];
   load?: (id: string) => Promise<{ listing: ListingData }>;
+  /** The apartment's recorded rents, for a listing that came without them (from the inventory file). */
+  loadHistory?: (id: string) => Promise<{ priceHistory: unknown }>;
   workplace: Workplace;
   saved: (listing: ListingData) => boolean;
   onSave: (listing: ListingData) => void;
@@ -44,6 +47,22 @@ export function ListingPage({
       .catch((error) => setState({ listing: null, error: error instanceof Error ? error.message : 'This apartment could not be loaded.' }));
     // biome-ignore lint/correctness/useExhaustiveDependencies: the given listing is read when the page opens
   }, [id, load]);
+  // The page shows at once; its price history, when the listing came without one, follows.
+  const shown = state.listing;
+  const needsHistory = shown !== null && shown.priceHistory === undefined;
+  useEffect(() => {
+    if (!needsHistory || !loadHistory) return;
+    let current = true;
+    loadHistory(id)
+      .then(({ priceHistory }) => {
+        if (current && priceHistory)
+          setState((now) => (now.listing?.id === id ? { ...now, listing: { ...now.listing, priceHistory } as ListingData } : now));
+      })
+      .catch(() => {});
+    return () => {
+      current = false;
+    };
+  }, [id, needsHistory, loadHistory]);
   return (
     <View style={{ gap: 12, maxWidth: 1080, width: '100%', alignSelf: 'center' }}>
       <Pressable accessibilityRole="button" onPress={onBack} style={{ alignSelf: 'flex-start', paddingVertical: 6 }}>

@@ -181,7 +181,9 @@ app.use(async (c, next) => {
 
 // A burst of costly requests, from a stuck page or a leaked token, is refused rather than run.
 app.use('/api/*', async (c, next) => {
-  const binding = c.req.method === 'POST' ? LIMITED_ROUTES[c.req.path] : undefined;
+  // The inventory file is every listing at once; a browser reads it once per version.
+  const binding =
+    c.req.method === 'POST' ? LIMITED_ROUTES[c.req.path] : c.req.path.startsWith('/api/inventory/') ? 'LOOKUP_LIMIT' : undefined;
   const limiter = binding && c.env[binding];
   if (limiter && !(await limiter.limit({ key: binding + ':' + c.var.caller })).success) {
     log.warn('rate_limited', { path: c.req.path });

@@ -18,6 +18,8 @@ export type SnapshotStore = {
   head(key: string): Promise<{ etag: string } | null>;
   /** The snapshot, with `saved`, how many listings it holds before the filter. Price history only when asked for. */
   read(key: string, filter?: SnapshotFilter): Promise<(ListingSnapshot & { etag: string; saved: number }) | null>;
+  /** The stored listing with this ID, from whichever snapshot holds it, or null. One indexed lookup. */
+  find(id: string): Promise<unknown | null>;
   /** Replaces the snapshot in one transaction; null when onlyIf does not hold. */
   write(
     key: string,

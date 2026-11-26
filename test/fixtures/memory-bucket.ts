@@ -1,4 +1,5 @@
 import type { ListingSnapshot, SnapshotStore } from '../../server/contracts.ts';
+import { isRecord } from '../../src/domain.ts';
 import { listingIndex, passesFilter } from '../../server/storage/listing-rows.ts';
 
 /** An in-memory Bucket for tests, with the same conditional writes and size limit as the D1 bucket. */
@@ -31,6 +32,13 @@ export function createMemoryBucket(maxBytes = 96 * 1024 * 1024) {
         saved: snapshot.listings.length,
         history: filter.history ? snapshot.history : [],
       };
+    },
+    async find(id) {
+      for (const { json } of saved.values()) {
+        const found = (JSON.parse(json) as ListingSnapshot).listings.find((listing) => isRecord(listing) && listing.id === id);
+        if (found) return found;
+      }
+      return null;
     },
     async write(key, snapshot, onlyIf = {}) {
       const previous = saved.get(key);
@@ -76,6 +84,9 @@ export const unavailableSnapshots: SnapshotStore = {
     throw new Error('storage down');
   },
   read: async () => {
+    throw new Error('storage down');
+  },
+  find: async () => {
     throw new Error('storage down');
   },
   write: async () => null,

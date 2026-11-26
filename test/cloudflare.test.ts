@@ -304,3 +304,15 @@ test('Stripe reaches its webhook without signing in, and nothing else does', asy
   expect(response.status, 'unsigned').toBe(400);
   expect((await call(env, '/api/billing', {}, null)).status).toBe(404);
 });
+
+test('the headers file for pages Cloudflare serves itself carries the security headers and both caching rules', async () => {
+  const { assetHeadersFile } = await import('../server/web-headers.ts');
+  const file = await assetHeadersFile();
+  expect(file).toStartWith('/*\n');
+  expect(file).toContain("  content-security-policy: default-src 'self'; script-src 'self';");
+  expect(file).toContain('  strict-transport-security: max-age=31536000; includeSubDomains');
+  expect(file).toContain('  Cache-Control: private, no-cache, no-transform\n');
+  // Fingerprinted files drop the page's caching rule before taking their own.
+  expect(file).toContain('/_expo/static/*\n  ! Cache-Control\n  Cache-Control: private, max-age=31536000, immutable\n');
+  expect(Math.max(...file.split('\n').map((line) => line.length))).toBeLessThan(2000);
+});

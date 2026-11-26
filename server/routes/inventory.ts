@@ -27,6 +27,11 @@ export const inventoryRoutes = factory
     return c.json(head, 200, { 'Cache-Control': 'public, max-age=30' });
   })
   .get('/inventory/:version', async (c) => {
+    // Every listing in one file is for the app's own pages. Browsers say where a request comes from in a header
+    // that a page's script cannot set, so another website cannot fetch the file through its visitors, and a
+    // plain download is refused. Someone who forges the header can still read it, as they could read search
+    // results page by page; the Worker's rate limit (server/cloudflare.ts) slows that too.
+    if (c.req.header('Sec-Fetch-Site') !== 'same-origin') return fail(c, 403, 'The inventory file is for the app’s own pages.');
     const store = c.var.appEnv.INVENTORY;
     const version = c.req.param('version');
     const file = store && /^[0-9a-f]{24}$/.test(version) ? await readFile(store, version) : null;

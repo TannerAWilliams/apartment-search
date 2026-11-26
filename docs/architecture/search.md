@@ -59,9 +59,26 @@ browser: /boot.js ──► GET /api/inventory ──► GET /api/inventory/<ver
 
 ## What is in the file, and what is not
 
-Everything a search and a card use. Left out: each listing's price history and two bookkeeping fields, which an
-apartment's own page reads from the server. The file is public, like the search API it replaces: anyone can
-download every listing in one request rather than by paging.
+Everything a search and a card use. Left out: each listing's price history and two bookkeeping fields.
+
+An apartment's own page takes the listing from the file too, including from a shared link, and asks the server
+only for its price history: `GET /api/listing/history`, one lookup by ID on an index (migration 0005), with no
+other listing read.
+
+## Who can read the file
+
+Only the app's own pages. The file route requires the `Sec-Fetch-Site: same-origin` header, which browsers set
+and a page's script cannot: another website cannot fetch the file through its visitors, and a plain download is
+refused. It is also rate-limited per visitor. This is a deterrent, not secrecy: the browser must be able to read
+the file, so someone who forges the header can as well, as they could always read search results page by page.
+A browser too old to send the header (Safari before 16.4) searches through the server instead.
+
+## The page itself
+
+The HTML and the app's code are static, so Cloudflare serves them from its edge without starting the Worker
+(`run_worker_first` lists only the API and the pages the Worker renders). Their security headers come from
+`web-build/_headers`, written at build time from the same definition the Worker uses (`server/web-headers.ts`).
+An address that is not a file is the app's page, which routes it.
 
 ## Freshness
 

@@ -7,7 +7,16 @@ import type { CommutePlace } from './use-commute-place.ts';
 import type React from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ApiConfig, ConfigSource, RefreshInfo } from '../api-client.ts';
-import { API_ORIGIN, CHECK_TIME, SEARCH_DEFAULTS, api, failureInfo, finishSourceCheck, searchApartments } from '../app-shared.ts';
+import {
+  API_ORIGIN,
+  CHECK_TIME,
+  SEARCH_DEFAULTS,
+  api,
+  failureInfo,
+  finishSourceCheck,
+  inventory,
+  searchApartments,
+} from '../app-shared.ts';
 import type { AffordableHousing } from '../screens/AffordableHousing.tsx';
 import type { AlertState } from '../screens/AlertsPage.tsx';
 import type { HouseholdReply } from '../screens/SharedListPage.tsx';
@@ -310,8 +319,19 @@ export function useServer({ appliedFilters, searchVersion, submitted, setResult,
   );
   /** One listing from saved inventory, for its own page. */
   const loadListing = useCallback(
-    (id: string, place?: CommutePlace) =>
-      api<{ listing: ListingData }>('listing?' + new URLSearchParams({ id, ...place }), { token: activeToken }),
+    async (id: string, place?: CommutePlace) => {
+      // From the inventory file when it has the listing (no request); the server otherwise, which also knows
+      // when a listing is gone.
+      const local = place && (await inventory.listing(id, place, { token: activeToken }));
+      return local
+        ? { listing: local }
+        : api<{ listing: ListingData }>('listing?' + new URLSearchParams({ id, ...place }), { token: activeToken });
+    },
+    [activeToken],
+  );
+  /** An apartment's recorded rents, which the inventory file leaves out. */
+  const loadPriceHistory = useCallback(
+    (id: string) => api<{ priceHistory: unknown }>('listing/history?' + new URLSearchParams({ id }), { token: activeToken }),
     [activeToken],
   );
   const loadHousing = useCallback(
@@ -374,6 +394,7 @@ export function useServer({ appliedFilters, searchVersion, submitted, setResult,
     householdRequest,
     billingRequest,
     loadListing,
+    loadPriceHistory,
     directRequest,
     loadAdminStats,
     accountRequest,

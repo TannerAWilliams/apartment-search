@@ -1110,12 +1110,14 @@ test('cards show the building’s grade, rent stabilization, the price against s
   await expect(page.getByText(/1 bedroom · ≈ 35 min to Rockefeller Center · Rent-stabilized · Price cut \$150/).first()).toBeVisible();
   await expect(page.getByText(/· 25% below similar/).first()).toBeVisible();
   await expect(page.getByText('⚠ This unit is also listed at $2,100.', { exact: true }).first()).toBeVisible();
-  await page
-    .getByRole('button', { name: /^Details for 12 Grove Street/ })
-    .first()
-    .click();
-  // Details lead with highlights, in sections.
-  await expect(page.getByRole('heading', { name: 'Highlights', exact: true })).toBeVisible();
+  // The saved destination's search can redraw the cards just as one is tapped, so the tap is tried until the page opens.
+  await expect(async () => {
+    await page
+      .getByRole('button', { name: /^Details for 12 Grove Street/ })
+      .first()
+      .click();
+    await expect(page.getByRole('heading', { name: 'Highlights', exact: true })).toBeVisible({ timeout: 2000 });
+  }).toPass({ timeout: 15000 });
   await expect(page.getByText('Median $2,400 for 12 similar 1-bedroom apartments nearby', { exact: true })).toBeVisible();
   await expect(page.getByText('Rent-stabilized building', { exact: true })).toBeVisible();
   await expect(page.getByText('3 min walk · accessible station', { exact: true })).toBeVisible();

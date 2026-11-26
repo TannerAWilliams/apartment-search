@@ -12,11 +12,13 @@ const PLACEHOLDER_EMAIL = 'smoke-test@example.com';
 const CHECKS: { path: string; init?: RequestInit; status: number; contains?: string }[] = [
   { path: '/health', status: 200, contains: 'ok' },
   { path: '/', status: 200, contains: '<div id="root">' },
+  // An app address that is not a file is the app's page, served without the Worker.
+  { path: '/search', status: 200, contains: '<div id="root">' },
+  { path: '/listing/some-id', status: 200, contains: '<div id="root">' },
+  { path: '/boot.js', status: 200, contains: 'walkupEarly' },
   { path: '/manifest.webmanifest', status: 200, contains: 'Walkup' },
   { path: '/data/streeteasy-dashboard-2026-11-17.zip', status: 404 },
   { path: '/api/config', status: 200, contains: '"storageMode":"persistent"' },
-  // No inventory file yet: the app is told so, and the file is built after the response (checked at the end).
-  { path: '/api/inventory', status: 404, contains: 'being built' },
   { path: '/api/refresh', status: 200 },
   // Better Auth in workerd with D1: a session check, and a code request for an email that may not sign in,
   // which is answered like any other but sends nothing (this run has no email binding).
@@ -58,8 +60,10 @@ const CHECKS: { path: string; init?: RequestInit; status: number; contains?: str
   },
   { path: '/api/config', status: 405, init: { method: 'POST', body: '{}' } },
   { path: '/api/unknown', status: 404, contains: 'Endpoint not found' },
-  // Built by now, in Workers KV: the head, with the opening search's answer.
+  // Built by now, in Workers KV: the head, with the opening search's answer. The file itself is for the app's pages only.
   { path: '/api/inventory', status: 200, contains: '"opening"' },
+  { path: '/api/inventory/' + '0'.repeat(24), status: 403, contains: 'own pages' },
+  { path: '/api/listing/history?id=none', status: 200, contains: '"priceHistory":null' },
 ];
 
 async function waitForWorker(deadline: number) {
@@ -125,6 +129,8 @@ if (import.meta.main) {
   const failures: string[] = [];
   try {
     await waitForWorker(Date.now() + 90_000);
+    // Where there is no inventory file yet, asking for it builds it after the response; the last check reads it.
+    await (await fetch(origin + '/api/inventory')).arrayBuffer();
     for (const { path, init, status, contains } of CHECKS) {
       const response = await fetch(origin + path, {
         ...init,
@@ -133,7 +139,11 @@ if (import.meta.main) {
       const body = await response.text();
       // Every response, including errors, asks browsers to use HTTPS only.
       const ok =
-        response.status === status && (!contains || body.includes(contains)) && Boolean(response.headers.get('Strict-Transport-Security'));
+        response.status === status &&
+        (!contains || body.includes(contains)) &&
+        Boolean(response.headers.get('Strict-Transport-Security')) &&
+        // Pages served without the Worker get their Content Security Policy from web-build/_headers.
+        (!path.startsWith('/api/') ? Boolean(response.headers.get('Content-Security-Policy')) || status === 404 : true);
       const label = `${init?.method ?? 'GET'} ${path}${init?.headers ? ' (' + Object.keys(init.headers).join(', ') + ')' : ''}`;
       console.log(`${ok ? 'ok  ' : 'FAIL'} ${label} → ${response.status}`);
       if (!ok) failures.push(`${path}: HTTP ${response.status} ${body.slice(0, 200)}`);

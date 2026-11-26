@@ -125,8 +125,12 @@ test('the inventory is built after a sync, stored once per version, and rebuilt 
 test('the API serves the head and each version’s file, and builds the file when there is none', async () => {
   const { store, values } = memoryStore();
   const settings = { ...env(), INVENTORY: store };
-  const get = (path: string, environment: object = settings, services = {}) =>
-    handleApi(new Request('https://walkup.test/api/' + path), environment, services);
+  const get = (
+    path: string,
+    environment: object = settings,
+    services = {},
+    headers: Record<string, string> = { 'Sec-Fetch-Site': 'same-origin' },
+  ) => handleApi(new Request('https://walkup.test/api/' + path, { headers }), environment, services);
   expect((await get('inventory', env())).status).toBe(404);
   // No file yet: the app is told so, and the file is built (here before the reply, in a Worker after it).
   const none = await get('inventory');
@@ -140,6 +144,9 @@ test('the API serves the head and each version’s file, and builds the file whe
   expect(file.headers.get('Content-Encoding')).toBe('gzip');
   expect(file.headers.get('Cache-Control')).toBe('public, max-age=31536000, immutable');
   expect((await decodeInventory(await gunzip(await file.arrayBuffer()))).rows).toHaveLength(head.listings);
+  // The file is for the app's own pages: a request from another site, or from no page at all, is refused.
+  expect((await get('inventory/' + head.version, settings, {}, { 'Sec-Fetch-Site': 'cross-site' })).status).toBe(403);
+  expect((await get('inventory/' + head.version, settings, {}, {})).status).toBe(403);
   expect((await get('inventory/' + '0'.repeat(24))).status).toBe(404);
   expect((await get('inventory/not-a-version')).status).toBe(404);
   // A deploy since it was built: served as it is, and rebuilt after the response.
@@ -220,4 +227,42 @@ test('the app answers searches from the file, and from the server whenever the f
   client().preload();
   client(false).preload();
   await Bun.sleep(1);
+});
+
+test('an apartment’s page reads the listing from the file and its price history by one lookup', async () => {
+  const settings = env();
+  const inventory = await readInventory(settings);
+  const { text, head } = await composeInventory(inventory, 'build-1');
+  const wanted = inventory.listings.find(({ region, latitude }) => region === 'nyc' && typeof latitude === 'number')!;
+  let geocodes = true;
+  const api = (async (path: string) => {
+    if (path === 'inventory') return head;
+    if (path === 'geocode')
+      return geocodes ? { label: 'Office', latitude: 40.7484, longitude: -73.9857 } : Promise.reject(new Error('Not found.'));
+    throw new Error('unexpected ' + path);
+  }) as Parameters<typeof createInventorySearch>[0]['api'];
+  const client = (enabled = true) => createInventorySearch({ api, origin: '', enabled, fetcher: async () => new Response(text) });
+  const app = client();
+  // From the file, with the estimated transit time to the person's destination.
+  const listing = await app.listing(wanted.id, { workplace: 'penn', customWorkplace: '' });
+  expect(listing).toMatchObject({ id: wanted.id, address: wanted.address });
+  expect(listing?.insights?.transitMinutes).toBeGreaterThan(0);
+  expect(
+    (await app.listing(wanted.id, { workplace: 'custom', customWorkplace: '350 Fifth Avenue, New York' }))?.insights?.transitMinutes,
+  ).toBeGreaterThan(0);
+  // A destination that cannot be found leaves the listing as it is.
+  geocodes = false;
+  expect(await app.listing(wanted.id, { workplace: 'custom', customWorkplace: '1 Nowhere Street' })).toMatchObject({ id: wanted.id });
+  // A listing the file does not have, or no file at all: the server is asked.
+  expect(await app.listing('gone', { workplace: 'penn', customWorkplace: '' })).toBeUndefined();
+  expect(await client(false).listing(wanted.id, { workplace: 'penn', customWorkplace: '' })).toBeUndefined();
+
+  // Its recorded rents come from the database by ID, without reading the other listings.
+  const history = async (id: string, environment: object = settings) => {
+    const response = await handleApi(new Request('https://walkup.test/api/listing/history?' + new URLSearchParams({ id })), environment);
+    return (await response.json()) as { priceHistory: { observations: unknown[] } | null };
+  };
+  expect((await history(wanted.id)).priceHistory?.observations.length).toBeGreaterThan(0);
+  expect(await history('gone')).toEqual({ priceHistory: null });
+  expect(await history(wanted.id, {})).toEqual({ priceHistory: null });
 });

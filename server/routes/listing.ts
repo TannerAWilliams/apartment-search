@@ -1,6 +1,7 @@
 /** GET /api/listing?id=: one listing from saved inventory, with its insights, for its own page and shared links. */
 import { vValidator } from '@hono/valibot-validator';
 import * as v from 'valibot';
+import { isRecord } from '../../src/domain.ts';
 import { parseFilters } from '../../src/search.ts';
 import { offline, search, withTransitEstimate } from '../search.ts';
 import { factory, fail, refuse } from './context.ts';
@@ -25,10 +26,17 @@ export async function findListing(env: Parameters<typeof search>[1], id: string)
   return matches.find((listing) => listing.id === id) ?? null;
 }
 
-export const listingRoutes = factory.createApp().get('/listing', vValidator('query', ListingQuerySchema, refuse), async (c) => {
-  const { id, workplace, customWorkplace } = c.req.valid('query');
-  const listing = await findListing(c.var.appEnv, id);
-  if (!listing) return fail(c, 404, 'This apartment is no longer listed.');
-  const place = workplace ? { workplace, customWorkplace } : null;
-  return c.json({ listing: place ? await withTransitEstimate(listing, c.var.appEnv, place, c.var.services.fetcher) : listing }, 200);
-});
+export const listingRoutes = factory
+  .createApp()
+  // An apartment's recorded rents, which the inventory file leaves out: one indexed lookup, no listings read.
+  .get('/listing/history', vValidator('query', v.object({ id: ListingQuerySchema.entries.id }), refuse), async (c) => {
+    const stored = await c.var.appEnv.BUCKET?.snapshots.find(c.req.valid('query').id);
+    return c.json({ priceHistory: isRecord(stored) ? (stored.priceHistory ?? null) : null }, 200);
+  })
+  .get('/listing', vValidator('query', ListingQuerySchema, refuse), async (c) => {
+    const { id, workplace, customWorkplace } = c.req.valid('query');
+    const listing = await findListing(c.var.appEnv, id);
+    if (!listing) return fail(c, 404, 'This apartment is no longer listed.');
+    const place = workplace ? { workplace, customWorkplace } : null;
+    return c.json({ listing: place ? await withTransitEstimate(listing, c.var.appEnv, place, c.var.services.fetcher) : listing }, 200);
+  });

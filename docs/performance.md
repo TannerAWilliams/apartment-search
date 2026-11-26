@@ -56,6 +56,8 @@ Searches are answered in the browser from a file the server publishes when the l
 - The file is built after each sync and each hour, stored in Workers KV, and downloaded once per version.
 - `/boot.js` starts the settings, the file's head and the file itself while the app's code downloads.
 - The opening search's answer comes with the head, so first results do not wait for the file.
+- An apartment's page reads the listing from the file, and its price history by one indexed lookup.
+- The page and the app's code are served from Cloudflare's edge without starting the Worker.
 - The server's own search remains for alerts, the phone app and browsers without the file. There, one set of
   listings is kept per Worker instance for fifteen minutes, and answers are kept in Cloudflare's cache.
 - Independent reads run together (`Promise.all`); work over many items goes through `mapLimit`
@@ -64,8 +66,6 @@ Searches are answered in the browser from a file the server publishes when the l
 
 ## Known costs
 
-- **An apartment opened from a link** (not from a card) is read by the server, which loads every listing on a
-  new instance: 2 to 3 seconds. A lookup by ID in the database would remove that.
 - **The server's fallback search** on a new instance still takes 2 to 3 seconds; browsers with the file never
   use it.
 - **The Worker script is 3.4 MB** (1.1 MB compressed): about 2 MB is the sign-in library and its database layer,

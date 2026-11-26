@@ -132,6 +132,7 @@ function ApartmentSearch() {
     householdRequest,
     billingRequest,
     loadListing,
+    loadPriceHistory,
     directRequest,
     loadAdminStats,
     accountRequest,
@@ -915,6 +916,7 @@ function ApartmentSearch() {
                     <ListingPage
                       id={decodeURIComponent(view.slice('listing='.length))}
                       load={serverState === 'ready' ? loadListingWithCommute : undefined}
+                      loadHistory={serverState === 'ready' ? loadPriceHistory : undefined}
                       workplace={result.workplace}
                       saved={(listing) => savedByKey.has(listingKey(listing))}
                       onSave={saveListing}
