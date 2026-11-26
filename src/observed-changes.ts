@@ -47,6 +47,9 @@ export function parseChangeBaseline(raw: string | null): ChangeBaseline | null {
   }
   return { version, truncated, observations };
 }
+/** What names a listing's observations from one source, in a baseline and in the changes found against it. */
+export const observedKey = (listing: ListingData, sourceId: string) => JSON.stringify([listingKey(listing), sourceId]);
+
 export function checkObservedChanges(listings: ListingData[], baseline: ChangeBaseline | null) {
   const previous = new Map((baseline?.observations ?? []).map((item) => [item.key, item]));
   const next = new Map(previous);
@@ -64,7 +67,7 @@ export function checkObservedChanges(listings: ListingData[], baseline: ChangeBa
       latest.priceIncludesFees !== (listing.priceIncludesFees === true)
     )
       continue;
-    const key = JSON.stringify([listingKey(listing), history.sourceId]);
+    const key = observedKey(listing, history.sourceId);
     if (seen.has(key)) continue;
 
     const current: ObservedUnit = {

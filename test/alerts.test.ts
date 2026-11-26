@@ -104,17 +104,28 @@ test('alerts report new apartments and price drops since the last check, and not
 
   inventory = [
     unit('10', 2850, '2026-11-22T00:00:00Z', 3000),
-    unit('12', 3100, '2026-11-22T00:00:00Z'),
-    unit('14 <b>', 3200, '2026-11-22T00:00:00Z'),
+    // What is known about an apartment goes into its line: its rent against similar ones, its building and its subway.
+    {
+      ...unit('12', 3100, '2026-11-22T00:00:00Z'),
+      insights: { warnings: [], vsMarket: -0.12, subway: [{ station: 'Bedford Av', routes: ['L'], minutes: 4 }] },
+      building: { stabilized: true, openViolations: 0, complaints: 0, bedbugs: false, flood: false, checkedAt: '2026-11-01T00:00:00Z' },
+    },
+    { ...unit('14 <b>', 3200, '2026-11-22T00:00:00Z'), bedrooms: 0 },
   ];
   const { alerts } = await checkAlerts(bucket, load, { ...channels, vapid: null }, { origin: 'https://apartments.example' });
   expect(alerts.length).toBe(1);
   expect(alerts[0].title).toBe('Brooklyn 1BR: 2 new apartments, 1 price drop');
   expect(alerts[0].lines).toStrictEqual([
-    '10 Example Street, Unit 2A, Brooklyn: $3,000 → $2,850',
-    '12 Example Street, Unit 2A, Brooklyn: $3,100',
-    '14 <b> Example Street, Unit 2A, Brooklyn: $3,200',
+    '10 Example Street, Unit 2A, Brooklyn: $3,000 → $2,850 · 1 BR',
+    '12 Example Street, Unit 2A, Brooklyn: $3,100 · 1 BR · 12% below similar · rent-stabilized building · building grade A · L 4 min walk',
+    '14 <b> Example Street, Unit 2A, Brooklyn: $3,200 · Studio',
   ]);
+  // Each line opens the apartment's own page.
+  expect(alerts[0].urls).toStrictEqual(['/listing/zumper%3A10', '/listing/zumper%3A12', '/listing/zumper%3A14%20%3Cb%3E']);
+  expect(sent[0].html).toContain(
+    '<li><a href="https://apartments.example/listing/zumper%3A12">12 Example Street, Unit 2A, Brooklyn: $3,100',
+  );
+  expect(sent[0].text).toContain('· L 4 min walk\n  https://apartments.example/listing/zumper%3A12');
   expect(sent.length).toBe(1);
   expect(sent[0].to).toStrictEqual(['owner@example.com']);
   expect(sent[0].text).toMatch(/Open Walkup: https:\/\/apartments\.example\//);

@@ -1,6 +1,14 @@
 import type { ListingData } from '../src/domain.ts';
 import { paidEmails } from './plans.ts';
-import { checkObservedChanges, MAX_BASELINE_UNITS, parseChangeBaseline, type ObservedChange } from '../src/observed-changes.ts';
+import {
+  checkObservedChanges,
+  MAX_BASELINE_UNITS,
+  observedKey,
+  parseChangeBaseline,
+  type ObservedChange,
+} from '../src/observed-changes.ts';
+import { buildingGrade, marketBadge } from '../src/insights.ts';
+import { displayPriceHistory } from '../src/price-history.ts';
 import { localWorkplace, needsCommute, parseFilters, SearchInputError } from '../src/search.ts';
 import type { AppEnv, Bucket } from './contracts.ts';
 import { log } from './log.ts';
@@ -58,6 +66,8 @@ export type Alert = {
   newCount: number;
   dropCount: number;
   owner?: string;
+  /** Each line's apartment page, as a path; '' for a line that is not one apartment. */
+  urls?: string[];
 };
 export type AlertChannels = {
   email?: { send(message: { from: string; to: string[]; subject: string; text: string; html: string }): Promise<unknown> } | null;
@@ -224,8 +234,37 @@ export async function removeDevice(bucket: Bucket, endpoint: unknown, owner?: st
 
 const money = (rent: number) => '$' + rent.toLocaleString('en-US');
 
+/** What an alert says about an apartment besides its rent, and where its page is. */
+type Described = Map<string, { facts: string[]; url: string }>;
+
+/**
+ * What is known about each matching apartment, by the key its changes carry: its size, its rent against similar
+ * apartments, its building's rent stabilization and grade, and the nearest subway. An alert is read in an inbox,
+ * so it says enough to decide whether to open the apartment.
+ */
+export function describeMatches(matches: ListingData[]): Described {
+  const described: Described = new Map();
+  for (const listing of matches) {
+    const sourceId = displayPriceHistory(listing.priceHistory)?.sourceId;
+    if (!sourceId) continue;
+    const grade = buildingGrade(listing.building);
+    const subway = listing.insights?.subway?.[0];
+    described.set(observedKey(listing, sourceId), {
+      facts: [
+        listing.bedrooms === 0 ? 'Studio' : `${listing.bedrooms} BR`,
+        marketBadge(listing.insights) ?? '',
+        listing.building?.stabilized ? 'rent-stabilized building' : '',
+        grade ? `building grade ${grade}` : '',
+        subway ? `${subway.routes.join('/')} ${subway.minutes} min walk` : '',
+      ].filter(Boolean),
+      url: '/listing/' + encodeURIComponent(listing.id),
+    });
+  }
+  return described;
+}
+
 /** The alert for one rule, or null when nothing new matched and no price dropped. */
-export function composeAlert(rule: AlertRule, changes: ObservedChange[], now: Date): Alert | null {
+export function composeAlert(rule: AlertRule, changes: ObservedChange[], now: Date, described: Described = new Map()): Alert | null {
   const added = changes.filter(({ kind }) => kind === 'newly_encountered');
   const drops = changes.filter(({ kind, current, previous }) => kind === 'price' && previous && current.rent < previous.rent);
   if (!added.length && !drops.length) return null;
@@ -233,20 +272,27 @@ export function composeAlert(rule: AlertRule, changes: ObservedChange[], now: Da
     added.length && `${added.length} new ${added.length === 1 ? 'apartment' : 'apartments'}`,
     drops.length && `${drops.length} price ${drops.length === 1 ? 'drop' : 'drops'}`,
   ].filter(Boolean);
-  const lines = [
-    ...drops.map(({ current, previous }) => `${current.label}: ${money(previous!.rent)} → ${money(current.rent)}`),
-    ...added.map(({ current }) => `${current.label}: ${money(current.rent)}`),
+  // Each apartment's line, with what is known about it after its rent.
+  const line = ({ current }: ObservedChange, rent: string) => {
+    const known = described.get(current.key);
+    return { text: [`${current.label}: ${rent}`, ...(known?.facts ?? [])].join(' · '), url: known?.url ?? '' };
+  };
+  const all = [
+    ...drops.map((change) => line(change, `${money(change.previous!.rent)} → ${money(change.current.rent)}`)),
+    ...added.map((change) => line(change, money(change.current.rent))),
   ];
-  const hidden = lines.length - SHOWN_UNITS;
+  const hidden = all.length - SHOWN_UNITS;
+  const shown = hidden > 0 ? [...all.slice(0, SHOWN_UNITS), { text: `and ${hidden} more`, url: '' }] : all;
   return {
     id: crypto.randomUUID(),
     at: now.toISOString(),
     ruleId: rule.id,
     title: `${rule.name}: ${parts.join(', ')}`,
-    lines: hidden > 0 ? [...lines.slice(0, SHOWN_UNITS), `and ${hidden} more`] : lines,
+    lines: shown.map(({ text }) => text),
     newCount: added.length,
     dropCount: drops.length,
     ...(rule.owner ? { owner: rule.owner } : {}),
+    ...(shown.some(({ url }) => url) ? { urls: shown.map(({ url }) => url) } : {}),
   };
 }
 
@@ -321,13 +367,30 @@ async function sendEmail(alerts: Alert[], channels: AlertChannels, to: string[],
   const subject = alerts.length === 1 ? alerts[0].title : `${alerts.length} apartment alerts`;
   // What a free account's email was held for, and what the paid plan changes.
   const plan = `Free alerts are sent ${FREE_DELAY_HOURS} hours after a match is found, up to ${FREE_ALERTS_A_DAY} a day. The paid plan sends every match as soon as it is found`;
+  // Each apartment's line opens its own page, where the alert knows it.
+  const page = (alert: Alert, index: number) => (alert.urls?.[index] ? origin + alert.urls[index] : '');
   const text =
-    alerts.map((alert) => [alert.title, ...alert.lines.map((line) => '• ' + line)].join('\n')).join('\n\n') +
+    alerts
+      .map((alert) =>
+        [alert.title, ...alert.lines.map((line, index) => '• ' + line + (page(alert, index) ? '\n  ' + page(alert, index) : ''))].join(
+          '\n',
+        ),
+      )
+      .join('\n\n') +
     `\n\nOpen Walkup: ${origin}/` +
     (free ? `\n\n${plan}: ${origin}/pricing` : '');
   const html =
     alerts
-      .map((alert) => `<h3>${escapeHtml(alert.title)}</h3><ul>${alert.lines.map((line) => `<li>${escapeHtml(line)}</li>`).join('')}</ul>`)
+      .map(
+        (alert) =>
+          `<h3>${escapeHtml(alert.title)}</h3><ul>${alert.lines
+            .map((line, index) =>
+              page(alert, index)
+                ? `<li><a href="${escapeHtml(page(alert, index))}">${escapeHtml(line)}</a></li>`
+                : `<li>${escapeHtml(line)}</li>`,
+            )
+            .join('')}</ul>`,
+      )
       .join('') +
     `<p><a href="${escapeHtml(origin)}/">Open Walkup</a></p>` +
     (free ? `<p>${plan}. <a href="${escapeHtml(origin)}/pricing">See pricing</a></p>` : '');
@@ -414,7 +477,7 @@ export async function checkAlerts(
       // An unrecognized baseline is dropped, so the rule records a new one instead of sending a flood.
       const result = checkObservedChanges(matches, baseline);
       await write(bucket, key, result.baseline);
-      return baseline ? composeAlert(rule, result.changes, now) : null;
+      return baseline ? composeAlert(rule, result.changes, now, describeMatches(matches)) : null;
     } catch (cause) {
       log.error('alert_check_failed', cause, { rule: rule.id });
       return null;

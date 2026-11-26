@@ -116,6 +116,8 @@ const alert = {
   newCount: v.number(),
   dropCount: v.number(),
   owner: v.optional(text),
+  /** Each line's apartment page, as a path ('' for a line that is not one apartment); absent on older alerts. */
+  urls: v.optional(v.array(text)),
 };
 /** The most recent alerts sent. */
 export const RecentAlertsSchema = v.array(v.object(alert));
