@@ -215,11 +215,13 @@ export function Results({
   );
   const savedView = result.mode === 'saved';
   // Apartments this person hid are left out of their results (never out of their saved list).
-  // They can be looked at again: shown in place, each with a button that brings it back.
+  // They can be looked at again as a list of their own, each with a button that brings it back: tapping X in the
+  // results always takes the card away, and the hidden list empties as apartments are brought back.
   const { hidden } = useContext(HiddenContext);
-  const [showHidden, setShowHidden] = useState(false);
+  const [wantsHidden, setShowHidden] = useState(false);
   const hiddenHere = savedView ? 0 : result.matches.filter((listing) => hidden.has(listingKey(listing))).length;
-  const matches = savedView || showHidden ? result.matches : result.matches.filter((listing) => !hidden.has(listingKey(listing)));
+  const showHidden = wantsHidden && hiddenHere > 0;
+  const matches = savedView ? result.matches : result.matches.filter((listing) => hidden.has(listingKey(listing)) === showHidden);
   const shown = matches.slice(0, visible);
   const coverage = (status || (result.notices?.length ?? 0) > 0) && (
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: 10, rowGap: 2 }}>
@@ -281,8 +283,8 @@ export function Results({
                 style={{ alignSelf: 'flex-start', paddingVertical: 2 }}
               >
                 <Text style={styles.smallMuted}>
-                  {hiddenHere} hidden by you ·{' '}
-                  <Text style={styles.linkText}>{showHidden ? 'Hide them again' : 'Show hidden apartments'}</Text>
+                  {showHidden ? `Showing the ${hiddenHere} you hid` : `${hiddenHere} hidden by you`} ·{' '}
+                  <Text style={styles.linkText}>{showHidden ? 'Back to results' : 'See them'}</Text>
                 </Text>
               </Pressable>
             )}

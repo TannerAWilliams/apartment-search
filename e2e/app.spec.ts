@@ -63,6 +63,8 @@ async function mockApp(
     insights?: boolean;
     /** Apartments the signed-in account has already hidden, by address-and-unit key. */
     hidden?: string[];
+    /** Holds back the answer to the account's hidden list until it settles (a slow connection). */
+    hiddenRead?: Promise<void>;
   } = {},
 ) {
   const requests: MockRequest[] = [];
@@ -215,6 +217,7 @@ async function mockApp(
       data = { listings: savedOnAccount };
     } else if (url.pathname === '/api/hidden' && options.account) {
       if (body) hiddenOnAccount = body.keys;
+      else await options.hiddenRead;
       data = { keys: hiddenOnAccount };
     } else if (url.pathname === '/api/housing' && options.housing) data = options.housing;
     else if (url.pathname === '/api/building-report' && options.nyc)
@@ -1112,10 +1115,12 @@ test('alerts: build one from an area, neighborhoods, bedroom counts and a rent, 
   // The form says what the alert matches now and shows it on a map, a moment after the last change.
   await expect(page.getByText('2 apartments match this right now, shown on the map.', { exact: true })).toBeVisible();
   await expect(page.getByRole('region', { name: 'Map of matching apartments' })).toBeVisible();
-  expect(previews.at(-1)).toMatchObject({
-    filters: { region: 'manhattan', maxRent: 5000 },
-    criteria: { bedrooms: [2], neighborhoods: ['West Village'] },
-  });
+  await expect
+    .poll(() => previews.at(-1))
+    .toMatchObject({
+      filters: { region: 'manhattan', maxRent: 5000 },
+      criteria: { bedrooms: [2], neighborhoods: ['West Village'] },
+    });
   await page.getByRole('button', { name: 'Save alert', exact: true }).click();
   await expect(page.getByText(/Alert saved: West Village · 2 BR · under \$5,000/)).toBeVisible();
   expect(posts[0]).toMatchObject({
@@ -1717,8 +1722,15 @@ test('an apartment can be hidden from this person’s results, and brought back'
   await page.reload();
   await expect(page.getByText('13 Grove Street', { exact: true })).toBeVisible();
   await expect(page.getByText('12 Grove Street', { exact: true })).toHaveCount(0);
+  // The hidden ones are a list of their own; bringing the last one back returns to the results, with it in them.
   await page.getByRole('button', { name: /1 hidden by you/ }).click();
   await expect(page.getByText('12 Grove Street', { exact: true })).toBeVisible();
+  await expect(page.getByText('13 Grove Street', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /Showing the 1 you hid · Back to results/ })).toBeVisible();
+  await page.getByRole('button', { name: 'Show 12 Grove Street again', exact: true }).click();
+  await expect(page.getByText('13 Grove Street', { exact: true })).toBeVisible();
+  await expect(page.getByText('12 Grove Street', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: /hidden by you/ })).toHaveCount(0);
 });
 
 test('a member’s hidden apartments are kept on the account and follow them to another device', async ({ page }) => {
@@ -1810,4 +1822,31 @@ test('alerts: parts of Manhattan are chosen in one tap, and neighborhoods by tap
   await tap();
   await expect.poll(chosen).toEqual(['Upper West Side ✕']);
   await expect.poll(() => previews.at(-1)?.criteria?.neighborhoods).toEqual(['Upper West Side']);
+});
+
+test('an apartment hidden while the account’s list is still on its way stays hidden', async ({ page }) => {
+  let arrive = () => {};
+  const hiddenRead = new Promise<void>((resolve) => {
+    arrive = resolve;
+  });
+  const { requests } = await mockApp(page, {
+    account: 'renter@example.test',
+    admin: false,
+    listingCount: 2,
+    hidden: ['NJ|07302|99 old st|'],
+    hiddenRead,
+  });
+  await page.getByRole('button', { name: 'Hide 12 Grove Street', exact: true }).click();
+  await expect(page.getByText('12 Grove Street', { exact: true })).toHaveCount(0);
+  // The account's older list arrives after the tap: it must not bring the apartment back.
+  // Nothing is sent before the account's list is known: this device's list alone would have replaced it.
+  expect(requests.filter((r) => r.path === '/api/hidden' && r.method === 'POST')).toHaveLength(0);
+  arrive();
+  await expect.poll(() => requests.filter((r) => r.path === '/api/hidden' && r.method === 'POST').length).toBe(1);
+  await expect(page.getByText('12 Grove Street', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('13 Grove Street', { exact: true })).toBeVisible();
+  // Both what the account had and what was just hidden are kept.
+  const last = requests.filter((r) => r.path === '/api/hidden' && r.method === 'POST').at(-1)!.body as { keys: string[] };
+  expect(last.keys).toHaveLength(2);
+  expect(last.keys[0]).toBe('NJ|07302|99 old st|');
 });

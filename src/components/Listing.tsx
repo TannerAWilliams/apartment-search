@@ -354,7 +354,7 @@ export const Listing = memo(function Listing({
             style={[card.heart, { right: 52 }]}
           >
             <View style={{ height: 28, borderRadius: 14, paddingHorizontal: 10, backgroundColor: '#00000099', justifyContent: 'center' }}>
-              <Text style={{ color: '#ffffff', fontSize: 12, fontWeight: '600' }}>Hidden · Show again</Text>
+              <Text style={{ color: '#ffffff', fontSize: 12, fontWeight: '600' }}>Show again</Text>
             </View>
           </Pressable>
         )}
