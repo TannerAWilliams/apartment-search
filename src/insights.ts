@@ -49,7 +49,7 @@ export type ListingInsights = {
   firstSeen?: string;
   /** How much the rent dropped at its last change, when it dropped. */
   priceCut?: number;
-  /** The EPA's National Walkability Index for the blocks around it, 1 (least) to 20 (most walkable). */
+  /** The EPA's National Walkability Index for the blocks around it, shown out of 100 (the EPA's 1 to 20, times five). */
   walkability?: number;
   /** Estimated door-to-door transit minutes to the search's destination (src/transit-estimate.ts). */
   transitMinutes?: number;
@@ -219,8 +219,9 @@ export function withInsights<T extends ListingData>(
         }
       : checked;
     const subway = listing.region === 'nyc' ? near(listing.latitude, listing.longitude) : [];
-    // Whole numbers: the index is for the surrounding blocks, and a decimal would promise more than that.
-    const walk = Math.round(walkability[walkCell(listing.latitude, listing.longitude) ?? ''] ?? 0);
+    // The EPA's 1 to 20 shown out of 100, in whole numbers: it is for the surrounding blocks, and a decimal
+    // would promise more than that.
+    const walk = Math.round((walkability[walkCell(listing.latitude, listing.longitude) ?? ''] ?? 0) * 5);
     const insights: ListingInsights = {
       ...(compared ? { marketMedian: compared.median, comparedWith: compared.count, vsMarket } : {}),
       warnings,

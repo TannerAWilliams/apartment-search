@@ -17,7 +17,8 @@ import { CommuteDetails } from './CommuteDetails.tsx';
 import { hasPriceChange, PriceHistory } from './PriceHistory.tsx';
 import { SavedNotes } from './SavedNotes.tsx';
 import { listingKey } from '../listings.ts';
-import { HeartIcon } from './Icons.tsx';
+import { CloseIcon, HeartIcon } from './Icons.tsx';
+import { HiddenContext } from '../hooks/use-hidden.ts';
 import { ListingThumbnail } from './ListingThumbnail.tsx';
 import { palette } from '../theme.ts';
 
@@ -245,6 +246,7 @@ export const Listing = memo(function Listing({
   const destination = workplace.label.split(',')[0]!.trim().slice(0, 28);
   // No destination set yet: a question to answer, never minutes to a place the person did not choose.
   const { known: commuteKnown, add: addCommute } = useContext(CommuteContext);
+  const { hide } = useContext(HiddenContext);
   const details = [
     presentation.bedsLabel,
     baths == null ? '' : `${baths} ${baths === 1 ? 'bath' : 'baths'}`,
@@ -257,7 +259,7 @@ export const Listing = memo(function Listing({
         : '',
     commute && drivingSeconds != null ? `${Math.ceil(drivingSeconds / 60)} min drive` : '',
     listing.building?.stabilized && photoBadge !== 'Rent-stabilized' ? 'Rent-stabilized' : '',
-    listing.insights?.walkability ? `Walkability ${listing.insights.walkability}/20` : '',
+    listing.insights?.walkability ? `Walkability ${listing.insights.walkability}/100` : '',
     priceCut && !isNew ? '' : priceCut ? `Price cut ${formatRent(priceCut)}` : '',
     longListed ? `${listed}, worth negotiating` : '',
   ]
@@ -385,6 +387,29 @@ export const Listing = memo(function Listing({
             </Text>
           </View>
         </Pressable>
+        {/* Not for me: takes the apartment out of this person's results. Not offered on a saved one. */}
+        {hide && !onRemove && !saved && (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Hide ${title}`}
+            onPress={() => hide(listing)}
+            hitSlop={8}
+            style={[card.heart, { right: 52 }]}
+          >
+            <View
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: 14,
+                backgroundColor: '#00000066',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <CloseIcon color="#ffffff" size={12} />
+            </View>
+          </Pressable>
+        )}
         {/* The heart is drawn on the photo but is its own button, not inside the card's Details button. */}
         <Pressable
           accessibilityRole="button"
@@ -474,8 +499,8 @@ export const Listing = memo(function Listing({
             </Text>
             {listing.insights?.walkability ? (
               <Text style={styles.smallMuted}>
-                Walkability {listing.insights.walkability} of 20 · EPA National Walkability Index, for the surrounding blocks (20 is the
-                most walkable).
+                Walkability {listing.insights.walkability} of 100, for the surrounding blocks · from the EPA National Walkability Index,
+                which the EPA scores from 1 to 20 and Walkup shows out of 100.
               </Text>
             ) : null}
             {!commuteKnown && addCommute && (

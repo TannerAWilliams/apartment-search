@@ -1,4 +1,5 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useContext, useMemo, useRef, useState } from 'react';
+import { HiddenContext } from '../hooks/use-hidden.ts';
 import { inventoryUnavailable } from '../inventory-state.ts';
 import type { ListingData, SourceLink, SearchFilters, SearchResult } from '../domain.ts';
 
@@ -212,7 +213,11 @@ export function Results({
     }),
     [],
   );
-  const { matches } = result;
+  const savedView = result.mode === 'saved';
+  // Apartments this person hid are left out of their results (never out of their saved list).
+  const { hidden, showAll } = useContext(HiddenContext);
+  const matches = savedView ? result.matches : result.matches.filter((listing) => !hidden.has(listingKey(listing)));
+  const hiddenHere = result.matches.length - matches.length;
   const shown = matches.slice(0, visible);
   const coverage = (status || (result.notices?.length ?? 0) > 0) && (
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: 10, rowGap: 2 }}>
@@ -223,7 +228,6 @@ export function Results({
   // Cards after the last open one, which takes a whole row; they decide how full the last row is.
   const lastOpen = shown.findLastIndex(({ id }) => open.has(id));
   const cardsAfterOpen = shown.length - lastOpen - 1;
-  const savedView = result.mode === 'saved';
   // A sort with only one option (saved apartments without routing) is not a choice, so it is not shown.
   const sortOptions = Object.entries(RESULT_SORTS).filter(
     // Best fit and the commute sorts weigh travel times, so they are offered only where there are travel times.
@@ -268,6 +272,13 @@ export function Results({
                 applied.maxTransitMinutes != null ||
                 applied.maxDrivingMinutes != null ||
                 applied.maxCommuteMinutes != null) && <Text style={styles.smallMuted}>{summary}</Text>}
+            {hiddenHere > 0 && showAll && (
+              <Pressable accessibilityRole="button" onPress={showAll} style={{ alignSelf: 'flex-start', paddingVertical: 2 }}>
+                <Text style={styles.smallMuted}>
+                  {hiddenHere} hidden by you · <Text style={styles.linkText}>Show hidden apartments</Text>
+                </Text>
+              </Pressable>
+            )}
             {destination && (
               <Pressable
                 accessibilityRole="button"

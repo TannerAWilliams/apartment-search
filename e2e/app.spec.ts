@@ -1619,3 +1619,17 @@ test('the theme follows the device, and a choice on the profile is kept', async 
   await page.getByRole('button', { name: 'Dark', exact: true }).click();
   expect(await background()).toBe('rgb(20, 19, 18)');
 });
+
+test('an apartment can be hidden from this person’s results, and brought back', async ({ page }) => {
+  await mockApp(page, { listingCount: 3 });
+  await expect(page.getByText('12 Grove Street', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Hide 12 Grove Street', exact: true }).click();
+  await expect(page.getByText('12 Grove Street', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('13 Grove Street', { exact: true })).toBeVisible();
+  // Kept on the device: still hidden after a reload, with a way to see it again.
+  await page.reload();
+  await expect(page.getByText('13 Grove Street', { exact: true })).toBeVisible();
+  await expect(page.getByText('12 Grove Street', { exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: /1 hidden by you/ }).click();
+  await expect(page.getByText('12 Grove Street', { exact: true })).toBeVisible();
+});

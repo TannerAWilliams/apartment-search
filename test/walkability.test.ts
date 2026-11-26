@@ -56,7 +56,7 @@ test('each night learns the places listings are in that are not known yet, once 
   expect(Object.keys(await readWalkability(fresh))).toHaveLength(800);
 });
 
-test('listings carry the figure for their place as a whole number, and searches read it with the other lists', async () => {
+test('listings carry the figure for their place out of 100, and searches read it with the other lists', async () => {
   expect(walkCell(40.78231, -73.94947)).toBe('40.782,-73.949');
   expect(walkCell(null, -73.9)).toBeNull();
   expect(walkCell(40.7, Number.NaN)).toBeNull();
@@ -66,7 +66,7 @@ test('listings carry the figure for their place as a whole number, and searches 
     {},
     { walkability: cells },
   );
-  expect(known!.insights.walkability).toBe(17);
+  expect(known!.insights.walkability, '16.6 of 20, shown out of 100').toBe(83);
   expect(none!.insights.walkability).toBeUndefined();
   expect(unknown!.insights.walkability).toBeUndefined();
   expect(unplaced!.insights.walkability).toBeUndefined();
