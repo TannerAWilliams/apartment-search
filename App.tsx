@@ -529,8 +529,9 @@ function ApartmentSearch() {
           onPress={() => navigateTab('home')}
           style={({ pressed }) => [styles.brand, pressed && styles.pressed]}
         >
+          {/* The mark is the name's "w"; the link's label says the whole name. */}
           <BrandMark />
-          <Text style={styles.brandText}>walkup</Text>
+          <Text style={styles.brandText}>alkup</Text>
         </Pressable>
         {wide && navigation}
         {member ? (

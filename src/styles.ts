@@ -45,8 +45,8 @@ export const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderColor: palette.gray[1],
   },
-  // The mark stands on the name's baseline, like a letter.
-  brand: { ...row, alignItems: 'baseline', gap: 7 },
+  // The mark is the name's first letter: on the baseline, a hair from the next one.
+  brand: { ...row, alignItems: 'baseline', gap: 1 },
   brandText: { color: palette.gray[9], fontSize: 23, fontWeight: '800', letterSpacing: -0.9 },
   topLabel: { ...eyebrow, color: colors.muted, textAlign: 'right' },
   resultLayout: { gap: 14 },

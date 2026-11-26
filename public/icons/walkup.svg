@@ -1,8 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="5.5 3 21 25">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 21 13.7">
   <style>
-    .door{fill:#201e1c}.stairs{fill:#db164e}
-    @media (prefers-color-scheme:dark){.door{fill:#f6f6f6}.stairs{fill:#f73b62}}
+    .ink{fill:#201e1c}.pink{fill:#db164e}
+    @media (prefers-color-scheme:dark){.ink{fill:#f6f6f6}.pink{fill:#f73b62}}
   </style>
-  <path class="door" d="M6.5 28V13.5a9.5 9.5 0 0 1 19 0V28z"/>
-  <path class="stairs" d="M9 28v-4.2h4.8v-4.2h4.8v-4.2h4.4V28z"/>
+  <path class="ink" d="M0 0l5.25 6.7v7L0 7zM10.5 0l5.25 6.7v7L10.5 7z"/>
+  <path class="pink" d="M5.25 6.7 10.5 0v7l-5.25 6.7zM15.75 6.7 21 0v7l-5.25 6.7z"/>
 </svg>
