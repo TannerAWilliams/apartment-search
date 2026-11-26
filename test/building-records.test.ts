@@ -553,3 +553,22 @@ test('the kept facts and the grade take in rats, evictions, court cases and a la
     unregistered: null,
   });
 });
+
+test('a request the city refuses while busy is asked once more, and a second refusal is unknown', async () => {
+  const fetcher = source();
+  const asked = new Map<string, number>();
+  /** Refuses each dataset's first `refusals` requests, as a busy service does. */
+  const busy = (refusals: number) => async (url: string, options?: RequestInit) => {
+    const dataset = new URL(url).pathname;
+    asked.set(dataset, (asked.get(dataset) ?? 0) + 1);
+    return asked.get(dataset)! <= refusals ? new Response('Service unavailable', { status: 503 }) : fetcher(url, options);
+  };
+  const report = await retrieveBuildingRecords(address, busy(1), now);
+  expect(report.status).toBe('matched');
+  expect(report.rodents).toEqual({ inspections: 7, ratActivity: 3 });
+  expect([...asked.values()].every((count) => count === 2)).toBe(true);
+  asked.clear();
+  expect((await retrieveBuildingRecords(address, busy(2), now)).status, 'refused twice: the building is not identified').toBe(
+    'unavailable',
+  );
+});

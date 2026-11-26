@@ -71,8 +71,17 @@ type FloodZone = { FLD_ZONE: string; SFHA_TF: 'T' | 'F' };
 const floodZone = (value: Record<string, unknown> | null): value is FloodZone =>
   typeof value?.FLD_ZONE === 'string' && value.FLD_ZONE.length <= 80 && (value.SFHA_TF === 'T' || value.SFHA_TF === 'F');
 
+/** The city's services refuse a request now and then while they are busy; a refused one is asked once more, after this long. */
+const RETRY_AFTER_MS = 400;
+
 async function readOfficialJson(url: string, fetcher: FetchTransport, signal: AbortSignal): Promise<unknown> {
-  const response = await fetcher(url, { signal, redirect: 'manual', headers: { Accept: 'application/json' } });
+  const ask = () => fetcher(url, { signal, redirect: 'manual', headers: { Accept: 'application/json' } });
+  let response = await ask();
+  if (response.status === 429 || response.status >= 500) {
+    await response.body?.cancel().catch(() => {});
+    await new Promise((resolve) => setTimeout(resolve, RETRY_AFTER_MS));
+    response = await ask();
+  }
   if (!response.ok || Number(response.headers.get('content-length')) > 256 * 1024) {
     await response.body?.cancel().catch(() => {});
     throw new Error('Official source unavailable.');
