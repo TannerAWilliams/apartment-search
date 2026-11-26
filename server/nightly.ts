@@ -114,7 +114,7 @@ export async function runNightly(
   // Admins hear about sources that were working and now fail.
   await warnAboutFailures(
     env,
-    result.sources.filter(({ status }) => status === 'failed').map(({ name }) => name),
+    result.sources.filter(({ status }) => status === 'failed').map(({ name, error }) => ({ name, error })),
     now,
   );
   let background = false;

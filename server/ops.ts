@@ -54,30 +54,42 @@ export async function funnel(bucket: Bucket, days = 30, now = new Date(), signup
 }
 
 /**
- * Emails the admins when sources that were working now fail; a source still failing from before is not
- * reported again. Returns the sources that newly failed.
+ * Emails the admins when sources that were working now fail, with each one's reason. A source still failing
+ * from before does not send an email by itself, but is listed under the new failures so the email is the whole
+ * picture. Returns the names of the sources that newly failed.
  */
-export async function warnAboutFailures(env: AppEnv & { BUCKET: Bucket }, failing: string[], now = new Date()) {
+export async function warnAboutFailures(env: AppEnv & { BUCKET: Bucket }, failing: { name: string; error?: string }[], now = new Date()) {
   const object = await env.BUCKET.get(FAILING_KEY);
   const before = (object && checkedDocument(FailingSchema, await object.json().catch(() => null), FAILING_KEY)?.names) ?? [];
-  await env.BUCKET.put(FAILING_KEY, JSON.stringify({ names: failing, at: now.toISOString() }));
-  const fresh = failing.filter((name) => !before.includes(name));
+  await env.BUCKET.put(FAILING_KEY, JSON.stringify({ names: failing.map(({ name }) => name), at: now.toISOString() }));
+  const fresh = failing.filter(({ name }) => !before.includes(name));
+  const still = failing.filter(({ name }) => before.includes(name));
+  const names = fresh.map(({ name }) => name);
   const channels = alertChannels(env);
   const admins = adminEmails(env);
-  if (!fresh.length || !channels.email || !channels.from || !admins.length) return fresh;
-  const lines = fresh.map((name) => `• ${name}`).join('\n');
+  if (!fresh.length || !channels.email || !channels.from || !admins.length) return names;
+  const line = ({ name, error }: { name: string; error?: string }) => (error ? `${name}: ${error}` : name);
+  const clean = (text: string) => text.replace(/[<>&]/g, '');
+  const sections: [string, { name: string; error?: string }[]][] = [
+    ['These sources failed in the scheduled resync and were working before:', fresh],
+    ['Still failing from before:', still],
+  ];
+  const shown = sections.filter(([, sources]) => sources.length);
   try {
     await channels.email.send({
       from: channels.from,
       to: admins,
       subject: `Walkup: ${fresh.length} ${fresh.length === 1 ? 'source' : 'sources'} stopped working`,
-      text: `These sources failed in the scheduled resync and were working before:\n${lines}\n\nProfile → Sources & sync shows why.`,
-      html: `<p>These sources failed in the scheduled resync and were working before:</p><ul>${fresh
-        .map((name) => `<li>${name.replace(/[<>&]/g, '')}</li>`)
-        .join('')}</ul><p>Profile → Sources &amp; sync shows why.</p>`,
+      text:
+        shown.map(([title, sources]) => `${title}\n${sources.map((source) => `• ${line(source)}`).join('\n')}`).join('\n\n') +
+        '\n\nProfile → Sources & sync has each source’s details and a Resync button.',
+      html:
+        shown
+          .map(([title, sources]) => `<p>${title}</p><ul>${sources.map((source) => `<li>${clean(line(source))}</li>`).join('')}</ul>`)
+          .join('') + '<p>Profile → Sources &amp; sync has each source’s details and a Resync button.</p>',
     });
   } catch (cause) {
     log.error('admin_warning_failed', cause);
   }
-  return fresh;
+  return names;
 }

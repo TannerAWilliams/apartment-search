@@ -63,15 +63,33 @@ test('admins hear once when working sources start failing', async () => {
   const bucket = createMemoryBucket();
   const mail = mailbox();
   const env = { BUCKET: bucket, ALERT_EMAIL: mail.email, ALERT_EMAIL_FROM: 'alerts@example.test', ADMIN_EMAILS: 'owner@example.test' };
-  expect(await warnAboutFailures(env, ['Zillow', 'Redfin'], now)).toEqual(['Zillow', 'Redfin']);
+  expect(await warnAboutFailures(env, [{ name: 'Zillow', error: 'Zillow returned HTTP 403.' }, { name: 'Redfin' }], now)).toEqual([
+    'Zillow',
+    'Redfin',
+  ]);
   expect(mail.sent[0]).toMatchObject({ to: ['owner@example.test'], subject: 'Walkup: 2 sources stopped working' });
-  expect(await warnAboutFailures(env, ['Zillow', 'Compass'], now), 'still failing is not news').toEqual(['Compass']);
+  expect(
+    await warnAboutFailures(
+      env,
+      [
+        { name: 'Zillow', error: 'Zillow returned HTTP 403.' },
+        { name: 'Compass', error: 'A <challenge>.' },
+      ],
+      now,
+    ),
+    'still failing is not news',
+  ).toEqual(['Compass']);
   expect(mail.sent[1]?.subject).toBe('Walkup: 1 source stopped working');
+  // Each source's reason is in the email, and the ones still failing are listed after the new ones.
+  expect(mail.sent[0]?.text).toContain('• Zillow: Zillow returned HTTP 403.\n• Redfin');
+  expect(mail.sent[0]?.text).not.toContain('Still failing');
+  expect(mail.sent[1]?.text).toContain('• Compass: A <challenge>.\n\nStill failing from before:\n• Zillow: Zillow returned HTTP 403.');
+  expect(mail.sent[1]?.html).toContain('<li>Compass: A challenge.</li>');
   expect(await warnAboutFailures(env, [], now)).toEqual([]);
   expect(mail.sent.length).toBe(2);
   const failing = { ...env, ALERT_EMAIL: { send: async () => Promise.reject(new Error('quota')) } };
-  expect(await warnAboutFailures(failing, ['TF Cornerstone'], now)).toEqual(['TF Cornerstone']);
-  expect(await warnAboutFailures({ BUCKET: createMemoryBucket() }, ['A'], now), 'no email set up').toEqual(['A']);
+  expect(await warnAboutFailures(failing, [{ name: 'TF Cornerstone' }], now)).toEqual(['TF Cornerstone']);
+  expect(await warnAboutFailures({ BUCKET: createMemoryBucket() }, [{ name: 'A' }], now), 'no email set up').toEqual(['A']);
 });
 
 test('the Monday digest tells each paid account what is new for its alerts', async () => {

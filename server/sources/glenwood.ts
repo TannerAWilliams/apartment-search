@@ -75,7 +75,9 @@ export function parseGlenwoodSearch(html: string): Card[] {
     const id = card.match(/^(\d+)"/)?.[1];
     const building = card.match(/href="https:\/\/www\.glenwoodnyc\.com\/properties\/[a-z-]+\/([a-z0-9-]+)\/?"/)?.[1];
     const plain = text(card);
-    const bedrooms = Number(plain.match(/Bedrooms (\d+)/)?.[1]);
+    // A studio is written "S" (or spelled out), not 0.
+    const size = plain.match(/Bedrooms (\d+|S(?:tudio)?)\b/i)?.[1];
+    const bedrooms = size && /^s/i.test(size) ? 0 : Number(size);
     const bathrooms = Number(plain.match(/Bathrooms ([\d.]+)/)?.[1]);
     const rent = Number(plain.match(/Monthly Price \$\s?([\d,]+)/)?.[1]?.replaceAll(',', ''));
     if (!id || !building || !Number.isInteger(bedrooms) || !Number.isFinite(rent))

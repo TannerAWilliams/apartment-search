@@ -109,6 +109,10 @@ test('Glenwood: a mismatch between searches, an unknown building or an unreadabl
     'did not fully describe',
   );
   expect(() => parseGlenwoodSearch('<html>Maintenance</html>')).toThrow('recognized search page');
+  // Glenwood writes a studio as "S".
+  expect(
+    parseGlenwoodSearch(searchPage([card('3513', 'the-fairmont', 1, 3995).replace('<span>1</span></div>\n', '<span>S</span></div>\n')])),
+  ).toMatchObject([{ id: '3513', bedrooms: 0, rent: 3995 }]);
   expect(glenwoodListingUrl('https://www.glenwoodnyc.com/listing-detail/?lid=2139&sr=yes')).toBe(
     'https://www.glenwoodnyc.com/listing-detail/?lid=2139',
   );
