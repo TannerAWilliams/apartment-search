@@ -14,3 +14,9 @@ test('typical monthly and move-in costs follow the bedroom count and the stateâ€
   expect(typicalCosts({ rent: 2000, bedrooms: 7, state: 'CT' }).moveInParts.deposit).toBe(4000);
   expect(typicalCosts({ rent: 2000, bedrooms: 7, state: 'CT' }).parts.utilities).toBe(200);
 });
+
+test('a broker fee is also shown as a monthly cost, spread over a year; none where no fee is paid', () => {
+  expect(typicalCosts({ rent: 3000, bedrooms: 2, state: 'NY', region: 'nyc' }).monthlyWithFee).toBeNull();
+  const jersey = typicalCosts({ rent: 2400, bedrooms: 1, state: 'NJ', region: 'nj' });
+  expect(jersey.monthlyWithFee).toBe(jersey.monthly + 200);
+});

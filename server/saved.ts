@@ -8,10 +8,13 @@ import { log } from './log.ts';
 
 export const MAX_SAVED = 300;
 
-async function savedKey(owner: string) {
+async function ownerKey(folder: string, owner: string) {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(owner.toLowerCase()));
-  return 'saved/' + [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('') + '.json';
+  return folder + '/' + [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('') + '.json';
 }
+const savedKey = (owner: string) => ownerKey('saved', owner);
+/** Where what was last seen of an account's saved apartments is kept (server/saved-watch.ts). */
+export const watchKey = (owner: string) => ownerKey('saved-watch', owner);
 
 /** Saved listings with an ID, one per ID (the latest copy), up to MAX_SAVED. */
 export function keepSaved(listings: unknown[]) {

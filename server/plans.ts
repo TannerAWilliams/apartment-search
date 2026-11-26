@@ -7,6 +7,7 @@ import * as v from 'valibot';
 import type { AppEnv, Bucket } from './contracts.ts';
 import { addresses, adminEmails } from './roles.ts';
 import { checkedDocument } from './storage/stored-documents.ts';
+import type { D1Database } from './storage/d1-bucket.ts';
 import { billedEmails } from './billing.ts';
 
 export type Plan = 'free' | 'paid';
@@ -47,6 +48,13 @@ export async function setPaid(bucket: Bucket, email: string, paid: boolean) {
  * The accounts an admin can see on the Profile page: everyone allowed to sign in, everyone who has an account
  * (`accounts`, from the sign-in database; with open sign-ups that is anyone who joined), and anyone marked paid.
  */
+/** Everyone with a sign-in account, newest first, up to 500. */
+export async function accountEmails(database: D1Database | undefined) {
+  if (!database) return [];
+  const rows = await database.prepare('SELECT "email" FROM "user" ORDER BY "createdAt" DESC LIMIT 500').all<{ email: string }>();
+  return rows.results.map(({ email }) => email);
+}
+
 export async function members(env: AppEnv, bucket: Bucket, accounts: string[] = []) {
   const admins = new Set(adminEmails(env));
   const paid = await paidEmails(env, bucket);

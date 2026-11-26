@@ -2,7 +2,7 @@ import { CommuteContext } from './commute-context.ts';
 import { LineBullets } from './LineBullet.tsx';
 import type { ListingData, SourceLink, Workplace } from '../domain.ts';
 import { typicalCosts } from '../move-in.ts';
-import { buildingGrade, listedLabel, listedWithin, marketBadge, type BuildingFacts } from '../insights.ts';
+import { buildingGrade, leverage, listedLabel, listedWithin, marketBadge, type BuildingFacts } from '../insights.ts';
 import type { CheckBuilding } from './BuildingReport.tsx';
 import { discoveryFacts, LAUNDRY_LABELS } from '../discovery.ts';
 import type React from 'react';
@@ -46,6 +46,7 @@ function TypicalCost({ listing }: { listing: ListingData }) {
   return (
     <View style={{ gap: 6 }}>
       {row('Each month, with utilities (estimated)', cost.monthly, true)}
+      {cost.monthlyWithFee ? row('Each month with a broker fee spread over a year', cost.monthlyWithFee, true) : null}
       {row('To move in (estimated)', cost.moveIn + cost.possibleBrokerFee, true)}
       {/* Only the pieces of the two totals above, without the notes. */}
       <Disclosure title="See the breakdown">
@@ -497,6 +498,7 @@ export const Listing = memo(function Listing({
                 .filter(Boolean)
                 .join(' · ')}
             </Text>
+            {leverage(listing) ? <Text style={styles.bodyText}>{leverage(listing)}</Text> : null}
             {listing.insights?.walkability ? (
               <Text style={styles.smallMuted}>
                 Walkability {listing.insights.walkability} of 100, for the surrounding blocks · from the EPA National Walkability Index,

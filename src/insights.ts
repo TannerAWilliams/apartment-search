@@ -49,6 +49,9 @@ export type ListingInsights = {
   firstSeen?: string;
   /** How much the rent dropped at its last change, when it dropped. */
   priceCut?: number;
+  /** How many times the rent has been cut since Walkup first saw it, and by how much in all, when more than once. */
+  priceCuts?: number;
+  priceCutTotal?: number;
   /** The EPA's National Walkability Index for the blocks around it, shown out of 100 (the EPA's 1 to 20, times five). */
   walkability?: number;
   /** Estimated door-to-door transit minutes to the search's destination (src/transit-estimate.ts). */
@@ -62,9 +65,12 @@ export function freshness(history: unknown) {
   const rents = shown.observations.map(({ rent }) => rent);
   const change = rents.findLastIndex((rent, index) => index > 0 && rent !== rents[index - 1]);
   const cut = change > 0 && rents[change] < rents[change - 1] ? rents[change - 1] - rents[change] : 0;
+  // Every drop on record: a landlord who has cut twice is likelier to take less.
+  const drops = rents.flatMap((rent, index) => (index > 0 && rent < rents[index - 1]! ? [rents[index - 1]! - rent] : []));
   return {
     ...(shown.truncated ? {} : { firstSeen: shown.firstObservedAt }),
     ...(cut ? { priceCut: cut } : {}),
+    ...(drops.length > 1 ? { priceCuts: drops.length, priceCutTotal: drops.reduce((sum, drop) => sum + drop, 0) } : {}),
   };
 }
 
@@ -231,6 +237,26 @@ export function withInsights<T extends ListingData>(
     };
     return { ...listing, insights, ...(building ? { building } : {}) };
   });
+}
+
+/**
+ * Where a renter has room to ask for less: how long the listing site has had it up, and how often its rent was
+ * cut. Null when it is neither long listed (three weeks) nor cut.
+ */
+export function leverage(listing: Pick<ListingData, 'listedAt'> & { insights?: ListingInsights }, now = Date.now()) {
+  const listed = listing.listedAt ? Date.parse(listing.listedAt) : Number.NaN;
+  const days = Number.isFinite(listed) ? Math.floor((now - listed) / 86_400_000) : 0;
+  const { priceCut, priceCuts, priceCutTotal } = listing.insights ?? {};
+  const money = (amount: number) => '$' + amount.toLocaleString('en-US');
+  const parts = [
+    days >= 21 ? `on the market ${days} days` : '',
+    priceCuts
+      ? `rent cut ${priceCuts === 2 ? 'twice' : `${priceCuts} times`}, ${money(priceCutTotal ?? 0)} in all`
+      : priceCut
+        ? `rent cut ${money(priceCut)}`
+        : '',
+  ].filter(Boolean);
+  return parts.length ? `Room to negotiate: ${parts.join('; ')}.` : null;
 }
 
 /** The badge text for a rent against similar apartments, or null when it is within 5%. */

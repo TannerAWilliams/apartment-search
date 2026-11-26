@@ -1,5 +1,6 @@
 import type { ListingData } from '../src/domain.ts';
-import { paidEmails } from './plans.ts';
+import { accountEmails, paidEmails } from './plans.ts';
+import { savedAlerts } from './saved-watch.ts';
 import {
   checkObservedChanges,
   MAX_BASELINE_UNITS,
@@ -452,6 +453,7 @@ export async function checkAlerts(
     origin,
     now = new Date(),
     paid,
+    extra = [],
   }: {
     origin: string;
     now?: Date;
@@ -460,6 +462,8 @@ export async function checkAlerts(
      * made before accounts, and every alert where no plans are given, are sent at once.
      */
     paid?: Set<string>;
+    /** Alerts found elsewhere (the watch on saved apartments), sent with the rest and by the same rules. */
+    extra?: Alert[];
   },
 ) {
   const rules = await readRules(bucket);
@@ -483,7 +487,7 @@ export async function checkAlerts(
       return null;
     }
   });
-  const found = checked.filter((alert): alert is Alert => alert !== null);
+  const found = [...checked.filter((alert): alert is Alert => alert !== null), ...extra];
   const onFreePlan = ({ owner }: Alert) => Boolean(paid && owner && !paid.has(owner));
   // A free account's alerts wait; what goes now is everyone else's, and the held ones whose wait is over.
   const released = paid ? await releaseHeld(bucket, found.filter(onFreePlan), paid, now) : [];
@@ -520,8 +524,21 @@ export const alertMatches = (env: AppEnv) => async (filters: AlertRule['filters'
 /** Checks every saved alert against the saved inventory; runs after refreshes, never on a schedule. */
 export async function runAlerts(env: AppEnv, origin = env.APP_ORIGIN ?? '') {
   if (!env.BUCKET) return null;
-  const paid = env.PUBLIC_APP === 'true' ? undefined : await paidEmails(env, env.BUCKET);
-  return checkAlerts(env.BUCKET, alertMatches(env), alertChannels(env), { origin, paid });
+  const bucket = env.BUCKET;
+  // The plans, and what has changed about each account's saved apartments, are worked out together.
+  const [paid, extra] = await Promise.all([
+    env.PUBLIC_APP === 'true' ? undefined : paidEmails(env, bucket),
+    (async () => {
+      const owners = await accountEmails(bucket.database);
+      if (!owners.length) return [];
+      const everything = parseFilters({ region: 'all', bedrooms: null, maxRent: null });
+      return savedAlerts(bucket, owners, await alertMatches(env)(everything));
+    })().catch((cause) => {
+      log.error('saved_watch_failed', cause);
+      return [];
+    }),
+  ]);
+  return checkAlerts(bucket, alertMatches(env), alertChannels(env), { origin, paid, extra });
 }
 
 /**

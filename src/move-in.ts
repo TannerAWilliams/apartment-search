@@ -29,6 +29,8 @@ export function typicalCosts(listing: Pick<ListingData, 'rent' | 'bedrooms' | 's
     moveIn: listing.rent + deposit + applicationFee,
     moveInParts: { firstMonth: listing.rent, deposit, applicationFee },
     possibleBrokerFee,
+    // What the apartment costs a month once a broker fee is counted, spread over a year's lease.
+    monthlyWithFee: possibleBrokerFee ? monthly + Math.round(possibleBrokerFee / 12) : null,
     notes: [
       depositMonths === 1
         ? 'New York law caps the security deposit at one month’s rent and the application fee at $20.'

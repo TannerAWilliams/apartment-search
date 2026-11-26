@@ -150,3 +150,34 @@ test('every listing 5% or more below similar ones is a deal, however far below; 
     'deal',
   ]);
 });
+
+test('room to negotiate: a listing long on the market or cut more than once says so', async () => {
+  const { freshness, leverage } = await import('../src/insights.ts');
+  const observed = (rents: number[]) => ({
+    sourceId: 's',
+    firstObservedAt: '2026-11-01T00:00:00Z',
+    lastObservedAt: `2026-11-0${rents.length}T00:00:00Z`,
+    truncated: false,
+    observations: rents.map((rent, index) => ({
+      checkedAt: `2026-11-0${index + 1}T00:00:00Z`,
+      rent,
+      priceIncludesFees: false,
+    })),
+  });
+  // Every drop is counted, a rise between them or not; one drop alone is the last cut, as before.
+  expect(freshness(observed([3200, 3100, 3150, 2950]))).toMatchObject({ priceCut: 200, priceCuts: 2, priceCutTotal: 300 });
+  expect(freshness(observed([3200, 3100]))).toEqual({ firstSeen: '2026-11-01T00:00:00Z', priceCut: 100 });
+  const now = Date.parse('2026-11-25T12:00:00Z');
+  const listing = (listedAt: string | undefined, insights: object = {}) => ({ listedAt, insights: { warnings: [], ...insights } });
+  expect(leverage(listing('2026-10-22T12:00:00Z', { priceCuts: 2, priceCutTotal: 300 }), now)).toBe(
+    'Room to negotiate: on the market 34 days; rent cut twice, $300 in all.',
+  );
+  expect(leverage(listing('2026-11-20T12:00:00Z', { priceCuts: 3, priceCutTotal: 450 }), now)).toBe(
+    'Room to negotiate: rent cut 3 times, $450 in all.',
+  );
+  expect(leverage(listing(undefined, { priceCut: 150 }), now)).toBe('Room to negotiate: rent cut $150.');
+  expect(leverage(listing('2026-10-22T12:00:00Z'), now)).toBe('Room to negotiate: on the market 34 days.');
+  // New and never cut, or with no date from the site: nothing to say.
+  expect(leverage(listing('2026-11-20T12:00:00Z'), now)).toBeNull();
+  expect(leverage({ listedAt: 'soon' })).toBeNull();
+});
