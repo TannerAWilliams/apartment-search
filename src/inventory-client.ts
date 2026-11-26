@@ -11,7 +11,7 @@ import { type Inventory, answerSearch, withTransitEstimates } from './answer.ts'
 import type { SearchFilters, SearchResult, Workplace } from './domain.ts';
 import { openingSearchBody } from './early-requests.ts';
 import type { FetchTransport } from './fetch-type.ts';
-import { decodeInventory, INVENTORY_FORMAT } from './inventory-format.ts';
+import { decodeInventoryStream, INVENTORY_FORMAT } from './inventory-format.ts';
 import { localWorkplace, needsCommute, parseFilters } from './search.ts';
 
 type Head = { format: number; version: string; opening: SearchResult };
@@ -72,8 +72,12 @@ export function createInventorySearch({
       version,
       loaded: null,
       loading: Promise.resolve(fetcher(`${origin}/api/inventory/${version}`))
-        .then((response) => (response.ok ? response.text() : Promise.reject(new Error('The inventory file could not be read.'))))
-        .then((text) => decodeInventory<Omit<Inventory, 'listings'>, Record<string, unknown>>(text, pause))
+        // Read as it downloads, a piece at a time (src/inventory-format.ts).
+        .then((response) =>
+          response.ok && response.body
+            ? decodeInventoryStream<Omit<Inventory, 'listings'>, Record<string, unknown>>(response.body, pause)
+            : Promise.reject(new Error('The inventory file could not be read.')),
+        )
         .then(({ header, rows }): Inventory | null => {
           // Rows are listings as the server wrote them (server/inventory.ts).
           mine.loaded = { ...header, listings: rows as unknown as Inventory['listings'] };

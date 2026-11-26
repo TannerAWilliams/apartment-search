@@ -9,7 +9,7 @@ import { answerSearch, type Inventory } from '../src/answer.ts';
 import type { ListingData, SearchResult } from '../src/domain.ts';
 import { openingSearchBody } from '../src/early-requests.ts';
 import { createInventorySearch } from '../src/inventory-client.ts';
-import { decodeGroup, decodeInventory, encodeInventory } from '../src/inventory-format.ts';
+import { decodeGroup, decodeInventory, decodeInventoryStream, encodeInventory } from '../src/inventory-format.ts';
 import { localWorkplace, parseFilters } from '../src/search.ts';
 
 /** Workers KV, as far as the inventory uses it. */
@@ -64,6 +64,23 @@ test('the file format returns exactly the rows it was given, absent fields and r
   // A file from another version of the format, or cut short, is refused rather than half-read.
   await expect(decodeInventory(text.replace('"format":1', '"format":99'))).rejects.toThrow('not one this app reads');
   await expect(decodeInventory(text.replace('"rows":4,"groups"', '"rows":5,"groups"'))).rejects.toThrow('incomplete');
+  await expect(decodeInventory(text.split('\n')[0]!)).rejects.toThrow('not one this app reads');
+  // The same file read as it downloads, in pieces that cut lines (and a character) anywhere.
+  const bytes = new TextEncoder().encode(encodeInventory({ place: 'Café' }, many));
+  for (const size of [7, 4096, bytes.length]) {
+    const pieces = new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (let at = 0; at < bytes.length; at += size) controller.enqueue(bytes.slice(at, at + size));
+        controller.close();
+      },
+    });
+    let waits = 0;
+    const streamed = await decodeInventoryStream(pieces, async () => void waits++);
+    expect(streamed.rows).toEqual(many);
+    expect(streamed.header.place).toBe('Café');
+    expect(waits).toBe(3);
+  }
+  await expect(decodeInventoryStream(new Response(text.split('\n')[0]!).body!)).rejects.toThrow('not one this app reads');
 });
 
 test('a search answered from the file is the search the server answers', async () => {

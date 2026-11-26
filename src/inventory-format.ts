@@ -61,22 +61,69 @@ export function encodeInventory(header: Row, rows: Row[]) {
   return [JSON.stringify({ ...header, format: INVENTORY_FORMAT, rows: rows.length, groups: groups.length }), ...groups].join('\n');
 }
 
+type Header<H> = H & { format: number; rows: number; groups: number };
+
+/** Takes the file a line at a time: the header, then each row group, waiting for `pause` after each group. */
+function lineReader<H extends Row, T extends Row>(pause?: () => Promise<void>) {
+  let header: Header<H> | undefined;
+  let groups = 0;
+  const rows: T[] = [];
+  return {
+    async line(text: string) {
+      if (!header) {
+        header = JSON.parse(text) as Header<H>;
+        if (header.format !== INVENTORY_FORMAT) throw new Error('The inventory file is not one this app reads.');
+        return;
+      }
+      // Appended in place: one array grown, not a new one per group.
+      for (const row of decodeGroup<T>(text)) rows.push(row);
+      groups++;
+      await pause?.();
+    },
+    done() {
+      if (!header || header.groups !== groups) throw new Error('The inventory file is not one this app reads.');
+      if (rows.length !== header.rows) throw new Error('The inventory file is incomplete.');
+      return { header, rows };
+    },
+  };
+}
+
 /**
  * The header and rows of a file's text. Between row groups it waits for `pause`, where the caller lets the page
  * respond (the browser passes one; the server and tests need none).
  */
 export async function decodeInventory<H extends Row, T extends Row>(text: string, pause?: () => Promise<void>) {
-  const [first = '', ...groups] = text.split('\n');
-  const header = JSON.parse(first) as H & { format: number; rows: number; groups: number };
-  if (header.format !== INVENTORY_FORMAT || header.groups !== groups.length)
-    throw new Error('The inventory file is not one this app reads.');
-  const rows: T[] = [];
-  for (const group of groups) {
-    // Appended in place: a spread of two thousand arguments per group is fine, but one array grown is simpler.
-    for (const row of decodeGroup<T>(group)) rows.push(row);
-    // biome-ignore lint/performance/noAwaitInLoops: the pause between groups is the point: the page stays responsive
-    await pause?.();
+  const into = lineReader<H, T>(pause);
+  // biome-ignore lint/performance/noAwaitInLoops: the pause between groups is the point: the page stays responsive
+  for (const line of text.split('\n')) await into.line(line);
+  return into.done();
+}
+
+/**
+ * The same, from the file as it downloads. Each piece is turned into text as it arrives and each row group is
+ * decoded once its line is whole, so a phone never stops to turn ten megabytes into text in one go, and decoding
+ * overlaps the download.
+ */
+export async function decodeInventoryStream<H extends Row, T extends Row>(body: ReadableStream<Uint8Array>, pause?: () => Promise<void>) {
+  const into = lineReader<H, T>(pause);
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let parts: string[] = [];
+  for (;;) {
+    // biome-ignore lint/performance/noAwaitInLoops: pieces are read in order, as they arrive
+    const { done, value } = await reader.read();
+    const text = done ? decoder.decode() : decoder.decode(value, { stream: true });
+    let from = 0;
+    for (let at = text.indexOf('\n'); at >= 0; at = text.indexOf('\n', from)) {
+      parts.push(text.slice(from, at));
+      // biome-ignore lint/performance/noAwaitInLoops: lines are decoded in order, with a pause after each group
+      await into.line(parts.join(''));
+      parts = [];
+      from = at + 1;
+    }
+    parts.push(text.slice(from));
+    if (done) break;
   }
-  if (rows.length !== header.rows) throw new Error('The inventory file is incomplete.');
-  return { header, rows };
+  await into.line(parts.join(''));
+  return into.done();
 }
