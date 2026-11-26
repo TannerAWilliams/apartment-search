@@ -7,14 +7,12 @@ import { chromium } from 'playwright';
  * has no background. It is inset by `inset`, more for a maskable icon, whose edges the phone may cut off.
  */
 const drawing =
-  '<path fill="#ffffff" d="M5.5 27v-5h7v-5h7v-5h7v15z"/>' +
-  '<path fill="#f73b62" d="M19.5 12V4.6a.6.6 0 0 1 .6-.6h5.8a.6.6 0 0 1 .6.6V12z"/>' +
-  '<circle cx="21.4" cy="8.4" r=".8" fill="#ffffff"/>';
+  '<path fill="#ffffff" d="M6.5 28V13.5a9.5 9.5 0 0 1 19 0V28z"/>' + '<path fill="#f73b62" d="M9 28v-4.2h4.8v-4.2h4.8v-4.2h4.4V28z"/>';
 const svg = (size: number, { rounded = true, inset = 0.14 } = {}) => {
   const pad = size * inset;
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
     <rect width="${size}" height="${size}" rx="${rounded ? size * 0.22 : 0}" fill="#201e1c"/>
-    <svg x="${pad}" y="${pad}" width="${size - pad * 2}" height="${size - pad * 2}" viewBox="3.5 3 25 25">${drawing}</svg>
+    <svg x="${pad}" y="${pad}" width="${size - pad * 2}" height="${size - pad * 2}" viewBox="3.5 3 25 25" preserveAspectRatio="xMidYMid meet">${drawing}</svg>
   </svg>`;
 };
 

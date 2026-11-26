@@ -1,9 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="3.5 2 25 25">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="5.5 3 21 25">
   <style>
-    .steps{fill:#201e1c}.door{fill:#db164e}
-    @media (prefers-color-scheme:dark){.steps{fill:#f6f6f6}.door{fill:#f73b62}}
+    .door{fill:#201e1c}.stairs{fill:#db164e}
+    @media (prefers-color-scheme:dark){.door{fill:#f6f6f6}.stairs{fill:#f73b62}}
   </style>
-  <path class="steps" d="M5.5 27v-5h7v-5h7v-5h7v15z"/>
-  <path class="door" d="M19.5 12V4.6a.6.6 0 0 1 .6-.6h5.8a.6.6 0 0 1 .6.6V12z"/>
-  <circle class="steps" cx="21.4" cy="8.4" r=".8"/>
+  <path class="door" d="M6.5 28V13.5a9.5 9.5 0 0 1 19 0V28z"/>
+  <path class="stairs" d="M9 28v-4.2h4.8v-4.2h4.8v-4.2h4.4V28z"/>
 </svg>
