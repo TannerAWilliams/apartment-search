@@ -54,9 +54,9 @@ export async function funnel(bucket: Bucket, days = 30, now = new Date(), signup
 }
 
 /**
- * Emails the admins when sources that were working now fail, with each one's reason. A source still failing
- * from before does not send an email by itself, but is listed under the new failures so the email is the whole
- * picture. Returns the names of the sources that newly failed.
+ * Emails the admins after every scheduled resync in which any source failed, with each one's reason: the ones
+ * that were working before first, then the ones still failing. No email on a night when everything worked.
+ * Returns the names of the sources that newly failed.
  */
 export async function warnAboutFailures(env: AppEnv & { BUCKET: Bucket }, failing: { name: string; error?: string }[], now = new Date()) {
   const object = await env.BUCKET.get(FAILING_KEY);
@@ -67,7 +67,7 @@ export async function warnAboutFailures(env: AppEnv & { BUCKET: Bucket }, failin
   const names = fresh.map(({ name }) => name);
   const channels = alertChannels(env);
   const admins = adminEmails(env);
-  if (!fresh.length || !channels.email || !channels.from || !admins.length) return names;
+  if (!failing.length || !channels.email || !channels.from || !admins.length) return names;
   const line = ({ name, error }: { name: string; error?: string }) => (error ? `${name}: ${error}` : name);
   const clean = (text: string) => text.replace(/[<>&]/g, '');
   const sections: [string, { name: string; error?: string }[]][] = [
@@ -79,7 +79,10 @@ export async function warnAboutFailures(env: AppEnv & { BUCKET: Bucket }, failin
     await channels.email.send({
       from: channels.from,
       to: admins,
-      subject: `Walkup: ${fresh.length} ${fresh.length === 1 ? 'source' : 'sources'} stopped working`,
+      subject: fresh.length
+        ? `Walkup: ${fresh.length} ${fresh.length === 1 ? 'source' : 'sources'} stopped working` +
+          (still.length ? `, ${still.length} still failing` : '')
+        : `Walkup: ${still.length} ${still.length === 1 ? 'source is' : 'sources are'} still failing`,
       text:
         shown.map(([title, sources]) => `${title}\n${sources.map((source) => `• ${line(source)}`).join('\n')}`).join('\n\n') +
         '\n\nProfile → Sources & sync has each source’s details and a Resync button.',

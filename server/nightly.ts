@@ -111,7 +111,7 @@ export async function runNightly(
   const checked = result.sources.filter(({ checkedAt }) => checkedAt === now.toISOString());
   const updated = checked.filter(({ status }) => status === 'updated' || status === 'current').length;
   const failed = checked.filter(({ status }) => status === 'failed').length;
-  // Admins hear about sources that were working and now fail.
+  // Admins get an email on every night a source failed, with each reason.
   await warnAboutFailures(
     env,
     result.sources.filter(({ status }) => status === 'failed').map(({ name, error }) => ({ name, error })),
