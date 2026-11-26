@@ -956,7 +956,7 @@ for (const width of [320, 375, 390]) {
 
 test('empty active inventory is not presented as no apartments matching the filters', async ({ page }) => {
   await mockApp(page, { listingCount: 0 });
-  await expect(page.getByRole('heading', { name: 'Active inventory unavailable', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Apartments couldn’t be loaded', exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: '0 matching apartments', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Check source status', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Sources & sync', exact: true })).toBeVisible();
@@ -1315,8 +1315,9 @@ test('an account downloads its data, reads the terms, and deletes itself after t
 test('results offer email alerts for the search, and newest and best-value sorting', async ({ page }) => {
   await mockApp(page, { account: 'owner@example.test', admin: true });
   // Sorting is one menu.
-  await page.getByRole('button', { name: 'Sort: Lowest rent', exact: true }).click();
-  await expect(page.getByRole('menuitem', { name: 'Newest listed', exact: true })).toBeVisible();
+  // Newest first to begin with, as listing sites open.
+  await page.getByRole('button', { name: 'Sort: Newest listed', exact: true }).click();
+  await expect(page.getByRole('menuitem', { name: 'Lowest rent', exact: true })).toBeVisible();
   await page.getByRole('menuitem', { name: 'Best value for the area', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Sort: Best value for the area', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Get email alerts for this search', exact: true }).click();

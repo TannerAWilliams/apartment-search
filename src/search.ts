@@ -14,7 +14,8 @@ export const DEFAULT_FILTERS: SearchFilters = {
   maxTransitMinutes: null,
   maxDrivingMinutes: null,
   liveOnly: false,
-  sort: 'rent',
+  // What was listed last comes first, as listing sites open: the lowest rents are too often a room or a mistake.
+  sort: 'newest',
   bestFitRentWeight: 60,
   source: '',
   company: '',

@@ -263,7 +263,7 @@ export function Results({
                 : !savedView && checkingInventory && result.total === 0
                   ? 'Checking availability…'
                   : unavailable
-                    ? 'Active inventory unavailable'
+                    ? 'Apartments couldn’t be loaded'
                     : `${result.total.toLocaleString('en-US')} ${savedView ? 'saved' : 'matching'} ${result.total === 1 ? 'apartment' : 'apartments'}`}
             </Text>
             {!savedView &&
@@ -294,7 +294,7 @@ export function Results({
                     </>
                   ) : (
                     <>
-                      ? min to your job · <Text style={styles.linkText}>Add where you work</Text>
+                      <Text style={styles.linkText}>Add where you work</Text> to see each commute
                     </>
                   )}
                 </Text>
@@ -326,13 +326,13 @@ export function Results({
       {matches.length === 0 && (savedView || !checkingInventory) && (
         <View style={styles.empty}>
           <Text accessibilityRole="header" style={styles.panelTitle}>
-            {savedView ? 'Your saved list is empty' : unavailable ? 'No inventory to search yet' : 'No matching rentals'}
+            {savedView ? 'Your saved list is empty' : unavailable ? 'We couldn’t load apartments just now' : 'No apartments match'}
           </Text>
           <Text style={styles.bodyText}>
             {savedView
               ? 'Save a result or add an apartment you found on a rental platform.'
               : unavailable
-                ? 'No sources have supplied recently checked active inventory. This is not a finding that no apartments match your budget or area. Check source status or browse the rental platforms directly.'
+                ? 'The listings didn’t arrive, so this isn’t an empty result for your search. Try again in a moment, or browse the rental sites directly.'
                 : applied.source
                   ? 'This website has no recently checked matches. Check its website for current availability.'
                   : needsCommute(applied)

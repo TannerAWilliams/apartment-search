@@ -256,7 +256,7 @@ export const Listing = memo(function Listing({
       : listing.insights?.transitMinutes
         ? commuteKnown
           ? `≈ ${listing.insights.transitMinutes} min to ${destination}`
-          : '? min to your job'
+          : ''
         : '',
     commute && drivingSeconds != null ? `${Math.ceil(drivingSeconds / 60)} min drive` : '',
     listing.building?.stabilized && photoBadge !== 'Rent-stabilized' ? 'Rent-stabilized' : '',
@@ -381,7 +381,7 @@ export const Listing = memo(function Listing({
             </Text>
             <Text style={[card.priceLine, defaultExpanded && card.pagePrice]}>
               <Text style={styles.price}>{presentation.priceKnown ? formatRent(rent) : 'Price unavailable'}</Text>
-              {presentation.priceKnown && ' month'}
+              {presentation.priceKnown && ' / month'}
               {(listing.kind === 'snapshot' || listing.priceIncludesFees) &&
                 (listing.kind === 'snapshot' ? ' · Recorded rent' : ' · Total price, fees included')}
               {badge ? <Text style={card.subtitle}> · {badge}</Text> : null}
@@ -421,12 +421,19 @@ export const Listing = memo(function Listing({
           hitSlop={8}
           style={card.heart}
         >
-          <HeartIcon
-            size={26}
-            color={saved || onRemove ? colors.green : colors.white}
-            filled={saved || Boolean(onRemove)}
-            fill="#00000066"
-          />
+          {/* The same dark disc as Hide beside it, so the pair reads as one set of controls on a photo or a map. */}
+          <View
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: 14,
+              backgroundColor: '#00000066',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <HeartIcon size={16} color={saved || onRemove ? '#fc7081' : '#ffffff'} filled={saved || Boolean(onRemove)} fill="transparent" />
+          </View>
         </Pressable>
       </View>
       <View style={[styles.rentalCardBody, sideBySide && card.openDetails]}>
@@ -507,7 +514,7 @@ export const Listing = memo(function Listing({
             ) : null}
             {!commuteKnown && addCommute && (
               <Pressable accessibilityRole="button" onPress={addCommute} style={{ paddingVertical: 4 }}>
-                <Text style={styles.linkText}>? min to your job · Add where you work</Text>
+                <Text style={styles.linkText}>Add where you work to see the commute</Text>
               </Pressable>
             )}
             {highlights.length > 0 && (

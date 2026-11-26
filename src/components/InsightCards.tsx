@@ -69,7 +69,7 @@ export function InsightCards({
               <Text numberOfLines={1} style={{ fontSize: 22, lineHeight: 28, fontWeight: '700', color: colors.ink }}>
                 {answer}
               </Text>
-              <Text numberOfLines={2} style={{ fontSize: 13, lineHeight: 17, color: colors.muted }}>
+              <Text numberOfLines={3} style={{ fontSize: 13, lineHeight: 17, color: colors.muted }}>
                 {context}
               </Text>
             </Pressable>
