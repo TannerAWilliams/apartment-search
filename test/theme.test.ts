@@ -46,12 +46,11 @@ test('in a browser each color is a variable: the palette in light, the other end
   // The dark grays are neutral, as light as the warm grays they stand for.
   expect(css).toContain(`--gray-2:${darkPalette.gray[2]}`);
   expect(darkPalette.gray[2]).toBe('#484848');
-  // The brand mark changes with the theme too: the brownstone by day, and lit at night.
-  expect(theme.mark.window).toBe('var(--mark-window)');
-  expect(mark.window, 'outside a browser, the daytime mark').toBe('#f6ead2');
-  expect(css).toContain('--mark-window:#f6ead2');
-  expect(css).toContain('--mark-window:#ffd98a');
-  expect(css).toContain(`--rose-9:${light.rose[0]}`);
+  // The brand mark changes with the theme too: a brown tile by day, a dark one at night.
+  expect(theme.mark.tile).toBe('var(--mark-tile)');
+  expect(mark.tile, 'outside a browser, the daytime mark').toBe(light.brown[7]);
+  expect(css).toContain(`--mark-tile:${light.brown[7]}`);
+  expect(css).toContain('--mark-tile:#262626');
   expect(page.documentElement.dataset.theme, 'the device decides until someone chooses').toBeUndefined();
 });
 

@@ -1002,8 +1002,19 @@ test('alerts: build one from an area, neighborhoods, bedroom counts and a rent, 
     if (body?.action === 'preview-rule') {
       // What the alert being written would match now: two apartments, drawn on the map under "Where".
       previews.push(body.rule);
-      const point = (id: string, latitude: number) => ({ id, address: id, title: id, latitude, longitude: -74.0, rent: 4200, bedrooms: 2, sources: [] });
-      return route.fulfill({ json: { ...state, preview: { count: 2, points: [point('1 Bank Street', 40.736), point('9 Perry Street', 40.735)] } } });
+      const point = (id: string, latitude: number) => ({
+        id,
+        address: id,
+        title: id,
+        latitude,
+        longitude: -74.0,
+        rent: 4200,
+        bedrooms: 2,
+        sources: [],
+      });
+      return route.fulfill({
+        json: { ...state, preview: { count: 2, points: [point('1 Bank Street', 40.736), point('9 Perry Street', 40.735)] } },
+      });
     }
     if (body) {
       posts.push(body);
@@ -1047,7 +1058,10 @@ test('alerts: build one from an area, neighborhoods, bedroom counts and a rent, 
   // The form says what the alert matches now and shows it on a map, a moment after the last change.
   await expect(page.getByText('2 apartments match this right now, shown on the map.', { exact: true })).toBeVisible();
   await expect(page.getByRole('region', { name: 'Map of matching apartments' })).toBeVisible();
-  expect(previews.at(-1)).toMatchObject({ filters: { region: 'manhattan', maxRent: 5000 }, criteria: { bedrooms: [2], neighborhoods: ['West Village'] } });
+  expect(previews.at(-1)).toMatchObject({
+    filters: { region: 'manhattan', maxRent: 5000 },
+    criteria: { bedrooms: [2], neighborhoods: ['West Village'] },
+  });
   await page.getByRole('button', { name: 'Save alert', exact: true }).click();
   await expect(page.getByText(/Alert saved: West Village · 2 BR · under \$5,000/)).toBeVisible();
   expect(posts[0]).toMatchObject({

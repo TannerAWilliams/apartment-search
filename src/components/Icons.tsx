@@ -1,5 +1,5 @@
 /** The app's few icons, drawn as SVG so they look the same on every device and size. Decorative: the label beside each says what it is. */
-import Svg, { Circle, ClipPath, Defs, G, Line, Path, Rect } from 'react-native-svg';
+import Svg, { Circle, Line, Path, Rect } from 'react-native-svg';
 import { mark } from '../theme.ts';
 
 type IconProps = { color: string; size?: number; filled?: boolean; fill?: string };
@@ -47,33 +47,15 @@ export function ChartIcon({ color, size = 22 }: IconProps) {
 }
 
 /**
- * Walkup's mark at small sizes: a Brooklyn brownstone filling the icon, drawn bold enough to read in a browser
- * tab: an overhanging cornice, big windows, the red parlor door at the top of its stoop, and the railing. The same drawing
- * is the tab icon (public/icons/walkup.svg); the home-screen icons use a more detailed one (walkup-detailed.svg).
+ * Walkup's mark: a walk-up as two shapes, a flight of steps and the door at the top, on a rounded tile. The same
+ * drawing is the tab and home-screen icon (public/icons/walkup.svg). Its colors follow the theme (src/theme.ts).
  */
 export function BrandMark({ size = 30 }: { size?: number }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 32 32" aria-hidden>
-      <Defs>
-        <ClipPath id="r">
-          <Rect width={32} height={32} rx={7} />
-        </ClipPath>
-      </Defs>
-      <G clipPath="url(#r)">
-        <Rect width={32} height={32} fill={mark.tile} />
-        <Rect x={3.5} y={5.5} width={25} height={26.5} fill={mark.wall} />
-        <Rect x={2} y={2.5} width={28} height={4} rx={0.7} fill={mark.cornice} />
-        <G fill={mark.window}>
-          <Rect x={6} y={9} width={5.6} height={6} rx={0.5} />
-          <Rect x={13.3} y={9} width={5.6} height={6} rx={0.5} />
-          <Rect x={20.6} y={9} width={5.6} height={6} rx={0.5} />
-          <Rect x={6} y={17.4} width={5.6} height={6.4} rx={0.5} />
-          <Rect x={13.3} y={17.4} width={5.6} height={6.4} rx={0.5} />
-        </G>
-        <Path d="M21 23.8v-4.6a2.2 2.2 0 0 1 4.4 0v4.6z" fill={mark.door} />
-        <Path d="M19.8 23.8h7v2.2L16.4 32H8.6z" fill={mark.stoop} />
-        <Path d="M19.6 24 8.8 31.8" stroke={mark.rail} strokeWidth={1.6} strokeLinecap="round" />
-      </G>
+      <Rect width={32} height={32} rx={7} fill={mark.tile} />
+      <Path d="M5 27v-5.5h6.5V16H18v-5.5h9V27z" fill={mark.steps} />
+      <Path d="M20 10.5v-4a2.5 2.5 0 0 1 5 0v4z" fill={mark.door} />
     </Svg>
   );
 }

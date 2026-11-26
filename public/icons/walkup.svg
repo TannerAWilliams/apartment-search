@@ -1,19 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
   <style>
-    .tile{fill:#f1e4cc}.wall{fill:#6f3418}.cornice{fill:#2b1206}.window{fill:#f6ead2}.door{fill:#d62a52}.stoop{fill:#d9a882}.rail{stroke:#1a0a03}
-    @media (prefers-color-scheme:dark){.tile{fill:#262626}.wall{fill:#a8603c}.cornice{fill:#e9d3bd}.window{fill:#ffd98a}.door{fill:#ff5a79}.stoop{fill:#e3b998}.rail{stroke:#f6f6f6}}
+    .tile{fill:#773516}.steps{fill:#fff4f0}.door{fill:#fc7081}
+    @media (prefers-color-scheme:dark){.tile{fill:#262626}.steps{fill:#f6f6f6}.door{fill:#f73b62}}
   </style>
-  <defs><clipPath id="r"><rect width="32" height="32" rx="7"/></clipPath></defs>
-  <g clip-path="url(#r)">
-  <rect class="tile" width="32" height="32"/>
-  <rect class="wall" x="3.5" y="5.5" width="25" height="26.5"/>
-  <rect class="cornice" x="2" y="2.5" width="28" height="4" rx="0.7"/>
-  <g class="window">
-    <rect x="6" y="9" width="5.6" height="6" rx="0.5"/><rect x="13.3" y="9" width="5.6" height="6" rx="0.5"/><rect x="20.6" y="9" width="5.6" height="6" rx="0.5"/>
-    <rect x="6" y="17.4" width="5.6" height="6.4" rx="0.5"/><rect x="13.3" y="17.4" width="5.6" height="6.4" rx="0.5"/>
-  </g>
-  <path class="door" d="M21 23.8v-4.6a2.2 2.2 0 0 1 4.4 0v4.6z"/>
-  <path class="stoop" d="M19.8 23.8h7v2.2L16.4 32H8.6z"/>
-  <path class="rail" d="M19.6 24 8.8 31.8" stroke-width="1.6" stroke-linecap="round" fill="none"/>
-  </g>
+  <rect class="tile" width="32" height="32" rx="7"/>
+  <path class="steps" d="M5 27v-5.5h6.5V16H18v-5.5h9V27z"/>
+  <path class="door" d="M20 10.5v-4a2.5 2.5 0 0 1 5 0v4z"/>
 </svg>

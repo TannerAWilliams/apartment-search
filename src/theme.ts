@@ -22,30 +22,12 @@ export const darkPalette = Object.fromEntries(
   (Object.keys(light) as Hue[]).map((hue) => [hue, (hue === 'gray' ? NEUTRAL : light[hue]).toReversed()]),
 ) as { [H in Hue]: string[] };
 /**
- * The brownstone mark and the name beside it. By day the mark is the brownstone on cream; in the dark theme it is
- * the same building at night, windows lit, on a dark tile, and the name is the page's ink.
+ * The mark and the name beside it. The mark is a walk-up reduced to two shapes: a flight of steps and the door
+ * at the top of it, on a tile. In the dark theme the tile is dark and the name is the page's ink.
  */
 const MARK = {
-  light: {
-    tile: '#f1e4cc',
-    wall: '#6f3418',
-    cornice: '#2b1206',
-    window: '#f6ead2',
-    door: '#d62a52',
-    stoop: '#d9a882',
-    rail: '#1a0a03',
-    name: light.brown[7],
-  },
-  dark: {
-    tile: '#262626',
-    wall: '#a8603c',
-    cornice: '#e9d3bd',
-    window: '#ffd98a',
-    door: '#ff5a79',
-    stoop: '#e3b998',
-    rail: '#f6f6f6',
-    name: '#f6f6f6',
-  },
+  light: { tile: light.brown[7], steps: light.brown[0], door: light.rose[3], name: light.brown[7] },
+  dark: { tile: '#262626', steps: '#f6f6f6', door: light.rose[4], name: '#f6f6f6' },
 };
 type MarkPart = keyof typeof MARK.light;
 const markParts = Object.keys(MARK.light) as MarkPart[];
