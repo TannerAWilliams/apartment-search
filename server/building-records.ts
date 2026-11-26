@@ -114,6 +114,11 @@ export async function retrieveBuildingRecords(
   fetcher: FetchTransport = fetch,
   now = new Date(),
   parentSignal?: AbortSignal,
+  /**
+   * Residents evicted by a marshal, by tax lot, as the app last loaded them (server/open-data.ts); a building's
+   * count comes from here, because the city answers that question about one building slowly or not at all.
+   */
+  evictionsByLot?: { since: string; lots: Record<string, number> } | null,
 ) {
   const checkedAt = now.toISOString();
   const unknown = {
@@ -230,7 +235,6 @@ export async function retrieveBuildingRecords(
     taxLotOwner,
     rentRegistration,
     rodents,
-    evictions,
     housingCourt,
     hpdRegistration,
   ] = await Promise.all([
@@ -495,30 +499,6 @@ export async function retrieveBuildingRecords(
         return null;
       }
     })(),
-    // Evictions of residents that a city marshal carried out on the tax lot. The records mark each one as
-    // residential or commercial, in words or by its first letter.
-    (async () => {
-      if (!bbl) return null;
-      try {
-        const data = await readRows(
-          '6z8x-wfk4',
-          {
-            $select: 'residential_commercial_ind as status,count(*) as count',
-            $where: `bbl=${quote(bbl)} AND executed_date >= '${sinceTwoYears}' AND executed_date <= '${until}'`,
-            $group: 'residential_commercial_ind',
-            $limit: '11',
-          },
-          fetcher,
-          signal,
-        );
-        return grouping(data, 10)
-          .filter(({ status }) => /^r/i.test(status))
-          .reduce((sum, { count }) => sum + count, 0);
-      } catch {
-        errors.push('Marshal evictions could not be retrieved; unknown, not none.');
-        return null;
-      }
-    })(),
     // Cases in Housing Court that the city or tenants brought over the building, by kind.
     (async () => {
       try {
@@ -572,6 +552,8 @@ export async function retrieveBuildingRecords(
       }
     })(),
   ]);
+  // A lot the loaded list does not name had none; without the list, or the lot, it is unknown.
+  const evictions = evictionsByLot && bbl ? (evictionsByLot.lots[bbl] ?? 0) : null;
   let flood = null;
   if (bedbugs?.point) {
     try {
@@ -628,6 +610,7 @@ export async function retrieveBuildingRecords(
     flood,
     since: since.slice(0, 10),
     sinceTwoYears: sinceTwoYears.slice(0, 10),
+    evictionsSince: evictionsByLot?.since ?? null,
     errors,
   };
 }

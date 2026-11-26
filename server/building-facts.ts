@@ -11,6 +11,7 @@ import type { FetchTransport } from '../src/fetch-type.ts';
 import type { AppEnv, Bucket } from './contracts.ts';
 import { parseFilters } from '../src/search.ts';
 import { retrieveBuildingRecords } from './building-records.ts';
+import { readEvictions } from './open-data.ts';
 import { mapLimit } from './concurrency.ts';
 import { checkedDocument } from './storage/stored-documents.ts';
 
@@ -94,7 +95,7 @@ export async function fillBuildingFacts(
   fetcher: FetchTransport,
   { limit = 40, now = new Date() }: { limit?: number; now?: Date } = {},
 ) {
-  const facts = await readBuildingFacts(bucket);
+  const [facts, evictions] = await Promise.all([readBuildingFacts(bucket), readEvictions(bucket)]);
   const staleBefore = new Date(now.getTime() - STALE_AFTER_DAYS * 86_400_000).toISOString();
   const wanted = new Map<string, ListingData>();
   for (const listing of listings) {
@@ -108,7 +109,7 @@ export async function fillBuildingFacts(
   // A few buildings are checked at once; each check asks several city services itself.
   const reports = await mapLimit([...wanted], 3, async ([key, listing]) => {
     // A report never throws: an unreachable city service reads as an unmatched building, checked again later.
-    return [key, summarizeReport(await retrieveBuildingRecords(listing, fetcher, now))] as const;
+    return [key, summarizeReport(await retrieveBuildingRecords(listing, fetcher, now, undefined, evictions))] as const;
   });
   let checked = 0;
   for (const [key, summary] of reports) {

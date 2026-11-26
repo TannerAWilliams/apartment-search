@@ -6,6 +6,7 @@ import { rentAreas } from '../../src/market.ts';
 import { parentRegion } from '../../src/regions.ts';
 import type { RentHistory } from '../../src/rent-history.ts';
 import { retrieveBuildingRecords } from '../building-records.ts';
+import { readEvictions } from '../open-data.ts';
 import { recordBuildingReport } from '../building-facts.ts';
 import { log } from '../log.ts';
 import { storedJerseyAffordable } from '../sources/jersey-affordable.ts';
@@ -94,9 +95,15 @@ export const dataRoutes = factory
   .post('/building-report', apiBodies, vValidator('json', BuildingAddressSchema, refuse), async (c) => {
     const { fetcher } = c.var.services;
     const address = c.req.valid('json');
-    const report = await retrieveBuildingRecords(address, (url, options) => fetcher(url, options), new Date(), c.req.raw.signal);
-    // Kept so the building's cards show its grade from now on; a failure to keep it does not fail the report.
     const bucket = c.var.appEnv.BUCKET;
+    const report = await retrieveBuildingRecords(
+      address,
+      (url, options) => fetcher(url, options),
+      new Date(),
+      c.req.raw.signal,
+      bucket ? await readEvictions(bucket) : null,
+    );
+    // Kept so the building's cards show its grade from now on; a failure to keep it does not fail the report.
     if (bucket)
       await afterResponse(c.var.services, 'building_facts_write', () =>
         recordBuildingReport(bucket, { address: address.address ?? '', state: address.state ?? 'NY', zip: address.zip ?? '' }, report),

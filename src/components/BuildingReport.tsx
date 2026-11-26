@@ -140,7 +140,7 @@ export function BuildingReport({
           <Text style={styles.smallMuted}>
             {result.evictions === null
               ? 'Evictions carried out by a city marshal: unknown.'
-              : `Residents evicted by a city marshal on this tax lot: ${result.evictions}${result.taxLotOwner?.units ? `, in ${result.taxLotOwner.units} apartments` : ''}.`}
+              : `Residents evicted by a city marshal on this tax lot${result.evictionsSince ? ` since ${result.evictionsSince}` : ''}: ${result.evictions}${result.taxLotOwner?.units ? `, in ${result.taxLotOwner.units} apartments` : ''}.`}
           </Text>
           <Text style={styles.smallMuted}>
             {result.housingCourt

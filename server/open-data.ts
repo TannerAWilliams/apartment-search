@@ -1,9 +1,13 @@
 /**
- * Two public lists the app keeps, each refreshed monthly by the sync Workflow and read by every search:
+ * Public lists the app keeps, refreshed by the sync Workflow. Two are read by every search, monthly:
  * - every building that registers rent-stabilized units with New York State (DHCR's registered buildings, about
  *   57,000), matched to listings by street address and ZIP code;
  * - every New York City subway station (MTA, data.ny.gov), with the lines that stop there in the daytime.
  * Searches read them from storage at most every ten minutes per Worker.
+ *
+ * The third is read by building reports, weekly: every eviction of residents that a city marshal carried out in
+ * two years, counted by tax lot. The city's service answers a question about one building slowly or not at all,
+ * and the whole two years in one read, so the count is taken from this copy.
  */
 import { log } from './log.ts';
 import * as v from 'valibot';
@@ -18,6 +22,10 @@ import { loadRailStops, RAIL_STOPS_KEY, readRailStops } from './transit-stops.ts
 const REGISTRY =
   'https://services8.arcgis.com/ek7Sxtay3Z4WZWvk/arcgis/rest/services/registered_buildings_unit_counts/FeatureServer/0/query';
 const STATIONS = 'https://data.ny.gov/resource/39hk-dx4f.json';
+const EVICTIONS = 'https://data.cityofnewyork.us/resource/6z8x-wfk4.json';
+export const EVICTIONS_KEY = 'buildings/evictions.json';
+const EVICTIONS_REFRESH_DAYS = 7;
+const EVICTION_YEARS = 2;
 export const REGISTRY_KEY = 'buildings/stabilized.json';
 export const STATIONS_KEY = 'transit/stations.json';
 const PAGE = 1000;
@@ -29,6 +37,8 @@ export const REFRESH_DAYS = 30;
 const RECENT_YEARS = 2;
 
 const RegistrySchema = v.object({ checkedAt: v.string(), buildings: v.record(v.string(), v.number()) });
+const EvictionsSchema = v.object({ checkedAt: v.string(), since: v.string(), lots: v.record(v.string(), v.number()) });
+export type EvictionsByLot = v.InferOutput<typeof EvictionsSchema>;
 const StationsSchema = v.object({
   checkedAt: v.string(),
   stations: v.array(
@@ -93,6 +103,27 @@ export async function loadStabilizedRegistry(fetcher: FetchTransport, now = new 
   return { checkedAt: now.toISOString(), buildings };
 }
 
+/** Residents evicted by a marshal over two years, counted by tax lot (BBL). */
+export async function loadEvictions(fetcher: FetchTransport, now = new Date()): Promise<EvictionsByLot> {
+  const since = new Date(now.getTime() - EVICTION_YEARS * 365 * 86_400_000).toISOString().slice(0, 10);
+  const rows = await readJson(
+    fetcher,
+    EVICTIONS +
+      '?' +
+      new URLSearchParams({ $select: 'bbl,residential_commercial_ind', $where: `executed_date >= '${since}T00:00:00'`, $limit: '100000' }),
+  );
+  if (!Array.isArray(rows)) throw new Error('The evictions list was not recognized.');
+  const lots: Record<string, number> = {};
+  for (const row of rows) {
+    // The city places most evictions on a tax lot, and marks each as residential or commercial, in words or by a letter.
+    if (!isRecord(row) || typeof row.bbl !== 'string' || !/^[1-5]\d{9}$/.test(row.bbl)) continue;
+    if (!/^r/i.test(String(row.residential_commercial_ind ?? ''))) continue;
+    lots[row.bbl] = (lots[row.bbl] ?? 0) + 1;
+  }
+  if (!Object.keys(lots).length) throw new Error('The evictions list was empty.');
+  return { checkedAt: now.toISOString(), since, lots };
+}
+
 const NUMBER = /^-?\d+(?:\.\d+)?$/;
 /** Loads every subway station with its daytime lines. */
 export async function loadStations(fetcher: FetchTransport, now = new Date()) {
@@ -119,9 +150,13 @@ async function readDocument<T extends v.GenericSchema>(bucket: Bucket, key: stri
   return object ? checkedDocument(schema, await object.json().catch(() => null), key) : null;
 }
 
-/** Loads either list again when it is missing or a month old. Returns which were refreshed. */
+/** Evictions by tax lot, as last loaded; null before the first load. */
+export const readEvictions = (bucket: Bucket) => readDocument(bucket, EVICTIONS_KEY, EvictionsSchema).catch(() => null);
+
+/** Loads each list again when it is missing or old (a month; a week for evictions). Returns which were refreshed. */
 export async function refreshOpenData(bucket: Bucket, fetcher: FetchTransport, now = new Date()) {
-  const stale = (checkedAt: string | undefined) => !checkedAt || Date.parse(checkedAt) < now.getTime() - REFRESH_DAYS * 86_400_000;
+  const stale = (checkedAt: string | undefined, days = REFRESH_DAYS) =>
+    !checkedAt || Date.parse(checkedAt) < now.getTime() - days * 86_400_000;
   const refreshed: string[] = [];
   // Each list on its own, the small ones first, so one source failing never keeps the others from loading.
   const parts: [string, () => Promise<boolean>][] = [
@@ -145,6 +180,12 @@ export async function refreshOpenData(bucket: Bucket, fetcher: FetchTransport, n
       async () =>
         stale((await readDocument(bucket, REGISTRY_KEY, RegistrySchema))?.checkedAt) &&
         (await bucket.put(REGISTRY_KEY, JSON.stringify(await loadStabilizedRegistry(fetcher, now))), true),
+    ],
+    [
+      'evictions',
+      async () =>
+        stale((await readEvictions(bucket))?.checkedAt, EVICTIONS_REFRESH_DAYS) &&
+        (await bucket.put(EVICTIONS_KEY, JSON.stringify(await loadEvictions(fetcher, now))), true),
     ],
   ];
   const failures: unknown[] = [];

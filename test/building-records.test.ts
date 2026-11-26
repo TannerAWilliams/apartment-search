@@ -29,6 +29,8 @@ const annual = {
   filling_period_end_date: '2025-10-31T00:00:00.000',
 };
 const now = new Date('2026-11-17T12:00:00Z');
+/** Evictions by tax lot, as the app loads them once for every building. */
+const evicted = { since: '2024-11-17', lots: { [bbl]: 3 } };
 /** Replacement replies from the official sources, each as JSON. */
 type Overrides = {
   [K in
@@ -41,7 +43,6 @@ type Overrides = {
     | 'owner'
     | 'registration'
     | 'rodents'
-    | 'evictions'
     | 'court'
     | 'hpdRegistration'
     | 'flood'
@@ -94,17 +95,6 @@ function source(override: Overrides = {}) {
           { status: 'Passed', count: '4' },
           { status: 'Rat Activity', count: '1' },
           { status: 'Failed for Rat Activity and Other Reason', count: '2' },
-        ],
-      );
-    }
-    if (u.pathname.includes('6z8x-wfk4')) {
-      expect(u.searchParams.get('$where')).toStartWith(`bbl='${bbl}' AND executed_date >= '`);
-      expect(u.searchParams.get('$group')).toBe('residential_commercial_ind');
-      return Response.json(
-        override.evictions ?? [
-          { status: 'Residential', count: '2' },
-          { status: 'R', count: '1' },
-          { status: 'Commercial', count: '4' },
         ],
       );
     }
@@ -446,13 +436,17 @@ test('rat inspections, evictions, Housing Court cases and HPD registration are r
       return fetcher(url, options);
     },
     now,
+    undefined,
+    evicted,
   );
   expect(report.status).toBe('matched');
   // Two years to the day in New York, and nothing dated after now.
   expect(queries['p937-wjvj']).toBe(
     `bbl='${bbl}' AND inspection_date >= '2024-11-18T00:00:00' AND inspection_date <= '2026-11-17T07:00:00'`,
   );
-  expect(queries['6z8x-wfk4']).toContain("executed_date >= '2024-11-18T00:00:00' AND executed_date <= '2026-11-17T07:00:00'");
+  // Evictions are counted from the app's own copy of the city's list, not asked about one building at a time.
+  expect(queries['6z8x-wfk4']).toBeUndefined();
+  expect(report.evictionsSince).toBe('2024-11-17');
   expect(queries['59kj-x8nc']).toContain("caseopendate >= '2024-11-18T00:00:00' AND caseopendate <= '2026-11-17T07:00:00'");
   expect(report.sinceTwoYears).toBe('2024-11-18');
   // Inspections that found rats are counted whatever else they found.
@@ -473,11 +467,12 @@ test('rat inspections, evictions, Housing Court cases and HPD registration are r
     address,
     source({
       rodents: [],
-      evictions: [{ status: 'Commercial', count: '1' }],
       court: [],
       hpdRegistration: [{ buildingid: '12345', registrationenddate: '2025-09-01T00:00:00.000' }],
     }),
     now,
+    undefined,
+    { since: '2024-11-17', lots: {} },
   );
   expect(quiet).toMatchObject({
     status: 'matched',
@@ -496,7 +491,6 @@ test('rat inspections, evictions, Housing Court cases and HPD registration are r
     address,
     source({
       rodents: [{ status: 'Passed', count: 'many' }],
-      evictions: [{ status: 'Residential', count: '-1' }],
       court: { error: true },
       hpdRegistration: [{ buildingid: '999', registrationenddate: '2027-09-01T00:00:00.000' }],
       owner: [{ bbl: bbl + '.00000000', ownername: 'EXAMPLE PROPERTY LLC', version: '26v2' }],
@@ -516,21 +510,20 @@ test('rat inspections, evictions, Housing Court cases and HPD registration are r
     'City rat inspections could not be retrieved; unknown, not none.',
     'HPD registration could not be checked.',
     'Housing Court cases could not be retrieved; unknown, not none.',
-    'Marshal evictions could not be retrieved; unknown, not none.',
   ]);
   expect(
     (await retrieveBuildingRecords(address, source({ hpdRegistration: [{ buildingid: '12345', registrationenddate: 'soon' }] }), now))
       .hpdRegistration,
   ).toBeNull();
   // Without a tax lot, what is read by tax lot is not asked for.
-  const noLot = await retrieveBuildingRecords(address, source({ buildings: [{ ...building, block: '0' }] }), now);
+  const noLot = await retrieveBuildingRecords(address, source({ buildings: [{ ...building, block: '0' }] }), now, undefined, evicted);
   expect(noLot).toMatchObject({ rodents: null, evictions: null, housingCourt: { cases: 3 } });
 });
 
 test('the kept facts and the grade take in rats, evictions, court cases and a lapsed registration', async () => {
   const { summarizeReport } = await import('../server/building-facts.ts');
   const { buildingGrade } = await import('../src/insights.ts');
-  const facts = summarizeReport(await retrieveBuildingRecords(address, source(), now))!;
+  const facts = summarizeReport(await retrieveBuildingRecords(address, source(), now, undefined, evicted))!;
   expect(facts).toMatchObject({ rats: true, evictions: 3, courtCases: 3, harassment: true, unregistered: false, units: 20 });
   // 2 violations (1), 2 complaints (0), bedbugs (1), rats (1), harassment (2), 3 evictions in 20 apartments (1): D.
   expect(buildingGrade(facts)).toBe('D');
@@ -551,7 +544,7 @@ test('the kept facts and the grade take in rats, evictions, court cases and a la
   expect(summarizeReport(await retrieveBuildingRecords(address, source(lapsed), now))?.unregistered).toBe(true);
   const small = { ...lapsed, owner: [{ bbl: bbl + '.00000000', ownername: 'EXAMPLE PROPERTY LLC', version: '26v2', unitsres: '2' }] };
   expect(summarizeReport(await retrieveBuildingRecords(address, source(small), now))?.unregistered).toBeNull();
-  const unknown = { rodents: { error: 1 }, court: { error: 1 }, evictions: { error: 1 }, hpdRegistration: { error: 1 } };
+  const unknown = { rodents: { error: 1 }, court: { error: 1 }, hpdRegistration: { error: 1 } };
   expect(summarizeReport(await retrieveBuildingRecords(address, source(unknown), now))).toMatchObject({
     rats: null,
     evictions: null,

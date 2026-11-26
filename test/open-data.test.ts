@@ -4,6 +4,8 @@ import {
   loadStations,
   openData,
   REGISTRY_KEY,
+  loadEvictions,
+  readEvictions,
   refreshOpenData,
   registryStreets,
   STATIONS_KEY,
@@ -30,6 +32,17 @@ const stationRows = [
   'junk',
 ];
 
+const evictionRows = [
+  { bbl: '3000120004', residential_commercial_ind: 'Residential' },
+  { bbl: '3000120004', residential_commercial_ind: 'R' },
+  { bbl: '3000120004', residential_commercial_ind: 'Commercial' },
+  { bbl: '1015380021', residential_commercial_ind: 'Residential' },
+  { residential_commercial_ind: 'Residential' },
+  { bbl: 'not a lot', residential_commercial_ind: 'Residential' },
+  { bbl: '2000010001' },
+  'junk',
+];
+
 function openDataFetcher(
   pages: unknown[][] = [[entry('160 Allen St, New York, 10002'), entry('168 / 170 E 81st St, New York, 10028', null)]],
 ) {
@@ -38,6 +51,7 @@ function openDataFetcher(
     const parsed = new URL(url);
     requests.push(parsed);
     if (parsed.hostname === 'data.ny.gov') return Response.json(stationRows);
+    if (parsed.hostname === 'data.cityofnewyork.us') return Response.json(evictionRows);
     const page = Number(parsed.searchParams.get('resultOffset')) / 1000;
     return Response.json(registryPage(pages[page] ?? [], page < pages.length - 1));
   };
@@ -93,10 +107,17 @@ test('searches read both lists, refreshed monthly; listings near a line or in a 
   const bucket = createMemoryBucket();
   expect(await openData(bucket, 1)).toMatchObject({ registry: {}, stations: [] });
   const { fetcher, requests } = openDataFetcher();
-  expect(await refreshOpenData(bucket, fetcher, now)).toEqual(['stations', 'rail stops', 'registry']);
+  expect(await refreshOpenData(bucket, fetcher, now)).toEqual(['stations', 'rail stops', 'registry', 'evictions']);
   expect(await refreshOpenData(bucket, fetcher, new Date(now.getTime() + 86_400_000)), 'fresh').toEqual([]);
+  // Evictions are loaded again each week; the other lists each month.
+  expect(await refreshOpenData(bucket, fetcher, new Date(now.getTime() + 8 * 86_400_000))).toEqual(['evictions']);
   const calls = requests.length;
-  expect(await refreshOpenData(bucket, fetcher, new Date(now.getTime() + 31 * 86_400_000))).toEqual(['stations', 'rail stops', 'registry']);
+  expect(await refreshOpenData(bucket, fetcher, new Date(now.getTime() + 31 * 86_400_000))).toEqual([
+    'stations',
+    'rail stops',
+    'registry',
+    'evictions',
+  ]);
   expect(requests.length).toBeGreaterThan(calls);
   expect(await bucket.get(REGISTRY_KEY)).not.toBeNull();
   expect(await bucket.get(STATIONS_KEY)).not.toBeNull();
@@ -183,4 +204,19 @@ test('one open-data source failing keeps the others loading; all failing is an e
   expect(loaded).not.toContain('stations');
   expect(loaded).toContain('registry');
   await expect(refreshOpenData(createMemoryBucket(), () => Promise.reject(new Error('offline')), now)).rejects.toThrow();
+});
+
+test('evictions of residents are counted by tax lot from one read of two years', async () => {
+  const { fetcher, requests } = openDataFetcher();
+  const loaded = await loadEvictions(fetcher, now);
+  // Commercial evictions, and rows the city could not place on a tax lot, are left out.
+  expect(loaded).toEqual({ checkedAt: now.toISOString(), since: '2024-11-24', lots: { '3000120004': 2, '1015380021': 1 } });
+  expect(requests[0]!.searchParams.get('$where')).toBe("executed_date >= '2024-11-24T00:00:00'");
+  await expect(loadEvictions(async () => Response.json({}), now)).rejects.toThrow(/not recognized/);
+  await expect(loadEvictions(async () => Response.json([]), now)).rejects.toThrow(/empty/);
+  // Kept for building reports, which read it instead of asking the city about each building.
+  const bucket = createMemoryBucket();
+  expect(await readEvictions(bucket)).toBeNull();
+  await refreshOpenData(bucket, fetcher, now);
+  expect((await readEvictions(bucket))?.lots['3000120004']).toBe(2);
 });
