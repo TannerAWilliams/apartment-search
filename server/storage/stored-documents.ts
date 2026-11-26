@@ -96,6 +96,15 @@ export const HdcSnapshotSchema = v.object({
   checkedAt: optionalText,
 });
 
+/** Apartments re-rented by their managers, read from the managers' own pages (server/sources/manager-rerentals.ts). */
+export const ManagerSnapshotSchema = v.object({
+  results: v.array(v.object({ id: text, manager: text, name: text, url: text, borough: text, size: text, rent: text, income: text })),
+  /** Each manager read, with how many it had; null when its page could not be read. */
+  managers: v.array(v.object({ manager: text, url: text, count: v.nullable(v.number()) })),
+  checkedAt: optionalText,
+});
+export type ManagerSnapshot = v.InferOutput<typeof ManagerSnapshotSchema>;
+
 export type StoredHousing = v.InferOutput<typeof StoredHousingSchema>;
 export type HdcSnapshot = v.InferOutput<typeof HdcSnapshotSchema>;
 

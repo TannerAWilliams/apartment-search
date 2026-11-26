@@ -11,7 +11,7 @@ import { recordBuildingReport } from '../building-facts.ts';
 import { log } from '../log.ts';
 import { storedJerseyAffordable } from '../sources/jersey-affordable.ts';
 import { storedHomeSeeker } from '../sources/westchester-homeseeker.ts';
-import { storedHdcRerentals, storedHousing } from '../refresh/snapshots.ts';
+import { storedHdcRerentals, storedHousing, storedManagerRerentals } from '../refresh/snapshots.ts';
 import { storedMarket, storedRentHistory } from '../refresh/market.ts';
 import { afterResponse, apiBodies, factory, fail, needsStorage, refuse } from './context.ts';
 import { transitStops } from '../open-data.ts';
@@ -76,13 +76,14 @@ export const dataRoutes = factory
   .get('/housing', async (c) => {
     const env = c.var.appEnv;
     try {
-      const [housing, rerentals, jersey, westchester] = await Promise.all([
+      const [housing, rerentals, managers, jersey, westchester] = await Promise.all([
         storedHousing(env.BUCKET),
         storedHdcRerentals(env.BUCKET).catch(() => null),
+        storedManagerRerentals(env.BUCKET).catch(() => null),
         storedJerseyAffordable(env.BUCKET).catch(() => null),
         storedHomeSeeker(env.BUCKET).catch(() => null),
       ]);
-      return c.json({ ...housing, rerentals, jersey, westchester }, 200);
+      return c.json({ ...housing, rerentals, managers, jersey, westchester }, 200);
     } catch (cause) {
       log.error('storage_read_failed', cause, { path: c.req.path });
       return fail(c, 503, 'The Housing Connect data could not be read.');

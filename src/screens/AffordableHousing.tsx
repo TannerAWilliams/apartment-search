@@ -230,6 +230,44 @@ export function AffordableHousing({
           </Program>
 
           <Program
+            title={`Re-rentals from building managers${data?.managers ? ` (${data.managers.results.length})` : ''}`}
+            about="Income-restricted apartments that managers are filling themselves, first come, first served, outside Housing Connect. Read from each manager’s own page; you apply to the manager."
+          >
+            {waiting}
+            {data?.managers && (
+              <Text style={styles.smallMuted}>
+                Checked {showDate(data.managers.checkedAt)} ·{' '}
+                {data.managers.managers
+                  .map(({ manager, count }) => (count === null ? `${manager} could not be read` : `${manager} ${count}`))
+                  .join(' · ')}
+              </Text>
+            )}
+            <Rows
+              items={data?.managers?.results ?? []}
+              more="Show more re-rentals"
+              row={(home, index) => (
+                <View key={`${home.manager} ${home.id}`} style={rowStyle(index)}>
+                  <Text accessibilityRole="header" style={styles.fieldLabel}>
+                    {home.name}
+                  </Text>
+                  <Text style={styles.bodyText}>
+                    {[home.size, home.rent && `Rent ${home.rent}`, home.income && `Household income ${home.income}`]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </Text>
+                  <Text style={styles.smallMuted}>{[home.borough, home.manager].filter(Boolean).join(' · ')}</Text>
+                  <Link label={`View on ${home.manager}’s site`} url={home.url} onError={onError} />
+                </View>
+              )}
+            />
+            <Link
+              label="Every manager the city lists (HPD)"
+              url="https://www.nyc.gov/site/hpd/services-and-information/find-affordable-housing-re-rentals.page"
+              onError={onError}
+            />
+          </Program>
+
+          <Program
             title="Mitchell-Lama"
             about="Middle-income rentals and co-ops with regulated costs. Most waiting lists are closed and reopen by lottery on Housing Connect; a few are open, and you apply to the building’s manager. Expect a wait of years. The city publishes the open lists only as a PDF, so they are not listed here."
           >

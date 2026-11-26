@@ -1,5 +1,5 @@
 import type { D1Database } from './storage/d1-bucket.ts';
-import type { HdcSnapshot, StoredHousing } from './storage/stored-documents.ts';
+import type { HdcSnapshot, ManagerSnapshot, StoredHousing } from './storage/stored-documents.ts';
 import type { JerseySnapshot } from './sources/jersey-affordable.ts';
 import type { HomeSeekerSnapshot } from './sources/westchester-homeseeker.ts';
 /** How the server fetches a source: the global fetch, or a stand-in in tests and the home sync. */
@@ -88,6 +88,7 @@ export type HousingSnapshot = StoredHousing & { checkedAt: string | null; stale?
 export type { HdcSnapshot };
 export type HousingResponse = HousingSnapshot & {
   rerentals: HdcSnapshot | null;
+  managers?: ManagerSnapshot | null;
   jersey: JerseySnapshot | null;
   westchester?: HomeSeekerSnapshot | null;
 };

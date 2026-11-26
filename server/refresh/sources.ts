@@ -10,6 +10,7 @@ import type { SourceDefinition } from '../../src/source-status.ts';
 import type { AppEnv, Bucket, HousingSnapshot, SourceFetch } from '../contracts.ts';
 import { DIRECT_RENTAL_SOURCES } from '../sources/direct-rentals.ts';
 import { HDC_RERENTALS, loadHdcRerentals } from '../sources/hdc-rerentals.ts';
+import { MANAGER_RERENTALS, loadManagerRerentals } from '../sources/manager-rerentals.ts';
 import { loadHousingConnect } from '../sources/housing.ts';
 import { JERSEY_AFFORDABLE, refreshJerseyAffordable } from '../sources/jersey-affordable.ts';
 import {
@@ -40,6 +41,7 @@ import { refreshMarketHistory } from '../storage/market-history.ts';
 import {
   FEED_PREFIX,
   HDC_KEY,
+  MANAGER_KEY,
   HOUSING_KEY,
   OPENIGLOO_KEY,
   type RentalSnapshot,
@@ -429,6 +431,16 @@ export const SOURCES: readonly RefreshSource[] = [
     async check(run) {
       const data = await loadHdcRerentals(run.fetch);
       await run.bucket.put(HDC_KEY, JSON.stringify({ ...data, checkedAt: run.at }));
+      return { status: 'updated', updatedAt: run.at, listingCount: data.results.length };
+    },
+  },
+  {
+    ...MANAGER_RERENTALS,
+    kind: 'reference',
+    catalog: () => ({ ...MANAGER_RERENTALS, coverage: 'NYC affordable re-rentals from building managers', resyncable: true }),
+    async check(run) {
+      const data = await loadManagerRerentals(run.fetch);
+      await run.bucket.put(MANAGER_KEY, JSON.stringify({ ...data, checkedAt: run.at }));
       return { status: 'updated', updatedAt: run.at, listingCount: data.results.length };
     },
   },

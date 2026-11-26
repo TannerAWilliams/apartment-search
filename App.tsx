@@ -598,24 +598,39 @@ function ApartmentSearch() {
             {(view === 'results' || view === 'saved') && (
               <View style={mobileStyles.searchBar}>
                 {/* The search pill: where, and for what. On Search it opens the filters. */}
+                {/* On Saved it says where commute times are to, and changes that. */}
                 <Pressable
-                  accessibilityRole={view === 'results' ? 'button' : undefined}
-                  accessibilityLabel={view === 'results' ? 'Edit search: ' + marketArea : undefined}
-                  disabled={view !== 'results'}
-                  onPress={() => toggleFilter('more')}
+                  accessibilityRole={view === 'results' || saved.length > 0 ? 'button' : undefined}
+                  accessibilityLabel={
+                    view === 'results' ? 'Edit search: ' + marketArea : saved.length > 0 ? 'Change destination' : undefined
+                  }
+                  disabled={view === 'saved' && (saved.length === 0 || busy)}
+                  onPress={() => {
+                    if (view === 'saved') setError('');
+                    toggleFilter(view === 'saved' ? 'commute' : 'more');
+                  }}
                   style={mobileStyles.summary}
                 >
                   {view === 'results' ? <SearchIcon color={colors.ink} size={18} /> : <HeartIcon color={colors.accent} size={18} filled />}
                   <View style={mobileStyles.summaryCopy}>
                     <Text numberOfLines={1} style={mobileStyles.summaryTitle}>
-                      {view === 'saved' ? 'Your saved apartments' : marketArea}
+                      {view === 'saved' ? `Your saved apartments${saved.length ? ` (${saved.length})` : ''}` : marketArea}
                     </Text>
                     <Text numberOfLines={1} style={mobileStyles.destinationText}>
-                      {view === 'saved'
-                        ? account
-                          ? 'Kept on your account'
-                          : 'Saved on this device'
-                        : bedroomsLabel(applied) + ' · ' + (applied.maxRent == null ? 'Any price' : 'Up to ' + formatRent(applied.maxRent))}
+                      {view === 'saved' ? (
+                        saved.length > 0 ? (
+                          <>
+                            Commute times to <Text style={{ color: colors.ink, fontWeight: '600' }}>{result.workplace.label}</Text> ·{' '}
+                            <Text style={styles.linkText}>Change</Text>
+                          </>
+                        ) : account ? (
+                          'Kept on your account'
+                        ) : (
+                          'Saved on this device'
+                        )
+                      ) : (
+                        bedroomsLabel(applied) + ' · ' + (applied.maxRent == null ? 'Any price' : 'Up to ' + formatRent(applied.maxRent))
+                      )}
                     </Text>
                   </View>
                 </Pressable>
@@ -727,37 +742,14 @@ function ApartmentSearch() {
                       // shows the cards at once instead of building them all again.
                       <View style={listMode ? undefined : { display: 'none' }}>
                         <>
-                          {view === 'saved' && (
-                            <View style={styles.toolbar}>
-                              {!(view === 'saved' && saved.length === 0) ? (
-                                <Pressable
-                                  accessibilityRole="button"
-                                  accessibilityLabel="Change destination"
-                                  disabled={busy}
-                                  onPress={() => {
-                                    setError('');
-                                    toggleFilter('commute');
-                                  }}
-                                  style={{ flexShrink: 1, paddingVertical: 6 }}
-                                >
-                                  <Text numberOfLines={1} style={mobileStyles.destinationText}>
-                                    Commute times to <Text style={{ color: colors.ink, fontWeight: '600' }}>{result.workplace.label}</Text>{' '}
-                                    · <Text style={styles.linkText}>Change</Text>
-                                  </Text>
-                                </Pressable>
-                              ) : (
-                                <View />
-                              )}
-                              <View style={[styles.chipRow, { flexShrink: 1 }]}>
-                                {TOOLS[view === 'saved' ? 'saved' : 'results']
-                                  .filter(([id]) => id !== 'changes' || !staleInventory)
-                                  .filter(() => view !== 'saved' || saved.length > 0)
-                                  .map(([id, short, full]) => (
-                                    <Chip key={id} label={full} selected={tool === id} onPress={() => setTool(tool === id ? '' : id)}>
-                                      {short}
-                                    </Chip>
-                                  ))}
-                              </View>
+                          {/* The tools for the saved list, as one short row: the list itself comes next. */}
+                          {view === 'saved' && saved.length > 0 && (
+                            <View style={[styles.chipRow, { paddingVertical: 8 }]}>
+                              {TOOLS.saved.map(([id, short, full]) => (
+                                <Chip key={id} label={full} selected={tool === id} onPress={() => setTool(tool === id ? '' : id)}>
+                                  {short}
+                                </Chip>
+                              ))}
                             </View>
                           )}
                           {view === 'saved' && <SavedComparison listings={saved} open={tool === 'compare'} />}

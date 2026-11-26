@@ -914,6 +914,25 @@ test('Jersey City affordable notices show with official links and stay out of ap
         },
       ],
       rerentals: null,
+      managers: {
+        checkedAt: now,
+        managers: [
+          { manager: 'MNS', url: 'https://www.mns.com/affordable_units', count: 1 },
+          { manager: 'Taxace NY', url: 'https://www.taxaceny.com/projects-8', count: null },
+        ],
+        results: [
+          {
+            id: '240428',
+            manager: 'MNS',
+            name: '1730 Harrison AVE, Unit 4N',
+            url: 'https://www.mns.com/details/240428/rental/morris+heights/bronx',
+            borough: 'Bronx',
+            size: '1-bedroom',
+            rent: '$2,653',
+            income: '',
+          },
+        ],
+      },
       jersey: {
         revision: '2026-11-16',
         checkedAt: now,
@@ -941,6 +960,11 @@ test('Jersey City affordable notices show with official links and stay out of ap
   await expect(page.getByText('Rent $1,020 to $2,613 a month', { exact: true })).toBeVisible();
   await expect(page.getByText('Household income $40,595 to $135,700 a year', { exact: true })).toBeVisible();
   await expect(page.getByText('For 1 to 7 people', { exact: true })).toBeVisible();
+  // Apartments managers are re-renting themselves, read from their own pages; one that could not be read is named.
+  await expect(page.getByRole('heading', { name: 'Re-rentals from building managers (1)', exact: true })).toBeVisible();
+  await expect(page.getByText('1730 Harrison AVE, Unit 4N', { exact: true })).toBeVisible();
+  await expect(page.getByText('1-bedroom · Rent $2,653', { exact: true })).toBeVisible();
+  await expect(page.getByText(/MNS 1 · Taxace NY could not be read/)).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Mitchell-Lama', exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Public housing (NYCHA)', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'New Jersey', exact: true }).click();
@@ -954,7 +978,8 @@ test('Jersey City affordable notices show with official links and stay out of ap
   await page.getByRole('tab', { name: 'Search', exact: true }).click();
   await expect(page.getByText('Example affordable building', { exact: true })).toHaveCount(0);
   expect(userRefreshes(requests)).toHaveLength(0);
-  expect(unexpected).toEqual([]);
+  // The Market tab's figures are fetched ahead of a tap now and then; this stand-in server has none.
+  expect(unexpected.filter((path) => path !== '/api/market')).toEqual([]);
 });
 
 for (const width of [320, 375, 390]) {

@@ -72,8 +72,9 @@ function pinIcon(count: number) {
   const pill = document.createElement('span');
   const label = count === 1 ? '1 home' : `${count.toLocaleString()} homes`;
   Object.assign(pill.style, {
-    background: colors.ink,
-    color: colors.surface,
+    // The accent, as the small pins are: homes are the one pink thing on the map.
+    background: colors.accent,
+    color: '#ffffff',
     border: '2px solid white',
     borderRadius: '999px',
     padding: '3px 9px',

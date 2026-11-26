@@ -7,7 +7,13 @@ import type { Bucket, HdcSnapshot, HousingSnapshot, SnapshotFilter } from '../co
 import { housingDate } from '../sources/housing.ts';
 import { STREETEASY_LIVE } from '../sources/streeteasy.ts';
 import { type ObservationHistory, type ObservedListing, type UnitHistory, recordListingHistory } from '../storage/listing-history.ts';
-import { HdcSnapshotSchema, StoredHousingSchema, checkedDocument } from '../storage/stored-documents.ts';
+import {
+  HdcSnapshotSchema,
+  type ManagerSnapshot,
+  ManagerSnapshotSchema,
+  StoredHousingSchema,
+  checkedDocument,
+} from '../storage/stored-documents.ts';
 
 export type RentalSnapshot = {
   listings: ListingData[];
@@ -34,6 +40,7 @@ export const OPENIGLOO_KEY = 'openigloo';
 
 export const HOUSING_KEY = 'rentals/housing-connect.json';
 export const HDC_KEY = 'rentals/hdc-rerentals.json';
+export const MANAGER_KEY = 'rentals/manager-rerentals.json';
 export const FEED_PREFIX = 'feeds/';
 
 /** A saved listing snapshot, read back as saveObservedSnapshot wrote it, with the listings the filter keeps. */
@@ -92,6 +99,11 @@ export async function storedHousing(bucket: Bucket | undefined, now = new Date()
 export async function storedHdcRerentals(bucket: Bucket | undefined): Promise<HdcSnapshot | null> {
   const object = await bucket?.get(HDC_KEY);
   return object ? checkedDocument(HdcSnapshotSchema, await object.json().catch(() => null), HDC_KEY) : null;
+}
+
+export async function storedManagerRerentals(bucket: Bucket | undefined): Promise<ManagerSnapshot | null> {
+  const object = await bucket?.get(MANAGER_KEY);
+  return object ? checkedDocument(ManagerSnapshotSchema, await object.json().catch(() => null), MANAGER_KEY) : null;
 }
 
 export async function saveObservedSnapshot(
