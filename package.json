@@ -45,7 +45,7 @@
     "fflate": "^0.8.3",
     "hono": "4.13.21",
     "leaflet": "1.9.4",
-    "leaflet.markercluster": "1.5.3",
+    "leaflet.markercluster": "2.0.0",
     "maplibre-gl": "5.6.2",
     "react": "19.3.0",
     "react-dom": "19.3.0",
