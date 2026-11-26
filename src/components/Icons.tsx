@@ -48,15 +48,16 @@ export function ChartIcon({ color, size = 22 }: IconProps) {
 
 /**
  * Walkup's mark: a walk-up as two shapes, a flight of steps and the door (with its knob) at the top. It stands on
- * the page with no tile behind it, in the page's ink, so it follows the theme; the door is the accent color. The
+ * the page with no tile behind it, in the page's ink (the knob too), so it follows the theme; the door is the accent color. It is
+ * about as tall as the name's capital letters and sits on the name's baseline. The
  * same drawing is the tab icon (public/icons/walkup.svg); the home-screen icons put it on a dark tile.
  */
-export function BrandMark({ size = 30 }: { size?: number }) {
+export function BrandMark({ size = 22 }: { size?: number }) {
   return (
-    <Svg width={size} height={size} viewBox="3.5 3 25 25" aria-hidden>
+    <Svg width={size} height={size} viewBox="3.5 2 25 25" aria-hidden>
       <Path d="M5.5 27v-5h7v-5h7v-5h7v15z" fill={palette.gray[9]} />
       <Path d="M19.5 12V4.6a.6.6 0 0 1 .6-.6h5.8a.6.6 0 0 1 .6.6V12z" fill={palette.rose[5]} />
-      <Circle cx={21.4} cy={8.4} r={0.8} fill="#ffffff" />
+      <Circle cx={21.4} cy={8.4} r={0.8} fill={palette.gray[9]} />
     </Svg>
   );
 }

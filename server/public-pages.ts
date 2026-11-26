@@ -70,7 +70,7 @@ function page(origin: string, path: string, title: string, description: string, 
 body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--ink);background:var(--page);line-height:1.5}
 header,main,footer{max-width:880px;margin:0 auto;padding:16px 20px}
 header{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line)}
-a{color:var(--ink)}.brand{display:flex;align-items:center;gap:9px;color:var(--brand);font-weight:800;font-size:23px;text-decoration:none;letter-spacing:-.9px}.brand img{width:30px;height:30px}
+a{color:var(--ink)}.brand{display:flex;align-items:baseline;gap:7px;color:var(--brand);font-weight:800;font-size:23px;text-decoration:none;letter-spacing:-.9px}.brand img{width:22px;height:22px}
 main{padding-top:8px;padding-bottom:32px}main>:last-child{margin-bottom:0}
 h1{font-size:34px;line-height:1.15;letter-spacing:-.6px;margin:24px 0 8px}h2{font-size:22px;margin:32px 0 8px}p{margin:0 0 16px}
 .muted{color:var(--muted)}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
