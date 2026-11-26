@@ -75,7 +75,9 @@ function TypicalCost({ listing }: { listing: ListingData }) {
 /** A building's grade and the records behind it, as of its last check. */
 function BuildingSummary({ facts }: { facts: BuildingFacts }) {
   const grade = buildingGrade(facts);
-  const known = (value: number | boolean | null, text: string) => (value === null ? null : text);
+  // Unknown, or not checked when these facts were kept, says nothing.
+  const known = (value: number | boolean | null | undefined, text: string) => (value == null ? null : text);
+  const count = (value: number, one: string, many: string) => `${value} ${value === 1 ? one : many}`;
   const lines = [
     facts.stabilized === null
       ? null
@@ -86,6 +88,13 @@ function BuildingSummary({ facts }: { facts: BuildingFacts }) {
     known(facts.complaints, `${facts.complaints} complaints in the last year`),
     known(facts.bedbugs, facts.bedbugs ? 'Bedbugs reported in its last filing' : 'No bedbugs in its last filing'),
     known(facts.flood, facts.flood ? 'In the 100-year flood zone' : 'Outside the 100-year flood zone'),
+    known(facts.rats, facts.rats ? 'City inspectors found rats in the last two years' : 'No rats found by city inspectors in two years'),
+    known(facts.evictions, `${count(facts.evictions ?? 0, 'eviction', 'evictions')} in two years`),
+    known(
+      facts.courtCases,
+      `${count(facts.courtCases ?? 0, 'Housing Court case', 'Housing Court cases')} in two years${facts.harassment ? ', one alleging harassment' : ''}`,
+    ),
+    facts.unregistered ? 'No current registration with HPD' : null,
   ].filter(Boolean);
   return (
     <Text style={styles.smallMuted}>

@@ -56,6 +56,21 @@ export const BUILDING_SOURCES = [
       'Review the owner-filed annual report period and history in HPD Online. A filing is not an independent inspection or a guarantee of current conditions.',
   },
   {
+    name: 'City rat inspections',
+    url: 'https://data.cityofnewyork.us/d/p937-wjvj',
+    purpose: 'Health Department inspections by tax lot, and what each found. An inspection follows a complaint or a neighborhood sweep.',
+  },
+  {
+    name: 'Marshal evictions',
+    url: 'https://data.cityofnewyork.us/d/6z8x-wfk4',
+    purpose: 'Evictions carried out by city marshals. Most follow unpaid rent; the record does not say why.',
+  },
+  {
+    name: 'Housing Court cases (HPD litigation)',
+    url: 'https://data.cityofnewyork.us/d/59kj-x8nc',
+    purpose: 'Cases the city or tenants brought over a building: heat and hot water, repairs, access, harassment.',
+  },
+  {
     name: 'NYC flood maps',
     url: 'https://www.nyc.gov/site/floodmaps/maps/your-risk.page',
     purpose:

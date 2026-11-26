@@ -131,6 +131,35 @@ export function BuildingReport({
               ? `Latest owner-filed bedbug report: ${result.bedbugs.periodStart} to ${result.bedbugs.periodEnd}, filed ${result.bedbugs.filedAt}. Units reported: ${result.bedbugs.units}; infested ${result.bedbugs.infested}; eradicated ${result.bedbugs.eradicated}; reinfested ${result.bedbugs.reinfested}. This is an owner filing, not an independent inspection or a statement of current infestation. Corrections use the latest filing, never summed.`
               : 'Bedbug annual filing: unknown / no unambiguous report retrieved.'}
           </Text>
+          <Text style={styles.fieldLabel}>Pests, evictions and Housing Court, since {result.sinceTwoYears}</Text>
+          <Text style={styles.smallMuted}>
+            {result.rodents
+              ? `City rat inspections of this tax lot: ${result.rodents.inspections}; ${result.rodents.ratActivity} found rats.`
+              : 'City rat inspections: unknown.'}
+          </Text>
+          <Text style={styles.smallMuted}>
+            {result.evictions === null
+              ? 'Evictions carried out by a city marshal: unknown.'
+              : `Residents evicted by a city marshal on this tax lot: ${result.evictions}${result.taxLotOwner?.units ? `, in ${result.taxLotOwner.units} apartments` : ''}.`}
+          </Text>
+          <Text style={styles.smallMuted}>
+            {result.housingCourt
+              ? result.housingCourt.cases
+                ? `Housing Court cases over this building: ${result.housingCourt.kinds.map(({ kind, count }) => `${kind} (${count})`).join(' · ')}.`
+                : 'No Housing Court cases over this building.'
+              : 'Housing Court cases: unknown.'}
+          </Text>
+          <Text style={styles.smallMuted}>
+            {result.hpdRegistration
+              ? result.hpdRegistration.current
+                ? `Registered with HPD through ${result.hpdRegistration.through}.`
+                : `No current HPD registration${result.hpdRegistration.through ? ` (the last ran to ${result.hpdRegistration.through})` : ''}. Buildings with three or more apartments must register every year.`
+              : 'HPD registration: unknown.'}
+          </Text>
+          <Text style={styles.smallMuted}>
+            A case or an eviction is a record of a dispute, not a finding against the owner; evictions the city could not place on a tax lot
+            are not counted.
+          </Text>
           <Text style={styles.fieldLabel}>DOB records by matched BIN</Text>
           {result.dob ? (
             result.dob.map((source) => (

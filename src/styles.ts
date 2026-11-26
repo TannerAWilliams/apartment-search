@@ -33,8 +33,9 @@ const eyebrow = { fontSize: 11, lineHeight: 15, fontWeight: '800', letterSpacing
 
 export const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
-  scroll: { alignItems: 'center', paddingHorizontal: 24, paddingTop: 16, paddingBottom: 32 },
-  shell: { width: '100%', maxWidth: 1600, gap: 16 },
+  // At least the screen's height, so a short page's footer sits at the bottom, not in the middle.
+  scroll: { flexGrow: 1, alignItems: 'center', paddingHorizontal: 24, paddingTop: 16, paddingBottom: 24 },
+  shell: { flexGrow: 1, width: '100%', maxWidth: 1600, gap: 16 },
   topBar: {
     ...row,
     justifyContent: 'space-between',
@@ -249,5 +250,5 @@ export const styles = StyleSheet.create({
   menuDivider: { borderTopWidth: 1, borderTopColor: colors.border },
   menuLabel: { fontSize: 16, lineHeight: 22, fontWeight: '600', color: colors.ink },
   menuChevron: { fontSize: 24, lineHeight: 26, color: palette.gray[4] },
-  footer: { gap: 3, borderTopWidth: 1, borderColor: palette.gray[1], paddingTop: 16 },
+  footer: { marginTop: 'auto', gap: 3, borderTopWidth: 1, borderColor: palette.gray[1], paddingTop: 16 },
 });

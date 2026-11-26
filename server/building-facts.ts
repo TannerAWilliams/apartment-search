@@ -28,6 +28,13 @@ const FactsSchema = v.record(
     complaints: nullable(v.number()),
     bedbugs: nullable(v.boolean()),
     flood: nullable(v.boolean()),
+    // Checked since November 2026; facts kept before then have none of these until their building is checked again.
+    rats: v.optional(nullable(v.boolean())),
+    evictions: v.optional(nullable(v.number())),
+    courtCases: v.optional(nullable(v.number())),
+    harassment: v.optional(nullable(v.boolean())),
+    unregistered: v.optional(nullable(v.boolean())),
+    units: v.optional(nullable(v.number())),
     checkedAt: v.string(),
   }),
 );
@@ -51,12 +58,20 @@ export function summarizeReport(report: Report): BuildingFacts | null {
   if (report.status !== 'matched' && report.status !== 'partial') return null;
   const bedbugs = report.bedbugs as { infested?: number; reinfested?: number } | null;
   const flood = 'flood' in report ? (report.flood as { intersects?: boolean } | null) : null;
+  const units = report.taxLotOwner?.units ?? null;
   return {
     stabilized: report.rentRegistration ? report.rentRegistration.matched : null,
     openViolations: report.openViolations,
     complaints: report.complaintsLast365Days,
     bedbugs: bedbugs ? Boolean(bedbugs.infested || bedbugs.reinfested) : null,
     flood: flood ? flood.intersects === true : null,
+    rats: report.rodents ? report.rodents.ratActivity > 0 : null,
+    evictions: report.evictions,
+    courtCases: report.housingCourt ? report.housingCourt.cases : null,
+    harassment: report.housingCourt ? report.housingCourt.harassment > 0 : null,
+    // Only a building known to have three or more apartments must register.
+    unregistered: report.hpdRegistration && units !== null && units >= 3 ? !report.hpdRegistration.current : null,
+    units,
     checkedAt: report.checkedAt,
   };
 }
@@ -85,7 +100,8 @@ export async function fillBuildingFacts(
   for (const listing of listings) {
     const key = buildingKey(listing);
     if (listing.region !== 'nyc' || !key || wanted.has(key)) continue;
-    if (facts[key] && facts[key].checkedAt >= staleBefore) continue;
+    // Fresh, and kept since rats, evictions and court cases were read (facts from before are checked again).
+    if (facts[key] && facts[key].checkedAt >= staleBefore && facts[key].rats !== undefined) continue;
     wanted.set(key, listing);
     if (wanted.size >= limit) break;
   }
@@ -103,6 +119,7 @@ export async function fillBuildingFacts(
       complaints: null,
       bedbugs: null,
       flood: null,
+      rats: null,
       checkedAt: now.toISOString(),
     };
     checked++;

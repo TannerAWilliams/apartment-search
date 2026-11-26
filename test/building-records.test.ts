@@ -40,6 +40,10 @@ type Overrides = {
     | 'requests311'
     | 'owner'
     | 'registration'
+    | 'rodents'
+    | 'evictions'
+    | 'court'
+    | 'hpdRegistration'
     | 'flood'
     | 'floodMetadata']?: unknown;
 };
@@ -63,7 +67,9 @@ function source(override: Overrides = {}) {
     if (u.pathname.includes('kj4p')) return Response.json(override.buildings ?? [building]);
     if (u.pathname.includes('64uk-42ks')) {
       expect(u.searchParams.get('$where')).toBe(`bbl=${bbl}`);
-      return Response.json(override.owner ?? [{ bbl: bbl + '.00000000', ownername: 'EXAMPLE PROPERTY LLC', version: '26v2' }]);
+      return Response.json(
+        override.owner ?? [{ bbl: bbl + '.00000000', ownername: 'EXAMPLE PROPERTY LLC', version: '26v2', unitsres: '20' }],
+      );
     }
     if (u.pathname.includes('erm2-nwe9')) {
       expect(u.searchParams.get('$group')).toBe('complaint_type');
@@ -79,6 +85,41 @@ function source(override: Overrides = {}) {
       expect(u.searchParams.get('$where')).toStartWith("bin='3000001'");
       if (u.pathname.includes('rbx6-tga4')) expect(u.searchParams.get('$where')).toContain('issued_date <=');
       return Response.json(override.dob ?? []);
+    }
+    // Read over two years, on the tax lot or the building.
+    if (u.pathname.includes('p937-wjvj')) {
+      expect(u.searchParams.get('$where')).toStartWith(`bbl='${bbl}' AND inspection_date >= '`);
+      return Response.json(
+        override.rodents ?? [
+          { status: 'Passed', count: '4' },
+          { status: 'Rat Activity', count: '1' },
+          { status: 'Failed for Rat Activity and Other Reason', count: '2' },
+        ],
+      );
+    }
+    if (u.pathname.includes('6z8x-wfk4')) {
+      expect(u.searchParams.get('$where')).toStartWith(`bbl='${bbl}' AND executed_date >= '`);
+      expect(u.searchParams.get('$group')).toBe('residential_commercial_ind');
+      return Response.json(
+        override.evictions ?? [
+          { status: 'Residential', count: '2' },
+          { status: 'R', count: '1' },
+          { status: 'Commercial', count: '4' },
+        ],
+      );
+    }
+    if (u.pathname.includes('59kj-x8nc')) {
+      expect(u.searchParams.get('$where')).toStartWith("buildingid='12345' AND caseopendate >= '");
+      return Response.json(
+        override.court ?? [
+          { status: 'Heat and Hot Water', count: '1' },
+          { status: 'Tenant Action/Harrassment', count: '2' },
+        ],
+      );
+    }
+    if (u.pathname.includes('tesw-yqqr')) {
+      expect(u.searchParams.get('$order')).toBe('registrationenddate DESC');
+      return Response.json(override.hpdRegistration ?? [{ buildingid: '12345', registrationenddate: '2027-09-01T00:00:00.000' }]);
     }
     expect(u.searchParams.get('$where')).toContain('12345');
     if (u.pathname.includes('wz6d')) return Response.json(override.bedbugs ?? [annual]);
@@ -106,7 +147,7 @@ test('exact active building match joins HPD ID and distinguishes open violations
       { problem: 'Noise', count: 2 },
     ],
   });
-  expect(report.taxLotOwner).toEqual({ bbl, name: 'EXAMPLE PROPERTY LLC', edition: '26v2' });
+  expect(report.taxLotOwner).toEqual({ bbl, name: 'EXAMPLE PROPERTY LLC', edition: '26v2', units: 20 });
   expect(report.rentRegistration).toEqual({ matched: true, latestYear: 2026, registeredUnits: 18 });
 });
 test('missing state registrations and invalid matched tax lot responses never imply apartment status', async () => {
@@ -392,4 +433,130 @@ test('a building opened in Details is kept as short facts, and the nightly step 
     throw new Error('down');
   };
   expect(await fillBuildingFacts(createMemoryBucket(), listings, broken as never, { now }), 'an unreachable city still counts').toBe(2);
+});
+
+test('rat inspections, evictions, Housing Court cases and HPD registration are read over two years and kept apart', async () => {
+  const queries: Record<string, string> = {};
+  const fetcher = source();
+  const report = await retrieveBuildingRecords(
+    address,
+    async (url, options) => {
+      const u = new URL(url);
+      queries[u.pathname.split('/').at(-1)!.replace('.json', '')] = u.searchParams.get('$where') ?? '';
+      return fetcher(url, options);
+    },
+    now,
+  );
+  expect(report.status).toBe('matched');
+  // Two years to the day in New York, and nothing dated after now.
+  expect(queries['p937-wjvj']).toBe(
+    `bbl='${bbl}' AND inspection_date >= '2024-11-18T00:00:00' AND inspection_date <= '2026-11-17T07:00:00'`,
+  );
+  expect(queries['6z8x-wfk4']).toContain("executed_date >= '2024-11-18T00:00:00' AND executed_date <= '2026-11-17T07:00:00'");
+  expect(queries['59kj-x8nc']).toContain("caseopendate >= '2024-11-18T00:00:00' AND caseopendate <= '2026-11-17T07:00:00'");
+  expect(report.sinceTwoYears).toBe('2024-11-18');
+  // Inspections that found rats are counted whatever else they found.
+  expect(report.rodents).toEqual({ inspections: 7, ratActivity: 3 });
+  expect(report.evictions).toBe(3);
+  expect(report.housingCourt).toEqual({
+    cases: 3,
+    harassment: 2,
+    kinds: [
+      { kind: 'Tenant Action/Harrassment', count: 2 },
+      { kind: 'Heat and Hot Water', count: 1 },
+    ],
+  });
+  expect(report.hpdRegistration).toEqual({ current: true, through: '2027-09-01' });
+
+  // None of them on file is a finding of none; a lapsed or missing registration is said, with its last date.
+  const quiet = await retrieveBuildingRecords(
+    address,
+    source({
+      rodents: [],
+      evictions: [{ status: 'Commercial', count: '1' }],
+      court: [],
+      hpdRegistration: [{ buildingid: '12345', registrationenddate: '2025-09-01T00:00:00.000' }],
+    }),
+    now,
+  );
+  expect(quiet).toMatchObject({
+    status: 'matched',
+    rodents: { inspections: 0, ratActivity: 0 },
+    evictions: 0,
+    housingCourt: { cases: 0, harassment: 0, kinds: [] },
+    hpdRegistration: { current: false, through: '2025-09-01' },
+  });
+  expect((await retrieveBuildingRecords(address, source({ hpdRegistration: [] }), now)).hpdRegistration).toEqual({
+    current: false,
+    through: null,
+  });
+
+  // An answer that cannot be trusted is unknown, never none, and the rest of the report stands.
+  const broken = await retrieveBuildingRecords(
+    address,
+    source({
+      rodents: [{ status: 'Passed', count: 'many' }],
+      evictions: [{ status: 'Residential', count: '-1' }],
+      court: { error: true },
+      hpdRegistration: [{ buildingid: '999', registrationenddate: '2027-09-01T00:00:00.000' }],
+      owner: [{ bbl: bbl + '.00000000', ownername: 'EXAMPLE PROPERTY LLC', version: '26v2' }],
+    }),
+    now,
+  );
+  expect(broken).toMatchObject({
+    status: 'partial',
+    rodents: null,
+    evictions: null,
+    housingCourt: null,
+    hpdRegistration: null,
+    openViolations: 2,
+  });
+  expect(broken.taxLotOwner?.units).toBeNull();
+  expect(broken.errors.toSorted()).toEqual([
+    'City rat inspections could not be retrieved; unknown, not none.',
+    'HPD registration could not be checked.',
+    'Housing Court cases could not be retrieved; unknown, not none.',
+    'Marshal evictions could not be retrieved; unknown, not none.',
+  ]);
+  expect(
+    (await retrieveBuildingRecords(address, source({ hpdRegistration: [{ buildingid: '12345', registrationenddate: 'soon' }] }), now))
+      .hpdRegistration,
+  ).toBeNull();
+  // Without a tax lot, what is read by tax lot is not asked for.
+  const noLot = await retrieveBuildingRecords(address, source({ buildings: [{ ...building, block: '0' }] }), now);
+  expect(noLot).toMatchObject({ rodents: null, evictions: null, housingCourt: { cases: 3 } });
+});
+
+test('the kept facts and the grade take in rats, evictions, court cases and a lapsed registration', async () => {
+  const { summarizeReport } = await import('../server/building-facts.ts');
+  const { buildingGrade } = await import('../src/insights.ts');
+  const facts = summarizeReport(await retrieveBuildingRecords(address, source(), now))!;
+  expect(facts).toMatchObject({ rats: true, evictions: 3, courtCases: 3, harassment: true, unregistered: false, units: 20 });
+  // 2 violations (1), 2 complaints (0), bedbugs (1), rats (1), harassment (2), 3 evictions in 20 apartments (1): D.
+  expect(buildingGrade(facts)).toBe('D');
+  const clean = { stabilized: null, openViolations: 0, complaints: 0, bedbugs: false, flood: false, checkedAt: now.toISOString() };
+  expect(buildingGrade(clean)).toBe('A');
+  expect(buildingGrade({ ...clean, rats: true })).toBe('B');
+  expect(buildingGrade({ ...clean, courtCases: 3 })).toBe('B');
+  expect(buildingGrade({ ...clean, courtCases: 2 })).toBe('A');
+  expect(buildingGrade({ ...clean, harassment: true, courtCases: 1 })).toBe('B');
+  // Evictions against the building's size where it is known: 3 in 200 apartments is not many, 5 in an unknown number is.
+  expect(buildingGrade({ ...clean, evictions: 3, units: 200 })).toBe('A');
+  expect(buildingGrade({ ...clean, evictions: 3, units: 20 })).toBe('B');
+  expect(buildingGrade({ ...clean, evictions: 5 })).toBe('B');
+  expect(buildingGrade({ ...clean, evictions: 4 })).toBe('A');
+  expect(buildingGrade({ ...clean, unregistered: true, rats: true, harassment: true })).toBe('C');
+  // A lapsed registration counts only where the building is known to have three or more apartments.
+  const lapsed = { hpdRegistration: [{ buildingid: '12345', registrationenddate: '2025-09-01T00:00:00.000' }] };
+  expect(summarizeReport(await retrieveBuildingRecords(address, source(lapsed), now))?.unregistered).toBe(true);
+  const small = { ...lapsed, owner: [{ bbl: bbl + '.00000000', ownername: 'EXAMPLE PROPERTY LLC', version: '26v2', unitsres: '2' }] };
+  expect(summarizeReport(await retrieveBuildingRecords(address, source(small), now))?.unregistered).toBeNull();
+  const unknown = { rodents: { error: 1 }, court: { error: 1 }, evictions: { error: 1 }, hpdRegistration: { error: 1 } };
+  expect(summarizeReport(await retrieveBuildingRecords(address, source(unknown), now))).toMatchObject({
+    rats: null,
+    evictions: null,
+    courtCases: null,
+    harassment: null,
+    unregistered: null,
+  });
 });

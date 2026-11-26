@@ -18,6 +18,17 @@ export type BuildingFacts = {
   complaints: number | null;
   bedbugs: boolean | null;
   flood: boolean | null;
+  /** Over two years: a city inspection found rats on the lot. Absent on facts kept before this was checked. */
+  rats?: boolean | null;
+  /** Over two years: residents a marshal evicted. */
+  evictions?: number | null;
+  /** Over two years: cases the city or tenants brought in Housing Court, and whether one alleged harassment. */
+  courtCases?: number | null;
+  harassment?: boolean | null;
+  /** Three or more apartments and no current registration with HPD, which the law requires each year. */
+  unregistered?: boolean | null;
+  /** Apartments on the tax lot, which evictions are weighed against. */
+  units?: number | null;
   checkedAt: string;
 };
 export type BuildingGrade = 'A' | 'B' | 'C' | 'D';
@@ -119,11 +130,18 @@ export function buildingGrade(facts: BuildingFacts | undefined): BuildingGrade |
   if (!facts || [facts.openViolations, facts.complaints, facts.bedbugs, facts.flood].every((value) => value === null)) return null;
   const violations = facts.openViolations ?? 0;
   const complaints = facts.complaints ?? 0;
+  const evictions = facts.evictions ?? 0;
   const points =
     (violations > 20 ? 3 : violations > 5 ? 2 : violations > 0 ? 1 : 0) +
     (complaints > 10 ? 2 : complaints > 2 ? 1 : 0) +
     (facts.bedbugs ? 1 : 0) +
-    (facts.flood ? 1 : 0);
+    (facts.flood ? 1 : 0) +
+    (facts.rats ? 1 : 0) +
+    // A harassment case weighs more than any number of ordinary ones.
+    (facts.harassment ? 2 : (facts.courtCases ?? 0) >= 3 ? 1 : 0) +
+    // Against the building's size where it is known: one in twenty apartments, or five in a building of unknown size.
+    ((facts.units ? evictions / facts.units > 0.05 : evictions >= 5) ? 1 : 0) +
+    (facts.unregistered ? 1 : 0);
   return points === 0 ? 'A' : points <= 2 ? 'B' : points <= 4 ? 'C' : 'D';
 }
 

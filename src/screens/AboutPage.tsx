@@ -10,7 +10,10 @@ const FEATURES: [title: string, body: string][] = [
   ['Every listing, one search', 'Walkup reads more than 40 listing sites, brokerages and landlords, so you stop checking ten apps.'],
   ['Know a deal when you see it', 'Every rent is compared with similar apartments nearby, so “12% below similar” means something.'],
   ['Rent-stabilized buildings', 'Built from New York State’s list of about 57,000 registered buildings, with a filter for them.'],
-  ['Buildings graded A to D', 'Open violations, complaints, bedbug filings and flood zones from city records, before you tour.'],
+  [
+    'Buildings graded A to D',
+    'Open violations, complaints, bedbugs, rat inspections, evictions, Housing Court cases and flood zones from city records, before you tour.',
+  ],
   ['Alerts within hours', 'New matches are checked every two hours from 8 AM to 10 PM, so you hear first, not the next morning.'],
   ['Search together', 'Share a list with a partner or roommates, vote, leave notes and see everyone’s commute.'],
 ];

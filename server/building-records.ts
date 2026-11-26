@@ -125,6 +125,10 @@ export async function retrieveBuildingRecords(
     taxLotOwner: null,
     rentRegistration: null,
     bedbugs: null,
+    rodents: null,
+    evictions: null,
+    housingCourt: null,
+    hpdRegistration: null,
     errors: [] as string[],
   };
   const address = exactBuildingAddress(input);
@@ -199,6 +203,8 @@ export async function retrieveBuildingRecords(
   }).format(now);
   const midnight = Date.parse(localDate + 'T00:00:00Z');
   const since = new Date(midnight - 364 * 86400000).toISOString().slice(0, 19);
+  // Inspections, evictions and court cases are rarer than complaints and are read over two years.
+  const sinceTwoYears = new Date(midnight - 729 * 86400000).toISOString().slice(0, 19);
   const parts = Object.fromEntries(
     new Intl.DateTimeFormat('en-US', {
       timeZone: 'America/New_York',
@@ -215,7 +221,19 @@ export async function retrieveBuildingRecords(
   );
   const until = `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}`;
   const errors: string[] = [];
-  const [openViolations, complaintsLast365Days, bedbugs, dob, requests311, taxLotOwner, rentRegistration] = await Promise.all([
+  const [
+    openViolations,
+    complaintsLast365Days,
+    bedbugs,
+    dob,
+    requests311,
+    taxLotOwner,
+    rentRegistration,
+    rodents,
+    evictions,
+    housingCourt,
+    hpdRegistration,
+  ] = await Promise.all([
     (async () => {
       try {
         const data = await readRows(
@@ -380,7 +398,12 @@ export async function retrieveBuildingRecords(
     (async () => {
       if (!bbl) return null;
       try {
-        const rows = await readRows('64uk-42ks', { $select: 'bbl,ownername,version', $where: `bbl=${bbl}`, $limit: '2' }, fetcher, signal);
+        const rows = await readRows(
+          '64uk-42ks',
+          { $select: 'bbl,ownername,version,unitsres', $where: `bbl=${bbl}`, $limit: '2' },
+          fetcher,
+          signal,
+        );
         const record = rows[0];
         if (
           rows.length !== 1 ||
@@ -395,6 +418,8 @@ export async function retrieveBuildingRecords(
           bbl,
           name: record.ownername.trim(),
           edition: typeof record.version === 'string' && /^\d{2}v\d+(?:\.\d+)?$/i.test(record.version) ? record.version : null,
+          // Apartments on the lot, which what follows is weighed against; unknown when the lot does not say.
+          units: validCount(record.unitsres) && Number(record.unitsres) > 0 ? Number(record.unitsres) : null,
         };
       } catch {
         errors.push('The owner listed in the city tax lot records could not be verified.');
@@ -447,6 +472,105 @@ export async function retrieveBuildingRecords(
         return null;
       }
     })(),
+    // The Health Department's rat inspections of the tax lot: how many, and how many found rats.
+    (async () => {
+      if (!bbl) return null;
+      try {
+        const data = await readRows(
+          'p937-wjvj',
+          {
+            $select: 'result as status,count(*) as count',
+            $where: `bbl=${quote(bbl)} AND inspection_date >= '${sinceTwoYears}' AND inspection_date <= '${until}'`,
+            $group: 'result',
+            $limit: '51',
+          },
+          fetcher,
+          signal,
+        );
+        const results = grouping(data, 50);
+        const total = (list: typeof results) => list.reduce((sum, { count }) => sum + count, 0);
+        return { inspections: total(results), ratActivity: total(results.filter(({ status }) => /rat activity/i.test(status))) };
+      } catch {
+        errors.push('City rat inspections could not be retrieved; unknown, not none.');
+        return null;
+      }
+    })(),
+    // Evictions of residents that a city marshal carried out on the tax lot. The records mark each one as
+    // residential or commercial, in words or by its first letter.
+    (async () => {
+      if (!bbl) return null;
+      try {
+        const data = await readRows(
+          '6z8x-wfk4',
+          {
+            $select: 'residential_commercial_ind as status,count(*) as count',
+            $where: `bbl=${quote(bbl)} AND executed_date >= '${sinceTwoYears}' AND executed_date <= '${until}'`,
+            $group: 'residential_commercial_ind',
+            $limit: '11',
+          },
+          fetcher,
+          signal,
+        );
+        return grouping(data, 10)
+          .filter(({ status }) => /^r/i.test(status))
+          .reduce((sum, { count }) => sum + count, 0);
+      } catch {
+        errors.push('Marshal evictions could not be retrieved; unknown, not none.');
+        return null;
+      }
+    })(),
+    // Cases in Housing Court that the city or tenants brought over the building, by kind.
+    (async () => {
+      try {
+        const data = await readRows(
+          '59kj-x8nc',
+          {
+            $select: 'casetype as status,count(*) as count',
+            $where: `buildingid=${quote(String(row.buildingid))} AND caseopendate >= '${sinceTwoYears}' AND caseopendate <= '${until}'`,
+            $group: 'casetype',
+            $limit: '51',
+          },
+          fetcher,
+          signal,
+        );
+        const kinds = grouping(data, 50).sort((a, b) => b.count - a.count || a.status.localeCompare(b.status));
+        const total = (list: typeof kinds) => list.reduce((sum, { count }) => sum + count, 0);
+        return {
+          cases: total(kinds),
+          // The city's own records spell it "Harrassment".
+          harassment: total(kinds.filter(({ status }) => /harr?ass/i.test(status))),
+          kinds: kinds.map(({ status, count }) => ({ kind: status, count })),
+        };
+      } catch {
+        errors.push('Housing Court cases could not be retrieved; unknown, not none.');
+        return null;
+      }
+    })(),
+    // Whether the owner's yearly registration with HPD is current.
+    (async () => {
+      try {
+        const data = await readRows(
+          'tesw-yqqr',
+          {
+            $select: 'buildingid,registrationenddate',
+            $where: `buildingid=${quote(String(row.buildingid))}`,
+            $order: 'registrationenddate DESC',
+            $limit: '1',
+          },
+          fetcher,
+          signal,
+        );
+        const latest = data[0];
+        if (!latest) return { current: false, through: null };
+        if (latest.buildingid !== row.buildingid || !/^\d{4}-\d{2}-\d{2}T/.test(text(latest.registrationenddate)))
+          throw new Error('Registration record did not match the building.');
+        const through = text(latest.registrationenddate).slice(0, 10);
+        return { current: through >= localDate, through };
+      } catch {
+        errors.push('HPD registration could not be checked.');
+        return null;
+      }
+    })(),
   ]);
   let flood = null;
   if (bedbugs?.point) {
@@ -496,9 +620,14 @@ export async function retrieveBuildingRecords(
     taxLotOwner,
     rentRegistration,
     bedbugs,
+    rodents,
+    evictions,
+    housingCourt,
+    hpdRegistration,
     dob,
     flood,
     since: since.slice(0, 10),
+    sinceTwoYears: sinceTwoYears.slice(0, 10),
     errors,
   };
 }
