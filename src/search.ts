@@ -253,12 +253,16 @@ export function distanceMiles(from: unknown, to: unknown) {
  * When a listing was posted, as a number, worked out once for each listing: sorting every listing by date
  * compares each one many times, and reading a date from text each time was most of that sort.
  */
-const listedTimes = new WeakMap<object, number>();
+// Parsed dates are kept by their text: each search works on fresh copies of the listings, but the text is shared.
+const listedTimes = new Map<string, number>();
 function listedTime(listing: { listedAt?: string }) {
-  let time = listedTimes.get(listing);
+  const text = listing.listedAt;
+  if (!text) return 0;
+  let time = listedTimes.get(text);
   if (time === undefined) {
-    time = Date.parse(listing.listedAt ?? '') || 0;
-    listedTimes.set(listing, time);
+    if (listedTimes.size > 200_000) listedTimes.clear();
+    time = Date.parse(text) || 0;
+    listedTimes.set(text, time);
   }
   return time;
 }
