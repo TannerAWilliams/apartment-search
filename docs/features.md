@@ -89,9 +89,9 @@ Every chart has a table view with every value. Colors follow a validated palette
 
 **A new month of data.** StreetEasy publishes each series as its own file at `cdn-charts.streeteasy.com` (for example `rentals/OneBd/medianAskingRent_OneBd.zip` and `sales/All/priceIndex_All.zip`; the archive's files are byte-for-byte the same). **Sources & sync → Resync all** (or resyncing the **StreetEasy Data Dashboard** source alone) downloads all 45, compares each file's SHA-256 with the one loaded, and replaces only the series that changed, each in one transaction; a file that cannot be read is reported and its saved figures kept. New areas get the next free number. The page shows the latest month and when the figures were last downloaded. The bundled archive stays as the starting copy, so the page works before the first resync. Downloading all 45 files takes a few seconds; loading a new month for all of them, under 30. The weekly live check also downloads one of these files, so a moved download link is noticed.
 
-## Affordable housing
+## Lotteries and public housing
 
-The Affordable tab lists [NYC Housing Connect](https://data.cityofnewyork.us/d/vy5i-a666) lotteries with application dates, addresses and bedroom counts, HDC re-rentals, and links to Mitchell-Lama and Section 8 resources. Search results link to an open lottery in the same building.
+The Lotteries tab (`src/screens/AffordableHousing.tsx`) starts with where each program is applied for, by area: New York City (housing lotteries, Mitchell-Lama, public housing), New Jersey, Long Island and Connecticut, each linking to the agency's own page. Below that it lists [NYC Housing Connect](https://data.cityofnewyork.us/d/vy5i-a666) lotteries with application dates, addresses and bedroom counts, HDC re-rentals, and links to Mitchell-Lama and Section 8 resources. Search results link to an open lottery in the same building.
 
 ## Layout
 
