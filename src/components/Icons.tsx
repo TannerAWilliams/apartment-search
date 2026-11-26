@@ -54,8 +54,8 @@ export function BrandMark({ size = 30 }: { size?: number }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 32 32" aria-hidden>
       <Rect width={32} height={32} rx={7} fill={mark.tile} />
-      <Path d="M5.5 27v-5h7v-5h7v-5h7v15z" fill={mark.steps} />
-      <Path d="M19.5 12V7.5a3.5 3.5 0 0 1 7 0V12z" fill={mark.door} />
+      <Path d="M4 27v-4.5h4V18h4v-4.5h8V18h4v4.5h4V27z" fill={mark.steps} />
+      <Path d="M12 13.5V8a4 4 0 0 1 8 0v5.5z" fill={mark.door} />
     </Svg>
   );
 }
