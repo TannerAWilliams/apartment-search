@@ -47,7 +47,7 @@ export function ChartIcon({ color, size = 22 }: IconProps) {
 }
 
 /**
- * Walkup's mark: a walk-up as two shapes, a flight of steps and the door (with its knob) at the top, on a rounded tile. The same
+ * Walkup's mark: a walk-up as two shapes, a flight of steps with its handrail and the door (with its knob) at the top, on a rounded tile. The same
  * drawing is the tab and home-screen icon (public/icons/walkup.svg). Its colors follow the theme (src/theme.ts).
  */
 export function BrandMark({ size = 30 }: { size?: number }) {
@@ -55,6 +55,9 @@ export function BrandMark({ size = 30 }: { size?: number }) {
     <Svg width={size} height={size} viewBox="0 0 32 32" aria-hidden>
       <Rect width={32} height={32} rx={7} fill={mark.tile} />
       <Path d="M5.5 27v-5h7v-5h7v-5h7v15z" fill={mark.steps} />
+      {/* The handrail: a post at the front of each lower step, the same distance in, and a rail as steep as the
+          stairs that ends on the door's edge. Drawn under the door, so its end is square against it. */}
+      <Path d="M6.3 22v-6.07M13.3 17v-6.07M6.3 15.93 19.5 6.5" fill="none" stroke={mark.steps} strokeWidth={1.3} strokeLinecap="round" />
       <Path d="M19.5 12V4.6a.6.6 0 0 1 .6-.6h5.8a.6.6 0 0 1 .6.6V12z" fill={mark.door} />
       {/* The doorknob, in the tile's color. */}
       <Circle cx={21.4} cy={8.4} r={0.8} fill={mark.tile} />
