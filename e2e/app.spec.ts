@@ -1426,7 +1426,7 @@ test('a visitor uses Walkup without an account, and is asked for one only to sav
   // The home page is the search; what Walkup is and what it costs are pages of their own, one tap away.
   await expect(page.getByRole('heading', { name: 'Plans', exact: true })).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Questions', exact: true })).toHaveCount(0);
-  await page.getByRole('link', { name: 'How Walkup works', exact: true }).click();
+  await page.getByRole('link', { name: 'About', exact: true }).click();
   await expect(page).toHaveURL(/\/about$/);
   await expect(page.getByRole('heading', { name: 'What it does', exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Questions', exact: true })).toBeVisible();
