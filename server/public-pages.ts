@@ -113,8 +113,8 @@ footer{border-top:1px solid var(--line);font-size:14px;padding-top:20px;padding-
 const GRADE_MEANS: Record<string, string> = {
   A: 'a clean record',
   B: 'a few marks on its record',
-  C: 'a troubled record',
-  D: 'a bad record',
+  C: 'several problems on its record',
+  D: 'many problems on its record',
 };
 const count = (value: number | null | undefined, one: string, many: string) =>
   value == null ? null : `${value.toLocaleString('en-US')} ${value === 1 ? one : many}`;
