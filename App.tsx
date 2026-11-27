@@ -1103,7 +1103,7 @@ function ApartmentSearch() {
                     from the same figures as the Market tab. */}
                     <View style={[styles.chipRow, { alignItems: 'center' }]}>
                       <Pressable accessibilityRole="link" onPress={() => navigateTab('about')} style={{ paddingVertical: 6 }}>
-                        <Text style={styles.linkText}>About</Text>
+                        <Text style={styles.linkText}>How Walkup works</Text>
                       </Pressable>
                       <Text style={styles.smallMuted}>·</Text>
                       <Pressable accessibilityRole="link" onPress={() => navigateTab('pricing')} style={{ paddingVertical: 6 }}>

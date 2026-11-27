@@ -4,7 +4,7 @@
  * with what Walkup knows about it. It says what is there and no more: figures when the app has them, nothing
  * where it has none. It asks for no apartments of its own, so it opens at once; the search the app runs on
  * opening readies the first search made here. The longer account of what Walkup does, and its prices, are
- * pages of their own (AboutPage.tsx).
+ * pages of their own (AboutPage.tsx), linked from the foot of every page.
  */
 import { Pressable, Text, useWindowDimensions, View } from 'react-native';
 import { HomeSearch, type NeighborhoodLoader } from '../components/HomeSearch.tsx';
@@ -154,9 +154,6 @@ export function HomePage({
           </View>
         </View>
       )}
-      <Pressable accessibilityRole="link" onPress={() => onOpen('about')} style={{ alignSelf: 'flex-start', paddingVertical: 6 }}>
-        <Text style={styles.linkText}>How Walkup works</Text>
-      </Pressable>
     </View>
   );
 }
