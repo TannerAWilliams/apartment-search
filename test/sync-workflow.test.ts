@@ -176,26 +176,35 @@ test('an Openigloo save that loses a race to another write reports that failure'
   ).rejects.toThrow(/^Openigloo: The Openigloo inventory could not be refreshed/);
 });
 
-test('the nightly run checks listed buildings in five steps', async () => {
+test('the nightly run checks listed buildings in batches, and stops when nothing more can be learned', async () => {
   const { afterFullRun } = await import('../server/sync-workflow.ts');
   globalThis.fetch = (async () => {
     throw new Error('city records unreachable');
   }) as unknown as typeof fetch;
   const { bucket } = await workflow();
   const { step, names } = steps();
-  // The bundled sample inventory has New York City buildings; each batch takes the next 40.
   await expect(afterFullRun(step as never, { BUCKET: bucket }), 'open data unreachable').rejects.toThrow(/unreachable/);
   const skipping = {
     do: async (name: string, _config: unknown, callback: () => Promise<unknown>) => (
       names.push(name), name.startsWith('Refresh') ? [] : callback()
     ),
   };
-  expect(await afterFullRun(skipping as never, { BUCKET: bucket })).toBe(200);
+  // The city's records unreachable tonight: nothing is learned from the first batch, so the rest are not tried.
+  expect(await afterFullRun(skipping as never, { BUCKET: bucket })).toBe(0);
   expect(names).toStrictEqual([
     'Refresh rent registrations and subway stations',
     'Refresh rent registrations and subway stations',
-    // Unreachable tonight: nothing learned, and the run goes on.
     'Learn walkability for new places',
-    ...[1, 2, 3, 4, 5].map((batch) => `Check building records (${batch} of 5)`),
+    'Check building records (1 of 15)',
   ]);
+  // Reachable: the bundled sample inventory has New York City buildings, and each batch takes the next 40 until
+  // none is left unchecked.
+  globalThis.fetch = (async () => Response.json([])) as unknown as typeof fetch;
+  names.length = 0;
+  const checked = await afterFullRun(skipping as never, { BUCKET: bucket });
+  const batches = names.filter((name) => name.startsWith('Check building records'));
+  expect(checked).toBeGreaterThanOrEqual(200);
+  expect(batches.length).toBeGreaterThanOrEqual(5);
+  expect(batches.length).toBeLessThanOrEqual(15);
+  expect(batches[0]).toBe('Check building records (1 of 15)');
 });

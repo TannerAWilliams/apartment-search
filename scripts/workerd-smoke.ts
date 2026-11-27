@@ -17,6 +17,10 @@ const CHECKS: { path: string; init?: RequestInit; status: number; contains?: str
   // The free tools are pages of their own, and an address with nothing at it says so.
   { path: '/check-building', status: 200, contains: 'Check any NYC building' },
   { path: '/rent-check', status: 200, contains: 'Is my rent fair?' },
+  // About and Pricing are the app's page with their own words; a building Walkup has no grade for is not found.
+  { path: '/about', status: 200, contains: '<h1>How Walkup works</h1>' },
+  { path: '/pricing', status: 200, contains: '<h1>Pricing</h1>' },
+  { path: '/building/1-nowhere-st-10001', status: 404, contains: 'Building not found' },
   { path: '/no-such-page', status: 404, contains: 'Page not found', init: { headers: { Accept: 'text/html' } } },
   // An app address that is not a file is the app's page, which the Worker answers with.
   { path: '/search', status: 200, contains: '<div id="root">' },

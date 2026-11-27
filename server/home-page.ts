@@ -4,6 +4,8 @@
  * nothing to show when the address is pasted into a message. Here the same page is sent with what Walkup is, how
  * much it has today and where its public pages are, written into it; the app replaces that when it starts.
  */
+import * as ABOUT from '../src/about-copy.ts';
+
 export type HomeStats = { apartments: number; sites: number };
 
 const escape = (text: string) => text.replace(/[&<>"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[char]!);
@@ -42,33 +44,32 @@ const QUESTIONS: [question: string, answer: string][] = [
   ],
 ];
 
-/** The home page: `shell` is the app's own page (public/index.html), sent from `origin`. */
-export function homePage(shell: string, origin: string, stats: HomeStats | null) {
-  const copy = homeCopy(stats);
-  const url = origin + '/';
-  const data = [
-    {
-      '@context': 'https://schema.org',
-      '@type': 'WebSite',
-      name: 'Walkup',
-      url,
-      description: copy.description,
-    },
-    {
-      '@context': 'https://schema.org',
-      '@type': 'Organization',
-      name: 'Walkup',
-      url,
-      logo: origin + '/icons/icon-512.png',
-    },
-  ];
+const LINKS =
+  '<p><a href="/search">Search apartments</a> · <a href="/rents">Rents by neighborhood</a> · <a href="/blog">Market reports</a> · ' +
+  '<a href="/check-building">Check a building</a> · <a href="/rent-check">Is my rent fair?</a> · ' +
+  '<a href="/about">How Walkup works</a> · <a href="/pricing">Pricing</a></p>';
+const answers = (questions: [string, string][]) =>
+  questions.map(([question, answer]) => `<h2>${escape(question)}</h2><p>${escape(answer)}</p>`).join('');
+
+/**
+ * The app's page (`shell`, public/index.html) with one screen's words written into it: its title, description,
+ * address and preview for whoever reads the page without running it, and the words themselves where the app
+ * will draw.
+ */
+function written(
+  shell: string,
+  origin: string,
+  path: string,
+  { title, heading, description, body, data = [] }: { title: string; heading: string; description: string; body: string; data?: object[] },
+) {
+  const url = origin + path;
   const head = [
     `<link rel="canonical" href="${escape(url)}" />`,
     '<meta property="og:type" content="website" />',
     '<meta property="og:site_name" content="Walkup" />',
     `<meta property="og:url" content="${escape(url)}" />`,
-    `<meta property="og:title" content="${escape(copy.heading)}" />`,
-    `<meta property="og:description" content="${escape(copy.description)}" />`,
+    `<meta property="og:title" content="${escape(heading)}" />`,
+    `<meta property="og:description" content="${escape(description)}" />`,
     `<meta property="og:image" content="${escape(origin)}/icons/share.png" />`,
     '<meta property="og:image:width" content="1200" />',
     '<meta property="og:image:height" content="630" />',
@@ -76,22 +77,56 @@ export function homePage(shell: string, origin: string, stats: HomeStats | null)
     // The data is JSON; "<" is written so that no text in it can end the element.
     ...data.map((entry) => `<script type="application/ld+json">${JSON.stringify(entry).replace(/</g, '\\u003c')}</script>`),
   ].join('\n    ');
-  const body =
-    '<main class="boot-home">' +
-    `<h1>${escape(copy.heading)}</h1><p>${escape(copy.description)}</p>` +
-    '<p><a href="/search">Search apartments</a> · <a href="/rents">Rents by neighborhood</a> · <a href="/blog">Market reports</a> · ' +
-    '<a href="/check-building">Check a building</a> · <a href="/rent-check">Is my rent fair?</a> · ' +
-    '<a href="/about">How Walkup works</a> · <a href="/pricing">Pricing</a></p>' +
-    QUESTIONS.map(([question, answer]) => `<h2>${escape(question)}</h2><p>${escape(answer)}</p>`).join('') +
-    '</main>';
   return shell
-    .replace(/<title>[^<]*<\/title>/, `<title>${escape(copy.title)}</title>`)
-    .replace(
-      /(<meta name="description" content=")[^"]*(")/,
-      (_all, before: string, after: string) => before + escape(copy.description) + after,
-    )
+    .replace(/<title>[^<]*<\/title>/, `<title>${escape(title)}</title>`)
+    .replace(/(<meta name="description" content=")[^"]*(")/, (_all, before: string, after: string) => before + escape(description) + after)
     .replace('</head>', `  ${head}\n  </head>`)
-    .replace(/<p class="boot-note">[^<]*<\/p>/, body);
+    .replace(
+      /<p class="boot-note">[^<]*<\/p>/,
+      `<main class="boot-home"><h1>${escape(heading)}</h1><p>${escape(description)}</p>${body}</main>`,
+    );
+}
+
+/** The home page: `shell` is the app's own page (public/index.html), sent from `origin`. */
+export function homePage(shell: string, origin: string, stats: HomeStats | null) {
+  const copy = homeCopy(stats);
+  const url = origin + '/';
+  return written(shell, origin, '/', {
+    ...copy,
+    body: LINKS + answers(QUESTIONS),
+    data: [
+      { '@context': 'https://schema.org', '@type': 'WebSite', name: 'Walkup', url, description: copy.description },
+      { '@context': 'https://schema.org', '@type': 'Organization', name: 'Walkup', url, logo: origin + '/icons/icon-512.png' },
+    ],
+  });
+}
+
+/** /about: what Walkup does and the questions people ask about it, as the About screen says them. */
+export function aboutPage(shell: string, origin: string) {
+  return written(shell, origin, '/about', {
+    title: 'How Walkup works: every NYC apartment listing in one search | Walkup',
+    heading: 'How Walkup works',
+    description: ABOUT.ABOUT_INTRO,
+    body: answers(ABOUT.FEATURES) + answers(ABOUT.QUESTIONS) + LINKS,
+    data: [
+      {
+        '@context': 'https://schema.org',
+        '@type': 'FAQPage',
+        mainEntity: ABOUT.QUESTIONS.map(([name, text]) => ({ '@type': 'Question', name, acceptedAnswer: { '@type': 'Answer', text } })),
+      },
+    ],
+  });
+}
+
+/** /pricing: what is free and what the paid plan adds, as the Pricing screen says it. */
+export function pricingPage(shell: string, origin: string) {
+  const { intro, free, paid, monthly, pass } = ABOUT.PRICING;
+  return written(shell, origin, '/pricing', {
+    title: 'Walkup pricing: free to search, $15 a month for instant alerts | Walkup',
+    heading: 'Pricing',
+    description: intro,
+    body: `<h2>Free: $0</h2><p>${escape(free)}</p><h2>Paid: ${escape(monthly)}, ${escape(pass)}</h2><p>${escape(paid)}</p>${LINKS}`,
+  });
 }
 
 /** /llms.txt: what the site is and where its public pages are, in plain text, for AI assistants. */

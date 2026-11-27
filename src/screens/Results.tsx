@@ -291,7 +291,7 @@ export function Results({
             {destination && (
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={destination.label ? 'Change destination' : 'Add where you work'}
+                accessibilityLabel={destination.label ? 'Change destination' : 'Add where you work to see each commute'}
                 onPress={destination.onChange}
                 style={({ pressed }) => [{ alignSelf: 'flex-start', paddingVertical: 2 }, pressed && styles.pressed]}
               >

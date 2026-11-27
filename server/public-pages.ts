@@ -7,39 +7,33 @@ import { Hono } from 'hono';
 import { articleList, articleMonths, articleSlugs, composeArticle, monthName } from './articles.ts';
 import type { AppEnv } from './contracts.ts';
 import type { ArchiveLoader } from './dashboard-snapshot.ts';
-import { neighborhoodReport } from './neighborhoods.ts';
-import { offline, search } from './search.ts';
-import { parseFilters } from '../src/search.ts';
+import { log } from './log.ts';
+import { zipComplaints } from './neighborhoods.ts';
+import { BOROUGHS, type BuildingSummary, type PublicSummary, publicSummary, slug } from './public-summary.ts';
 import { formatRent } from '../src/search.ts';
 import type { FetchTransport } from '../src/fetch-type.ts';
 
-const BOROUGHS = ['Manhattan', 'Brooklyn', 'Queens', 'Bronx', 'Staten Island'];
-const SIZES = ['Studios', '1 bedrooms', '2 bedrooms', '3 bedrooms', '4+ bedrooms'];
-/** A neighborhood needs this many listings for a page, so thin pages are not published. */
-const MIN_LISTINGS = 5;
-
-export const slug = (text: string) =>
-  text
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '');
+export { slug };
+const SHORT_SIZE = ['Studio', '1 bed', '2 bed', '3 bed', '4+ bed'];
+const SIZE = ['studio', 'one-bedroom', 'two-bedroom', 'three-bedroom', 'four-bedroom'];
 export const escape = (text: string) => text.replace(/[&<>"']/g, (char) => `&#${char.charCodeAt(0)};`);
+const DAY = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', month: 'long', day: 'numeric', year: 'numeric' });
+const MONTH = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', month: 'long', year: 'numeric' });
 
 /** Every New York City neighborhood with enough listings for a page: name, borough and count, by borough then name. */
-export async function neighborhoodIndex(env: AppEnv) {
-  const { matches } = await search(parseFilters({ region: 'nyc', bedrooms: null, maxRent: null }), env, offline, true, { kept: true });
-  const counts = new Map<string, { name: string; borough: string; count: number }>();
-  for (const { neighborhood, city } of matches) {
-    if (!neighborhood || !BOROUGHS.includes(city)) continue;
-    const key = slug(city) + '/' + slug(neighborhood);
-    const entry = counts.get(key) ?? { name: neighborhood, borough: city, count: 0 };
-    entry.count++;
-    counts.set(key, entry);
-  }
-  return [...counts.entries()]
-    .filter(([, { count }]) => count >= MIN_LISTINGS)
-    .map(([path, entry]) => ({ path, ...entry }))
-    .sort((a, b) => BOROUGHS.indexOf(a.borough) - BOROUGHS.indexOf(b.borough) || a.name.localeCompare(b.name));
+export const neighborhoodIndex = async (env: AppEnv) =>
+  (await publicSummary(env)).neighborhoods.map(({ path, name, borough, count }) => ({ path, name, borough, count }));
+
+/** Where a page sits, as links above its heading and as data a search engine reads. */
+function trail(origin: string, steps: [name: string, path: string][]) {
+  return {
+    html: `<p class="muted">${steps.map(([name, path]) => `<a href="${path}">${escape(name)}</a>`).join(' › ')}</p>`,
+    data: {
+      '@context': 'https://schema.org',
+      '@type': 'BreadcrumbList',
+      itemListElement: steps.map(([name, path], index) => ({ '@type': 'ListItem', position: index + 1, name, item: origin + path })),
+    },
+  };
 }
 
 export function page(
@@ -48,10 +42,32 @@ export function page(
   title: string,
   description: string,
   body: string,
-  article?: { published: string } | null,
-  /** An answer to one person's question, or a page that is not there: not for search engines to keep. */
-  noindex = false,
+  {
+    published,
+    noindex = false,
+    data = [],
+  }: {
+    /** An article, with the day it was published. */
+    published?: string;
+    /** An answer to one person's question, or a page that is not there: not for search engines to keep. */
+    noindex?: boolean;
+    /** What the page is about, as schema.org data. */
+    data?: object[];
+  } = {},
 ) {
+  const article = published
+    ? [
+        {
+          '@context': 'https://schema.org',
+          '@type': 'Article',
+          headline: title,
+          description,
+          datePublished: published,
+          mainEntityOfPage: origin + path,
+          publisher: { '@type': 'Organization', name: 'Walkup' },
+        },
+      ]
+    : [];
   const canonical = origin + path;
   return `<!doctype html>
 <html lang="en"><head>
@@ -60,19 +76,13 @@ export function page(
 <meta name="description" content="${escape(description)}">
 <link rel="canonical" href="${escape(canonical)}">${noindex ? '\n<meta name="robots" content="noindex">' : ''}
 <meta property="og:title" content="${escape(title)}"><meta property="og:description" content="${escape(description)}">
-<meta property="og:url" content="${escape(canonical)}"><meta property="og:type" content="${article ? 'article' : 'website'}">${
-    article
-      ? `\n<script type="application/ld+json">${JSON.stringify({
-          '@context': 'https://schema.org',
-          '@type': 'Article',
-          headline: title,
-          description,
-          datePublished: article.published,
-          mainEntityOfPage: canonical,
-          publisher: { '@type': 'Organization', name: 'Walkup' },
-        }).replace(/</g, '\\u003c')}</script>`
-      : ''
-  }
+<meta property="og:url" content="${escape(canonical)}"><meta property="og:type" content="${published ? 'article' : 'website'}">
+<meta property="og:site_name" content="Walkup"><meta property="og:image" content="${escape(origin)}/icons/share.png"><meta name="twitter:card" content="summary_large_image">${[
+    ...article,
+    ...data,
+  ]
+    .map((entry) => `\n<script type="application/ld+json">${JSON.stringify(entry).replace(/</g, '\\u003c')}</script>`)
+    .join('')}
 <style>
 :root{color-scheme:light dark;--ink:#201e1c;--muted:#5f5b59;--page:#fff;--line:#d7d5d3;--soft:#f7f6f6;--brand:#201e1c;--accent:#db164e}
 @media (prefers-color-scheme:dark){:root{--ink:#f6f6f6;--muted:#b8b8b8;--page:#121212;--line:#353535;--soft:#262626;--brand:#f6f6f6;--accent:#f43f6b}}
@@ -90,7 +100,7 @@ h1{font-size:34px;line-height:1.15;letter-spacing:-.6px;margin:24px 0 8px}h2{fon
 .grade{display:inline-block;font-size:44px;font-weight:800;line-height:1;border:2px solid var(--accent);border-radius:14px;padding:10px 18px;margin:8px 0}
 .cta{display:inline-block;background:var(--ink);color:var(--page);text-decoration:none;font-weight:600;padding:12px 20px;border-radius:10px;margin:8px 0 0}
 ul.links{columns:2;padding-left:18px}ul.articles{list-style:none;padding:0;margin:0 0 16px}ul.articles li{padding:10px 0;border-bottom:1px solid var(--soft)}
-table{border-collapse:collapse;width:100%;margin:8px 0 16px}th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--soft)}th{font-size:14px;color:var(--muted)}
+.scroll{overflow-x:auto}table{border-collapse:collapse;width:100%;margin:8px 0 16px}th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--soft)}th{font-size:14px;color:var(--muted)}
 td:not(:first-child),th:not(:first-child){text-align:right;white-space:nowrap}
 footer{border-top:1px solid var(--line);font-size:14px;padding-top:20px;padding-bottom:28px}footer p{margin:0 0 8px}footer nav{display:flex;flex-wrap:wrap;gap:6px 18px}
 </style></head><body>
@@ -100,48 +110,204 @@ footer{border-top:1px solid var(--line);font-size:14px;padding-top:20px;padding-
 </body></html>`;
 }
 
-/** One neighborhood's page, or null when it has too few listings. */
-export async function neighborhoodPage(env: AppEnv, origin: string, borough: string, name: string, fetcher: FetchTransport) {
-  const report = await neighborhoodReport(env, name, fetcher);
-  if (report.listings < MIN_LISTINGS || report.borough !== borough) return null;
-  const sizes = report.sizes.filter(({ count, median }) => count && median);
-  const cheapest = sizes[0];
-  const title = `${name}, ${borough} apartments for rent: median rents, buildings and 311 | Walkup`;
-  const description = `${report.listings} apartments listed in ${name}, ${borough}${
-    cheapest ? `, from a ${formatRent(cheapest.median!)} median for ${SIZES[cheapest.bedrooms]!.toLowerCase()}` : ''
-  }. Rents by size, rent-stabilized buildings and the year's 311 complaints.`;
-  const tiles = sizes
-    .map(
-      ({ bedrooms, count, median }) =>
-        `<div class="tile"><span class="muted">${SIZES[bedrooms]}</span><b>${formatRent(median!)}</b><span class="muted">${count} listed</span></div>`,
-    )
-    .join('');
-  // Only when some of its buildings have been checked.
-  const buildings = [
-    report.buildings.known &&
-      `<p>${report.buildings.known} buildings with listings here have been checked against city and state records; ${report.buildings.stabilized} register rent-stabilized units.</p>`,
-  ]
-    .filter(Boolean)
-    .join('');
-  const complaints = report.complaints
-    ? `<h2>311 complaints in the last year</h2><p class="muted">ZIP code ${escape(report.complaints.zip)}, from NYC Open Data.</p><div class="grid">${Object.entries(
-        report.complaints.counts,
+const GRADE_MEANS: Record<string, string> = {
+  A: 'a clean record',
+  B: 'a few marks on its record',
+  C: 'a troubled record',
+  D: 'a bad record',
+};
+const count = (value: number | null | undefined, one: string, many: string) =>
+  value == null ? null : `${value.toLocaleString('en-US')} ${value === 1 ? one : many}`;
+const yes = (value: boolean | null | undefined, when: string, otherwise: string | null) =>
+  value == null ? null : value ? when : otherwise;
+/** What the city's records say about a building, one short line each; what was not checked is left out. */
+export const recordLines = (facts: BuildingSummary['facts']) =>
+  [
+    count(facts.openViolations, 'open violation', 'open violations'),
+    count(facts.complaints, 'complaint in the last year', 'complaints in the last year'),
+    yes(facts.bedbugs, 'Bedbugs reported', 'No bedbugs reported'),
+    yes(facts.rats, 'Rats found by inspectors', 'No rats found by inspectors'),
+    count(facts.evictions, 'eviction in two years', 'evictions in two years'),
+    count(facts.courtCases, 'Housing Court case in two years', 'Housing Court cases in two years'),
+    yes(facts.stabilized, 'Registers rent-stabilized apartments', 'No rent-stabilized apartments registered'),
+    yes(facts.vacate, 'An order to vacate is in force', null),
+  ].filter((line): line is string => Boolean(line));
+
+/**
+ * One neighborhood's page, or null when it has too few listings. It opens with the answer to the question people
+ * ask ("what is the rent in Astoria?"), with its date and what it is based on, then the same by size, against the
+ * borough, its buildings and the year's 311 complaints.
+ */
+export async function neighborhoodPage(
+  env: AppEnv,
+  origin: string,
+  borough: string,
+  name: string,
+  fetcher: FetchTransport,
+  summary?: PublicSummary,
+) {
+  const all = summary ?? (await publicSummary(env));
+  const place = all.neighborhoods.find((entry) => entry.name === name && entry.borough === borough);
+  if (!place) return null;
+  const built = new Date(all.builtAt);
+  const sizes = place.sizes.filter(({ count: listed, median }) => listed && median);
+  const whole = all.boroughs.find((entry) => entry.name === borough);
+  // One-bedrooms are what most people ask about; where there are none, the size with the most listings.
+  const lead = sizes.find(({ bedrooms }) => bedrooms === 1) ?? [...sizes].sort((a, b) => b.count - a.count)[0];
+  const others = sizes.filter((size) => size !== lead).slice(0, 2);
+  const against = lead && whole?.sizes[lead.bedrooms]?.median;
+  const gap = lead && against ? Math.round(((lead.median! - against) / against) * 100) : 0;
+  const answer = lead
+    ? `The median asking rent in ${name}, ${borough} is ${formatRent(lead.median!)} for a ${SIZE[lead.bedrooms]}${others
+        .map(({ bedrooms, median }) => `, ${formatRent(median!)} for a ${SIZE[bedrooms]}`)
+        .join('')}, from ${place.count.toLocaleString('en-US')} apartments listed on ${DAY.format(built)}.${
+        against
+          ? ` A ${SIZE[lead.bedrooms]} here costs ${
+              Math.abs(gap) < 3 ? 'about the same as' : `${Math.abs(gap)}% ${gap > 0 ? 'more' : 'less'} than`
+            } the ${borough} median of ${formatRent(against)}.`
+          : ''
+      }`
+    : `${place.count.toLocaleString('en-US')} apartments are listed in ${name}, ${borough} as of ${DAY.format(built)}.`;
+  const title = lead
+    ? `Rent in ${name}, ${borough}: ${formatRent(lead.median!)} for a ${SIZE[lead.bedrooms]} (${MONTH.format(built)}) | Walkup`
+    : `Rent in ${name}, ${borough} (${MONTH.format(built)}) | Walkup`;
+  const table = sizes.length
+    ? `<div class="scroll"><table><tr><th>Size</th><th>${escape(name)}</th><th>${escape(borough)}</th><th>Listed</th></tr>${sizes
+        .map(
+          ({ bedrooms, count: listed, median }) =>
+            `<tr><td>${SHORT_SIZE[bedrooms]}</td><td>${formatRent(median!)}</td><td>${
+              whole?.sizes[bedrooms]?.median ? formatRent(whole.sizes[bedrooms]!.median!) : '–'
+            }</td><td>${listed}</td></tr>`,
+        )
+        .join('')}</table></div>`
+    : '';
+  const graded = all.buildings.filter((building) => building.neighborhood === name && building.borough === borough);
+  const grades = Object.entries(place.buildings.grades).filter(([, total]) => total > 0);
+  const buildings = place.buildings.known
+    ? `<h2>Buildings in ${escape(name)}</h2><p>${place.buildings.known} buildings with apartments listed here have been checked against city and state records; ${
+        place.buildings.stabilized
+      } register rent-stabilized units.${
+        grades.length ? ` By Walkup’s grade: ${grades.map(([grade, total]) => `${total} graded ${grade}`).join(', ')}.` : ''
+      }</p>${
+        graded.length
+          ? `<ul class="links">${graded
+              .slice(0, 24)
+              .map(
+                ({ slug: id, address, grade }) =>
+                  `<li><a href="/building/${id}">${escape(address)}</a> <span class="muted">(${grade})</span></li>`,
+              )
+              .join('')}</ul>`
+          : ''
+      }`
+    : '';
+  let complaints = '';
+  if (place.zip) {
+    try {
+      const year = await zipComplaints(env.BUCKET, place.zip, fetcher);
+      complaints = `<h2>311 complaints in the last year</h2><p class="muted">ZIP code ${escape(year.zip)}, from <a href="https://data.cityofnewyork.us/d/erm2-nwe9">NYC Open Data</a>.</p><div class="grid">${Object.entries(
+        year.counts,
       )
         .map(
-          ([group, count]) => `<div class="tile"><span class="muted">${escape(group)}</span><b>${count.toLocaleString('en-US')}</b></div>`,
+          ([group, total]) => `<div class="tile"><span class="muted">${escape(group)}</span><b>${total.toLocaleString('en-US')}</b></div>`,
         )
-        .join('')}</div>`
-    : '';
-  const body = `<p class="muted">${escape(borough)} · New York City</p>
-<h1>Apartments for rent in ${escape(name)}</h1>
-<p>${report.listings.toLocaleString('en-US')} apartments are listed in ${escape(name)} right now. Median asking rents by size:</p>
-<div class="grid">${tiles}</div>
-<a class="cta" href="/">See the ${report.listings.toLocaleString('en-US')} apartments on Walkup</a>
+        .join('')}</div>`;
+    } catch (cause) {
+      log.warn('neighborhood_311_failed', { zip: place.zip, message: cause instanceof Error ? cause.message : String(cause) });
+    }
+  }
+  const nearby = all.neighborhoods
+    .filter((entry) => entry.borough === borough && entry.name !== name)
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 10);
+  const path = `/rents/${place.path}`;
+  const crumbs = trail(origin, [
+    ['NYC rents', '/rents'],
+    [name, path],
+  ]);
+  const body = `${crumbs.html}
+<h1>Rent in ${escape(name)}, ${escape(borough)}</h1>
+<p>${escape(answer)}</p>
+<h2>How much is rent in ${escape(name)}?</h2>
+<p class="muted">Median asking rents by size, next to all of ${escape(borough)}. Updated ${DAY.format(built)}.</p>
+${table}
+<a class="cta" href="/search">See the ${place.count.toLocaleString('en-US')} apartments on Walkup</a>
 <p><a href="/rent-check?neighborhood=${encodeURIComponent(name)}">Is your rent in ${escape(name)} fair?</a> Compare it with these.</p>
-${buildings}${complaints}
-<h2>Why search on Walkup</h2>
-<p>Every listing in one place, compared with similar apartments nearby, with building grades, rent-stabilized buildings, the nearest subway and alerts within hours.</p>`;
-  return page(origin, `/rents/${slug(borough)}/${slug(name)}`, title, description, body);
+${buildings}${complaints}${
+  nearby.length
+    ? `<h2>More ${escape(borough)} neighborhoods</h2><ul class="links">${nearby
+        .map((entry) => `<li><a href="/rents/${entry.path}">${escape(entry.name)}</a></li>`)
+        .join('')}</ul>`
+    : ''
+}
+<h2>Where these figures come from</h2>
+<p>Walkup reads apartments from listing sites, brokerages and landlords several times a day and counts each apartment once. The median is the middle asking rent: half the apartments ask more, half less. Building records are New York City’s and New York State’s own.</p>`;
+  return page(origin, path, title, answer, body, { data: [crumbs.data] });
+}
+
+/**
+ * One building's page: its grade and what the city's records say, the apartments listed there now, and other
+ * buildings nearby. Null when Walkup has no grade for a building at this address.
+ */
+export function buildingRecordPage(all: PublicSummary, origin: string, id: string) {
+  const building = all.buildings.find((entry) => entry.slug === id);
+  if (!building) return null;
+  const { address, borough, neighborhood, zip, grade, facts } = building;
+  const where = [neighborhood, borough].filter(Boolean).join(', ');
+  const checked = DAY.format(new Date(facts.checkedAt));
+  const lines = recordLines(facts);
+  const answer = `${address} in ${where} has a Walkup building grade of ${grade}, which means ${GRADE_MEANS[grade]}. City records show ${lines
+    .slice(0, 4)
+    .map((line) => line[0]!.toLowerCase() + line.slice(1))
+    .join(', ')}, as of ${checked}.`;
+  const place = all.neighborhoods.find((entry) => entry.name === neighborhood && entry.borough === borough);
+  const near = all.buildings
+    .filter((entry) => entry.neighborhood === neighborhood && entry.borough === borough && entry.slug !== id)
+    .slice(0, 12);
+  const path = `/building/${id}`;
+  const crumbs = trail(origin, [
+    ['NYC rents', '/rents'],
+    ...(place ? [[place.name, `/rents/${place.path}`] as [string, string]] : []),
+    [address, path],
+  ]);
+  const body = `${crumbs.html}
+<h1>${escape(address)}, ${escape(borough)} ${escape(zip)}</h1>
+<p>${escape(answer)}</p>
+<p class="grade">${grade}</p>
+<div class="grid">${lines.map((line) => `<div class="tile">${escape(line)}</div>`).join('')}</div>
+<p class="muted">From New York City and New York State records, checked ${checked}. A record can lag what has happened in the building.</p>
+<h2>Apartments at ${escape(address)}</h2>
+<p>${building.listed} ${building.listed === 1 ? 'apartment is' : 'apartments are'} listed here now${
+    building.fromRent ? `, from ${formatRent(building.fromRent)} a month` : ''
+  }.</p>
+<a class="cta" href="/search">See them on Walkup</a>
+<h2>What the grade means</h2>
+<p>A is a clean record; D is a building with many open violations, pests or an order to vacate. The grade is Walkup’s own, worked out from open housing code violations, complaints in the last year, bedbug filings, rat inspections, evictions and Housing Court cases. <a href="/check-building?address=${encodeURIComponent(
+    address,
+  )}&zip=${encodeURIComponent(zip)}">Check this building again now</a>, or <a href="/check-building">check another</a>.</p>${
+    near.length
+      ? `<h2>Other buildings in ${escape(neighborhood || borough)}</h2><ul class="links">${near
+          .map(
+            (entry) =>
+              `<li><a href="/building/${entry.slug}">${escape(entry.address)}</a> <span class="muted">(${entry.grade})</span></li>`,
+          )
+          .join('')}</ul>`
+      : ''
+  }
+<h2>Where the records come from</h2>
+<p><a href="https://data.cityofnewyork.us/Housing-Development/Housing-Maintenance-Code-Violations/wvxf-dwi5/about_data">Housing code violations</a> and <a href="https://data.cityofnewyork.us/Housing-Development/Housing-Maintenance-Code-Complaint-Problems/ygpa-z7cr">complaints</a> from the city’s housing department, and the city’s bedbug, rat inspection, eviction and Housing Court records, on NYC Open Data.</p>`;
+  const title = `${address}, ${borough}: building grade ${grade}, violations and complaints | Walkup`;
+  return page(origin, path, title, answer, body, {
+    data: [
+      crumbs.data,
+      {
+        '@context': 'https://schema.org',
+        '@type': 'ApartmentComplex',
+        name: address,
+        url: origin + path,
+        address: { '@type': 'PostalAddress', streetAddress: address, addressLocality: borough, addressRegion: 'NY', postalCode: zip },
+      },
+    ],
+  });
 }
 
 /**
@@ -185,6 +351,7 @@ export const robotsFile = (origin: string) =>
     'User-agent: *',
     'Allow: /$',
     'Allow: /rents',
+    'Allow: /building/',
     'Allow: /blog',
     'Allow: /about',
     'Allow: /pricing',
@@ -252,6 +419,7 @@ export const publicPages = (env: AppEnv, fetcher: FetchTransport, loadArchive?: 
             'Report not found | Walkup',
             'Not found.',
             '<h1>Report not found</h1><p><a href="/blog">All market reports</a></p>',
+            { noindex: true },
           ),
           404,
         );
@@ -272,7 +440,8 @@ export const publicPages = (env: AppEnv, fetcher: FetchTransport, loadArchive?: 
     )
     .get('/sitemap.xml', async (c) => {
       const origin = new URL(c.req.url).origin;
-      const pages = await neighborhoodIndex(env);
+      const summary = await publicSummary(env);
+      const pages = summary.neighborhoods;
       const database = env.BUCKET?.database;
       const articles = database && loadArchive ? articleSlugs(await articleMonths(database, loadArchive).catch(() => [])) : [];
       const urls = [
@@ -283,6 +452,7 @@ export const publicPages = (env: AppEnv, fetcher: FetchTransport, loadArchive?: 
         '/check-building',
         '/rent-check',
         ...pages.map(({ path }) => '/rents/' + path),
+        ...summary.buildings.map((building) => '/building/' + building.slug),
         '/blog',
         ...articles.map((slug) => '/blog/' + slug),
       ]
@@ -322,8 +492,9 @@ export const publicPages = (env: AppEnv, fetcher: FetchTransport, loadArchive?: 
     .get('/rents/:borough/:name', async (c) => {
       const origin = new URL(c.req.url).origin;
       const wanted = `${c.req.param('borough')}/${c.req.param('name')}`;
-      const entry = (await neighborhoodIndex(env)).find(({ path }) => path === wanted);
-      const html = entry && (await neighborhoodPage(env, origin, entry.borough, entry.name, fetcher));
+      const summary = await publicSummary(env);
+      const entry = summary.neighborhoods.find(({ path }) => path === wanted);
+      const html = entry && (await neighborhoodPage(env, origin, entry.borough, entry.name, fetcher, summary));
       if (!html)
         return c.html(
           page(
@@ -332,6 +503,24 @@ export const publicPages = (env: AppEnv, fetcher: FetchTransport, loadArchive?: 
             'Neighborhood not found | Walkup',
             'Not found.',
             '<h1>Neighborhood not found</h1><p><a href="/rents">All neighborhoods</a></p>',
+            { noindex: true },
+          ),
+          404,
+        );
+      return c.html(html, 200, { 'Cache-Control': 'public, max-age=3600, no-transform' });
+    })
+    .get('/building/:id', async (c) => {
+      const origin = new URL(c.req.url).origin;
+      const html = buildingRecordPage(await publicSummary(env), origin, c.req.param('id'));
+      if (!html)
+        return c.html(
+          page(
+            origin,
+            '/check-building',
+            'Building not found | Walkup',
+            'Not found.',
+            '<h1>Building not found</h1><p>Walkup has no grade for a building at this address, or no apartment is listed there now. <a href="/check-building">Check any building by its address</a>.</p>',
+            { noindex: true },
           ),
           404,
         );

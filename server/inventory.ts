@@ -15,6 +15,7 @@ import { encodeInventory, INVENTORY_FORMAT } from '../src/inventory-format.ts';
 import { localWorkplace, parseFilters } from '../src/search.ts';
 import type { AppEnv, Bucket } from './contracts.ts';
 import { log } from './log.ts';
+import { SUMMARY_KEY, summarizePublic } from './public-summary.ts';
 import { offline, search, stationsForEstimates } from './search.ts';
 
 /** The part of a Workers KV namespace the inventory uses. */
@@ -105,8 +106,11 @@ export async function refreshInventory(env: AppEnv & { BUCKET: Bucket }, now = n
   const store = env.INVENTORY;
   if (!store) return 'no-store';
   const build = env.CF_VERSION_METADATA?.id ?? '';
-  const [{ text, head }, current] = await Promise.all([composeInventory(await readInventory(env), build, now), readHead(store)]);
+  const inventory = await readInventory(env);
+  const [{ text, head }, current] = await Promise.all([composeInventory(inventory, build, now), readHead(store)]);
   if (current?.version === head.version && current.build === build) return 'unchanged';
+  // What the public pages show (server/public-summary.ts), from the same listings.
+  await store.put(SUMMARY_KEY, JSON.stringify(summarizePublic(inventory.listings, now)));
   // The file first, in each encoding, so the head never names a file that is not there.
   if (current?.version !== head.version || !ENCODINGS.every((encoding) => current.encodings?.includes(encoding)))
     await Promise.all(

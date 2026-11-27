@@ -6,7 +6,7 @@
  *
  * Four kinds of budget, in perf/budgets.json:
  * - time: each scenario's fastest run, divided by a fixed calibration workload timed in the same process, so the
- *   number means the same on a laptop and on a CI machine. Over budget by more than the tolerance, in three
+ *   number means the same on a laptop and on a CI machine. Over budget by more than the tolerance, in five
  *   passes running, fails. Timings wander, so this catches a path that got about half again slower or worse; the
  *   three budgets below are exact and catch the rest.
  * - scaling: the scenario at four times the listings may take at most this many times as long. This needs no
@@ -37,7 +37,7 @@ type Budgets = {
 const BUDGETS = new URL('budgets.json', import.meta.url);
 const SMALL = PRODUCTION_SIZE / 4;
 const SAMPLES = 9;
-const PASSES = 3;
+const PASSES = 5;
 /** The most a scenario may slow down for four times the listings: room for noise above 4, far below a quadratic 16. */
 const SCALING_LIMIT = 8;
 const ALL = { region: 'all', bedrooms: null, maxRent: null, liveOnly: true, includeCached: true } as const;
@@ -201,8 +201,9 @@ function combine(first: Measured, second: Measured, prefer: (a: number, b: numbe
 if (import.meta.main) {
   const update = Bun.argv.includes('--update');
   const known: Budgets | null = (await Bun.file(BUDGETS).exists()) ? await Bun.file(BUDGETS).json() : null;
-  // Timings on a shared machine wander by a third from one pass to the next. So a budget is the slowest of
-  // three passes, and a check fails only when a scenario is over its budget in every one of up to three passes.
+  // Timings on a shared machine wander by a third from one pass to the next, and a ten-millisecond scenario by
+  // more (one was 52% over on a run that changed nothing it measures). So a budget is the slowest of five passes,
+  // and a check fails only when a scenario is over its budget in every one of up to five passes.
   let measured = await measure();
   if (update || !known) for (let pass = 1; pass < PASSES; pass++) measured = combine(measured, await measure(), Math.max);
   else

@@ -48,7 +48,7 @@ test('neighborhood pages, their index, the sitemap and robots.txt are public', a
   const rules = await robots.text();
   expect(rules).toContain('Sitemap: https://walkup.test/sitemap.xml');
   // Search engines may index the public pages; the listings are not for collecting, and AI and data crawlers get nothing.
-  expect(rules).toContain('User-agent: *\nAllow: /$\nAllow: /rents\nAllow: /blog\nAllow: /about\nAllow: /pricing\n');
+  expect(rules).toContain('User-agent: *\nAllow: /$\nAllow: /rents\nAllow: /building/\nAllow: /blog\nAllow: /about\nAllow: /pricing\n');
   expect(rules).toContain('Allow: /manifest.webmanifest\nDisallow: /\n');
   expect(rules).toContain('User-agent: GPTBot\n');
   expect(rules).toMatch(/User-agent: DataForSeoBot\nDisallow: \/\n/);
@@ -63,7 +63,12 @@ test('neighborhood pages, their index, the sitemap and robots.txt are public', a
   expect(response.status).toBe(200);
   expect(response.headers.get('cache-control')).toBe('public, max-age=3600, no-transform');
   const html = await response.text();
-  expect(html).toContain(`<h1>Apartments for rent in ${first.name}</h1>`);
+  // The page opens with the answer to the question people ask, dated, and says where it sits.
+  expect(html).toContain(`<h1>Rent in ${first.name}, ${first.borough}</h1>`);
+  expect(html).toMatch(/<p>(The median asking rent in|\d[\d,]* apartments are listed in) /);
+  expect(html).toContain(`<h2>How much is rent in ${first.name}?</h2>`);
+  expect(html).toContain('"@type":"BreadcrumbList"');
+  expect(html).toContain(`href="/rent-check?neighborhood=${encodeURIComponent(first.name)}"`);
   expect(html).toContain('311 complaints in the last year');
   expect(html).toContain('register rent-stabilized units');
   expect(html).toContain('<link rel="canonical" href="https://walkup.test/rents/' + first.path + '">');
@@ -170,4 +175,150 @@ test('an address with nothing at it is answered "not found" on a page; a missing
     missing as Parameters<typeof worker.fetch>[1],
   );
   expect(await post.text()).toBe('not found');
+});
+
+test('graded buildings have pages of their own, read from the summary kept beside the inventory', async () => {
+  const { summarizePublic } = await import('../server/public-summary.ts');
+  const { buildingRecordPage, neighborhoodPage } = await import('../server/public-pages.ts');
+  const facts = (extra: object = {}) => ({
+    stabilized: true,
+    openViolations: 0,
+    complaints: 1,
+    bedbugs: false,
+    flood: false,
+    rats: false,
+    evictions: 0,
+    courtCases: 0,
+    vacate: false,
+    checkedAt: '2026-11-26T12:00:00.000Z',
+    ...extra,
+  });
+  const home = (id: string, address: string, extra: object = {}) =>
+    ({
+      id,
+      address,
+      unit: id,
+      city: 'Manhattan',
+      state: 'NY',
+      zip: '10024',
+      neighborhood: 'Upper West Side',
+      rent: 4000,
+      bedrooms: 1,
+      region: 'nyc',
+      sources: [{ id: 'zumper', name: 'Zumper', kind: 'feed', url: 'https://www.zumper.com/' + id }],
+      building: facts(),
+      ...extra,
+    }) as never;
+  const listings = [
+    home('1', '100 W 86th St'),
+    home('2', '100 W 86th St', { rent: 3500, sources: [{ id: 'trulia', name: 'Trulia', kind: 'feed', url: 'https://www.trulia.com/2' }] }),
+    home('3', '100 W 86th St', { rent: 0 }),
+    home('4', '200 W 90th St', {
+      building: facts({ openViolations: 40, bedbugs: true, rats: true, vacate: true }),
+      bedrooms: 0,
+      rent: 3000,
+    }),
+    home('5', '300 W 91st St', { building: undefined, bedrooms: 2, rent: 6000 }),
+    // No street number is no one building; an ungraded building and one outside the city have no page.
+    home('6', 'W 92nd St'),
+    home('7', '5 Elsewhere St', { building: { ...facts(), openViolations: null, complaints: null, bedbugs: null, flood: null } }),
+    home('8', '9 Grove St', { city: 'Jersey City', state: 'NJ', neighborhood: 'Downtown' }),
+    home('9', '10 Astor Pl', { neighborhood: 'Noho', building: undefined }),
+    home('10', '77 W 85th St', { neighborhood: undefined, zip: '', building: facts() }),
+  ];
+  const summary = summarizePublic(listings, new Date('2026-11-27T15:00:00Z'));
+  expect(summary.listings).toBe(9);
+  expect(summary.sites).toBe(2);
+  expect(summary.boroughs).toEqual([expect.objectContaining({ name: 'Manhattan', count: 9 })]);
+  // Five listings make a neighborhood's page; one listing does not.
+  expect(summary.neighborhoods.map(({ path, count, zip }) => [path, count, zip])).toEqual([['manhattan/upper-west-side', 7, '10024']]);
+  expect(summary.buildings.map(({ slug, grade, listed, fromRent }) => [slug, grade, listed, fromRent])).toEqual([
+    ['100-w-86th-st-10024', 'A', 3, 3500],
+    ['200-w-90th-st-10024', 'D', 1, 3000],
+  ]);
+
+  const origin = 'https://walkup.test';
+  const page = buildingRecordPage(summary, origin, '100-w-86th-st-10024')!;
+  expect(page).toContain('<title>100 W 86th St, Manhattan: building grade A, violations and complaints | Walkup</title>');
+  expect(page).toContain('<h1>100 W 86th St, Manhattan 10024</h1>');
+  expect(page).toContain(
+    'has a Walkup building grade of A, which means a clean record. City records show 0 open violations, 1 complaint in the last year',
+  );
+  expect(page).toContain('3 apartments are listed here now, from $3,500 a month.');
+  expect(page).toContain('<a href="/rents/manhattan/upper-west-side">Upper West Side</a>');
+  expect(page).toContain('<a href="/building/200-w-90th-st-10024">200 W 90th St</a> <span class="muted">(D)</span>');
+  expect(page).toContain('"@type":"ApartmentComplex"');
+  expect(page).toContain('href="/check-building?address=100%20W%2086th%20St&zip=10024"');
+  const worst = buildingRecordPage(summary, origin, '200-w-90th-st-10024')!;
+  expect(worst).toContain('1 apartment is listed here now, from $3,000 a month.');
+  expect(worst).toContain('An order to vacate is in force');
+  expect(buildingRecordPage(summary, origin, 'nowhere')).toBeNull();
+  // A building with no neighborhood page or neighbors still has its own, and one with no rent says none.
+  const alone = summarizePublic([home('1', '7 Lone St', { neighborhood: undefined, rent: 0 })]);
+  const lone = buildingRecordPage(alone, origin, alone.buildings[0]!.slug)!;
+  expect(lone).toContain('1 apartment is listed here now.');
+  expect(lone).not.toContain('Other buildings in');
+
+  // The neighborhood's page lists its graded buildings and sets its rents next to the borough's.
+  globalThis.fetch = (async () => new Response('busy', { status: 503 })) as unknown as typeof fetch;
+  const place = (await neighborhoodPage({}, origin, 'Manhattan', 'Upper West Side', globalThis.fetch, summary))!;
+  expect(place).toContain('<title>Rent in Upper West Side, Manhattan: $4,000 for a one-bedroom (November 2026) | Walkup</title>');
+  expect(place).toContain('The median asking rent in Upper West Side, Manhattan is $4,000 for a one-bedroom');
+  expect(place).toContain('from 7 apartments listed on November 27, 2026.');
+  expect(place).toContain('A one-bedroom here costs about the same as the Manhattan median of $4,000.');
+  expect(place).toContain('<a href="/building/100-w-86th-st-10024">100 W 86th St</a> <span class="muted">(A)</span>');
+  expect(place).toContain('By Walkup’s grade: 2 graded A, 1 graded D.');
+  // Against a borough whose rents differ, it says by how much; with no one-bedrooms, the commonest size leads.
+  const dearer = {
+    ...summary,
+    boroughs: [{ ...summary.boroughs[0]!, sizes: summary.boroughs[0]!.sizes.map((size) => ({ ...size, median: 5000 })) }],
+  };
+  expect(await neighborhoodPage({}, origin, 'Manhattan', 'Upper West Side', globalThis.fetch, dearer)).toContain(
+    'costs 20% less than the Manhattan median of $5,000.',
+  );
+  const cheaper = {
+    ...summary,
+    boroughs: [{ ...summary.boroughs[0]!, sizes: summary.boroughs[0]!.sizes.map((size) => ({ ...size, median: 3200 })) }],
+  };
+  expect(await neighborhoodPage({}, origin, 'Manhattan', 'Upper West Side', globalThis.fetch, cheaper)).toContain(
+    'costs 25% more than the Manhattan median of $3,200.',
+  );
+  // No figure for the borough, and no graded building to link to: the page says what it does know.
+  const bare = (await neighborhoodPage({}, origin, 'Manhattan', 'Upper West Side', globalThis.fetch, {
+    ...summary,
+    boroughs: [],
+    buildings: [],
+  }))!;
+  expect(bare).toContain('<h2>Buildings in Upper West Side</h2>');
+  expect(bare).not.toContain('href="/building/');
+  expect(bare).not.toContain('here costs');
+  const studios = summarizePublic(
+    Array.from({ length: 6 }, (_, index) => home(String(index), `${index + 1} W 70th St`, { bedrooms: 0, building: undefined })),
+  );
+  const small = (await neighborhoodPage({}, origin, 'Manhattan', 'Upper West Side', globalThis.fetch, studios))!;
+  expect(small).toContain('is $4,000 for a studio, from 6 apartments');
+  expect(small).not.toContain('Buildings in Upper West Side');
+  const unpriced = {
+    ...studios,
+    neighborhoods: studios.neighborhoods.map((entry) => ({
+      ...entry,
+      zip: null,
+      sizes: entry.sizes.map((size) => ({ ...size, median: null })),
+    })),
+  };
+  expect(await neighborhoodPage({}, origin, 'Manhattan', 'Upper West Side', globalThis.fetch, unpriced)).toContain(
+    '<p>6 apartments are listed in Upper West Side, Manhattan as of',
+  );
+
+  // Through the Worker, from the document kept beside the inventory: the building's page, the sitemap, and a miss.
+  const env = { ...(await environment()), INVENTORY: { get: async () => JSON.stringify(summary), put: async () => {} } };
+  const found = await get(env, '/building/100-w-86th-st-10024');
+  expect(found.status).toBe(200);
+  expect(found.headers.get('cache-control')).toBe('public, max-age=3600, no-transform');
+  expect(await found.text()).toContain('<h1>100 W 86th St, Manhattan 10024</h1>');
+  const missing = await get(env, '/building/1-nowhere-st-10001');
+  expect(missing.status).toBe(404);
+  expect(await missing.text()).toContain('<meta name="robots" content="noindex">');
+  expect(await (await get(env, '/sitemap.xml')).text()).toContain('<loc>https://walkup.test/building/200-w-90th-st-10024</loc>');
+  expect(await (await get(env, '/rents/manhattan/upper-west-side')).text()).toContain('Rent in Upper West Side, Manhattan');
 });

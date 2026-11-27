@@ -86,8 +86,55 @@ export function exactBuildingAddress(input: unknown) {
   ];
   const expected = [zipBorough, countyBorough, cityBorough].filter(Boolean);
   if (!expected.length || new Set(expected).size !== 1) return null;
-  return { house: match[1], street: match[2], zip: input.zip, borough: expected[0] };
+  return { house: match[1]!, street: match[2]!, zip: input.zip, borough: expected[0]! };
 }
+const DIRECTIONS: Record<string, string> = { W: 'WEST', E: 'EAST', N: 'NORTH', S: 'SOUTH' };
+const SHORT: Record<string, string> = {
+  AVE: 'AVENUE',
+  AV: 'AVENUE',
+  PL: 'PLACE',
+  RD: 'ROAD',
+  DR: 'DRIVE',
+  PKWY: 'PARKWAY',
+  TER: 'TERRACE',
+  CT: 'COURT',
+  LN: 'LANE',
+  FIRST: '1',
+  SECOND: '2',
+  THIRD: '3',
+  FOURTH: '4',
+  FIFTH: '5',
+  SIXTH: '6',
+  SEVENTH: '7',
+  EIGHTH: '8',
+  NINTH: '9',
+  TENTH: '10',
+  ELEVENTH: '11',
+  TWELFTH: '12',
+};
+/**
+ * The ways the city's housing records may write a street that a listing wrote its own way: "W 86th St" is
+ * "WEST 86 STREET" there, "Fifth Ave" is "5 AVENUE", and a boulevard is "BLVD" on some streets and spelled out on
+ * others. Only standard short forms are changed; the building must still match one record exactly.
+ */
+export function streetSpellings(street: string) {
+  const words = street.toUpperCase().replace(/\./g, '').trim().split(/\s+/);
+  const official = words
+    .map((word, index) => {
+      // A letter is a direction only before the street's name; "ST" before a name is "Saint", which the records
+      // also write "ST".
+      if (index === 0 && words.length > 1 && DIRECTIONS[word]) return DIRECTIONS[word];
+      if (word === 'ST') return index === words.length - 1 ? 'STREET' : word;
+      return SHORT[word] ?? word.replace(/^(\d+)(ST|ND|RD|TH)$/, '$1');
+    })
+    .join(' ');
+  const other = /\bBLVD\b/.test(official) ? official.replace(/\bBLVD\b/, 'BOULEVARD') : official.replace(/\bBOULEVARD\b/, 'BLVD');
+  return [...new Set([official, other, words.join(' ')])];
+}
+/** A Queens house number is written with a hyphen in the records ("47-20") and often without one in a listing. */
+export const houseNumbers = (house: string, borough: string) =>
+  borough === '4' && /^\d{4,5}$/.test(house) ? [house, `${house.slice(0, -2)}-${house.slice(-2)}`] : [house];
+
 /** An ArcGIS REST reply: a layer's metadata, or the features a query matched. */
 type ArcGisReply = { error?: unknown; exceededTransferLimit?: unknown; name?: unknown; features?: unknown };
 const arcGis = (value: unknown): ArcGisReply => (isRecord(value) ? value : {});
@@ -184,12 +231,15 @@ export async function retrieveBuildingRecords(
   const deadline = AbortSignal.timeout(25000);
   const signal = parentSignal ? AbortSignal.any([deadline, parentSignal]) : deadline;
   let rows: OfficialRow[];
+  // The address as the records may write it; exactly one active building must answer to it.
+  const streets = streetSpellings(address.street);
+  const houses = houseNumbers(address.house, address.borough);
   try {
     rows = await readRows(
       'kj4p-ruqc',
       {
         $select: 'buildingid,boroid,boro,housenumber,streetname,zip,bin,block,lot,recordstatus',
-        $where: `housenumber=${quote(address.house)} AND upper(streetname)=${quote(address.street)} AND zip=${quote(address.zip)} AND upper(recordstatus)='ACTIVE'`,
+        $where: `housenumber in (${houses.map(quote).join(',')}) AND upper(streetname) in (${streets.map(quote).join(',')}) AND zip=${quote(address.zip)} AND upper(recordstatus)='ACTIVE'`,
         $limit: '2',
       },
       fetcher,
@@ -213,9 +263,10 @@ export async function retrieveBuildingRecords(
     !row ||
     !id(row.buildingid) ||
     row.boroid !== address.borough ||
-    row.housenumber !== address.house ||
+    typeof row.housenumber !== 'string' ||
+    !houses.includes(row.housenumber) ||
     typeof row.streetname !== 'string' ||
-    normalize(row.streetname) !== address.street ||
+    !streets.includes(normalize(row.streetname)) ||
     row.zip !== address.zip ||
     typeof row.recordstatus !== 'string' ||
     normalize(row.recordstatus) !== 'ACTIVE'

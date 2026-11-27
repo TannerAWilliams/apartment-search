@@ -1125,7 +1125,8 @@ function ApartmentSearch() {
               <View pointerEvents="box-none" style={mobileStyles.floatingRow}>
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel={mapView ? 'List' : 'Map'}
+                  // The name is the words on the button, so someone using voice control can say what they see.
+                  accessibilityLabel={mapView ? 'Show list' : 'Show map'}
                   onPress={() => {
                     const showing = !mapView;
                     setMapView(showing);

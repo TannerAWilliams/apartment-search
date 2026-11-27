@@ -10,7 +10,7 @@ import { refreshOpenData } from './open-data.ts';
 import { fillWalkabilityFromInventory } from './walkability.ts';
 
 /** Batches of 40 building checks after a full nightly run: about 200 buildings a night. */
-const BUILDING_BATCHES = 5;
+const BUILDING_BATCHES = 15;
 import { SYNC_PROGRESS_KEY, WORKFLOW_SOURCE_IDS, workflowSync } from './sources/source-registry.ts';
 import { refreshInventory } from './inventory.ts';
 
@@ -22,7 +22,8 @@ const NAMES: Record<string, string> = Object.fromEntries(WORKFLOW_SOURCE_IDS.map
 
 /**
  * After a full (nightly) run: the rent-stabilized registry and subway stations when a month old, then listed
- * buildings' records in batches of 40, one durable step each: about 200 buildings a night.
+ * buildings' records in batches of 40, one durable step each: about 600 buildings a night, so every listed
+ * building is checked within two weeks and again each season.
  */
 export async function afterFullRun(step: Pick<WorkflowStep, 'do'>, env: AppEnv & { BUCKET: Bucket }) {
   await step.do('Refresh rent registrations and subway stations', { retries: { limit: 1, delay: '1 minute' }, timeout: '10 minutes' }, () =>
@@ -34,11 +35,14 @@ export async function afterFullRun(step: Pick<WorkflowStep, 'do'>, env: AppEnv &
   );
   let checked = 0;
   for (let batch = 1; batch <= BUILDING_BATCHES; batch++) {
-    checked += await step.do(
+    const learned = await step.do(
       `Check building records (${batch} of ${BUILDING_BATCHES})`,
       { retries: { limit: 1, delay: '30 seconds' }, timeout: '10 minutes' },
       () => fillBuildingFactsFromInventory(env, (url, options) => fetch(url, options)),
     );
+    // Nothing learned: every building is checked, or the city's records cannot be reached tonight.
+    if (!learned) break;
+    checked += learned;
   }
   return checked;
 }

@@ -4,6 +4,7 @@ import { handleApi } from './fixtures/api.ts';
 import './fixtures/quiet-logs.ts';
 import { type InventoryHead, type InventoryStore, composeInventory, readInventory, refreshInventory } from '../server/inventory.ts';
 import { runScheduled } from '../server/nightly.ts';
+import { type PublicSummary, publicSummary } from '../server/public-summary.ts';
 import { offline, search } from '../server/search.ts';
 import { answerSearch, type Inventory } from '../src/answer.ts';
 import type { ListingData, SearchResult } from '../src/domain.ts';
@@ -135,7 +136,21 @@ test('the inventory is built after a sync, stored once per version, and rebuilt 
   // Nothing changed: nothing written. A new deploy keeps the file and stamps the head.
   expect(await refreshInventory(settings)).toBe('unchanged');
   expect(await refreshInventory({ ...settings, CF_VERSION_METADATA: { id: 'deploy-2' } })).toBe('built');
-  expect(values.size).toBe(3);
+  // The head, the file in two encodings, and what the public pages show (server/public-summary.ts).
+  expect(values.size).toBe(4);
+  const summary = JSON.parse(values.get('public:summary') as string) as PublicSummary;
+  expect(summary.format).toBe(1);
+  expect(summary.neighborhoods.length).toBeGreaterThan(0);
+  expect(summary.neighborhoods.every(({ count }) => count >= 5)).toBe(true);
+  // Public pages read that document, and work it out themselves where it is missing or not one they can read.
+  expect((await publicSummary(settings)).builtAt).toBe(summary.builtAt);
+  for (const stored of ['not json', JSON.stringify({ format: 0 })]) {
+    values.set('public:summary', stored);
+    expect((await publicSummary(settings)).neighborhoods.length).toBe(summary.neighborhoods.length);
+  }
+  const failing = { ...store, get: async () => Promise.reject(new Error('down')) } as unknown as InventoryStore;
+  expect((await publicSummary({ ...settings, INVENTORY: failing })).format).toBe(1);
+  values.set('public:summary', JSON.stringify(summary));
   expect(JSON.parse(values.get('head') as string)).toMatchObject({ version: head.version, build: 'deploy-2' });
   // A file stored before Brotli (its head names no encodings) is written again in both.
   values.delete('br:' + head.version);

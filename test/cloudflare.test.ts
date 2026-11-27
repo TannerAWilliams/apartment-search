@@ -343,7 +343,12 @@ test('the home page is sent with its headline, today’s figures and a preview; 
     const plain = await (await call({ ...withPage, INVENTORY }, '/')).text();
     expect(plain).toContain('from listing sites, brokerages and landlords, in one search</h1>');
   }
+  // About and Pricing are the same page with their own words and addresses.
+  const about = await call(withPage, '/about');
+  expect(about.headers.get('ETag')).toBeNull();
+  expect(await about.text()).toContain('<link rel="canonical" href="https://app.test/about" />');
+  expect(await (await call(withPage, '/pricing')).text()).toContain('<h1>Pricing</h1>');
   // The page's file missing is answered as it is.
-  const gone = await call({ ...withPage, ASSETS: { fetch: async () => new Response('missing', { status: 404 }) } }, '/');
-  expect(gone.status).toBe(404);
+  const noFile = { ...withPage, ASSETS: { fetch: async () => new Response('missing', { status: 404 }) } };
+  for (const path of ['/', '/about', '/pricing']) expect((await call(noFile, path)).status, path).toBe(404);
 });

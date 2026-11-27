@@ -14,7 +14,7 @@ import { isAdmin } from './roles.ts';
 import { runScheduled } from './nightly.ts';
 import { log } from './log.ts';
 import { isAppPath } from '../src/routes.ts';
-import { type HomeStats, homePage, llmsFile } from './home-page.ts';
+import { type HomeStats, aboutPage, homePage, llmsFile, pricingPage } from './home-page.ts';
 import { missingPage, toolPages } from './tool-pages.ts';
 import { readHead } from './inventory.ts';
 import { securityHeaders, withCacheControl } from './web-headers.ts';
@@ -207,7 +207,7 @@ app.use('/api/*', async (c, next) => {
 
 app.get('/health', (c) => c.text('ok', 200, HEADERS));
 // Public neighborhood pages, the sitemap and robots.txt, for search engines; open without signing in.
-app.on('GET', ['/robots.txt', '/sitemap.xml', '/rents', '/rents/*', '/blog', '/blog/*'], (c) =>
+app.on('GET', ['/robots.txt', '/sitemap.xml', '/rents', '/rents/*', '/building/*', '/blog', '/blog/*'], (c) =>
   publicPages(
     { ...c.env, BUCKET: createD1Bucket(c.env.APARTMENTS) },
     (url, options) => fetch(url, options),
@@ -229,6 +229,18 @@ app.get('/', async (c) => {
   for (const name of ['Content-Length', 'ETag', 'Content-Encoding']) headers.delete(name);
   return withCacheControl(new Response(html, { status: 200, headers }), '/');
 });
+// What Walkup is and what it costs: the app's page with that screen's words written into it.
+for (const [path, compose] of [
+  ['/about', aboutPage],
+  ['/pricing', pricingPage],
+] as const)
+  app.get(path, async (c) => {
+    const asset = await c.env.ASSETS.fetch(new Request(new URL('/', c.req.url), c.req.raw));
+    if (!asset.ok) return withCacheControl(asset, '/');
+    const headers = new Headers(asset.headers);
+    for (const name of ['Content-Length', 'ETag', 'Content-Encoding']) headers.delete(name);
+    return withCacheControl(new Response(compose(await asset.text(), new URL(c.req.url).origin), { status: 200, headers }), '/');
+  });
 app.get('/llms.txt', async (c) =>
   c.text(llmsFile(new URL(c.req.url).origin, await homeStats(c.env)), 200, { 'Cache-Control': 'public, max-age=3600' }),
 );

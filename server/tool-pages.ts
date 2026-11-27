@@ -8,52 +8,12 @@ import { Hono } from 'hono';
 import { summarizeReport } from './building-facts.ts';
 import { retrieveBuildingRecords } from './building-records.ts';
 import type { AppEnv } from './contracts.ts';
-import { summarizeNeighborhood } from './neighborhoods.ts';
 import { readEvictions } from './open-data.ts';
-import { escape, neighborhoodIndex, page, slug } from './public-pages.ts';
-import { offline, search } from './search.ts';
+import { escape, page, recordLines, slug } from './public-pages.ts';
+import { publicSummary } from './public-summary.ts';
 import type { FetchTransport } from '../src/fetch-type.ts';
 import { buildingGrade } from '../src/insights.ts';
-import { formatRent, parseFilters } from '../src/search.ts';
-
-const SHORT: Record<string, string> = {
-  W: 'WEST',
-  E: 'EAST',
-  N: 'NORTH',
-  S: 'SOUTH',
-  ST: 'STREET',
-  AVE: 'AVENUE',
-  AV: 'AVENUE',
-  PL: 'PLACE',
-  RD: 'ROAD',
-  DR: 'DRIVE',
-  PKWY: 'PARKWAY',
-  TER: 'TERRACE',
-  CT: 'COURT',
-  LN: 'LANE',
-  BOULEVARD: 'BLVD',
-};
-/**
- * A street address as the city's housing records write it: "100 W 86th St." is "100 WEST 86 STREET" there.
- * Only the standard short forms are spelled out and "86th" made "86"; no building is guessed.
- */
-export function officialAddress(address: string) {
-  const words = address.toUpperCase().replace(/[.,]/g, ' ').trim().split(/\s+/);
-  return words
-    .map((word, index) => {
-      // "ST" before a name is "Saint" (St Marks Place), which the records also write "ST"; a letter is a
-      // direction only before the street's name.
-      if (word === 'ST' && index < words.length - 1) return word;
-      if (/^[NSEW]$/.test(word) && index !== 1) return word;
-      return SHORT[word] ?? word.replace(/^(\d+)(ST|ND|RD|TH)$/, '$1');
-    })
-    .join(' ');
-}
-
-const count = (value: number | null | undefined, one: string, many: string) =>
-  value == null ? null : `${value.toLocaleString('en-US')} ${value === 1 ? one : many}`;
-const yes = (value: boolean | null | undefined, when: string, otherwise: string | null) =>
-  value == null ? null : value ? when : otherwise;
+import { formatRent } from '../src/search.ts';
 
 const BUILDING_ABOUT = `<h2>What the grade means</h2>
 <p>A is a building with a clean record; D is one with many open violations, pests, or an order to vacate. The grade comes from New York City’s and New York State’s own records, read when you ask:</p>
@@ -82,25 +42,21 @@ export async function buildingPage(
   if (!address && !zip) return page(origin, '/check-building', title, description, intro + buildingForm() + BUILDING_ABOUT);
 
   const evictions = env.BUCKET ? readEvictions(env.BUCKET).catch(() => null) : null;
-  const ask = (street: string) => retrieveBuildingRecords({ address: street, zip, state: 'NY' }, fetcher, now, undefined, evictions);
-  let report = await ask(officialAddress(address));
-  // As typed, when spelling the short forms out found nothing.
-  if (report.status === 'unmatched' && officialAddress(address) !== address.toUpperCase()) report = await ask(address);
+  // Read as the city's records spell it (server/building-records.ts): "100 W 86th St." finds "100 WEST 86 STREET".
+  const report = await retrieveBuildingRecords(
+    { address: address.replace(/[.,]/g, ' '), zip, state: 'NY' },
+    fetcher,
+    now,
+    undefined,
+    evictions,
+  );
   const facts = summarizeReport(report);
   const grade = facts ? buildingGrade(facts) : null;
   const result = facts
-    ? `<h2>${escape(report.identity?.address ?? address)}</h2>${grade ? `<p class="grade">${grade}</p>` : ''}<div class="grid">${[
-        count(facts.openViolations, 'open violation', 'open violations'),
-        count(facts.complaints, 'complaint in the last year', 'complaints in the last year'),
-        yes(facts.bedbugs, 'Bedbugs reported', 'No bedbugs reported'),
-        yes(facts.rats, 'Rats found by inspectors', 'No rats found by inspectors'),
-        count(facts.evictions, 'eviction in two years', 'evictions in two years'),
-        count(facts.courtCases, 'Housing Court case in two years', 'Housing Court cases in two years'),
-        yes(facts.stabilized, 'Registers rent-stabilized apartments', 'No rent-stabilized apartments registered'),
-        yes(facts.vacate, 'An order to vacate is in force', null),
-      ]
-        .filter(Boolean)
-        .map((line) => `<div class="tile">${escape(line!)}</div>`)
+    ? `<h2>${escape(report.identity?.address ?? address)}</h2>${grade ? `<p class="grade">${grade}</p>` : ''}<div class="grid">${recordLines(
+        { ...facts, checkedAt: now.toISOString() },
+      )
+        .map((line) => `<div class="tile">${escape(line)}</div>`)
         .join(
           '',
         )}</div><p class="muted">From New York City and New York State records, read just now. A record can lag what has happened in the building.</p><a class="cta" href="/search">See apartments with their building’s grade</a>`
@@ -109,7 +65,9 @@ export async function buildingPage(
           ? 'The city’s records could not be reached just now. Try again in a minute.'
           : 'Write the street as it is on a lease, with the house number and no apartment number, like “100 West 86th Street”, and the building’s own ZIP code. Only buildings in the five boroughs are covered.'
       }</p>`;
-  return page(origin, '/check-building', title, description, intro + buildingForm(address, zip) + result + BUILDING_ABOUT, null, true);
+  return page(origin, '/check-building', title, description, intro + buildingForm(address, zip) + result + BUILDING_ABOUT, {
+    noindex: true,
+  });
 }
 
 const SIZES = ['Studio', '1 bedroom', '2 bedrooms', '3 bedrooms', '4 or more bedrooms'];
@@ -120,7 +78,8 @@ const RENT_ABOUT = `<h2>How the comparison works</h2>
 
 /** The rent check: the page and its form, or the comparison for one rent. */
 export async function rentPage(env: AppEnv, origin: string, query: { neighborhood?: string; bedrooms?: string; rent?: string }) {
-  const places = await neighborhoodIndex(env);
+  const summary = await publicSummary(env);
+  const places = summary.neighborhoods;
   const chosen = places.find(({ name }) => slug(name) === slug(query.neighborhood ?? ''));
   const bedrooms = Math.min(4, Math.max(0, Math.trunc(Number(query.bedrooms ?? '1')) || 0));
   const rent = Math.trunc(Number((query.rent ?? '').replace(/[$,\s]/g, '')));
@@ -139,11 +98,10 @@ export async function rentPage(env: AppEnv, origin: string, query: { neighborhoo
   ).join(
     '',
   )}</select></label><label>Your monthly rent<input name="rent" required inputmode="numeric" maxlength="9" placeholder="3200" value="${rent > 0 ? rent : ''}"></label><button>Compare my rent</button></form>`;
-  if (!chosen || !(rent > 0)) return page(origin, '/rent-check', title, description, intro + form + RENT_ABOUT, null, Boolean(query.rent));
+  if (!chosen || !(rent > 0))
+    return page(origin, '/rent-check', title, description, intro + form + RENT_ABOUT, { noindex: Boolean(query.rent) });
 
-  const filters = parseFilters({ region: 'nyc', bedrooms: null, maxRent: null, neighborhood: chosen.name });
-  const { matches } = await search(filters, env, offline, true, { kept: true });
-  const size = summarizeNeighborhood(matches).sizes[bedrooms]!;
+  const size = chosen.sizes[bedrooms]!;
   const place = `${escape(chosen.name)}, ${escape(chosen.borough)}`;
   const label = SIZES[bedrooms]!.toLowerCase();
   let verdict: string;
@@ -167,7 +125,9 @@ export async function rentPage(env: AppEnv, origin: string, query: { neighborhoo
     }</p>`;
   }
   const more = `<a class="cta" href="/rents/${chosen.path}">Rents in ${escape(chosen.name)} by size</a>`;
-  return page(origin, '/rent-check', title, description, intro + form + `<h2>Your rent</h2>` + verdict + more + RENT_ABOUT, null, true);
+  return page(origin, '/rent-check', title, description, intro + form + `<h2>Your rent</h2>` + verdict + more + RENT_ABOUT, {
+    noindex: true,
+  });
 }
 
 /** A page that is not there. */
@@ -178,8 +138,7 @@ export const missingPage = (origin: string, path: string) =>
     'Page not found | Walkup',
     'This page does not exist on Walkup.',
     '<h1>Page not found</h1><p>There is nothing at this address. It may have moved, or the link may be mistyped.</p><a class="cta" href="/">Search New York City apartments</a>',
-    null,
-    true,
+    { noindex: true },
   );
 
 export const toolPages = (env: AppEnv, fetcher: FetchTransport) =>

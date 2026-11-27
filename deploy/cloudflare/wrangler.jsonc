@@ -46,6 +46,8 @@
     "run_worker_first": [
       "/",
       "/llms.txt",
+      "/about",
+      "/pricing",
       "/check-building",
       "/rent-check",
       "/api/*",
@@ -54,6 +56,7 @@
       "/sitemap.xml",
       "/rents",
       "/rents/*",
+      "/building/*",
       "/blog",
       "/blog/*",
       "/data/*"

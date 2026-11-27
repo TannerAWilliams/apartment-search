@@ -305,7 +305,7 @@ test('sources exposes blocked refresh honestly and retains cached rentals', asyn
   await expect(page.getByRole('alert').filter({ hasText: 'not a fresh fetch' })).toBeVisible();
   expect(userRefreshes(requests)[0].body?.source).toBe('streeteasy-live');
   await page.getByRole('tab', { name: 'Search', exact: true }).click();
-  const listOnly = page.getByRole('button', { name: 'List', exact: true });
+  const listOnly = page.getByRole('button', { name: 'Show list', exact: true });
   if (await listOnly.isVisible()) await listOnly.click();
   await expect(page.getByText('12 Grove Street', { exact: true })).toBeVisible();
 });
@@ -345,13 +345,13 @@ test('search failures are visible, not silently treated as zero matches', async 
 
 test('saving survives reload and removal updates saved count', async ({ page }) => {
   await mockApp(page);
-  const listOnly = page.getByRole('button', { name: 'List', exact: true });
+  const listOnly = page.getByRole('button', { name: 'Show list', exact: true });
   if (await listOnly.isVisible()) await listOnly.click();
   await page.getByRole('button', { name: 'Save apartment', exact: true }).click();
   await expect(page.getByRole('tab', { name: 'Saved (1)', exact: true })).toBeVisible();
   await page.reload();
   await page.getByRole('tab', { name: 'Saved (1)', exact: true }).click();
-  const listAfterReload = page.getByRole('button', { name: 'List', exact: true });
+  const listAfterReload = page.getByRole('button', { name: 'Show list', exact: true });
   if (await listAfterReload.isVisible()) await listAfterReload.click();
   await page.getByRole('button', { name: 'Remove saved apartment', exact: true }).click();
   await expect(page.getByRole('tab', { name: 'Saved (0)', exact: true })).toBeVisible();
@@ -400,7 +400,7 @@ test('the map view loads its tiles under the Content Security Policy', async ({ 
     await expect.poll(() => styles.length).toBeGreaterThan(0);
   await expect.poll(() => tiles.length).toBeGreaterThan(0);
   const before = tiles.length;
-  await page.getByRole('button', { name: 'Map', exact: true }).click();
+  await page.getByRole('button', { name: 'Show map', exact: true }).click();
   await expect(page.getByRole('region', { name: 'Map of matching apartments', exact: true })).toBeVisible();
   // OpenFreeMap's Liberty style is asked for (the policy allows it); here it cannot load, so the street tiles take over.
   if (await page.evaluate(() => Boolean(document.createElement('canvas').getContext('webgl'))))
@@ -476,7 +476,7 @@ test('portrait keeps first listing visible and filter cancellation does not sear
   const { requests } = await mockApp(page);
   const first = page.getByText('12 Grove Street', { exact: true });
   await expect(first).toBeInViewport();
-  await expect(page.getByRole('button', { name: 'Map', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Show map', exact: true })).toBeVisible();
   await expect(page.getByRole('region', { name: 'Map of matching apartments', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Resync all connected providers', exact: true })).toHaveCount(0);
   const before = requests.filter((r) => r.path === '/api/search').length;
@@ -1416,7 +1416,7 @@ test('results offer email alerts for the search, and newest and best-value sorti
   await expect(page.getByRole('menuitem', { name: 'Lowest rent', exact: true })).toBeVisible();
   await page.getByRole('menuitem', { name: 'Best value for the area', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Sort: Best value for the area', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Get email alerts for this search', exact: true }).click();
+  await page.getByRole('button', { name: 'Get alerts for this search by email', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Alerts', exact: true })).toBeVisible();
 });
 

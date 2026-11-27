@@ -234,7 +234,7 @@ test('before saying where they work, a visitor sees "? min to your job" and is t
   await page.goto('/search');
   await expect(page.getByText(/Commute times to Rockefeller Center/)).toHaveCount(0);
   // A visitor is taken to the search's own destination box, not to a profile setting that would seem to save.
-  await page.getByRole('button', { name: 'Add where you work', exact: true }).click();
+  await page.getByRole('button', { name: 'Add where you work to see each commute', exact: true }).click();
   await expect(page).toHaveURL(/\/search$/);
   const destination = page.getByLabel('Destination', { exact: true });
   await expect(destination).toHaveValue('Rockefeller Center');

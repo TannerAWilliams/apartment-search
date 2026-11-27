@@ -32,17 +32,28 @@ The code is deployed (`server/billing.ts`); payments stay off, and the upgrade b
 - [ ] Have a lawyer check StreetEasy's Data Dashboard terms for showing its figures on a public site (add it to the source review below).
 - [ ] Tell search engines about the public site: add `apartments.5thof6.com` to Google Search Console and submit `https://apartments.5thof6.com/sitemap.xml`.
 
+## Before anyone can become a customer (check these first)
+
+The site has one account (yours) and no outside traffic yet. Three settings decide whether a visitor can sign up and pay at all; Claude cannot see or set them.
+
+- [ ] Sign-ups: confirm `OPEN_SIGNUPS` is set to `true` (see "Now that the site is public" below). Without it, a visitor who asks for a sign-in code gets nothing.
+- [ ] Sign-in emails: confirm a code reaches an address that is not yours (same section). If it does not, set up Cloudflare Email Sending for the domain.
+- [ ] Payments: finish the Stripe steps at the top of this file. Until then the paid plan cannot be bought.
+- [ ] Set `CONTACT_EMAIL` in `src/screens/LegalPage.tsx`, so customers have somewhere to write.
+
 ## Being found (search engines and AI assistants)
 
-Done in code: the home page is readable without running the app (headline, live counts, link preview, structured data), `/llms.txt` describes the site for AI assistants, unknown addresses answer "not found", and two free tools are public pages (`/check-building`, `/rent-check`).
+Done in code: the home page, About and Pricing are readable without running the app (headline, live counts, link preview, structured data); `/llms.txt` describes the site for AI assistants; unknown addresses answer "not found"; two free tools are public pages (`/check-building`, `/rent-check`); every neighborhood page opens with a dated answer ("the median asking rent in Astoria is…") and compares it with the borough; every graded building has its own page (`/building/…`) in the sitemap; public pages answer in a fraction of a second from a summary kept beside the inventory.
 
 - [ ] Google Search Console: add the site at [search.google.com/search-console](https://search.google.com/search-console), verify it (the DNS record method works through Cloudflare), and submit `https://apartments.5thof6.com/sitemap.xml`. Only you can do this; it needs your Google login. Do it again for the .nyc address after the move.
 - [ ] Bing Webmaster Tools: the same at [bing.com/webmasters](https://www.bing.com/webmasters) (it can import from Search Console). ChatGPT's search draws on Bing's index.
-- [ ] A week after submitting, check Search Console's Pages report: the neighborhood pages, `/check-building` and `/rent-check` should be listed as indexed.
+- [ ] A week after submitting, check Search Console's Pages report: the neighborhood pages, building pages, `/check-building` and `/rent-check` should be listed as indexed. Tell Claude which are not.
+- [ ] Each month, ask ChatGPT, Claude and Perplexity "what is the average rent in Astoria?" and "is 100 West 86th Street a good building?" and note whether Walkup is cited. That is the only real measure of AI visibility.
 - [ ] Decide whether AI training crawlers (GPTBot, ClaudeBot and the others in `DATA_COLLECTORS`, `server/public-pages.ts`) may read the public pages. They are shut out now; assistants answering a live question are allowed.
-- [ ] Post where renters already ask: answer questions on r/NYCapartments and r/AskNYC with a link to a building's check or a neighborhood's rents, saying it is your site.
-- [ ] Ask Claude to: use the address spelling from the building check (`officialAddress`, `server/tool-pages.ts`) when grading listings' buildings, so "997 Rogers Ave" matches the city's "997 ROGERS AVENUE" and more cards get a grade.
-- [ ] Ask Claude to: give `/about` and `/pricing` their own readable pages for search engines (they show the app's general page until it loads).
+- [ ] Post where renters already ask: answer questions on r/NYCapartments and r/AskNYC with a link to a building's page or a neighborhood's rents, saying it is your site.
+- [ ] Two weeks after the deploy of November 27, check Profile → Dashboard: most listed New York City buildings should have a grade (about 600 are checked each night; roughly two in three addresses match the city's records).
+- [ ] Ask Claude to: keep a building's page after its last apartment is rented (it answers "not found" until one is listed again).
+- [ ] Ask Claude to: speed up the search page on slow phones (Lighthouse 61; the home page is 86 and public pages 94+).
 
 ## Before charging customers
 

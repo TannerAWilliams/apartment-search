@@ -81,7 +81,7 @@ export function AlertButton({ onPress }: { onPress: () => void }) {
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel="Get email alerts for this search"
+      accessibilityLabel="Get alerts for this search by email"
       onPress={onPress}
       style={({ pressed }) => [
         {

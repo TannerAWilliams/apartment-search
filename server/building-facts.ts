@@ -20,6 +20,8 @@ const FACTS_KEY = 'buildings/facts.json';
 export const MAX_BUILDINGS = 12_000;
 /** A building's facts are checked again after this long. */
 const STALE_AFTER_DAYS = 90;
+/** When addresses began to be read as the city's records spell them (server/building-records.ts streetSpellings). */
+const RESPELLED_AT = '2026-11-27T12:00:00.000Z';
 const nullable = <T extends v.GenericSchema>(schema: T) => v.nullable(schema);
 const FactsSchema = v.record(
   v.string(),
@@ -106,17 +108,24 @@ export async function fillBuildingFacts(
     const key = buildingKey(listing);
     if (listing.region !== 'nyc' || !key || wanted.has(key)) continue;
     // Fresh, and kept since rats, evictions and court cases were read (facts from before are checked again).
-    if (facts[key] && facts[key].checkedAt >= staleBefore && facts[key].rats !== undefined && facts[key].vacate !== undefined) continue;
+    // A building the records did not have is asked about again if that was before addresses were read as the
+    // records spell them ("W 86th St" as "WEST 86 STREET"): most of those are there after all.
+    const known = facts[key];
+    const fresh = known && known.checkedAt >= (known.openViolations === null && known.stabilized === null ? RESPELLED_AT : staleBefore);
+    if (known && fresh && known.rats !== undefined && known.vacate !== undefined) continue;
     wanted.set(key, listing);
     if (wanted.size >= limit) break;
   }
   // A few buildings are checked at once; each check asks several city services itself.
   const reports = await mapLimit([...wanted], 3, async ([key, listing]) => {
     // A report never throws: an unreachable city service reads as an unmatched building, checked again later.
-    return [key, summarizeReport(await retrieveBuildingRecords(listing, fetcher, now, undefined, evictions))] as const;
+    const report = await retrieveBuildingRecords(listing, fetcher, now, undefined, evictions);
+    return [key, summarizeReport(report), report.status] as const;
   });
   let checked = 0;
-  for (const [key, summary] of reports) {
+  for (const [key, summary, status] of reports) {
+    // The city's records could not be reached: nothing is learned, and the building is asked about next time.
+    if (status === 'unavailable') continue;
     // A building the city has no unique record for is remembered too, so it is not asked about every night.
     facts[key] = summary ?? {
       stabilized: null,

@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test';
-import { homeCopy, homePage, llmsFile } from '../server/home-page.ts';
+import { aboutPage, homeCopy, homePage, llmsFile, pricingPage } from '../server/home-page.ts';
+import { FEATURES, PRICING, QUESTIONS } from '../src/about-copy.ts';
 import { robotsFile } from '../server/public-pages.ts';
 
 const SHELL = await Bun.file(new URL('../public/index.html', import.meta.url)).text();
@@ -48,4 +49,25 @@ test('llms.txt says what the site is and where its public pages are', () => {
   expect(text).toContain('may not be copied or collected in bulk');
   expect(robotsFile(ORIGIN)).toContain('Allow: /llms.txt');
   expect(robotsFile(ORIGIN)).toContain('AI assistants answering a person’s question');
+});
+
+test('About and Pricing are sent with their own words, the ones their screens show', () => {
+  const about = aboutPage(SHELL, ORIGIN);
+  expect(about).toContain('<title>How Walkup works: every NYC apartment listing in one search | Walkup</title>');
+  expect(about).toContain(`<link rel="canonical" href="${ORIGIN}/about" />`);
+  expect(about).toContain('<h1>How Walkup works</h1>');
+  for (const [title] of FEATURES) expect(about).toContain(`<h2>${title}</h2>`);
+  const [faq] = [...about.matchAll(/<script type="application\/ld\+json">(.*?)<\/script>/g)].map(
+    ([, json]) => JSON.parse(json!) as { '@type': string; mainEntity: { name: string }[] },
+  );
+  expect(faq!['@type']).toBe('FAQPage');
+  expect(faq!.mainEntity.map(({ name }) => name)).toEqual(QUESTIONS.map(([question]) => question));
+
+  const pricing = pricingPage(SHELL, ORIGIN);
+  expect(pricing).toContain('<title>Walkup pricing: free to search, $15 a month for instant alerts | Walkup</title>');
+  expect(pricing).toContain(`<link rel="canonical" href="${ORIGIN}/pricing" />`);
+  expect(pricing).toContain('<h2>Free: $0</h2>');
+  expect(pricing).toContain(`<h2>Paid: ${PRICING.monthly}, ${PRICING.pass}</h2>`);
+  expect(pricing).not.toContain('ld+json');
+  expect(pricing).toContain('<div id="root"><div class="boot">');
 });

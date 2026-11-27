@@ -512,8 +512,12 @@ test('a building opened in Details is kept as short facts, and the nightly step 
   expect(requests, 'one identity lookup for the one unknown NYC building').toBe(1);
   const facts = await readBuildingFacts(bucket);
   expect(facts[buildingKey({ address: '9 Other Street', state: 'NY', zip: '11201' })!]).toMatchObject({ stabilized: null });
-  expect(await fillBuildingFacts(bucket, listings, counting, { now }), 'nothing left to check').toBe(0);
-  const later = new Date(now.getTime() + 100 * 86_400_000);
+  // A building the records did not have is asked about once more now that addresses are read as the records
+  // spell them; after that it is left alone until its facts are old.
+  const december = new Date('2026-12-01T12:00:00Z');
+  expect(await fillBuildingFacts(bucket, listings, counting, { now: december }), 'not found under the old spelling').toBe(1);
+  expect(await fillBuildingFacts(bucket, listings, counting, { now: december }), 'nothing left to check').toBe(0);
+  const later = new Date(december.getTime() + 100 * 86_400_000);
   expect(
     await fillBuildingFacts(bucket, listings, counting, { now: later, limit: 1 }),
     'old facts are checked again, up to the limit',
@@ -521,7 +525,48 @@ test('a building opened in Details is kept as short facts, and the nightly step 
   const broken = async () => {
     throw new Error('down');
   };
-  expect(await fillBuildingFacts(createMemoryBucket(), listings, broken as never, { now }), 'an unreachable city still counts').toBe(2);
+  // The city's records out of reach teaches nothing: no building is marked as checked, and all are asked again.
+  const unreached = createMemoryBucket();
+  expect(await fillBuildingFacts(unreached, listings, broken as never, { now })).toBe(0);
+  expect(await readBuildingFacts(unreached)).toEqual({});
+});
+
+test('an address is matched as the city’s records spell it, and still to exactly one building', async () => {
+  const { houseNumbers, streetSpellings } = await import('../server/building-records.ts');
+  expect(streetSpellings('W 86th St.')).toEqual(['WEST 86 STREET', 'W 86TH ST']);
+  expect(streetSpellings('St Marks Pl')).toEqual(['ST MARKS PLACE', 'ST MARKS PL']);
+  expect(streetSpellings('Fifth Ave')).toEqual(['5 AVENUE', 'FIFTH AVE']);
+  expect(streetSpellings('Avenue S')).toEqual(['AVENUE S']);
+  expect(streetSpellings('E 3rd Ave')).toEqual(['EAST 3 AVENUE', 'E 3RD AVE']);
+  // A boulevard is written both ways in the records.
+  expect(streetSpellings('Center Blvd')).toEqual(['CENTER BLVD', 'CENTER BOULEVARD']);
+  expect(streetSpellings('Queens Boulevard')).toEqual(['QUEENS BOULEVARD', 'QUEENS BLVD']);
+  // Queens house numbers carry a hyphen in the records.
+  expect(houseNumbers('4720', '4')).toEqual(['4720', '47-20']);
+  expect(houseNumbers('4720', '3')).toEqual(['4720']);
+  expect(houseNumbers('47-20', '4')).toEqual(['47-20']);
+
+  // "123 Main St" is the records' "123 MAIN STREET": every spelling is asked for at once, and one building answers.
+  const asked: string[] = [];
+  const listening =
+    (override = {}) =>
+    (url: string, options?: RequestInit) => {
+      const where = new URL(url).searchParams.get('$where') ?? '';
+      if (where.includes('housenumber in')) asked.push(where);
+      return source(override)(url, options);
+    };
+  const report = await retrieveBuildingRecords({ ...address, address: '123 Main St' }, listening(), now);
+  expect(report.status).toBe('matched');
+  expect(asked[0]).toContain("housenumber in ('123') AND upper(streetname) in ('MAIN STREET','MAIN ST')");
+  // A record that answers for another street or number is not taken for this building.
+  for (const wrong of [{ streetname: 'MAINE STREET' }, { housenumber: '125' }, { housenumber: 123 }]) {
+    const other = await retrieveBuildingRecords(
+      { ...address, address: '123 Main St' },
+      listening({ buildings: [{ ...building, ...wrong }] }),
+      now,
+    );
+    expect(other.status).toBe('unavailable');
+  }
 });
 
 test('rat inspections, evictions, Housing Court cases and HPD registration are read over two years and kept apart', async () => {
@@ -825,14 +870,7 @@ test('heat complaints by winter, and the owner’s other buildings with their op
 });
 
 test('the public building check: the page and its form, a building’s grade, and an address that is not found', async () => {
-  const { buildingPage, officialAddress } = await import('../server/tool-pages.ts');
-  // An address is read as the city's records write it; only the standard short forms are spelled out.
-  expect(officialAddress('100 W 86th St.')).toBe('100 WEST 86 STREET');
-  expect(officialAddress('45 St Marks Pl')).toBe('45 ST MARKS PLACE');
-  expect(officialAddress('10 Queens Boulevard')).toBe('10 QUEENS BLVD');
-  expect(officialAddress('5 Avenue S')).toBe('5 AVENUE S');
-  expect(officialAddress('12 e 3rd ave, ')).toBe('12 EAST 3 AVENUE');
-
+  const { buildingPage } = await import('../server/tool-pages.ts');
   const origin = 'https://walkup.test';
   const landing = await buildingPage({}, origin, {}, source(), now);
   expect(landing).toContain('<h1>Check any NYC building before you rent</h1>');
