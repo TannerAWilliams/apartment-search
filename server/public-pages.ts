@@ -99,14 +99,14 @@ h1{font-size:34px;line-height:1.15;letter-spacing:-.6px;margin:24px 0 8px}h2{fon
 .form button{font:inherit;font-weight:600;padding:12px 20px;border:0;border-radius:10px;background:var(--ink);color:var(--page);cursor:pointer;justify-self:start}
 .grade{display:inline-block;font-size:44px;font-weight:800;line-height:1;border:2px solid var(--accent);border-radius:14px;padding:10px 18px;margin:8px 0}
 .cta{display:inline-block;background:var(--ink);color:var(--page);text-decoration:none;font-weight:600;padding:12px 20px;border-radius:10px;margin:8px 0 0}
-ul.links{columns:2;padding-left:18px}ul.articles{list-style:none;padding:0;margin:0 0 16px}ul.articles li{padding:10px 0;border-bottom:1px solid var(--soft)}
+ul.links{columns:2;padding-left:18px}ul.articles{list-style:none;padding:0;margin:0 0 8px;display:flex;flex-wrap:wrap;gap:4px 22px}
 .scroll{overflow-x:auto}table{border-collapse:collapse;width:100%;margin:8px 0 16px}th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--soft)}th{font-size:14px;color:var(--muted)}
 td:not(:first-child),th:not(:first-child){text-align:right;white-space:nowrap}
 footer{border-top:1px solid var(--line);font-size:14px;padding-top:20px;padding-bottom:28px}footer p{margin:0 0 8px}footer nav{display:flex;flex-wrap:wrap;gap:6px 18px}
 </style></head><body>
 <header><a class="brand" href="/"><img src="/icons/walkup.svg" alt="">walkup</a><a href="/profile">Log in</a></header>
 <main>${body}</main>
-<footer class="muted"><p>Walkup searches New York City apartments across listing sites, brokerages and landlords. Figures are medians of asking rents; 311 complaints come from NYC Open Data.</p><nav><a href="/search">Search apartments</a><a href="/rents">All neighborhoods</a><a href="/check-building">Check a building</a><a href="/rent-check">Is my rent fair?</a><a href="/blog">Market reports</a></nav></footer>
+<footer class="muted"><p>Walkup · Apartments in and around New York City</p><nav><a href="/search">Search apartments</a><a href="/rents">All neighborhoods</a><a href="/check-building">Check a building</a><a href="/rent-check">Is my rent fair?</a><a href="/blog">Market reports</a></nav></footer>
 </body></html>`;
 }
 
@@ -231,7 +231,7 @@ export async function neighborhoodPage(
 <p class="muted">Median asking rents by size, next to all of ${escape(borough)}. Updated ${DAY.format(built)}.</p>
 ${table}
 <a class="cta" href="/search">See the ${place.count.toLocaleString('en-US')} apartments on Walkup</a>
-<p><a href="/rent-check?neighborhood=${encodeURIComponent(name)}">Is your rent in ${escape(name)} fair?</a> Compare it with these.</p>
+<p><a href="/rent-check?neighborhood=${encodeURIComponent(name)}">Compare your own rent with these figures</a></p>
 ${buildings}${complaints}${
   nearby.length
     ? `<h2>More ${escape(borough)} neighborhoods</h2><ul class="links">${nearby
@@ -240,7 +240,7 @@ ${buildings}${complaints}${
     : ''
 }
 <h2>Where these figures come from</h2>
-<p>Walkup reads apartments from listing sites, brokerages and landlords several times a day and counts each apartment once. The median is the middle asking rent: half the apartments ask more, half less. Building records are New York City’s and New York State’s own.</p>`;
+<p>Walkup reads apartments from listing sites, brokerages and landlords at least once a day and counts each apartment once. The median is the middle asking rent: half the apartments ask more, half less. Building records are New York City’s and New York State’s own.</p>`;
   return page(origin, path, title, answer, body, { data: [crumbs.data] });
 }
 
@@ -392,7 +392,7 @@ export const publicPages = (env: AppEnv, fetcher: FetchTransport, loadArchive?: 
           (month) =>
             `<h2>${escape(monthName(month))}</h2><ul class="articles">${list
               .filter((article) => article.month === month)
-              .map(({ slug, title }) => `<li><a href="/blog/${slug}">${escape(title)}</a></li>`)
+              .map(({ slug, label }) => `<li><a href="/blog/${slug}">${escape(label)}</a></li>`)
               .join('')}</ul>`,
         )
         .join('');
@@ -401,7 +401,7 @@ export const publicPages = (env: AppEnv, fetcher: FetchTransport, loadArchive?: 
         '/blog',
         'New York City rental market reports | Walkup',
         'Monthly reports on New York City rents: the citywide median, the most affordable neighborhoods, and where rents are rising and falling.',
-        `<h1>New York City rental market reports</h1><p class="muted">Written each month from that month's figures.</p>${
+        `<h1>New York City rental market reports</h1><p class="muted">Three sets of tables a month, made from StreetEasy’s published figures for that month. Nobody writes them by hand.</p>${
           items || '<p>The first reports are being prepared.</p>'
         }<a class="cta" href="/">Search apartments on Walkup</a>`,
       );

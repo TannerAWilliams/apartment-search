@@ -312,7 +312,7 @@ export function MarketHistory({
                   key: 'cuts',
                   question: 'Listings with a price cut',
                   answer: formatValue(cuts.value, cutsSeries.unit),
-                  context: `${formatChange(cuts.yearly, cutsSeries.unit)} in a year · bargaining room`,
+                  context: `${formatChange(cuts.yearly, cutsSeries.unit)} in a year`,
                 },
               ]
             : []),
@@ -322,7 +322,7 @@ export function MarketHistory({
                   key: 'inventory',
                   question: rentals ? 'Apartments for rent' : volumeSeries.label,
                   answer: formatValue(volume.value, volumeSeries.unit, true),
-                  context: `${formatChange(volume.yearly, volumeSeries.unit)} in a year · more means more choice`,
+                  context: `${formatChange(volume.yearly, volumeSeries.unit)} in a year`,
                 },
               ]
             : []),
@@ -332,7 +332,7 @@ export function MarketHistory({
                   key: 'year',
                   question: rentals ? 'Rent change in a year' : 'Price change in a year',
                   answer: formatChange(price.yearly, 'USD'),
-                  context: `${monthLabel(price.month)}, every month since 2010 inside`,
+                  context: `${monthLabel(price.month)} against a year earlier`,
                 },
               ]
             : []),
@@ -342,7 +342,7 @@ export function MarketHistory({
                   key: 'seasons',
                   question: 'Cheapest month',
                   answer: FULL_MONTHS[best.index]!,
-                  context: `To ${rentals ? 'sign a lease' : 'buy'}: ${formatChange(best.value, 'USD')} vs the year’s average`,
+                  context: `${formatChange(best.value, 'USD')} against the year’s average`,
                 },
               ]
             : []),

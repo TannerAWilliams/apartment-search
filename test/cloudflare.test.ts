@@ -332,7 +332,8 @@ test('the home page is sent with its headline, today’s figures and a preview; 
   expect(page.headers.get('Content-Type')).toBe('text/html; charset=utf-8');
   expect(page.headers.get('ETag'), 'the file’s tag does not describe the page made from it').toBeNull();
   const html = await page.text();
-  expect(html).toContain('<h1>New York City apartments from 23 listing sites, in one search</h1>');
+  expect(html).toContain('<h1>Apartments for rent in and around New York City</h1>');
+  expect(html).toContain('Walkup gathers 17,000+ rentals from 23 listing sites');
   expect(html).toContain('<link rel="canonical" href="https://app.test/" />');
   const llms = await call(withPage, '/llms.txt');
   expect(llms.headers.get('Content-Type')).toMatch(/^text\/plain/);
@@ -341,7 +342,7 @@ test('the home page is sent with its headline, today’s figures and a preview; 
   // No inventory yet, or one that cannot be read: the page makes no claim about how many.
   for (const INVENTORY of [undefined, { get: async () => Promise.reject(new Error('down')), put: async () => {} }]) {
     const plain = await (await call({ ...withPage, INVENTORY }, '/')).text();
-    expect(plain).toContain('from listing sites, brokerages and landlords, in one search</h1>');
+    expect(plain).toContain('Walkup gathers rentals from listing sites, brokerages and landlords');
   }
   // About and Pricing are the same page with their own words and addresses.
   const about = await call(withPage, '/about');

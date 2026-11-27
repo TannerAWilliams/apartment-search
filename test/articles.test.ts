@@ -21,6 +21,7 @@ test('each month has three articles, for the latest month with figures and the e
     slug: 'nyc-rent-report-2026-10',
     month: '2026-10',
     title: 'New York City rent report: October 2026',
+    label: 'Rent report',
   });
   // A database with no figures publishes nothing.
   expect(await articleMonths((await fakeD1()).d1, async () => Promise.reject(new Error('no archive'))).catch(() => [])).toEqual([]);
@@ -66,7 +67,7 @@ test('the articles are public pages, listed in the index and the sitemap', async
   const index = await get('/blog');
   expect(index.status).toBe(200);
   const listing = await index.text();
-  expect(listing).toContain('<a href="/blog/nyc-rent-report-2026-10">New York City rent report: October 2026</a>');
+  expect(listing).toContain('<a href="/blog/nyc-rent-report-2026-10">Rent report</a>');
   expect(listing.match(/<li>/g)).toHaveLength(36);
   expect(listing).toContain('<h2>October 2026</h2><ul class="articles"><li><a href="/blog/nyc-rent-report-2026-10">');
   expect(listing.match(/<h2>/g)).toHaveLength(12);

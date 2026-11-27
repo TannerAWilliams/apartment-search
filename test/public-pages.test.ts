@@ -259,6 +259,14 @@ test('graded buildings have pages of their own, read from the summary kept besid
   expect(lone).toContain('1 apartment is listed here now.');
   expect(lone).not.toContain('Other buildings in');
 
+  // Two names for one place are one neighborhood, and a park is not a neighborhood.
+  const named = summarizePublic(
+    ['Flatiron', 'Flatiron District', 'Flatiron', 'Flatiron District', 'Flatiron', 'Central Park'].flatMap((neighborhood, index) =>
+      Array.from({ length: 2 }, (_, copy) => home(`n${index}-${copy}`, `${index + 1}${copy} Named St`, { neighborhood })),
+    ),
+  );
+  expect(named.neighborhoods.map(({ name, count }) => [name, count])).toEqual([['Flatiron', 10]]);
+
   // The neighborhood's page lists its graded buildings and sets its rents next to the borough's.
   globalThis.fetch = (async () => new Response('busy', { status: 503 })) as unknown as typeof fetch;
   const place = (await neighborhoodPage({}, origin, 'Manhattan', 'Upper West Side', globalThis.fetch, summary))!;

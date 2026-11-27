@@ -18,7 +18,8 @@ export function homeCopy(stats: HomeStats | null) {
   const apartments = stats && stats.apartments > 0 ? `${rounded(stats.apartments)} rentals` : 'rentals';
   return {
     title: `NYC apartments from ${stats && stats.sites > 1 ? `${stats.sites} sites` : 'across listing sites'} in one search | Walkup`,
-    heading: `New York City apartments from ${sites}, in one search`,
+    // The same heading the app draws (src/screens/HomePage.tsx), so the page does not change under the reader.
+    heading: 'Apartments for rent in and around New York City',
     description:
       `Walkup gathers ${apartments} from ${sites}, shows each apartment once, compares its rent with similar ` +
       'apartments nearby, and grades its building from city records. Free to search, no account needed.',
@@ -32,7 +33,7 @@ const QUESTIONS: [question: string, answer: string][] = [
   ],
   [
     'Where do the apartments come from?',
-    'From listing sites, brokerages and landlords’ own sites, read several times a day. The same apartment on several sites is shown once, with a link to each.',
+    'From listing sites, brokerages and landlords’ own sites, read at least once a day. The same apartment on several sites is shown once, with a link to each.',
   ],
   [
     'How do I know if a rent is fair?',
@@ -104,7 +105,7 @@ export function homePage(shell: string, origin: string, stats: HomeStats | null)
 /** /about: what Walkup does and the questions people ask about it, as the About screen says them. */
 export function aboutPage(shell: string, origin: string) {
   return written(shell, origin, '/about', {
-    title: 'How Walkup works: every NYC apartment listing in one search | Walkup',
+    title: 'How Walkup works: NYC apartment listings from many sites in one search | Walkup',
     heading: 'How Walkup works',
     description: ABOUT.ABOUT_INTRO,
     body: answers(ABOUT.FEATURES) + answers(ABOUT.QUESTIONS) + LINKS,
@@ -145,9 +146,9 @@ export function llmsFile(origin: string, stats: HomeStats | null) {
     '',
     '## Pages',
     '',
-    `- [Search apartments](${origin}/search): every apartment, with filters for area, size, rent, commute and subway lines.`,
-    `- [Rents by neighborhood](${origin}/rents): the median asking rent for each size in every New York City neighborhood, updated monthly.`,
-    `- [Market reports](${origin}/blog): monthly reports on asking rents by borough and neighborhood.`,
+    `- [Search apartments](${origin}/search): all the listings, with filters for area, size, rent, commute and subway lines.`,
+    `- [Rents by neighborhood](${origin}/rents): the median asking rent by size in each New York City neighborhood with apartments listed now, updated daily.`,
+    `- [Market reports](${origin}/blog): monthly tables of asking rents by borough and neighborhood, from StreetEasy’s published figures.`,
     `- [Check a building](${origin}/check-building): a New York City building's grade from city records, by address.`,
     `- [Is my rent fair?](${origin}/rent-check): a rent compared with the median for its size and neighborhood.`,
     `- [How Walkup works](${origin}/about)`,

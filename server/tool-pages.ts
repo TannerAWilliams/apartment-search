@@ -17,9 +17,7 @@ import { formatRent } from '../src/search.ts';
 
 const BUILDING_ABOUT = `<h2>What the grade means</h2>
 <p>A is a building with a clean record; D is one with many open violations, pests, or an order to vacate. The grade comes from New York City’s and New York State’s own records, read when you ask:</p>
-<ul><li>Open housing code violations (HPD)</li><li>Heat, hot water and other complaints in the last year</li><li>Bedbug filings and rat inspections</li><li>Evictions by a marshal and Housing Court cases, over two years</li><li>Whether it registers rent-stabilized apartments</li><li>Orders to vacate</li></ul>
-<h2>Before you sign a lease</h2>
-<p>Check the building, not only the apartment. A renovated unit says nothing about the heat in January or how the landlord treats repairs; the city’s records do.</p>`;
+<ul><li>Open housing code violations (HPD)</li><li>Heat, hot water and other complaints in the last year</li><li>Bedbug filings and rat inspections</li><li>Evictions by a marshal and Housing Court cases, over two years</li><li>Whether it registers rent-stabilized apartments</li><li>Orders to vacate</li></ul>`;
 
 const buildingForm = (address = '', zip = '') =>
   `<form class="form" method="get" action="/check-building"><label>Street address<input name="address" required maxlength="120" placeholder="100 West 86th Street" value="${escape(address)}"></label><label>ZIP code<input name="zip" required pattern="\\d{5}" inputmode="numeric" maxlength="5" placeholder="10024" value="${escape(zip)}"></label><button>Check this building</button></form>`;
@@ -72,9 +70,7 @@ export async function buildingPage(
 
 const SIZES = ['Studio', '1 bedroom', '2 bedrooms', '3 bedrooms', '4 or more bedrooms'];
 const RENT_ABOUT = `<h2>How the comparison works</h2>
-<p>Your rent is set next to the median asking rent of apartments the same size listed in the same neighborhood right now, gathered from listing sites, brokerages and landlords. The median is the middle one: half ask more, half ask less.</p>
-<h2>What to do with the answer</h2>
-<p>If you pay well above the median, bring current listings to a renewal conversation, or look at what moving would save. If you pay below it, an increase is likely, and staying usually costs less than moving. A rent-stabilized apartment follows the Rent Guidelines Board’s increases, whatever the market does.</p>`;
+<p>Your rent is set next to the median asking rent of apartments the same size listed in the same neighborhood right now, gathered from listing sites, brokerages and landlords. The median is the middle one: half ask more, half ask less. These are asking rents, not what tenants signed for. A rent-stabilized apartment’s increases are set by the Rent Guidelines Board, not by the market.</p>`;
 
 /** The rent check: the page and its form, or the comparison for one rent. */
 export async function rentPage(env: AppEnv, origin: string, query: { neighborhood?: string; bedrooms?: string; rent?: string }) {

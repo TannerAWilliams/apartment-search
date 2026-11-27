@@ -225,8 +225,14 @@ function ApartmentSearch() {
   const [siteStats, setSiteStats] = useState<SiteStats | null>(null);
   useEffect(() => {
     if (siteStats || result.mode !== 'live' || result.sourceCounts.length === 0) return;
-    const plain = ({ workplace: _place, customWorkplace: _custom, ...rest }: ReturnType<typeof formDefaults>) => JSON.stringify(rest);
-    if (plain(applied) === plain(formDefaults())) setSiteStats({ apartments: result.eligibleTotal, sources: result.sourceCounts.length });
+    // The commute destination and what is asked for alongside (the map, commutes) narrow nothing, so a search
+    // that differs only by them still counts everything.
+    const aside = ['workplace', 'customWorkplace', 'includeMap', 'includeCommute'];
+    const keys = [...new Set([...Object.keys(SEARCH_DEFAULTS), ...Object.keys(applied)])] as (keyof typeof applied)[];
+    const everything = keys.every(
+      (key) => aside.includes(key) || JSON.stringify(applied[key] ?? null) === JSON.stringify(SEARCH_DEFAULTS[key] ?? null),
+    );
+    if (everything) setSiteStats({ apartments: result.eligibleTotal, sources: result.sourceCounts.length });
   }, [result, applied, siteStats]);
   // The home page's example apartment: the one among the first results that shows the most (src/home-example.ts).
   const [example, setExample] = useState<HomeExample | null>(null);

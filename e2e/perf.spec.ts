@@ -79,7 +79,7 @@ const settled = (page: Page) => page.waitForLoadState('networkidle');
 
 test('the home page shows from one script, and asks the server for settings and one search, once each', async ({ page }) => {
   const { scripts, count, api } = await open(page, '/');
-  await expect(page.getByRole('heading', { name: 'Find your next New York apartment', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Apartments for rent in and around New York City', exact: true })).toBeVisible();
   // The page showed from two scripts: the small one that starts the requests early, and the app's own.
   expect(scripts.slice(0, 2).toSorted()).toEqual(['boot.js', expect.stringMatching(/^index-/)]);
   await settled(page);

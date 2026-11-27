@@ -74,9 +74,15 @@ const titleOf = (kind: Kind, month: string) =>
     'most-affordable-neighborhoods': `The most affordable New York City neighborhoods to rent in, ${monthName(month)}`,
     'where-rents-are-rising-and-falling': `Where New York City rents are rising and falling, ${monthName(month)}`,
   })[kind];
-/** Every published article's address and title, newest first, without composing them. */
+/** What each kind is called in a list under its month's heading, where the full title would repeat the month. */
+const LABELS: Record<Kind, string> = {
+  'nyc-rent-report': 'Rent report',
+  'most-affordable-neighborhoods': 'Lowest-rent neighborhoods',
+  'where-rents-are-rising-and-falling': 'Where rents rose and fell',
+};
+/** Every published article's address, title and short label, newest first, without composing them. */
 export const articleList = (months: string[]) =>
-  months.flatMap((month) => KINDS.map((kind) => ({ slug: `${kind}-${month}`, month, title: titleOf(kind, month) })));
+  months.flatMap((month) => KINDS.map((kind) => ({ slug: `${kind}-${month}`, month, title: titleOf(kind, month), label: LABELS[kind] })));
 
 /** One series' figures for the month and a year earlier, by area. */
 async function figures(database: D1Database, name: string, month: string): Promise<Figure[]> {

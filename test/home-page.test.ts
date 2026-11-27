@@ -9,7 +9,7 @@ const ORIGIN = 'https://walkup.test';
 test('the home page is sent with what Walkup is, today’s figures and what a link preview needs', () => {
   const html = homePage(SHELL, ORIGIN, { apartments: 17_420, sites: 23 });
   expect(html).toContain('<title>NYC apartments from 23 sites in one search | Walkup</title>');
-  expect(html).toContain('<h1>New York City apartments from 23 listing sites, in one search</h1>');
+  expect(html).toContain('<h1>Apartments for rent in and around New York City</h1>');
   expect(html).toContain('Walkup gathers 17,000+ rentals from 23 listing sites');
   expect(html).toContain(`<link rel="canonical" href="${ORIGIN}/" />`);
   expect(html).toContain(`<meta property="og:image" content="${ORIGIN}/icons/share.png" />`);
@@ -32,7 +32,7 @@ test('the home page is sent with what Walkup is, today’s figures and what a li
 test('without figures the page makes no claim about how many, and small counts are said exactly', () => {
   const html = homePage(SHELL, ORIGIN, null);
   expect(html).toContain('<title>NYC apartments from across listing sites in one search | Walkup</title>');
-  expect(html).toContain('<h1>New York City apartments from listing sites, brokerages and landlords, in one search</h1>');
+  expect(html).toContain('<h1>Apartments for rent in and around New York City</h1>');
   expect(html).not.toMatch(/\d+ (sites|rentals)/);
   expect(homeCopy({ apartments: 0, sites: 1 }).description).toStartWith(
     'Walkup gathers rentals from listing sites, brokerages and landlords',
@@ -53,7 +53,7 @@ test('llms.txt says what the site is and where its public pages are', () => {
 
 test('About and Pricing are sent with their own words, the ones their screens show', () => {
   const about = aboutPage(SHELL, ORIGIN);
-  expect(about).toContain('<title>How Walkup works: every NYC apartment listing in one search | Walkup</title>');
+  expect(about).toContain('<title>How Walkup works: NYC apartment listings from many sites in one search | Walkup</title>');
   expect(about).toContain(`<link rel="canonical" href="${ORIGIN}/about" />`);
   expect(about).toContain('<h1>How Walkup works</h1>');
   for (const [title] of FEATURES) expect(about).toContain(`<h2>${title}</h2>`);

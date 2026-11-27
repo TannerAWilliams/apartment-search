@@ -67,17 +67,39 @@ export type PublicSummary = {
   buildings: BuildingSummary[];
 };
 
+/**
+ * Names that sources use for a place another name already covers: the listings are counted under the one name, so
+ * the list of neighborhoods does not show "Flatiron" and "Flatiron District" as two places.
+ */
+const SAME_PLACE: Record<string, string> = {
+  'Battery Park': 'Battery Park City',
+  'Bed-Stuy': 'Bedford-Stuyvesant',
+  'Flatiron District': 'Flatiron',
+  Gramercy: 'Gramercy Park',
+  'Hunter’s Point South': 'Hunters Point',
+  "Hunter's Point South": 'Hunters Point',
+  'Peter Cooper Village': 'Stuyvesant Town/PCV',
+  'Stuyvesant Town': 'Stuyvesant Town/PCV',
+};
+/** Names sources give that are not places people live in. */
+const NOT_PLACES = new Set(['Central Park']);
+
 /** The summary of these listings: New York City's, by borough, neighborhood and graded building. */
 export function summarizePublic(listings: ListingData[], now = new Date()): PublicSummary {
   const city = listings.filter((listing) => BOROUGHS.includes(listing.city));
   const places = new Map<string, ListingData[]>();
+  const names = new Map<string, string>();
   const buildings = new Map<string, BuildingSummary>();
   for (const listing of city) {
-    if (listing.neighborhood) {
-      const path = slug(listing.city) + '/' + slug(listing.neighborhood);
+    if (listing.neighborhood && !NOT_PLACES.has(listing.neighborhood)) {
+      const name = SAME_PLACE[listing.neighborhood] ?? listing.neighborhood;
+      const path = slug(listing.city) + '/' + slug(name);
       const own = places.get(path);
       if (own) own.push(listing);
-      else places.set(path, [listing]);
+      else {
+        places.set(path, [listing]);
+        names.set(path, name);
+      }
     }
     const grade = buildingGrade(listing.building);
     const key = buildingKey(listing);
@@ -117,7 +139,7 @@ export function summarizePublic(listings: ListingData[], now = new Date()): Publ
         const { sizes, zips, buildings: checked } = summarizeNeighborhood(own);
         return {
           path,
-          name: own[0]!.neighborhood!,
+          name: names.get(path)!,
           borough: own[0]!.city,
           count: own.length,
           sizes,

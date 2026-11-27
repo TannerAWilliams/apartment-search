@@ -30,16 +30,22 @@ export function AboutPage({ onOpen }: { onOpen: (tab: string) => void }) {
       </View>
       <View style={[column, { gap: 18, paddingVertical: 24 }]}>
         <Text accessibilityRole="header" style={heading}>
-          What Walkup does that listing sites don’t
+          What it does
         </Text>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 14 }}>
-          {FEATURES.map(([title, body]) => (
+        <View>
+          {FEATURES.map(([title, body], index) => (
             <View
               key={title}
-              style={{ flexGrow: 1, flexBasis: wide ? 300 : 260, gap: 6, padding: 18, borderRadius: 16, backgroundColor: colors.light }}
+              style={{
+                flexDirection: wide ? 'row' : 'column',
+                gap: wide ? 24 : 4,
+                paddingVertical: 12,
+                borderTopWidth: index > 0 ? 1 : 0,
+                borderTopColor: colors.border,
+              }}
             >
-              <Text style={{ fontSize: 17, fontWeight: '600', color: colors.ink }}>{title}</Text>
-              <Text style={styles.bodyText}>{body}</Text>
+              <Text style={{ width: wide ? 240 : undefined, fontSize: 16, fontWeight: '600', color: colors.ink }}>{title}</Text>
+              <Text style={[styles.bodyText, { flex: wide ? 1 : undefined, maxWidth: 640 }]}>{body}</Text>
             </View>
           ))}
         </View>
