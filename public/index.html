@@ -4,8 +4,8 @@
     <meta charset="utf-8" />
     <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no, viewport-fit=cover" />
-    <title>Walkup</title>
-    <meta name="description" content="New York City apartments from more than 40 listing sites in one search, with real deals, building grades and rent-stabilized buildings." />
+    <title>Walkup · New York City apartments</title>
+    <meta name="description" content="New York City apartments from listing sites, brokerages and landlords in one search, with each rent compared with similar apartments and each building graded from city records." />
     <meta name="theme-color" content="#ffffff" />
     <!-- Installable on iPhone and Android; notifications on iPhone need the Home Screen app. The manifest is
          fetched with credentials so a signed-in session carries over. -->
@@ -29,6 +29,12 @@
       .boot-bar { height: 56px; display: flex; align-items: center; padding: 0 20px; border-bottom: 1px solid #d7d5d3; }
       .boot-brand { color: #773516; font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
       .boot-note { margin: 32px auto; color: #5f5b59; font-size: 15px; }
+      /* The home page as it is sent (server/home-page.ts): readable at once, and by crawlers that run no script. */
+      .boot-home { max-width: 760px; margin: 0 auto; padding: 28px 20px; color: #201e1c; overflow: auto; }
+      .boot-home h1 { font-size: 30px; line-height: 1.15; letter-spacing: -0.6px; margin: 0 0 12px; }
+      .boot-home h2 { font-size: 17px; margin: 22px 0 4px; }
+      .boot-home p { font-size: 16px; line-height: 1.5; color: #5f5b59; margin: 0 0 10px; }
+      .boot-home a { color: #201e1c; font-weight: 600; }
       /* The dark theme (src/theme.ts), before the app's own styles arrive: the device's, or the one chosen. */
       @media (prefers-color-scheme: dark) {
         :root:not([data-theme="light"]) body, :root:not([data-theme="light"]) .boot { background: #121212; }
@@ -40,6 +46,12 @@
       :root[data-theme="dark"] .boot-bar { border-color: #373432; }
       :root[data-theme="dark"] .boot-brand { color: #f8a47e; }
       :root[data-theme="dark"] .boot-note { color: #a19d9a; }
+      @media (prefers-color-scheme: dark) {
+        :root:not([data-theme="light"]) .boot-home, :root:not([data-theme="light"]) .boot-home a { color: #f3f1ef; }
+        :root:not([data-theme="light"]) .boot-home p { color: #a19d9a; }
+      }
+      :root[data-theme="dark"] .boot-home, :root[data-theme="dark"] .boot-home a { color: #f3f1ef; }
+      :root[data-theme="dark"] .boot-home p { color: #a19d9a; }
     </style>
     <!-- The card pictures and the map are drawn from OpenFreeMap: the connection is opened while the app loads. -->
     <link rel="preconnect" href="https://tiles.openfreemap.org" crossorigin />

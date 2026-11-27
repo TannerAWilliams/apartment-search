@@ -11,7 +11,9 @@ const PLACEHOLDER_EMAIL = 'smoke-test@example.com';
 /** A route, the request to send, and what a working Worker answers. */
 const CHECKS: { path: string; init?: RequestInit; status: number; contains?: string }[] = [
   { path: '/health', status: 200, contains: 'ok' },
-  { path: '/', status: 200, contains: '<div id="root">' },
+  // The home page is written by the Worker: the app's page with its headline and a canonical address in it.
+  { path: '/', status: 200, contains: 'rel="canonical"' },
+  { path: '/llms.txt', status: 200, contains: '# Walkup' },
   // An app address that is not a file is the app's page, served without the Worker.
   { path: '/search', status: 200, contains: '<div id="root">' },
   { path: '/listing/some-id', status: 200, contains: '<div id="root">' },

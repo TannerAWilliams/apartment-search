@@ -37,11 +37,24 @@
   // The page and the app's code are served by Cloudflare itself, from its edge, without starting the Worker
   // (their headers are in web-build/_headers); an address that is not a file is the app's page, which routes it.
   // The Worker runs for the API, the public pages it renders, and the archive it keeps private.
+  // It also runs for the home page, to write into it what search engines and link previews read.
   "assets": {
     "directory": "../../web-build",
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*", "/health", "/robots.txt", "/sitemap.xml", "/rents", "/rents/*", "/blog", "/blog/*", "/data/*"]
+    "run_worker_first": [
+      "/",
+      "/llms.txt",
+      "/api/*",
+      "/health",
+      "/robots.txt",
+      "/sitemap.xml",
+      "/rents",
+      "/rents/*",
+      "/blog",
+      "/blog/*",
+      "/data/*"
+    ]
   },
   "d1_databases": [
     {

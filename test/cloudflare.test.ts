@@ -2,6 +2,7 @@ import { afterEach, expect, test } from 'bun:test';
 import { fakeD1 } from './fixtures/fake-d1.ts';
 import { readJson, type ErrorBody } from './fixtures/json.ts';
 import type { RefreshInfo } from '../src/api-client.ts';
+import { INVENTORY_FORMAT } from '../src/inventory-format.ts';
 
 // The Workers runtime module does not exist under Bun; the Workflow class only needs a base class.
 const { default: worker } = await import('../server/cloudflare.ts');
@@ -315,4 +316,34 @@ test('the headers file for pages Cloudflare serves itself carries the security h
   // Fingerprinted files drop the page's caching rule before taking their own.
   expect(file).toContain('/_expo/static/*\n  ! Cache-Control\n  Cache-Control: private, max-age=31536000, immutable\n');
   expect(Math.max(...file.split('\n').map((line) => line.length))).toBeLessThan(2000);
+});
+
+test('the home page is sent with its headline, today’s figures and a preview; llms.txt says the same in plain text', async () => {
+  const { env } = await environment({ publicApp: true });
+  const shell = await Bun.file(new URL('../public/index.html', import.meta.url)).text();
+  const head = { format: INVENTORY_FORMAT, opening: { eligibleTotal: 17_420, sourceCounts: new Array(23).fill({}) } };
+  const withPage = {
+    ...env,
+    ASSETS: { fetch: async () => new Response(shell, { headers: { 'Content-Type': 'text/html; charset=utf-8', ETag: '"file"' } }) },
+    INVENTORY: { get: async () => JSON.stringify(head), put: async () => {} },
+  };
+  const page = await call(withPage, '/');
+  expect(page.status).toBe(200);
+  expect(page.headers.get('Content-Type')).toBe('text/html; charset=utf-8');
+  expect(page.headers.get('ETag'), 'the file’s tag does not describe the page made from it').toBeNull();
+  const html = await page.text();
+  expect(html).toContain('<h1>New York City apartments from 23 listing sites, in one search</h1>');
+  expect(html).toContain('<link rel="canonical" href="https://app.test/" />');
+  const llms = await call(withPage, '/llms.txt');
+  expect(llms.headers.get('Content-Type')).toMatch(/^text\/plain/);
+  expect(await llms.text()).toContain('17,000+ rentals from 23 listing sites');
+
+  // No inventory yet, or one that cannot be read: the page makes no claim about how many.
+  for (const INVENTORY of [undefined, { get: async () => Promise.reject(new Error('down')), put: async () => {} }]) {
+    const plain = await (await call({ ...withPage, INVENTORY }, '/')).text();
+    expect(plain).toContain('from listing sites, brokerages and landlords, in one search</h1>');
+  }
+  // The page's file missing is answered as it is.
+  const gone = await call({ ...withPage, ASSETS: { fetch: async () => new Response('missing', { status: 404 }) } }, '/');
+  expect(gone.status).toBe(404);
 });

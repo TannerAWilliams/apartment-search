@@ -14,6 +14,8 @@ import { isAdmin } from './roles.ts';
 import { runScheduled } from './nightly.ts';
 import { log } from './log.ts';
 import { isAppPath } from '../src/routes.ts';
+import { type HomeStats, homePage, llmsFile } from './home-page.ts';
+import { readHead } from './inventory.ts';
 import { securityHeaders, withCacheControl } from './web-headers.ts';
 import { type ArchiveLoader, DASHBOARD_ARCHIVE_PATH } from './dashboard-snapshot.ts';
 import { SYNC_PROGRESS_KEY, WORKFLOW_SOURCE_IDS } from './sources/source-registry.ts';
@@ -210,6 +212,24 @@ app.on('GET', ['/robots.txt', '/sitemap.xml', '/rents', '/rents/*', '/blog', '/b
     (url, options) => fetch(url, options),
     dashboardArchive(c.env.ASSETS),
   ).fetch(c.req.raw),
+);
+// The home page, with what Walkup is and how much it has today written into it for search engines, AI
+// assistants and link previews (server/home-page.ts). Every other address of the app is its plain page.
+const homeStats = async (env: Environment): Promise<HomeStats | null> => {
+  const head = env.INVENTORY ? await readHead(env.INVENTORY).catch(() => null) : null;
+  return head ? { apartments: head.opening.eligibleTotal, sites: head.opening.sourceCounts.length } : null;
+};
+app.get('/', async (c) => {
+  const asset = await c.env.ASSETS.fetch(c.req.raw);
+  if (!asset.ok) return withCacheControl(asset, '/');
+  const html = homePage(await asset.text(), new URL(c.req.url).origin, await homeStats(c.env));
+  // Sent as the page itself is: its type and its caching, without the length and tag of the file it was made from.
+  const headers = new Headers(asset.headers);
+  for (const name of ['Content-Length', 'ETag', 'Content-Encoding']) headers.delete(name);
+  return withCacheControl(new Response(html, { status: 200, headers }), '/');
+});
+app.get('/llms.txt', async (c) =>
+  c.text(llmsFile(new URL(c.req.url).origin, await homeStats(c.env)), 200, { 'Cache-Control': 'public, max-age=3600' }),
 );
 // The dashboard archive is published with the static files only so the API can read it.
 app.all('/data/*', (c) => fail(c, 404, 'Not found.'));
