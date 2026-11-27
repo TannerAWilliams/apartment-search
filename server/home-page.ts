@@ -80,6 +80,7 @@ export function homePage(shell: string, origin: string, stats: HomeStats | null)
     '<main class="boot-home">' +
     `<h1>${escape(copy.heading)}</h1><p>${escape(copy.description)}</p>` +
     '<p><a href="/search">Search apartments</a> · <a href="/rents">Rents by neighborhood</a> · <a href="/blog">Market reports</a> · ' +
+    '<a href="/check-building">Check a building</a> · <a href="/rent-check">Is my rent fair?</a> · ' +
     '<a href="/about">How Walkup works</a> · <a href="/pricing">Pricing</a></p>' +
     QUESTIONS.map(([question, answer]) => `<h2>${escape(question)}</h2><p>${escape(answer)}</p>`).join('') +
     '</main>';
@@ -112,6 +113,8 @@ export function llmsFile(origin: string, stats: HomeStats | null) {
     `- [Search apartments](${origin}/search): every apartment, with filters for area, size, rent, commute and subway lines.`,
     `- [Rents by neighborhood](${origin}/rents): the median asking rent for each size in every New York City neighborhood, updated monthly.`,
     `- [Market reports](${origin}/blog): monthly reports on asking rents by borough and neighborhood.`,
+    `- [Check a building](${origin}/check-building): a New York City building's grade from city records, by address.`,
+    `- [Is my rent fair?](${origin}/rent-check): a rent compared with the median for its size and neighborhood.`,
     `- [How Walkup works](${origin}/about)`,
     `- [Pricing](${origin}/pricing)`,
     '',

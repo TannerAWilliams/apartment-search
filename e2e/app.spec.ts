@@ -287,6 +287,9 @@ test('the footer links to the market reports, which are pages of their own', asy
   const link = page.getByRole('link', { name: 'Market reports', exact: true });
   await expect(link).toBeVisible();
   await expect(link).toHaveAttribute('href', '/blog');
+  // So are the two free tools.
+  await expect(page.getByRole('link', { name: 'Check a building', exact: true })).toHaveAttribute('href', '/check-building');
+  await expect(page.getByRole('link', { name: 'Is my rent fair?', exact: true })).toHaveAttribute('href', '/rent-check');
 });
 
 test('sources exposes blocked refresh honestly and retains cached rentals', async ({ page }) => {

@@ -14,7 +14,11 @@ const CHECKS: { path: string; init?: RequestInit; status: number; contains?: str
   // The home page is written by the Worker: the app's page with its headline and a canonical address in it.
   { path: '/', status: 200, contains: 'rel="canonical"' },
   { path: '/llms.txt', status: 200, contains: '# Walkup' },
-  // An app address that is not a file is the app's page, served without the Worker.
+  // The free tools are pages of their own, and an address with nothing at it says so.
+  { path: '/check-building', status: 200, contains: 'Check any NYC building' },
+  { path: '/rent-check', status: 200, contains: 'Is my rent fair?' },
+  { path: '/no-such-page', status: 404, contains: 'Page not found', init: { headers: { Accept: 'text/html' } } },
+  // An app address that is not a file is the app's page, which the Worker answers with.
   { path: '/search', status: 200, contains: '<div id="root">' },
   { path: '/listing/some-id', status: 200, contains: '<div id="root">' },
   { path: '/boot.js', status: 200, contains: 'walkupEarly' },

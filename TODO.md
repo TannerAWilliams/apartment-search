@@ -32,6 +32,18 @@ The code is deployed (`server/billing.ts`); payments stay off, and the upgrade b
 - [ ] Have a lawyer check StreetEasy's Data Dashboard terms for showing its figures on a public site (add it to the source review below).
 - [ ] Tell search engines about the public site: add `apartments.5thof6.com` to Google Search Console and submit `https://apartments.5thof6.com/sitemap.xml`.
 
+## Being found (search engines and AI assistants)
+
+Done in code: the home page is readable without running the app (headline, live counts, link preview, structured data), `/llms.txt` describes the site for AI assistants, unknown addresses answer "not found", and two free tools are public pages (`/check-building`, `/rent-check`).
+
+- [ ] Google Search Console: add the site at [search.google.com/search-console](https://search.google.com/search-console), verify it (the DNS record method works through Cloudflare), and submit `https://apartments.5thof6.com/sitemap.xml`. Only you can do this; it needs your Google login. Do it again for the .nyc address after the move.
+- [ ] Bing Webmaster Tools: the same at [bing.com/webmasters](https://www.bing.com/webmasters) (it can import from Search Console). ChatGPT's search draws on Bing's index.
+- [ ] A week after submitting, check Search Console's Pages report: the neighborhood pages, `/check-building` and `/rent-check` should be listed as indexed.
+- [ ] Decide whether AI training crawlers (GPTBot, ClaudeBot and the others in `DATA_COLLECTORS`, `server/public-pages.ts`) may read the public pages. They are shut out now; assistants answering a live question are allowed.
+- [ ] Post where renters already ask: answer questions on r/NYCapartments and r/AskNYC with a link to a building's check or a neighborhood's rents, saying it is your site.
+- [ ] Ask Claude to: use the address spelling from the building check (`officialAddress`, `server/tool-pages.ts`) when grading listings' buildings, so "997 Rogers Ave" matches the city's "997 ROGERS AVENUE" and more cards get a grade.
+- [ ] Ask Claude to: give `/about` and `/pricing` their own readable pages for search engines (they show the app's general page until it loads).
+
 ## Before charging customers
 
 - [ ] Have a lawyer review the Terms of Service and Privacy Policy drafts (`src/screens/LegalPage.tsx`, shown from Profile).

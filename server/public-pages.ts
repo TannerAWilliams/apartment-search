@@ -23,7 +23,7 @@ export const slug = (text: string) =>
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '');
-const escape = (text: string) => text.replace(/[&<>"']/g, (char) => `&#${char.charCodeAt(0)};`);
+export const escape = (text: string) => text.replace(/[&<>"']/g, (char) => `&#${char.charCodeAt(0)};`);
 
 /** Every New York City neighborhood with enough listings for a page: name, borough and count, by borough then name. */
 export async function neighborhoodIndex(env: AppEnv) {
@@ -42,14 +42,23 @@ export async function neighborhoodIndex(env: AppEnv) {
     .sort((a, b) => BOROUGHS.indexOf(a.borough) - BOROUGHS.indexOf(b.borough) || a.name.localeCompare(b.name));
 }
 
-function page(origin: string, path: string, title: string, description: string, body: string, article?: { published: string }) {
+export function page(
+  origin: string,
+  path: string,
+  title: string,
+  description: string,
+  body: string,
+  article?: { published: string } | null,
+  /** An answer to one person's question, or a page that is not there: not for search engines to keep. */
+  noindex = false,
+) {
   const canonical = origin + path;
   return `<!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escape(title)}</title>
 <meta name="description" content="${escape(description)}">
-<link rel="canonical" href="${escape(canonical)}">
+<link rel="canonical" href="${escape(canonical)}">${noindex ? '\n<meta name="robots" content="noindex">' : ''}
 <meta property="og:title" content="${escape(title)}"><meta property="og:description" content="${escape(description)}">
 <meta property="og:url" content="${escape(canonical)}"><meta property="og:type" content="${article ? 'article' : 'website'}">${
     article
@@ -75,6 +84,10 @@ main{padding-top:8px;padding-bottom:32px}main>:last-child{margin-bottom:0}
 h1{font-size:34px;line-height:1.15;letter-spacing:-.6px;margin:24px 0 8px}h2{font-size:22px;margin:32px 0 8px}p{margin:0 0 16px}
 .muted{color:var(--muted)}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
 .tile{border:1px solid var(--line);border-radius:12px;padding:14px}.tile b{display:block;font-size:24px}
+.form{display:grid;gap:12px;max-width:460px;margin:16px 0 8px}.form label{display:grid;gap:4px;font-weight:600;font-size:15px}
+.form input,.form select{font:inherit;padding:11px 12px;border:1px solid var(--line);border-radius:10px;background:var(--page);color:var(--ink)}
+.form button{font:inherit;font-weight:600;padding:12px 20px;border:0;border-radius:10px;background:var(--ink);color:var(--page);cursor:pointer;justify-self:start}
+.grade{display:inline-block;font-size:44px;font-weight:800;line-height:1;border:2px solid var(--accent);border-radius:14px;padding:10px 18px;margin:8px 0}
 .cta{display:inline-block;background:var(--ink);color:var(--page);text-decoration:none;font-weight:600;padding:12px 20px;border-radius:10px;margin:8px 0 0}
 ul.links{columns:2;padding-left:18px}ul.articles{list-style:none;padding:0;margin:0 0 16px}ul.articles li{padding:10px 0;border-bottom:1px solid var(--soft)}
 table{border-collapse:collapse;width:100%;margin:8px 0 16px}th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--soft)}th{font-size:14px;color:var(--muted)}
@@ -83,7 +96,7 @@ footer{border-top:1px solid var(--line);font-size:14px;padding-top:20px;padding-
 </style></head><body>
 <header><a class="brand" href="/"><img src="/icons/walkup.svg" alt="">walkup</a><a href="/profile">Log in</a></header>
 <main>${body}</main>
-<footer class="muted"><p>Walkup searches New York City apartments across listing sites, brokerages and landlords. Figures are medians of asking rents; 311 complaints come from NYC Open Data.</p><nav><a href="/search">Search apartments</a><a href="/rents">All neighborhoods</a><a href="/blog">Market reports</a></nav></footer>
+<footer class="muted"><p>Walkup searches New York City apartments across listing sites, brokerages and landlords. Figures are medians of asking rents; 311 complaints come from NYC Open Data.</p><nav><a href="/search">Search apartments</a><a href="/rents">All neighborhoods</a><a href="/check-building">Check a building</a><a href="/rent-check">Is my rent fair?</a><a href="/blog">Market reports</a></nav></footer>
 </body></html>`;
 }
 
@@ -124,6 +137,7 @@ export async function neighborhoodPage(env: AppEnv, origin: string, borough: str
 <p>${report.listings.toLocaleString('en-US')} apartments are listed in ${escape(name)} right now. Median asking rents by size:</p>
 <div class="grid">${tiles}</div>
 <a class="cta" href="/">See the ${report.listings.toLocaleString('en-US')} apartments on Walkup</a>
+<p><a href="/rent-check?neighborhood=${encodeURIComponent(name)}">Is your rent in ${escape(name)} fair?</a> Compare it with these.</p>
 ${buildings}${complaints}
 <h2>Why search on Walkup</h2>
 <p>Every listing in one place, compared with similar apartments nearby, with building grades, rent-stabilized buildings, the nearest subway and alerts within hours.</p>`;
@@ -175,6 +189,8 @@ export const robotsFile = (origin: string) =>
     'Allow: /about',
     'Allow: /pricing',
     'Allow: /llms.txt',
+    'Allow: /check-building$',
+    'Allow: /rent-check$',
     'Allow: /terms',
     'Allow: /privacy',
     'Allow: /_expo/',
@@ -264,6 +280,8 @@ export const publicPages = (env: AppEnv, fetcher: FetchTransport, loadArchive?: 
         '/about',
         '/pricing',
         '/rents',
+        '/check-building',
+        '/rent-check',
         ...pages.map(({ path }) => '/rents/' + path),
         '/blog',
         ...articles.map((slug) => '/blog/' + slug),

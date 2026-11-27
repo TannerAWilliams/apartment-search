@@ -1104,6 +1104,14 @@ function ApartmentSearch() {
                         <Text style={styles.linkText}>Pricing</Text>
                       </Pressable>
                       <Text style={styles.smallMuted}>·</Text>
+                      <ExternalLink url={`${API_ORIGIN}/check-building`} onError={setError} style={{ paddingVertical: 6 }}>
+                        <Text style={styles.linkText}>Check a building</Text>
+                      </ExternalLink>
+                      <Text style={styles.smallMuted}>·</Text>
+                      <ExternalLink url={`${API_ORIGIN}/rent-check`} onError={setError} style={{ paddingVertical: 6 }}>
+                        <Text style={styles.linkText}>Is my rent fair?</Text>
+                      </ExternalLink>
+                      <Text style={styles.smallMuted}>·</Text>
                       <ExternalLink url={`${API_ORIGIN}/blog`} onError={setError} style={{ paddingVertical: 6 }}>
                         <Text style={styles.linkText}>Market reports</Text>
                       </ExternalLink>

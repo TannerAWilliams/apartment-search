@@ -15,6 +15,7 @@ import { runScheduled } from './nightly.ts';
 import { log } from './log.ts';
 import { isAppPath } from '../src/routes.ts';
 import { type HomeStats, homePage, llmsFile } from './home-page.ts';
+import { missingPage, toolPages } from './tool-pages.ts';
 import { readHead } from './inventory.ts';
 import { securityHeaders, withCacheControl } from './web-headers.ts';
 import { type ArchiveLoader, DASHBOARD_ARCHIVE_PATH } from './dashboard-snapshot.ts';
@@ -231,6 +232,16 @@ app.get('/', async (c) => {
 app.get('/llms.txt', async (c) =>
   c.text(llmsFile(new URL(c.req.url).origin, await homeStats(c.env)), 200, { 'Cache-Control': 'public, max-age=3600' }),
 );
+// The free tools as public pages (server/tool-pages.ts). Checking a building asks the city's records, so a burst
+// of checks from one visitor is refused as costly API requests are.
+app.on('GET', ['/check-building', '/rent-check'], async (c) => {
+  const limiter = c.req.query('address') ? c.env.LOOKUP_LIMIT : undefined;
+  if (limiter && !(await limiter.limit({ key: 'LOOKUP_LIMIT:' + c.var.caller })).success) {
+    log.warn('rate_limited', { path: c.req.path });
+    return c.text('Too many checks. Wait a minute, then try again.', 429, { ...HEADERS, 'Retry-After': '60' });
+  }
+  return toolPages({ ...c.env, BUCKET: createD1Bucket(c.env.APARTMENTS) }, (url, options) => fetch(url, options)).fetch(c.req.raw);
+});
 // The dashboard archive is published with the static files only so the API can read it.
 app.all('/data/*', (c) => fail(c, 404, 'Not found.'));
 
@@ -273,8 +284,11 @@ app.route('/', api);
 app.all('*', async (c) => {
   const asset = await c.env.ASSETS.fetch(c.req.raw);
   // The app's own addresses (/market, /profile, /listing/ID) are one page: the app's index, which opens that screen.
-  if (asset.status !== 404 || !isAppPath(c.req.path)) return withCacheControl(asset, c.req.path);
-  return withCacheControl(await c.env.ASSETS.fetch(new Request(new URL('/', c.req.url), c.req.raw)), '/');
+  if (asset.status !== 404) return withCacheControl(asset, c.req.path);
+  if (isAppPath(c.req.path)) return withCacheControl(await c.env.ASSETS.fetch(new Request(new URL('/', c.req.url), c.req.raw)), '/');
+  // Nothing is at this address. A person following a link is told so on a page; a missing file stays as it is.
+  if (c.req.method !== 'GET' || !(c.req.header('Accept') ?? '').includes('text/html')) return withCacheControl(asset, c.req.path);
+  return c.html(missingPage(new URL(c.req.url).origin, c.req.path), 404, { 'Cache-Control': 'no-store' });
 });
 
 app.onError((cause, c) => {

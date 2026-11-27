@@ -823,3 +823,54 @@ test('heat complaints by winter, and the owner’s other buildings with their op
   const noLot = await retrieveBuildingRecords(address, source({ buildings: [{ ...building, block: '0' }] }), now);
   expect(noLot).toMatchObject({ landlord: null, heat: null });
 });
+
+test('the public building check: the page and its form, a building’s grade, and an address that is not found', async () => {
+  const { buildingPage, officialAddress } = await import('../server/tool-pages.ts');
+  // An address is read as the city's records write it; only the standard short forms are spelled out.
+  expect(officialAddress('100 W 86th St.')).toBe('100 WEST 86 STREET');
+  expect(officialAddress('45 St Marks Pl')).toBe('45 ST MARKS PLACE');
+  expect(officialAddress('10 Queens Boulevard')).toBe('10 QUEENS BLVD');
+  expect(officialAddress('5 Avenue S')).toBe('5 AVENUE S');
+  expect(officialAddress('12 e 3rd ave, ')).toBe('12 EAST 3 AVENUE');
+
+  const origin = 'https://walkup.test';
+  const landing = await buildingPage({}, origin, {}, source(), now);
+  expect(landing).toContain('<h1>Check any NYC building before you rent</h1>');
+  expect(landing).toContain('<form class="form" method="get" action="/check-building">');
+  expect(landing).toContain('<link rel="canonical" href="https://walkup.test/check-building">');
+  expect(landing, 'the page itself is for search engines').not.toContain('noindex');
+
+  const found = await buildingPage({}, origin, { address: '123 Main St', zip: '11201' }, source(), now);
+  expect(found).toContain('<p class="grade">');
+  expect(found).toContain('2 open violations');
+  expect(found).toContain('value="123 Main St"');
+  expect(found, 'one person’s answer is not').toContain('<meta name="robots" content="noindex">');
+
+  // Nothing at the address as spelled out or as typed: said plainly, with how to write it.
+  const asked: string[] = [];
+  const none = await buildingPage(
+    {},
+    origin,
+    { address: '9 Nowhere St <b>', zip: '11201' },
+    (url, options) => {
+      asked.push(new URL(url).searchParams.get('$where') ?? '');
+      return source({ buildings: [] })(url, options);
+    },
+    now,
+  );
+  expect(none).toContain('<h2>No building found at that address</h2>');
+  expect(none).toContain('Write the street as it is on a lease');
+  expect(none).not.toContain('<b>');
+  // A ZIP alone, or one outside the city, asks nothing of the city.
+  const outside = await buildingPage({}, origin, { zip: '07302' }, () => expect.unreachable('no request'), now);
+  expect(outside).toContain('No building found at that address');
+  // The city's records down is said as that, not as "no such building".
+  const down = await buildingPage(
+    {},
+    origin,
+    { address: '123 Main St', zip: '11201' },
+    async () => new Response('busy', { status: 503 }),
+    now,
+  );
+  expect(down).toContain('could not be reached just now');
+});
