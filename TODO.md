@@ -83,6 +83,19 @@ Done in code: the home page, About and Pricing are readable without running the 
 
 - [ ] Review submitted owner listings: Profile → List your apartment shows admins what is waiting; approve or reject each.
 
+## Once the Mac mini is set up at home (Claude helps)
+
+- [ ] Run a home sync for sites that refuse cloud servers but allow reading. Some sites turn away requests from
+      cloud servers to limit load, while their robots.txt still allows the pages to be read. Those can be read from
+      the Mac mini and sent to the site's database. Before a site is added, Claude checks it:
+      - its robots.txt allows the pages read;
+      - its terms do not forbid automated reading;
+      - it serves the pages to a home connection with no bot challenge to get past.
+      Sites with a bot challenge or a refusal aimed at automated reading are not added. That includes the 14 that
+      failed on Nov 27: StreetEasy, Zillow, Compass, RentHop and the rest.
+- [ ] Set the Mac mini to read slowly (one page a second or slower), as the cloud sync does, and to stop when a
+      site says no.
+
 ## Optional
 
 - [ ] Exact transit and driving times (optional; estimated transit times are already free and on every listing): TravelTime gives door-to-door times from real timetables. Sign up at traveltime.com, then `wrangler secret put TRAVELTIME_APP_ID` and `wrangler secret put TRAVELTIME_API_KEY` from `deploy/cloudflare`. Its free tier is a trial, so this costs money after that.
