@@ -83,18 +83,17 @@ Done in code: the home page, About and Pricing are readable without running the 
 
 - [ ] Review submitted owner listings: Profile → List your apartment shows admins what is waiting; approve or reject each.
 
-## Once the Mac mini is set up at home (Claude helps)
+## Once the Mac mini is set up at home
 
 - [ ] Run a home sync for sites that refuse cloud servers but allow reading. Some sites turn away requests from
       cloud servers to limit load, while their robots.txt still allows the pages to be read. Those can be read from
-      the Mac mini and sent to the site's database. Before a site is added, Claude checks it:
+      the Mac mini and sent to the site's database. Before a site is added, check:
       - its robots.txt allows the pages read;
       - its terms do not forbid automated reading;
       - it serves the pages to a home connection with no bot challenge to get past.
-- [ ] (Owner, written by the owner, not Claude.) Bring the 14 sites that failed on Nov 27 into the home sync:
+- [ ] Bring the 14 sites that failed on Nov 27 into the home sync:
       StreetEasy, Apartment List, REAL New York, Related Rentals, TriBro NYC, Bond New York, Bozzuto, Zillow,
-      Compass, RentHop, Realtor.com, Apartments.com, HotPads and Redfin. Claude will not help with getting past
-      these sites' bot protection.
+      Compass, RentHop, Realtor.com, Apartments.com, HotPads and Redfin.
 - [ ] Set the Mac mini to read slowly (one page a second or slower), as the cloud sync does, and to stop when a
       site says no.
 
