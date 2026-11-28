@@ -28,13 +28,13 @@ The code is deployed (`server/billing.ts`); payments stay off, and the upgrade b
 - [ ] Check that sign-in codes reach any address: in a private browser window, open the site, tap **Log in**, and request a code for an email that is not yours (a friend's). Confirm it arrives. If it does not, Cloudflare is only sending to verified addresses; set up Cloudflare Email Service sending for `5thof6.com` (Email → Email Sending) first.
 - [ ] Open sign-ups: `wrangler secret put OPEN_SIGNUPS` with the value `true` (from `deploy/cloudflare`). Until this is set, visitors can search but only `ACCESS_ALLOWED_EMAILS` can create an account to save apartments or get alerts; anyone else asking for a code gets none.
 - [ ] Try the site as a visitor, in a private window: the home page opens at `/`, the three questions show apartments, Search and Rent prices work, and tapping a heart asks you to create an account.
-- [ ] Decide whether StreetEasy's market history (the inventory, price-cut, ranking and best-month cards on Rent prices) stays public or goes back to signed-in members only. It is public now, credited to StreetEasy; ask Claude to switch it if you prefer members only.
+- [ ] Decide whether StreetEasy's market history (the inventory, price-cut, ranking and best-month cards on Rent prices) stays public or goes back to signed-in members only. It is public now, credited to StreetEasy.
 - [ ] Have a lawyer check StreetEasy's Data Dashboard terms for showing its figures on a public site (add it to the source review below).
 - [ ] Tell search engines about the public site: add `apartments.5thof6.com` to Google Search Console and submit `https://apartments.5thof6.com/sitemap.xml`.
 
 ## Before anyone can become a customer (check these first)
 
-The site has one account (yours) and no outside traffic yet. Three settings decide whether a visitor can sign up and pay at all; Claude cannot see or set them.
+The site has one account (yours) and no outside traffic yet. Three settings decide whether a visitor can sign up and pay at all, and only you can see or set them.
 
 - [ ] Sign-ups: confirm `OPEN_SIGNUPS` is set to `true` (see "Now that the site is public" below). Without it, a visitor who asks for a sign-in code gets nothing.
 - [ ] Sign-in emails: confirm a code reaches an address that is not yours (same section). If it does not, set up Cloudflare Email Sending for the domain.
@@ -47,13 +47,13 @@ Done in code: the home page, About and Pricing are readable without running the 
 
 - [ ] Google Search Console: add the site at [search.google.com/search-console](https://search.google.com/search-console), verify it (the DNS record method works through Cloudflare), and submit `https://apartments.5thof6.com/sitemap.xml`. Only you can do this; it needs your Google login. Do it again for the .nyc address after the move.
 - [ ] Bing Webmaster Tools: the same at [bing.com/webmasters](https://www.bing.com/webmasters) (it can import from Search Console). ChatGPT's search draws on Bing's index.
-- [ ] A week after submitting, check Search Console's Pages report: the neighborhood pages, building pages, `/check-building` and `/rent-check` should be listed as indexed. Tell Claude which are not.
+- [ ] A week after submitting, check Search Console's Pages report: the neighborhood pages, building pages, `/check-building` and `/rent-check` should be listed as indexed. Note any that are not.
 - [ ] Each month, ask ChatGPT, Claude and Perplexity "what is the average rent in Astoria?" and "is 100 West 86th Street a good building?" and note whether Walkup is cited. That is the only real measure of AI visibility.
 - [ ] Decide whether AI training crawlers (GPTBot, ClaudeBot and the others in `DATA_COLLECTORS`, `server/public-pages.ts`) may read the public pages. They are shut out now; assistants answering a live question are allowed.
 - [ ] Post where renters already ask: answer questions on r/NYCapartments and r/AskNYC with a link to a building's page or a neighborhood's rents, saying it is your site.
 - [ ] Two weeks after the deploy of November 27, check Profile → Dashboard: most listed New York City buildings should have a grade (about 600 are checked each night; roughly two in three addresses match the city's records).
-- [ ] Ask Claude to: keep a building's page after its last apartment is rented (it answers "not found" until one is listed again).
-- [ ] Ask Claude to: speed up the search page on slow phones (Lighthouse 61; the home page is 86 and public pages 94+).
+- [ ] Keep a building's page after its last apartment is rented (it answers "not found" until one is listed again).
+- [ ] Speed up the search page on slow phones (Lighthouse 61; the home page is 86 and public pages 94+).
 
 ## Before charging customers
 
@@ -70,7 +70,7 @@ Done in code: the home page, About and Pricing are readable without running the 
 ## Your own domain
 
 - [ ] Buy a .nyc domain, ideally `walkup.nyc` (the registrant needs a street address in the five boroughs; registrars are listed at ownit.nyc). If the registrar is not Cloudflare, point the domain's nameservers to Cloudflare.
-- [ ] Ask Claude to move the app to it: the Worker's custom domain, `APP_ORIGIN`, the sender address for codes and alerts, and a redirect from `apartments.5thof6.com`.
+- [ ] Move the app to it: the Worker's custom domain, `APP_ORIGIN`, the sender address for codes and alerts, and a redirect from `apartments.5thof6.com`.
 - [ ] Move the Stripe webhook to the new domain once it is live.
 
 ## App Store
