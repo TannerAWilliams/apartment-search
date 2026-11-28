@@ -31,6 +31,14 @@ export const ZUMPER_COVERAGE =
 /** Manhattan had 124 search pages in November 2026; this bounds a market's crawl. */
 const MAX_MARKET_PAGES = 400;
 const PAGE_INTERVAL_MS = 1000;
+/**
+ * When Zumper answers "too many requests" (429), the crawl waits and asks again rather than giving up: a single
+ * 429 used to throw away every page already read. It waits as long as Zumper says (Retry-After), or 30 s, 60 s,
+ * 120 s, and goes slower for the rest of the crawl. A fourth 429 in a row ends the run, as before.
+ */
+const RATE_LIMIT_RETRIES = 3;
+const RATE_LIMIT_WAIT_MS = 30_000;
+const RATE_LIMIT_MAX_WAIT_MS = 120_000;
 export const zumperPacing = { intervalMs: PAGE_INTERVAL_MS };
 const marketUrl = (market: { city: string; state: string }, page: number) =>
   ORIGIN +
@@ -127,17 +135,28 @@ export async function loadZumper(
   let pages = 0;
   let buildings = 0;
   let last = 0;
-  async function fetchPage(market: ZumperMarket, page: number) {
-    const gap = last + zumperPacing.intervalMs - Date.now();
+  let interval = zumperPacing.intervalMs;
+  async function request(url: string) {
+    const gap = last + interval - Date.now();
     if (gap > 0) await wait(gap);
     last = Date.now();
-    const response = await fetcher(marketUrl(market, page), {
-      headers: { Accept: 'text/html' },
-      redirect: 'manual',
-      signal: AbortSignal.timeout(20000),
-    });
+    // The sync's own fetcher throws on an error status (server/sources/source-requests.ts); a plain one returns it.
+    const response = await fetcher(url, { headers: { Accept: 'text/html' }, redirect: 'manual', signal: AbortSignal.timeout(20000) });
     if (!response.ok) throw Object.assign(new Error('Zumper returned HTTP ' + response.status + '.'), { httpStatus: response.status });
-    return searchState(await response.text());
+    return response;
+  }
+  async function fetchPage(market: ZumperMarket, page: number) {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return searchState(await (await request(marketUrl(market, page))).text());
+      } catch (error) {
+        const { httpStatus, retryAfter } = (error ?? {}) as { httpStatus?: number; retryAfter?: number };
+        if (httpStatus !== 429 || attempt >= RATE_LIMIT_RETRIES) throw error;
+        const asked = typeof retryAfter === 'number' && retryAfter > 0 ? retryAfter - Date.now() : 0;
+        await wait(Math.min(RATE_LIMIT_MAX_WAIT_MS, Math.max(asked, RATE_LIMIT_WAIT_MS * 2 ** attempt)));
+        interval = Math.min(interval * 2, 4 * PAGE_INTERVAL_MS);
+      }
+    }
   }
   for (const market of ZUMPER_MARKETS) {
     // Paging stops on a page with nothing new for this market; a listing shown in another

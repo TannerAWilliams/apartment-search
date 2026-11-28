@@ -106,6 +106,70 @@ test('HotPads preserves exact active unit offers, never building ranges or off-m
     expect(parse({ ...row, ...changed }).length).toBe(0);
 });
 
+test('Zumper waits and asks again when it is told to slow down, and gives up after the fourth refusal', async () => {
+  const { loadZumper } = await import('../server/sources/zumper.ts');
+  const page = (rows: object[]) =>
+    new Response(
+      'window.__PRELOADED_STATE__ = ' +
+        JSON.stringify({ currentSearch: { hasMoreListables: false, listables: { listables: rows } } }) +
+        '; window.__GIT_SHA__',
+    );
+  const row = {
+    url: '/listings/7p/unit-7',
+    listing_id: 7,
+    listing_status: 1,
+    listing_type: 1,
+    property_type: 4,
+    state: 'NY',
+    city: 'New York',
+    zipcode: '10025',
+    address: '7 Main St #2',
+    min_price: 3000,
+    max_price: 3000,
+    min_bedrooms: 1,
+    max_bedrooms: 1,
+    lat: 40.7,
+    lng: -73.99,
+  };
+  const waits: number[] = [];
+  let refusals = 2;
+  // The sync's fetcher throws on a 429, with the time Zumper asked to wait until; a plain fetcher returns it.
+  const result = await loadZumper(
+    async (url: string) => {
+      if (url.endsWith('/manhattan-ny') && refusals-- > 0) {
+        if (refusals === 1) throw Object.assign(new Error('HTTP 429'), { httpStatus: 429, retryAfter: Date.now() + 90_000 });
+        return new Response('slow down', { status: 429 });
+      }
+      return page(url.endsWith('/manhattan-ny') ? [row] : []);
+    },
+    new Date('2026-11-28T00:00:00Z'),
+    async (ms) => {
+      if (ms > 5000) waits.push(ms);
+    },
+  );
+  expect(result.listings).toHaveLength(1);
+  expect(waits).toHaveLength(2);
+  expect(waits[0]).toBeGreaterThan(80_000);
+  expect(waits[1]).toBe(60_000);
+
+  const refused = await loadZumper(
+    async () => new Response('', { status: 429 }),
+    new Date(),
+    async () => {},
+  ).catch((error: Error) => error);
+  expect(refused).toBeInstanceOf(Error);
+  expect((refused as Error).message).toBe('Zumper returned HTTP 429.');
+  // Any other refusal ends the run at once.
+  const blocked = await loadZumper(
+    async () => {
+      throw Object.assign(new Error('HTTP 403'), { httpStatus: 403 });
+    },
+    new Date(),
+    async () => {},
+  ).catch((error: Error) => error);
+  expect((blocked as Error & { httpStatus: number }).httpStatus).toBe(403);
+});
+
 test('Zumper sync pages through every market until no more results and counts skipped buildings', async () => {
   const { loadZumper, ZUMPER_MARKETS, ZUMPER_TRANSPORT } = await import('../server/sources/zumper.ts');
   const requested: string[] = [];
